@@ -1,0 +1,94 @@
+[
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\layout_dialog_custom_amount.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\layout\\dialog_custom_amount.xml"
+    },
+    {
+        "merged": "com.goldsky.carwash.app-merged_res-29:/raw_voice_enjoy.mp3.flat",
+        "source": "com.goldsky.carwash.app-main-31:/raw/voice_enjoy.mp3"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\drawable_card_brand_bg.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\drawable\\card_brand_bg.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\drawable_circle_progress_bg.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\drawable\\circle_progress_bg.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\layout_dialog_payment.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\layout\\dialog_payment.xml"
+    },
+    {
+        "merged": "com.goldsky.carwash.app-merged_res-29:/raw_voice_tap.mp3.flat",
+        "source": "com.goldsky.carwash.app-main-31:/raw/voice_tap.mp3"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\layout_activity_ad.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\layout\\activity_ad.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\drawable_prompt_bg.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\drawable\\prompt_bg.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\drawable_ic_launcher.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\drawable\\ic_launcher.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\drawable_ic_goldsky_logo.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\drawable\\ic_goldsky_logo.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\drawable_ic_tap_card_placeholder.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\drawable\\ic_tap_card_placeholder.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\drawable_card_brand_bg_selected.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\drawable\\card_brand_bg_selected.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\drawable_ad_placeholder.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\drawable\\ad_placeholder.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\layout_dialog_payment_selection.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\layout\\dialog_payment_selection.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\layout_activity_vip.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\layout\\activity_vip.xml"
+    },
+    {
+        "merged": "com.goldsky.carwash.app-merged_res-29:/raw_voice_error.mp3.flat",
+        "source": "com.goldsky.carwash.app-main-31:/raw/voice_error.mp3"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\drawable_bg_vip_banner.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\drawable\\bg_vip_banner.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\drawable_circle_progress_bar.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\drawable\\circle_progress_bar.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\drawable_bg_vip_tier.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\drawable\\bg_vip_tier.xml"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\raw_lottie_tap_card.json.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\raw\\lottie_tap_card.json"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\drawable_ic_launcher_round.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\drawable\\ic_launcher_round.xml"
+    },
+    {
+        "merged": "com.goldsky.carwash.app-merged_res-29:/raw_voice_approved.mp3.flat",
+        "source": "com.goldsky.carwash.app-main-31:/raw/voice_approved.mp3"
+    },
+    {
+        "merged": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-merged_res-29:\\layout_activity_main.xml.flat",
+        "source": "C:\\Users\\hanzg\\.gradle\\daemon\\8.7\\com.goldsky.carwash.app-main-31:\\layout\\activity_main.xml"
+    }
+]

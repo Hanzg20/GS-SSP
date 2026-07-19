@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Backgrounds -->
+    <color name="bg_dark">#000000</color>
+    <color name="bg_card">#121212</color>
+    <color name="bg_card_selected">#1A1A1A</color>
+
+    <!-- GoldSky Brand Colors -->
+    <color name="goldsky_gold_start">#FFB800</color>
+    <color name="goldsky_gold_end">#FF8A00</color>
+    <color name="goldsky_blue">#00D1FF</color>
+
+    <!-- Functional Colors -->
+    <color name="gold_accent">#FFB800</color>
+    <color name="emerald_green">#4CAF50</color>
+    <color name="royal_blue">#00D1FF</color>
+    <color name="coral_red">#FF5252</color>
+
+    <!-- Typography -->
+    <color name="text_light">#FFFFFF</color>
+    <color name="text_muted">#94A3B8</color>
+    <color name="text_dark">#0F172A</color>
+
+    <!-- Gradients / Borders -->
+    <color name="border_light">#334155</color>
+    <color name="ripple_color">#475569</color>
+</resources>

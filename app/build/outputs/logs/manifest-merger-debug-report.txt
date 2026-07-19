@@ -1,0 +1,340 @@
+-- Merging decision tree log ---
+manifest
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:2:1-77:12
+INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:2:1-77:12
+INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:2:1-77:12
+INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:2:1-77:12
+MERGED from [androidx.databinding:viewbinding:8.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\f4be782ddc14379f714bb9f620433ddf\transformed\jetified-viewbinding-8.1.0\AndroidManifest.xml:2:1-7:12
+MERGED from [com.google.android.material:material:1.8.0] C:\Users\hanzg\.gradle\caches\transforms-4\4f832f59d19435542b014e372b0b29f2\transformed\material-1.8.0\AndroidManifest.xml:17:1-26:12
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\hanzg\.gradle\caches\transforms-4\5773ab5e76214bac7db400cbd0373ccd\transformed\constraintlayout-2.1.4\AndroidManifest.xml:2:1-11:12
+MERGED from [com.airbnb.android:lottie:6.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\31b3d3f5f4760170fd1f94387ea064a3\transformed\jetified-lottie-6.0.0\AndroidManifest.xml:2:1-11:12
+MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\hanzg\.gradle\caches\transforms-4\4529b2d420191f94a5bfa36ce7b5907b\transformed\jetified-appcompat-resources-1.6.1\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.appcompat:appcompat:1.6.1] C:\Users\hanzg\.gradle\caches\transforms-4\b51eb6bf8630c52a5da678099c3f157e\transformed\appcompat-1.6.1\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.viewpager2:viewpager2:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\62ddbd7ec3d0ee5c0849cb7fffa0f2f9\transformed\jetified-viewpager2-1.0.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.fragment:fragment:1.3.6] C:\Users\hanzg\.gradle\caches\transforms-4\fd2e517aab0484f2fb5b696327379398\transformed\fragment-1.3.6\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.activity:activity:1.6.0] C:\Users\hanzg\.gradle\caches\transforms-4\7acbac938fc9fe801270f567304c2942\transformed\jetified-activity-1.6.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.dynamicanimation:dynamicanimation:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\0f34fccc616b3cb63840c4abf154517b\transformed\dynamicanimation-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.legacy:legacy-support-core-utils:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\d0965e70d6c3c353e7731f4e986e3703\transformed\legacy-support-core-utils-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.loader:loader:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\674849b9559261fcdb580a14fc8884f1\transformed\loader-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.5.1] C:\Users\hanzg\.gradle\caches\transforms-4\434d6b732479985e5fd779c194e0f076\transformed\lifecycle-viewmodel-2.5.1\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.5.1] C:\Users\hanzg\.gradle\caches\transforms-4\32e95ce4b782030dd02f71743b1850b6\transformed\jetified-lifecycle-viewmodel-savedstate-2.5.1\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.emoji2:emoji2-views-helper:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\f44275186e5fd420f0e167391c070b22\transformed\jetified-emoji2-views-helper-1.2.0\AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:17:1-35:12
+MERGED from [androidx.drawerlayout:drawerlayout:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\052f049a111868249c20fea1b29de991\transformed\drawerlayout-1.1.1\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.coordinatorlayout:coordinatorlayout:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\c62deee8fa1d3ee30bf7c3cf342d1fc2\transformed\coordinatorlayout-1.1.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.transition:transition:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\eb2a31b8b5f2015d40b81535d4715fd2\transformed\transition-1.2.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\fe1192bd147db946d8dd8a99a001cccc\transformed\vectordrawable-animated-1.1.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\0aede1d5c562ed8ca73eede07b4d1981\transformed\vectordrawable-1.1.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.viewpager:viewpager:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\664aea7eec6a0bdc2d5dbfb9c9fe4040\transformed\viewpager-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.recyclerview:recyclerview:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\b6a497bfe9fa7c04e61b8e9fa75f7b5d\transformed\recyclerview-1.1.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.customview:customview:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\2872a0bc6718477c3b5da4fbb391addb\transformed\customview-1.1.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:17:1-30:12
+MERGED from [androidx.core:core-ktx:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\47527cd84f1066b487f6e403814fbad4\transformed\jetified-core-ktx-1.9.0\AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.cursoradapter:cursoradapter:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\b88a87a08fd46d8ab922e1a850858c92\transformed\cursoradapter-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:17:1-37:12
+MERGED from [androidx.lifecycle:lifecycle-runtime:2.5.1] C:\Users\hanzg\.gradle\caches\transforms-4\5f069b5f1ee6b692053b381c6160a0f8\transformed\lifecycle-runtime-2.5.1\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.savedstate:savedstate:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\311d80099705acf92b0610fa42d909fe\transformed\jetified-savedstate-1.2.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.cardview:cardview:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\5462bf3da0d3123c346a3eedb6904c30\transformed\cardview-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\79edbabf056e223dd26aab1336b90b14\transformed\versionedparcelable-1.1.1\AndroidManifest.xml:17:1-27:12
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\63577ecc200209dd8244fac75b4cd538\transformed\jetified-startup-runtime-1.1.1\AndroidManifest.xml:17:1-33:12
+MERGED from [androidx.tracing:tracing:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\54dbe7a93df90c0619c6d5d65eb62004\transformed\jetified-tracing-1.0.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\a8a921a180014106b15b567444169df5\transformed\lifecycle-livedata-2.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.5.1] C:\Users\hanzg\.gradle\caches\transforms-4\fa34dcc4701972797328ab44cb920126\transformed\lifecycle-livedata-core-2.5.1\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.arch.core:core-runtime:2.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\507fb55faedfda754b307a4c3766cabd\transformed\core-runtime-2.1.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.interpolator:interpolator:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\8bcc85d33f3606f7e5abc13620f8d497\transformed\interpolator-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.documentfile:documentfile:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\966a67c587333b66ebf5ea35037f2079\transformed\documentfile-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.localbroadcastmanager:localbroadcastmanager:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\e5d2a91d0c398e5a9a365750c0197807\transformed\localbroadcastmanager-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.print:print:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\3dd2513a2011f587761266a64df965c5\transformed\print-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.annotation:annotation-experimental:1.3.0] C:\Users\hanzg\.gradle\caches\transforms-4\dfacce4060f556b0347f55531a9eba55\transformed\jetified-annotation-experimental-1.3.0\AndroidManifest.xml:17:1-22:12
+	package
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:3:5-34
+		INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml
+	android:versionName
+		INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml
+	android:versionCode
+		INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml
+	xmlns:android
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:2:11-69
+uses-permission#android.permission.INTERNET
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:6:5-67
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:6:22-64
+uses-permission#android.permission.ACCESS_NETWORK_STATE
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:7:5-79
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:7:22-76
+uses-permission#android.permission.CAMERA
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:10:5-65
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:10:22-62
+uses-permission#android.permission.RECEIVE_BOOT_COMPLETED
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:13:5-81
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:13:22-78
+uses-permission#com.pax.permission.ICC
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:16:5-62
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:16:22-59
+uses-permission#com.pax.permission.PICC
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:17:5-63
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:17:22-60
+uses-permission#com.pax.permission.MAGCARD
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:18:5-66
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:18:22-63
+uses-permission#com.pax.permission.PED
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:19:5-62
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:19:22-59
+uses-permission#com.pax.permission.PRINTER
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:20:5-66
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:20:22-63
+uses-permission#android.permission.WRITE_EXTERNAL_STORAGE
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:23:5-81
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:23:22-78
+uses-permission#android.permission.READ_EXTERNAL_STORAGE
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:24:5-80
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:24:22-77
+application
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:26:5-75:19
+INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:26:5-75:19
+MERGED from [com.google.android.material:material:1.8.0] C:\Users\hanzg\.gradle\caches\transforms-4\4f832f59d19435542b014e372b0b29f2\transformed\material-1.8.0\AndroidManifest.xml:24:5-20
+MERGED from [com.google.android.material:material:1.8.0] C:\Users\hanzg\.gradle\caches\transforms-4\4f832f59d19435542b014e372b0b29f2\transformed\material-1.8.0\AndroidManifest.xml:24:5-20
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\hanzg\.gradle\caches\transforms-4\5773ab5e76214bac7db400cbd0373ccd\transformed\constraintlayout-2.1.4\AndroidManifest.xml:9:5-20
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\hanzg\.gradle\caches\transforms-4\5773ab5e76214bac7db400cbd0373ccd\transformed\constraintlayout-2.1.4\AndroidManifest.xml:9:5-20
+MERGED from [com.airbnb.android:lottie:6.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\31b3d3f5f4760170fd1f94387ea064a3\transformed\jetified-lottie-6.0.0\AndroidManifest.xml:9:5-20
+MERGED from [com.airbnb.android:lottie:6.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\31b3d3f5f4760170fd1f94387ea064a3\transformed\jetified-lottie-6.0.0\AndroidManifest.xml:9:5-20
+MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:28:5-89
+MERGED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:28:5-89
+MERGED from [androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:25:5-35:19
+MERGED from [androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:25:5-35:19
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\79edbabf056e223dd26aab1336b90b14\transformed\versionedparcelable-1.1.1\AndroidManifest.xml:24:5-25:19
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\79edbabf056e223dd26aab1336b90b14\transformed\versionedparcelable-1.1.1\AndroidManifest.xml:24:5-25:19
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\63577ecc200209dd8244fac75b4cd538\transformed\jetified-startup-runtime-1.1.1\AndroidManifest.xml:25:5-31:19
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\63577ecc200209dd8244fac75b4cd538\transformed\jetified-startup-runtime-1.1.1\AndroidManifest.xml:25:5-31:19
+	android:extractNativeLibs
+		INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml
+	android:appComponentFactory
+		ADDED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:28:18-86
+	android:supportsRtl
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:31:9-35
+	android:label
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:29:9-41
+	android:roundIcon
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:30:9-56
+	android:icon
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:28:9-45
+	android:allowBackup
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:27:9-35
+	android:theme
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:32:9-41
+receiver#com.goldsky.carwash.BootReceiver
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:35:9-43:20
+	android:enabled
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:37:13-35
+	android:exported
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:38:13-36
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:36:13-41
+intent-filter#action:name:android.intent.action.BOOT_COMPLETED+category:name:android.intent.category.DEFAULT
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:39:13-42:29
+action#android.intent.action.BOOT_COMPLETED
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:40:17-79
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:40:25-76
+category#android.intent.category.DEFAULT
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:41:17-76
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:41:27-73
+activity#com.goldsky.carwash.MainActivity
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:46:9-57:20
+	android:screenOrientation
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:49:13-49
+	android:exported
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:48:13-36
+	android:configChanges
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:50:13-74
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:47:13-41
+intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.DEFAULT+category:name:android.intent.category.HOME+category:name:android.intent.category.LAUNCHER
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:51:13-56:29
+action#android.intent.action.MAIN
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:52:17-69
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:52:25-66
+category#android.intent.category.LAUNCHER
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:53:17-77
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:53:27-74
+category#android.intent.category.HOME
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:54:17-73
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:54:27-70
+activity#com.goldsky.carwash.AdActivity
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:60:9-65:77
+	android:screenOrientation
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:63:13-49
+	android:exported
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:62:13-37
+	android:configChanges
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:65:13-74
+	android:theme
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:64:13-56
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:61:13-39
+activity#com.goldsky.carwash.VipActivity
+ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:68:9-73:77
+	android:screenOrientation
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:71:13-49
+	android:exported
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:70:13-37
+	android:configChanges
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:73:13-74
+	android:theme
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:72:13-56
+	android:name
+		ADDED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml:69:13-40
+uses-sdk
+INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml
+INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml
+MERGED from [androidx.databinding:viewbinding:8.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\f4be782ddc14379f714bb9f620433ddf\transformed\jetified-viewbinding-8.1.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.databinding:viewbinding:8.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\f4be782ddc14379f714bb9f620433ddf\transformed\jetified-viewbinding-8.1.0\AndroidManifest.xml:5:5-44
+MERGED from [com.google.android.material:material:1.8.0] C:\Users\hanzg\.gradle\caches\transforms-4\4f832f59d19435542b014e372b0b29f2\transformed\material-1.8.0\AndroidManifest.xml:20:5-22:41
+MERGED from [com.google.android.material:material:1.8.0] C:\Users\hanzg\.gradle\caches\transforms-4\4f832f59d19435542b014e372b0b29f2\transformed\material-1.8.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\hanzg\.gradle\caches\transforms-4\5773ab5e76214bac7db400cbd0373ccd\transformed\constraintlayout-2.1.4\AndroidManifest.xml:5:5-7:41
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\hanzg\.gradle\caches\transforms-4\5773ab5e76214bac7db400cbd0373ccd\transformed\constraintlayout-2.1.4\AndroidManifest.xml:5:5-7:41
+MERGED from [com.airbnb.android:lottie:6.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\31b3d3f5f4760170fd1f94387ea064a3\transformed\jetified-lottie-6.0.0\AndroidManifest.xml:5:5-7:41
+MERGED from [com.airbnb.android:lottie:6.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\31b3d3f5f4760170fd1f94387ea064a3\transformed\jetified-lottie-6.0.0\AndroidManifest.xml:5:5-7:41
+MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\hanzg\.gradle\caches\transforms-4\4529b2d420191f94a5bfa36ce7b5907b\transformed\jetified-appcompat-resources-1.6.1\AndroidManifest.xml:20:5-44
+MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\hanzg\.gradle\caches\transforms-4\4529b2d420191f94a5bfa36ce7b5907b\transformed\jetified-appcompat-resources-1.6.1\AndroidManifest.xml:20:5-44
+MERGED from [androidx.appcompat:appcompat:1.6.1] C:\Users\hanzg\.gradle\caches\transforms-4\b51eb6bf8630c52a5da678099c3f157e\transformed\appcompat-1.6.1\AndroidManifest.xml:20:5-44
+MERGED from [androidx.appcompat:appcompat:1.6.1] C:\Users\hanzg\.gradle\caches\transforms-4\b51eb6bf8630c52a5da678099c3f157e\transformed\appcompat-1.6.1\AndroidManifest.xml:20:5-44
+MERGED from [androidx.viewpager2:viewpager2:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\62ddbd7ec3d0ee5c0849cb7fffa0f2f9\transformed\jetified-viewpager2-1.0.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.viewpager2:viewpager2:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\62ddbd7ec3d0ee5c0849cb7fffa0f2f9\transformed\jetified-viewpager2-1.0.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.fragment:fragment:1.3.6] C:\Users\hanzg\.gradle\caches\transforms-4\fd2e517aab0484f2fb5b696327379398\transformed\fragment-1.3.6\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.fragment:fragment:1.3.6] C:\Users\hanzg\.gradle\caches\transforms-4\fd2e517aab0484f2fb5b696327379398\transformed\fragment-1.3.6\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.activity:activity:1.6.0] C:\Users\hanzg\.gradle\caches\transforms-4\7acbac938fc9fe801270f567304c2942\transformed\jetified-activity-1.6.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.activity:activity:1.6.0] C:\Users\hanzg\.gradle\caches\transforms-4\7acbac938fc9fe801270f567304c2942\transformed\jetified-activity-1.6.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.dynamicanimation:dynamicanimation:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\0f34fccc616b3cb63840c4abf154517b\transformed\dynamicanimation-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.dynamicanimation:dynamicanimation:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\0f34fccc616b3cb63840c4abf154517b\transformed\dynamicanimation-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.legacy:legacy-support-core-utils:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\d0965e70d6c3c353e7731f4e986e3703\transformed\legacy-support-core-utils-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.legacy:legacy-support-core-utils:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\d0965e70d6c3c353e7731f4e986e3703\transformed\legacy-support-core-utils-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.loader:loader:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\674849b9559261fcdb580a14fc8884f1\transformed\loader-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.loader:loader:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\674849b9559261fcdb580a14fc8884f1\transformed\loader-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.5.1] C:\Users\hanzg\.gradle\caches\transforms-4\434d6b732479985e5fd779c194e0f076\transformed\lifecycle-viewmodel-2.5.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.5.1] C:\Users\hanzg\.gradle\caches\transforms-4\434d6b732479985e5fd779c194e0f076\transformed\lifecycle-viewmodel-2.5.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.5.1] C:\Users\hanzg\.gradle\caches\transforms-4\32e95ce4b782030dd02f71743b1850b6\transformed\jetified-lifecycle-viewmodel-savedstate-2.5.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.5.1] C:\Users\hanzg\.gradle\caches\transforms-4\32e95ce4b782030dd02f71743b1850b6\transformed\jetified-lifecycle-viewmodel-savedstate-2.5.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.emoji2:emoji2-views-helper:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\f44275186e5fd420f0e167391c070b22\transformed\jetified-emoji2-views-helper-1.2.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.emoji2:emoji2-views-helper:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\f44275186e5fd420f0e167391c070b22\transformed\jetified-emoji2-views-helper-1.2.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:21:5-44
+MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:21:5-44
+MERGED from [androidx.drawerlayout:drawerlayout:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\052f049a111868249c20fea1b29de991\transformed\drawerlayout-1.1.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.drawerlayout:drawerlayout:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\052f049a111868249c20fea1b29de991\transformed\drawerlayout-1.1.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.coordinatorlayout:coordinatorlayout:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\c62deee8fa1d3ee30bf7c3cf342d1fc2\transformed\coordinatorlayout-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.coordinatorlayout:coordinatorlayout:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\c62deee8fa1d3ee30bf7c3cf342d1fc2\transformed\coordinatorlayout-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.transition:transition:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\eb2a31b8b5f2015d40b81535d4715fd2\transformed\transition-1.2.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.transition:transition:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\eb2a31b8b5f2015d40b81535d4715fd2\transformed\transition-1.2.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\fe1192bd147db946d8dd8a99a001cccc\transformed\vectordrawable-animated-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\fe1192bd147db946d8dd8a99a001cccc\transformed\vectordrawable-animated-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\0aede1d5c562ed8ca73eede07b4d1981\transformed\vectordrawable-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\0aede1d5c562ed8ca73eede07b4d1981\transformed\vectordrawable-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.viewpager:viewpager:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\664aea7eec6a0bdc2d5dbfb9c9fe4040\transformed\viewpager-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.viewpager:viewpager:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\664aea7eec6a0bdc2d5dbfb9c9fe4040\transformed\viewpager-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.recyclerview:recyclerview:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\b6a497bfe9fa7c04e61b8e9fa75f7b5d\transformed\recyclerview-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.recyclerview:recyclerview:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\b6a497bfe9fa7c04e61b8e9fa75f7b5d\transformed\recyclerview-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.customview:customview:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\2872a0bc6718477c3b5da4fbb391addb\transformed\customview-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.customview:customview:1.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\2872a0bc6718477c3b5da4fbb391addb\transformed\customview-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.core:core-ktx:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\47527cd84f1066b487f6e403814fbad4\transformed\jetified-core-ktx-1.9.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.core:core-ktx:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\47527cd84f1066b487f6e403814fbad4\transformed\jetified-core-ktx-1.9.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.cursoradapter:cursoradapter:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\b88a87a08fd46d8ab922e1a850858c92\transformed\cursoradapter-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.cursoradapter:cursoradapter:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\b88a87a08fd46d8ab922e1a850858c92\transformed\cursoradapter-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:21:5-23:41
+MERGED from [androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:21:5-23:41
+MERGED from [androidx.lifecycle:lifecycle-runtime:2.5.1] C:\Users\hanzg\.gradle\caches\transforms-4\5f069b5f1ee6b692053b381c6160a0f8\transformed\lifecycle-runtime-2.5.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.lifecycle:lifecycle-runtime:2.5.1] C:\Users\hanzg\.gradle\caches\transforms-4\5f069b5f1ee6b692053b381c6160a0f8\transformed\lifecycle-runtime-2.5.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.savedstate:savedstate:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\311d80099705acf92b0610fa42d909fe\transformed\jetified-savedstate-1.2.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.savedstate:savedstate:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\311d80099705acf92b0610fa42d909fe\transformed\jetified-savedstate-1.2.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.cardview:cardview:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\5462bf3da0d3123c346a3eedb6904c30\transformed\cardview-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.cardview:cardview:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\5462bf3da0d3123c346a3eedb6904c30\transformed\cardview-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\79edbabf056e223dd26aab1336b90b14\transformed\versionedparcelable-1.1.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\79edbabf056e223dd26aab1336b90b14\transformed\versionedparcelable-1.1.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\63577ecc200209dd8244fac75b4cd538\transformed\jetified-startup-runtime-1.1.1\AndroidManifest.xml:21:5-23:41
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\63577ecc200209dd8244fac75b4cd538\transformed\jetified-startup-runtime-1.1.1\AndroidManifest.xml:21:5-23:41
+MERGED from [androidx.tracing:tracing:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\54dbe7a93df90c0619c6d5d65eb62004\transformed\jetified-tracing-1.0.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.tracing:tracing:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\54dbe7a93df90c0619c6d5d65eb62004\transformed\jetified-tracing-1.0.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\a8a921a180014106b15b567444169df5\transformed\lifecycle-livedata-2.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\a8a921a180014106b15b567444169df5\transformed\lifecycle-livedata-2.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.5.1] C:\Users\hanzg\.gradle\caches\transforms-4\fa34dcc4701972797328ab44cb920126\transformed\lifecycle-livedata-core-2.5.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.5.1] C:\Users\hanzg\.gradle\caches\transforms-4\fa34dcc4701972797328ab44cb920126\transformed\lifecycle-livedata-core-2.5.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.arch.core:core-runtime:2.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\507fb55faedfda754b307a4c3766cabd\transformed\core-runtime-2.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.arch.core:core-runtime:2.1.0] C:\Users\hanzg\.gradle\caches\transforms-4\507fb55faedfda754b307a4c3766cabd\transformed\core-runtime-2.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.interpolator:interpolator:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\8bcc85d33f3606f7e5abc13620f8d497\transformed\interpolator-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.interpolator:interpolator:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\8bcc85d33f3606f7e5abc13620f8d497\transformed\interpolator-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.documentfile:documentfile:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\966a67c587333b66ebf5ea35037f2079\transformed\documentfile-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.documentfile:documentfile:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\966a67c587333b66ebf5ea35037f2079\transformed\documentfile-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.localbroadcastmanager:localbroadcastmanager:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\e5d2a91d0c398e5a9a365750c0197807\transformed\localbroadcastmanager-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.localbroadcastmanager:localbroadcastmanager:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\e5d2a91d0c398e5a9a365750c0197807\transformed\localbroadcastmanager-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.print:print:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\3dd2513a2011f587761266a64df965c5\transformed\print-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.print:print:1.0.0] C:\Users\hanzg\.gradle\caches\transforms-4\3dd2513a2011f587761266a64df965c5\transformed\print-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.annotation:annotation-experimental:1.3.0] C:\Users\hanzg\.gradle\caches\transforms-4\dfacce4060f556b0347f55531a9eba55\transformed\jetified-annotation-experimental-1.3.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.annotation:annotation-experimental:1.3.0] C:\Users\hanzg\.gradle\caches\transforms-4\dfacce4060f556b0347f55531a9eba55\transformed\jetified-annotation-experimental-1.3.0\AndroidManifest.xml:20:5-44
+	android:targetSdkVersion
+		INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from E:\Car wash\ssp\app\src\main\AndroidManifest.xml
+provider#androidx.startup.InitializationProvider
+ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:26:9-34:20
+MERGED from [androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:26:9-34:20
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\63577ecc200209dd8244fac75b4cd538\transformed\jetified-startup-runtime-1.1.1\AndroidManifest.xml:26:9-30:34
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\hanzg\.gradle\caches\transforms-4\63577ecc200209dd8244fac75b4cd538\transformed\jetified-startup-runtime-1.1.1\AndroidManifest.xml:26:9-30:34
+	tools:node
+		ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:28:13-31
+	android:authorities
+		ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:26:13-68
+	android:exported
+		ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:27:13-37
+	android:name
+		ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:25:13-67
+meta-data#androidx.emoji2.text.EmojiCompatInitializer
+ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:30:17-75
+permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:22:5-24:47
+	android:protectionLevel
+		ADDED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:24:9-44
+	android:name
+		ADDED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:23:9-81
+permission#com.goldsky.carwash.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:22:5-24:47
+	android:protectionLevel
+		ADDED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:24:9-44
+	android:name
+		ADDED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:23:9-81
+uses-permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:26:5-97
+	android:name
+		ADDED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:26:22-94
+uses-permission#com.goldsky.carwash.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:26:5-97
+	android:name
+		ADDED from [androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:26:22-94
+meta-data#androidx.lifecycle.ProcessLifecycleInitializer
+ADDED from [androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:31:13-33:52
+	android:value
+		ADDED from [androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:33:17-49
+	android:name
+		ADDED from [androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:32:17-78

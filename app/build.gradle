@@ -1,0 +1,66 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.serialization' version '1.9.0'
+}
+
+android {
+    namespace 'com.goldsky.carwash'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.goldsky.carwash"
+        minSdk 25 // Android 7.1 (PAX IM30 target)
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+    buildFeatures {
+        viewBinding true
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.9.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.8.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+
+    // Kotlin Coroutines for async tasks and polling
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4'
+
+    // ZXing for local payment QR code generation
+    implementation 'com.google.zxing:core:3.5.2'
+
+    // Lottie for modern high-end hardware animations
+    implementation 'com.airbnb.android:lottie:6.0.0'
+
+    // Ktor for VIP membership logic (Direct REST API)
+    implementation "io.ktor:ktor-client-android:2.3.12"
+    implementation "io.ktor:ktor-client-content-negotiation:2.3.12"
+    implementation "io.ktor:ktor-serialization-kotlinx-json:2.3.12"
+
+    // Local library placeholder for PAX SDKs (NeptuneLite & POSLink)
+    // If you have real aar files, place them in libs/ and they will be picked up
+    implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}

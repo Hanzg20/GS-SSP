@@ -1,0 +1,19 @@
+<resources>
+    <!-- Base application theme. -->
+    <style name="Theme.SSP" parent="Theme.AppCompat.NoActionBar">
+        <!-- Customize your theme here. -->
+        <item name="colorPrimary">@color/royal_blue</item>
+        <item name="colorPrimaryDark">@color/bg_dark</item>
+        <item name="colorAccent">@color/gold_accent</item>
+        <item name="android:windowBackground">@color/bg_dark</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+    </style>
+
+    <!-- Fullscreen kiosk theme. -->
+    <style name="Theme.SSP.Fullscreen" parent="Theme.SSP">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowIsTranslucent">false</item>
+    </style>
+</resources>

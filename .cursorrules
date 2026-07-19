@@ -1,0 +1,48 @@
+# PAX IM30 自助洗车系统开发规范
+
+本文件指导 AI 辅助生成和修改本项目代码。请严格遵守以下规则：
+
+## 1. 目标硬件与环境
+*   **物理设备**：PAX IM30 无人值守支付终端
+*   **Android 版本**：Android 7.1 (API 25) - 所有库及语法均需向下兼容 API 25。
+*   **屏幕规格**：$640 \times 480$ 物理像素，横屏。
+*   **串口规格**：默认通过 `/dev/ttyS1` 与底座继电器通信，波特率 9600，数据位 8，停止位 1，无校验。
+
+## 2. UI 设计原则 (Aesthetics & Layout)
+*   **布局约束**：一律使用 `ConstraintLayout`。绝对不能使用绝对坐标（px），所有大小、间距均采用百分比自适应（`layout_constraintWidth_percent`）或 `dp`/`sp`。
+*   **极简黑客系/高质感暗黑风**：
+    *   主背景色采用深灰色或暗蓝灰色（如 `#121824`），卡片和容器采用微亮的蓝黑色（如 `#1E293B`）。
+    *   主操作按钮及重要高亮采用金黄色（如 `#F59E0B`）或翡翠绿（如 `#10B981`），形成视觉冲击。
+    *   文本采用清晰耐看的无衬线字体（如 Roboto / Inter），高对比度白色/浅灰色。
+*   **沉浸式 Kiosk 模式**：
+    *   必须在所有主界面的 `onCreate()` 和 `onResume()` 中隐藏系统状态栏和虚拟按键栏：
+    ```kotlin
+    window.decorView.systemUiVisibility = (
+        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+        or View.SYSTEM_UI_FLAG_FULLSCREEN
+    )
+    ```
+
+## 3. 核心业务与控制逻辑
+*   **无操作监测机制**：
+    *   由 `BaseAdActivity` 全局拦截 `dispatchTouchEvent` 事件。
+    *   使用 Handler 维护 60 秒倒计时。一旦发生触碰，立即清空并重置倒计时。
+    *   倒计时清零后跳转至全屏的 `AdActivity`。
+*   **广告轮播 (AdActivity)**：
+    *   循环播放 `raw/` 文件夹下的 MP4 广告视频或 `assets/` 广告图。
+    *   监听全屏点击事件，一触即退（调用 `finish()`），保证能立刻返回主业务界面。
+*   **串口脉冲控制 (SerialPortManager)**：
+    *   串口通信单例模式，通信协议：
+        *   标准洗车 ($10)：`0xAA 0x01 0x0A 0x55`（启动指令，倒计时 300 秒）
+        *   精致洗车 ($15)：`0xAA 0x01 0x0F 0x55`（启动指令，倒计时 450 秒）
+        *   全套打蜡 ($20)：`0xAA 0x01 0x14 0x55`（启动指令，倒计时 600 秒）
+        *   结束信号 (免费/超时)：`0xAA 0x00 0x00 0x55`
+    *   倒计时归零时必须自动下发结束信号。
+*   **支付处理 (PaymentService)**：
+    *   借记卡/信用卡：调起 POSLink 刷卡界面（在没有真实 SDK 环境下使用 Stub 交互，防止编译失败）。
+    *   主扫模式：利用 ZXing 在本地渲染二维码，协程开启 2 秒一次的轮询通道状态。
+    *   被扫模式：激活 IM30 前置扫码枪（通过 `NeptuneLite` 的 `Scanner`），若无 SDK 则降级使用 Camera 或 Stub 数据。

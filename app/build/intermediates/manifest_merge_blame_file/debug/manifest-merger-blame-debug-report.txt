@@ -1,0 +1,185 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.goldsky.carwash"
+4    android:versionCode="1"
+5    android:versionName="1.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="25"
+9        android:targetSdkVersion="34" />
+10
+11    <!-- Permissions for internet and payment status polling -->
+12    <uses-permission android:name="android.permission.INTERNET" />
+12-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:6:5-67
+12-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:6:22-64
+13    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+13-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:7:5-79
+13-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:7:22-76
+14
+15    <!-- Permission for PAX scanner hardware -->
+16    <uses-permission android:name="android.permission.CAMERA" />
+16-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:10:5-65
+16-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:10:22-62
+17
+18    <!-- Permission for boot autostart (Kiosk mode) -->
+19    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+19-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:13:5-81
+19-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:13:22-78
+20
+21    <!-- PAX Hardware Access Permissions -->
+22    <uses-permission android:name="com.pax.permission.ICC" />
+22-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:16:5-62
+22-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:16:22-59
+23    <uses-permission android:name="com.pax.permission.PICC" />
+23-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:17:5-63
+23-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:17:22-60
+24    <uses-permission android:name="com.pax.permission.MAGCARD" />
+24-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:18:5-66
+24-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:18:22-63
+25    <uses-permission android:name="com.pax.permission.PED" />
+25-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:19:5-62
+25-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:19:22-59
+26    <uses-permission android:name="com.pax.permission.PRINTER" />
+26-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:20:5-66
+26-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:20:22-63
+27
+28    <!-- Hardwired system/serial port access permissions if needed by hardware -->
+29    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+29-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:23:5-81
+29-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:23:22-78
+30    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+30-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:24:5-80
+30-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:24:22-77
+31
+32    <permission
+32-->[androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:22:5-24:47
+33        android:name="com.goldsky.carwash.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+33-->[androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:23:9-81
+34        android:protectionLevel="signature" />
+34-->[androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:24:9-44
+35
+36    <uses-permission android:name="com.goldsky.carwash.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+36-->[androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:26:5-97
+36-->[androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:26:22-94
+37
+38    <application
+38-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:26:5-75:19
+39        android:allowBackup="true"
+39-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:27:9-35
+40        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+40-->[androidx.core:core:1.9.0] C:\Users\hanzg\.gradle\caches\transforms-4\4194cbb8501e4d128d1bd3227d11a35c\transformed\core-1.9.0\AndroidManifest.xml:28:18-86
+41        android:debuggable="true"
+42        android:extractNativeLibs="false"
+43        android:icon="@drawable/ic_launcher"
+43-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:28:9-45
+44        android:label="@string/app_name"
+44-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:29:9-41
+45        android:roundIcon="@drawable/ic_launcher_round"
+45-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:30:9-56
+46        android:supportsRtl="true"
+46-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:31:9-35
+47        android:theme="@style/Theme.SSP" >
+47-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:32:9-41
+48
+49        <!-- Boot receiver for Autostart -->
+50        <receiver
+50-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:35:9-43:20
+51            android:name="com.goldsky.carwash.BootReceiver"
+51-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:36:13-41
+52            android:enabled="true"
+52-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:37:13-35
+53            android:exported="true" >
+53-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:38:13-36
+54            <intent-filter>
+54-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:39:13-42:29
+55                <action android:name="android.intent.action.BOOT_COMPLETED" />
+55-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:40:17-79
+55-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:40:25-76
+56
+57                <category android:name="android.intent.category.DEFAULT" />
+57-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:41:17-76
+57-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:41:27-73
+58            </intent-filter>
+59        </receiver>
+60
+61        <!-- MainActivity: Displays wash package list. Launcher & Home category for Kiosk mode -->
+62        <activity
+62-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:46:9-57:20
+63            android:name="com.goldsky.carwash.MainActivity"
+63-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:47:13-41
+64            android:configChanges="orientation|keyboardHidden|screenSize"
+64-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:50:13-74
+65            android:exported="true"
+65-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:48:13-36
+66            android:screenOrientation="portrait" >
+66-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:49:13-49
+67            <intent-filter>
+67-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:51:13-56:29
+68                <action android:name="android.intent.action.MAIN" />
+68-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:52:17-69
+68-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:52:25-66
+69
+70                <category android:name="android.intent.category.LAUNCHER" />
+70-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:53:17-77
+70-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:53:27-74
+71                <category android:name="android.intent.category.HOME" />
+71-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:54:17-73
+71-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:54:27-70
+72                <category android:name="android.intent.category.DEFAULT" />
+72-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:41:17-76
+72-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:41:27-73
+73            </intent-filter>
+74        </activity>
+75
+76        <!-- AdActivity: Full screen looping advertisement activity -->
+77        <activity
+77-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:60:9-65:77
+78            android:name="com.goldsky.carwash.AdActivity"
+78-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:61:13-39
+79            android:configChanges="orientation|keyboardHidden|screenSize"
+79-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:65:13-74
+80            android:exported="false"
+80-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:62:13-37
+81            android:screenOrientation="portrait"
+81-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:63:13-49
+82            android:theme="@style/Theme.SSP.Fullscreen" />
+82-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:64:13-56
+83
+84        <!-- VipActivity: VIP membership details and purchase QR -->
+85        <activity
+85-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:68:9-73:77
+86            android:name="com.goldsky.carwash.VipActivity"
+86-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:69:13-40
+87            android:configChanges="orientation|keyboardHidden|screenSize"
+87-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:73:13-74
+88            android:exported="false"
+88-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:70:13-37
+89            android:screenOrientation="portrait"
+89-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:71:13-49
+90            android:theme="@style/Theme.SSP.Fullscreen" />
+90-->E:\Car wash\ssp\app\src\main\AndroidManifest.xml:72:13-56
+91
+92        <provider
+92-->[androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:24:9-32:20
+93            android:name="androidx.startup.InitializationProvider"
+93-->[androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:25:13-67
+94            android:authorities="com.goldsky.carwash.androidx-startup"
+94-->[androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:26:13-68
+95            android:exported="false" >
+95-->[androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:27:13-37
+96            <meta-data
+96-->[androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:29:13-31:52
+97                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+97-->[androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:30:17-75
+98                android:value="androidx.startup" />
+98-->[androidx.emoji2:emoji2:1.2.0] C:\Users\hanzg\.gradle\caches\transforms-4\e704537e5e3a20f25997c08ad08d469e\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:31:17-49
+99            <meta-data
+99-->[androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:31:13-33:52
+100                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+100-->[androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:32:17-78
+101                android:value="androidx.startup" />
+101-->[androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\hanzg\.gradle\caches\transforms-4\28866f0e93566588e550145fc3bfc66d\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:33:17-49
+102        </provider>
+103    </application>
+104
+105</manifest>
