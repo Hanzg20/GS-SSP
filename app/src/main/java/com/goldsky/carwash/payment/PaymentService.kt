@@ -8,7 +8,6 @@ import com.google.zxing.MultiFormatWriter
 import com.google.zxing.WriterException
 import com.google.zxing.common.BitMatrix
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import com.pax.poslink.*
@@ -40,6 +39,13 @@ object PaymentService {
      * Triggers the card payment flow (Tap/Insert/Swipe) using PAX POSLink SALE.
      */
     fun startCardPayment(amountInCents: Int, callback: PaymentCallback) {
+        if (!KeyHealthMonitor.isPaymentAllowed()) {
+            val reason = KeyHealthMonitor.lockReason() ?: "key health check failed"
+            Log.e(TAG, "Card payment blocked: $reason")
+            callback.onFailure("Payment terminal locked: $reason")
+            return
+        }
+
         Log.i(TAG, "Initiating SALE for amount: $amountInCents cents")
 
         val posLink = PosLink()
@@ -59,8 +65,10 @@ object PaymentService {
                 val result = posLink.ProcessTrans()
                 
                 withContext(Dispatchers.Main) {
+                    val response = posLink.paymentResponse
+                    KeyHealthMonitor.recordResult(response?.resultCode, response?.resultMsg ?: result?.msg)
+
                     if (result != null && result.code == ProcessTransResult.ProcessTransExitCode.OK) {
-                        val response = posLink.paymentResponse
                         if (response != null && response.resultCode == "000000") {
                             Log.d(TAG, "Payment Approved. RefNum: ${response.refNum}")
                             callback.onSuccess(response.authCode ?: "", response.refNum ?: "")
@@ -145,28 +153,4 @@ object PaymentService {
         }
     }
 
-    /**
-     * Simulates cloud status polling for a scan-to-pay transaction (Alipay, WeChat, Apple Pay Web).
-     */
-    suspend fun pollPaymentStatus(txId: String, onStatusUpdated: (Boolean) -> Unit) {
-        withContext(Dispatchers.IO) {
-            Log.i(TAG, "Started polling backend for transaction status: $txId")
-            var attempts = 0
-            val maxAttempts = 30 
-
-            while (attempts < maxAttempts) {
-                delay(2000) 
-                attempts++
-                if (attempts == 5) {
-                    withContext(Dispatchers.Main) {
-                        onStatusUpdated(true)
-                    }
-                    return@withContext
-                }
-            }
-            withContext(Dispatchers.Main) {
-                onStatusUpdated(false)
-            }
-        }
-    }
 }

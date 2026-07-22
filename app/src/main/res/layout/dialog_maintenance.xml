@@ -1,0 +1,281 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0A0A0A"
+    android:padding="16dp">
+
+    <!-- Header -->
+    <TextView
+        android:id="@+id/tv_dash_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="TECH DASHBOARD"
+        android:textColor="#FFB800"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toStartOf="@id/btn_dash_exit"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/btn_dash_exit"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:backgroundTint="#C62828"
+        android:text="EXIT"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Status Section -->
+    <LinearLayout
+        android:id="@+id/layout_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="#1A1A1A"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        app:layout_constraintTop_toBottomOf="@id/tv_dash_title">
+
+        <TextView
+            android:id="@+id/tv_status_serial"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Serial: --"
+            android:textColor="#999999"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/tv_status_network"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Net: --"
+            android:textColor="#999999"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/tv_status_db"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="DB: --"
+            android:textColor="#999999"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- Relay Control Grid -->
+    <TextView
+        android:id="@+id/tv_relay_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="RELAY TEST (SEND HEX)"
+        android:textColor="#666666"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layout_status" />
+
+    <GridLayout
+        android:id="@+id/grid_relays"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:columnCount="2"
+        android:rowCount="2"
+        app:layout_constraintTop_toBottomOf="@id/tv_relay_label">
+
+        <Button
+            android:id="@+id/btn_test_4"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:backgroundTint="#333333"
+            android:text="$4 (AA010455)"
+            android:textSize="10sp" />
+
+        <Button
+            android:id="@+id/btn_test_6"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:backgroundTint="#333333"
+            android:text="$6 (AA010655)"
+            android:textSize="10sp" />
+
+        <Button
+            android:id="@+id/btn_test_8"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:backgroundTint="#333333"
+            android:text="$8 (AA010855)"
+            android:textSize="10sp" />
+
+        <Button
+            android:id="@+id/btn_test_stop"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:backgroundTint="#455A64"
+            android:text="STOP (AA000055)"
+            android:textSize="10sp" />
+    </GridLayout>
+
+    <!-- Peripheral Debug -->
+    <TextView
+        android:id="@+id/tv_periph_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="PERIPHERALS"
+        android:textColor="#666666"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/grid_relays" />
+
+    <LinearLayout
+        android:id="@+id/layout_periph"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        app:layout_constraintTop_toBottomOf="@id/tv_periph_label">
+
+        <Button
+            android:id="@+id/btn_test_scan"
+            android:layout_width="0dp"
+            android:layout_height="60dp"
+            android:layout_margin="4dp"
+            android:layout_weight="1"
+            android:backgroundTint="#00796B"
+            android:text="SCAN TEST"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btn_test_qr_gen"
+            android:layout_width="0dp"
+            android:layout_height="60dp"
+            android:layout_margin="4dp"
+            android:layout_weight="1"
+            android:backgroundTint="#512DA8"
+            android:text="QR GEN TEST"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btn_sim_hang"
+            android:layout_width="0dp"
+            android:layout_height="60dp"
+            android:layout_margin="4dp"
+            android:layout_weight="1"
+            android:backgroundTint="#FF6D00"
+            android:text="SIM HANG"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- Diagnostics -->
+    <TextView
+        android:id="@+id/tv_diag_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="DIAGNOSTICS"
+        android:textColor="#666666"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layout_periph" />
+
+    <LinearLayout
+        android:id="@+id/layout_diag"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        app:layout_constraintTop_toBottomOf="@id/tv_diag_label">
+
+        <Button
+            android:id="@+id/btn_test_db"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_margin="2dp"
+            android:layout_weight="1"
+            android:backgroundTint="#01579B"
+            android:text="DB"
+            android:textSize="10sp" />
+
+        <Button
+            android:id="@+id/btn_test_led"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_margin="2dp"
+            android:layout_weight="1"
+            android:backgroundTint="#33691E"
+            android:text="LED"
+            android:textSize="10sp" />
+
+        <Button
+            android:id="@+id/btn_test_voice"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_margin="2dp"
+            android:layout_weight="1"
+            android:backgroundTint="#4527A0"
+            android:text="VOICE"
+            android:textSize="10sp" />
+
+        <Button
+            android:id="@+id/btn_test_nfc"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_margin="2dp"
+            android:layout_weight="1"
+            android:backgroundTint="#2E7D32"
+            android:text="NFC"
+            android:textSize="10sp" />
+
+        <Button
+            android:id="@+id/btn_test_brightness"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_margin="2dp"
+            android:layout_weight="1"
+            android:backgroundTint="#EF6C00"
+            android:text="LUX"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <!-- Configuration -->
+    <androidx.appcompat.widget.SwitchCompat
+        android:id="@+id/switch_sim_mode"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="100dp"
+        android:text="SIMULATION MODE"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        app:layout_constraintTop_toBottomOf="@id/layout_periph" />
+
+    <!-- Version Footer -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Industrial SSP Platform • GS-SSP v1.0.0"
+        android:textColor="#333333"
+        android:textSize="8sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

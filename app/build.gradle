@@ -1,7 +1,11 @@
-plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
-    id 'org.jetbrains.kotlin.plugin.serialization' version '1.9.0'
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+apply plugin: 'kotlinx-serialization'
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
 }
 
 android {
@@ -13,30 +17,47 @@ android {
         minSdk 25 // Android 7.1 (PAX IM30 target)
         targetSdk 34
         versionCode 1
-        versionName "1.0"
+        versionName "0.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // Inject Supabase credentials from local.properties
+        buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
+        buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled true
     }
     kotlinOptions {
         jvmTarget = '1.8'
     }
     buildFeatures {
         viewBinding true
+        buildConfig true
+    }
+
+    testOptions {
+        unitTests {
+            // android.util.Log etc. throw "not mocked" by default under plain
+            // JUnit; returning defaults instead avoids pulling in Robolectric
+            // just to unit-test non-UI logic like OfflineQueueManager.
+            returnDefaultValues = true
+        }
     }
 }
 
 dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
     implementation 'androidx.core:core-ktx:1.9.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.8.0'
@@ -51,10 +72,29 @@ dependencies {
     // Lottie for modern high-end hardware animations
     implementation 'com.airbnb.android:lottie:6.0.0'
 
-    // Ktor for VIP membership logic (Direct REST API)
-    implementation "io.ktor:ktor-client-android:2.3.12"
-    implementation "io.ktor:ktor-client-content-negotiation:2.3.12"
-    implementation "io.ktor:ktor-serialization-kotlinx-json:2.3.12"
+    // Supabase SDK (Downgraded to Stable 2.6.1)
+    // NOTE: the Auth module was renamed gotrue-kt -> auth-kt starting in Supabase-kt 3.0.0.
+    // At 2.6.1 it must be declared as gotrue-kt, or resolution fails / drags in 3.x transitively.
+    implementation "io.github.jan-tennert.supabase:postgrest-kt:2.6.1"
+    implementation "io.github.jan-tennert.supabase:gotrue-kt:2.6.1"
+    implementation "io.github.jan-tennert.supabase:realtime-kt:2.6.1"
+    implementation "io.github.jan-tennert.supabase:storage-kt:2.6.1"
+
+    // Ktor 2.3.12 (Stable for Supabase 2.x)
+    def ktor_version = "2.3.12"
+    implementation "io.ktor:ktor-client-core:$ktor_version"
+    implementation "io.ktor:ktor-client-android:$ktor_version"
+    implementation "io.ktor:ktor-client-okhttp:$ktor_version"
+    implementation "io.ktor:ktor-client-content-negotiation:$ktor_version"
+    implementation "io.ktor:ktor-serialization-kotlinx-json:$ktor_version"
+    implementation "io.ktor:ktor-client-logging:$ktor_version"
+    implementation "io.ktor:ktor-client-auth:$ktor_version"
+
+    // WorkManager
+    implementation "androidx.work:work-runtime-ktx:2.9.0"
+
+    // Coil
+    implementation "io.coil-kt:coil:2.6.0"
 
     // Local library placeholder for PAX SDKs (NeptuneLite & POSLink)
     // If you have real aar files, place them in libs/ and they will be picked up
@@ -63,4 +103,17 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
+
+// Force every io.github.jan-tennert.supabase artifact (including the transitive
+// 'supabase-kt' core module) onto the 2.6.1 line declared above. Guards against
+// any future transitive dependency resolving a newer 3.x release, which would
+// put binary-incompatible classes on the runtime classpath (NoClassDefFoundError).
+configurations.all {
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == 'io.github.jan-tennert.supabase') {
+            details.useVersion '2.6.1'
+            details.because 'pin all Supabase-kt submodules to 2.6.1 to prevent 2.x/3.x version skew'
+        }
+    }
 }

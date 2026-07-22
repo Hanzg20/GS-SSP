@@ -18,6 +18,7 @@
     <uses-permission android:name="com.pax.permission.MAGCARD" />
     <uses-permission android:name="com.pax.permission.PED" />
     <uses-permission android:name="com.pax.permission.PRINTER" />
+    <uses-permission android:name="com.pax.permission.REBOOT" />
 
     <!-- Hardwired system/serial port access permissions if needed by hardware -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />

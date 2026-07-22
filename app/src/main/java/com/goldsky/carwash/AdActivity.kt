@@ -9,12 +9,13 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.VideoView
+import com.goldsky.carwash.model.AdMedia
+import com.goldsky.carwash.payment.AdManager
 import com.goldsky.carwash.payment.PaxScannerManager
 import java.io.File
 
 /**
- * Fullscreen activity that loops advertising video or images.
- * Exits back to the main activity upon any user touch.
+ * Fullscreen activity that loops advertising video or images from local cache.
  */
 class AdActivity : BaseAdActivity() {
 
@@ -22,6 +23,9 @@ class AdActivity : BaseAdActivity() {
     private lateinit var imgAd: ImageView
     private lateinit var tvPrompt: TextView
     private var scannerManager: PaxScannerManager? = null
+
+    private var playlist: List<AdMedia> = emptyList()
+    private var currentIndex = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,18 +36,83 @@ class AdActivity : BaseAdActivity() {
         tvPrompt = findViewById(R.id.tv_ad_prompt)
         scannerManager = PaxScannerManager(this)
 
-        setupAdPlayback()
         setupPromptAnimation()
+        loadPlaylist()
+        startPlayback()
 
-        // Clicking anywhere on the screen exits the ad activity
-        val rootLayout = findViewById<View>(android.R.id.content)
-        rootLayout.setOnClickListener {
-            finish()
+        // Exit on touch
+        findViewById<View>(android.R.id.content).setOnClickListener { finish() }
+    }
+
+    private fun loadPlaylist() {
+        playlist = AdManager.getCachedPlaylist(this)
+    }
+
+    private fun startPlayback() {
+        if (playlist.isEmpty()) {
+            showImageFallback()
+            return
+        }
+
+        playNext()
+    }
+
+    private fun playNext() {
+        if (playlist.isEmpty()) return
+        
+        val ad = playlist[currentIndex]
+        currentIndex = (currentIndex + 1) % playlist.size
+
+        val adsDir = AdManager.getAdsDir(this)
+        val fileName = ad.id + getExtension(ad.media_url)
+        val file = File(adsDir, fileName)
+
+        if (!file.exists()) {
+            playNext() // Skip missing file
+            return
+        }
+
+        if (ad.media_type == "VIDEO") {
+            playVideo(file)
+        } else {
+            playImage(file)
+        }
+    }
+
+    private fun playVideo(file: File) {
+        imgAd.visibility = View.GONE
+        videoAd.visibility = View.VISIBLE
+        
+        videoAd.setVideoPath(file.absolutePath)
+        videoAd.setOnCompletionListener { playNext() }
+        videoAd.setOnErrorListener { _, _, _ ->
+            playNext()
+            true
+        }
+        videoAd.start()
+    }
+
+    private fun playImage(file: File) {
+        videoAd.visibility = View.GONE
+        imgAd.visibility = View.VISIBLE
+        
+        imgAd.setImageURI(Uri.fromFile(file))
+        
+        // Show image for 10 seconds then next
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (!isFinishing) playNext()
+        }, 10000)
+    }
+
+    private fun getExtension(url: String): String {
+        return when {
+            url.contains(".mp4") -> ".mp4"
+            url.contains(".jpg") -> ".jpg"
+            else -> ".png"
         }
     }
 
     private fun setupPromptAnimation() {
-        // Create a breathing (fading in and out) effect for the prompt
         ObjectAnimator.ofFloat(tvPrompt, View.ALPHA, 1.0f, 0.2f).apply {
             duration = 1000
             repeatCount = ValueAnimator.INFINITE
@@ -52,36 +121,9 @@ class AdActivity : BaseAdActivity() {
         }
     }
 
-    private fun setupAdPlayback() {
-        // Attempt to find a video inside res/raw/
-        val rawVideoResId = resources.getIdentifier("ad_video", "raw", packageName)
-        
-        if (rawVideoResId != 0) {
-            // Video found, prepare VideoView
-            imgAd.visibility = View.GONE
-            videoAd.visibility = View.VISIBLE
-
-            val videoUri = Uri.parse("android.resource://$packageName/$rawVideoResId")
-            videoAd.setVideoURI(videoUri)
-            videoAd.setOnPreparedListener { mediaPlayer ->
-                mediaPlayer.isLooping = true
-                videoAd.start()
-            }
-            videoAd.setOnErrorListener { _, _, _ ->
-                // Fallback to image if video playback fails
-                showImageFallback()
-                true
-            }
-        } else {
-            // No video in raw folder, fall back to image
-            showImageFallback()
-        }
-    }
-
     private fun showImageFallback() {
         videoAd.visibility = View.GONE
         imgAd.visibility = View.VISIBLE
-        // Set placeholder image
         imgAd.setImageResource(R.drawable.ad_placeholder)
     }
 

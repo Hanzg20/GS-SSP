@@ -34,12 +34,19 @@ class PaxScannerManager(private val context: Context) {
     private var detectionJob: Job? = null
     private val isPaxAvailable: Boolean by lazy { checkPaxAvailability() }
 
+    /**
+     * A class being loadable is not proof real PAX hardware is present: the
+     * local compile-time stubs under com.pax.** are always on the classpath
+     * (they exist so the project builds without the vendor AAR), so
+     * Class.forName alone always succeeds -- including on a plain emulator.
+     * The real signal is whether getDal() actually returns a working DAL.
+     */
     private fun checkPaxAvailability(): Boolean {
         return try {
             Class.forName("com.pax.neptunelite.api.NeptuneLiteUser")
-            true
-        } catch (e: ClassNotFoundException) {
-            Log.w(TAG, "NeptuneLite SDK not found. Running in mock mode.")
+            NeptuneLiteUser.getInstance().getDal(context) != null
+        } catch (e: Exception) {
+            Log.w(TAG, "NeptuneLite SDK/hardware not available. Running in mock mode: ${e.message}")
             false
         }
     }

@@ -22,8 +22,24 @@ import com.pax.neptunelite.api.NeptuneLiteUser
 object SerialPortManager {
     private const val TAG = "SerialPortManager"
 
+    // Reply frame: [0xBB][Status][Checksum][0xEE]
+    private const val ACK_HEADER: Byte = 0xBB.toByte()
+    private const val ACK_FOOTER: Byte = 0xEE.toByte()
+    private const val ACK_STATUS_RECEIVED: Byte = 0x00
+    private const val ACK_STATUS_EXECUTING: Byte = 0x01
+    private const val ACK_STATUS_FAULT: Byte = 0x02
+    private const val ACK_TIMEOUT_MS = 500
+    private const val ACK_MAX_RETRIES = 3
+
     private var uart: com.pax.dal.IUart? = null
     private var isOpened = false
+
+    enum class AckResult { OK, FAULT, TIMEOUT, MALFORMED }
+
+    /**
+     * Returns true if the UART port is currently opened.
+     */
+    fun isOpened(): Boolean = isOpened
 
     /**
      * Opens the UART channel using the PAX NeptuneLite SDK.
@@ -78,6 +94,87 @@ object SerialPortManager {
             clean.substring(i * 2, i * 2 + 2).toInt(16).toByte()
         }
         return sendBytes(bytes)
+    }
+
+    /**
+     * Sends a command and waits for the relay board's ACK frame, retrying on
+     * timeout/fault up to [ACK_MAX_RETRIES] times. This is what makes hardware
+     * failures detectable instead of "fire and forget" — callers use the result
+     * to decide whether to trigger a payment VOID.
+     */
+    suspend fun sendCommandWithAck(
+        hexStr: String,
+        timeoutMs: Int = ACK_TIMEOUT_MS,
+        maxRetries: Int = ACK_MAX_RETRIES
+    ): Boolean {
+        repeat(maxRetries) { attempt ->
+            if (!sendHexString(hexStr)) return@repeat
+
+            when (val result = readAck(timeoutMs)) {
+                AckResult.OK -> return true
+                AckResult.FAULT -> Log.e(TAG, "Relay reported FAULT on attempt ${attempt + 1}/$maxRetries")
+                AckResult.TIMEOUT -> Log.w(TAG, "No ACK within ${timeoutMs}ms on attempt ${attempt + 1}/$maxRetries")
+                AckResult.MALFORMED -> Log.w(TAG, "Malformed ACK frame on attempt ${attempt + 1}/$maxRetries: $result")
+            }
+        }
+        Log.e(TAG, "Command '$hexStr' failed after $maxRetries attempts, no valid ACK received")
+        return false
+    }
+
+    /**
+     * Blocking read of a single 4-byte ACK frame: [0xBB][Status][Checksum][0xEE].
+     */
+    private fun readAck(timeoutMs: Int): AckResult {
+        val buffer = ByteArray(4)
+        val bytesRead = try {
+            uart?.receive(buffer, timeoutMs) ?: 0
+        } catch (e: Exception) {
+            Log.e(TAG, "UART receive failed: ${e.message}")
+            0
+        }
+        return parseAckFrame(buffer, bytesRead)
+    }
+
+    /**
+     * Pure frame-validation logic, split out from [readAck] so it's unit
+     * testable without a real/mocked IUart. Checksum is validated as
+     * XOR(header, status) — confirm against the real relay board protocol
+     * doc before production use; this stub protocol isn't formally specified
+     * beyond the frame shape.
+     */
+    internal fun parseAckFrame(buffer: ByteArray, bytesRead: Int): AckResult {
+        if (bytesRead < 4) return AckResult.TIMEOUT
+        if (buffer[0] != ACK_HEADER || buffer[3] != ACK_FOOTER) return AckResult.MALFORMED
+
+        val status = buffer[1]
+        val expectedChecksum = (ACK_HEADER.toInt() xor status.toInt()).toByte()
+        if (buffer[2] != expectedChecksum) return AckResult.MALFORMED
+
+        return when (status) {
+            ACK_STATUS_RECEIVED, ACK_STATUS_EXECUTING -> AckResult.OK
+            ACK_STATUS_FAULT -> AckResult.FAULT
+            else -> AckResult.MALFORMED
+        }
+    }
+
+    /**
+     * Sends multiple pulses, each confirmed by [sendCommandWithAck]. Aborts the
+     * remaining sequence as soon as one pulse fails to ACK, so callers can void
+     * the payment instead of assuming the wash started.
+     */
+    suspend fun sendPulses(hexStr: String, count: Int): Boolean {
+        if (count <= 0) return true
+        Log.i(TAG, "Starting pulse sequence: $count pulses of $hexStr")
+
+        for (i in 1..count) {
+            val acked = sendCommandWithAck(hexStr)
+            if (!acked) {
+                Log.e(TAG, "Pulse $i/$count failed to ACK — aborting sequence")
+                return false
+            }
+            kotlinx.coroutines.delay(200)
+        }
+        return true
     }
 
     /**

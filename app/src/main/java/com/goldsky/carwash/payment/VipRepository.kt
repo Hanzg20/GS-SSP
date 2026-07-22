@@ -1,5 +1,7 @@
 package com.goldsky.carwash.payment
 
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.rpc
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.android.*
@@ -18,12 +20,23 @@ data class VipCard(
     val is_active: Boolean = true
 )
 
+@Serializable
+private data class DeductBalanceParams(
+    val p_card_uid: String,
+    val p_amount_cents: Int
+)
+
+@Serializable
+private data class DeductBalanceResult(
+    val success: Boolean,
+    val new_balance: Double? = null,
+    val message: String? = null
+)
+
 /**
  * Repository using direct REST calls to Supabase for VIP membership data.
  */
 object VipRepository {
-    private const val SUPABASE_URL = "https://your-project-id.supabase.co"
-    private const val SUPABASE_KEY = "your-anon-key"
 
     private val client = HttpClient(Android) {
         install(ContentNegotiation) {
@@ -39,9 +52,9 @@ object VipRepository {
      */
     suspend fun getVipCard(uid: String): VipCard? = withContext(Dispatchers.IO) {
         try {
-            val response: List<VipCard> = client.get("$SUPABASE_URL/rest/v1/vip_cards") {
-                header("apikey", SUPABASE_KEY)
-                header("Authorization", "Bearer $SUPABASE_KEY")
+            val response: List<VipCard> = client.get("${SupabaseConfig.URL}/rest/v1/vip_cards") {
+                header("apikey", SupabaseConfig.KEY)
+                header("Authorization", "Bearer ${SupabaseConfig.KEY}")
                 parameter("card_uid", "eq.$uid")
             }.body()
             response.firstOrNull()
@@ -52,28 +65,26 @@ object VipRepository {
     }
 
     /**
-     * Deducts balance via PATCH request.
+     * Deducts balance via the server-side deduct_vip_balance RPC (see
+     * supabase/migrations/0001_vip_deduct_balance_rpc.sql). The check
+     * (balance/active) and the deduction happen atomically in Postgres, under
+     * a row lock -- this must NOT be re-implemented as a client-side
+     * read-then-PATCH, since the anon key embedded in BuildConfig gives any
+     * extracted APK direct table-write access otherwise.
      */
     suspend fun deductBalance(uid: String, amountInCents: Int): Boolean = withContext(Dispatchers.IO) {
         try {
-            val amount = amountInCents / 100.0
-            val card = getVipCard(uid)
-            if (card != null && card.balance >= amount && card.is_active) {
-                val newBalance = card.balance - amount
-                client.patch("$SUPABASE_URL/rest/v1/vip_cards") {
-                    header("apikey", SUPABASE_KEY)
-                    header("Authorization", "Bearer $SUPABASE_KEY")
-                    header("Content-Type", "application/json")
-                    header("Prefer", "return=representation")
-                    parameter("card_uid", "eq.$uid")
-                    setBody(mapOf("balance" to newBalance))
-                }
-                true
-            } else {
-                false
+            val result = SupabaseClientProvider.client.postgrest.rpc(
+                "deduct_vip_balance",
+                DeductBalanceParams(p_card_uid = uid, p_amount_cents = amountInCents)
+            )
+            val decoded = result.decodeAs<DeductBalanceResult>()
+            if (!decoded.success) {
+                android.util.Log.w("VipRepository", "Deduct rejected: ${decoded.message}")
             }
+            decoded.success
         } catch (e: Exception) {
-            android.util.Log.e("VipRepository", "Deduct Error: ${e.message}")
+            android.util.Log.e("VipRepository", "Deduct RPC error: ${e.message}")
             false
         }
     }

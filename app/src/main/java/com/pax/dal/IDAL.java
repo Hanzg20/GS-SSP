@@ -6,4 +6,7 @@ public interface IDAL {
     IUart getUart(EUartNumber uartNumber);
     IScanner getScanner();
     IPicc getPicc();
+    ISys getSys();
+    IDeviceControl getDeviceControl();
+    IPrinter getPrinter();
 }
