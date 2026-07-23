@@ -50,6 +50,13 @@ class MainActivity : BaseAdActivity() {
     private var deviceControl: com.pax.dal.IDeviceControl? = null
     private var watchdogJob: Job? = null
 
+    // True from the moment money-movement is initiated (card SALE sent to
+    // POSLink, or a VIP balance deduction in flight) until it's fully
+    // resolved. Gates the payment dialog's back/cancel buttons and its
+    // timeout auto-dismiss, since dismissing mid-flight would desync the UI
+    // from a bank transaction that's still actually in progress server-side.
+    @Volatile private var paymentInFlight = false
+
     // Technician/Maintenance Variables
     private var logoClickCount = 0
     private var lastClickTime = 0L
@@ -77,14 +84,12 @@ class MainActivity : BaseAdActivity() {
         extractDeviceIdentity()
         initHardwareControl()
         AdManager.init(this)
-        
-        loadInitialConfig()
 
-        /* RemoteCommandManager.startListening(this, deviceSn) {
-            loadInitialConfig() // This refreshes products UI
+        RemoteCommandManager.startListening(this, deviceSn) {
+            loadInitialConfig(com.goldsky.carwash.payment.DeviceRepository.getPersistedOrgId()) 
         }
 
-        ShadowManager.startSync(this, deviceSn) */
+        ShadowManager.startSync(this, deviceSn)
 
         if (!isSimulationMode) {
             SerialPortManager.openPort(this)
@@ -125,12 +130,30 @@ class MainActivity : BaseAdActivity() {
             }
         }
 
-        // Async cloud registration + remote-lock gate check
+        // Persist so background components without DAL access (HeartbeatWorker)
+        // can still identify the device instead of using a placeholder.
+        com.goldsky.carwash.payment.DeviceRepository.persistDeviceSn(deviceSn)
+
+        // Offline-first: load immediately using whatever org_id was cached
+        // from a previous successful identity sync (null on first-ever
+        // launch), so the UI is populated from cache/assets right away
+        // rather than blocking on the network calls below.
+        loadInitialConfig(com.goldsky.carwash.payment.DeviceRepository.getPersistedOrgId())
+
+        // Async: authenticate both Supabase clients, register the device,
+        // link its auth session (device_auth_map) to learn/refresh its
+        // org_id, then reload config now that the org is freshly known --
+        // covers first-ever launch (no cached org_id yet) and an org
+        // reassignment happening server-side between launches.
         CoroutineScope(Dispatchers.Main).launch {
+            SupabaseClientProvider.ensureAuthenticated()
             com.goldsky.carwash.payment.DeviceRepository.registerDevice(deviceSn, BuildConfig.VERSION_NAME)
-            val isActive = com.goldsky.carwash.payment.DeviceRepository.checkDeviceActive(deviceSn)
-            DeviceAccessManager.applyActiveState(isActive)
+            val identity = com.goldsky.carwash.payment.DeviceRepository.syncDeviceIdentity(deviceSn)
+            DeviceAccessManager.applyActiveState(identity?.is_active)
             performHealthCheck()
+            if (identity?.org_id != null) {
+                loadInitialConfig(identity.org_id)
+            }
         }
     }
 
@@ -170,11 +193,11 @@ class MainActivity : BaseAdActivity() {
     }
 
     /**
-     * Initial config load.
+     * (Re)loads config, scoped to [orgId] on the cloud tier when known.
      */
-    private fun loadInitialConfig() {
+    private fun loadInitialConfig(orgId: String?) {
         CoroutineScope(Dispatchers.Main).launch {
-            val config = ConfigManager.loadConfig(this@MainActivity)
+            val config = ConfigManager.loadConfig(this@MainActivity, orgId)
             refreshProductsUI(config.products)
             
             // Sync dynamic TTS language
@@ -364,8 +387,12 @@ class MainActivity : BaseAdActivity() {
         }
 
         dialog.findViewById<View>(R.id.btn_back_pay)?.setOnClickListener {
-            dialog.dismiss()
-            showPaymentDialog(priceInCents, startHex)
+            if (paymentInFlight) {
+                Toast.makeText(this@MainActivity, getString(R.string.toast_payment_processing_wait), Toast.LENGTH_SHORT).show()
+            } else {
+                dialog.dismiss()
+                showPaymentDialog(priceInCents, startHex)
+            }
         }
         dialog.findViewById<View>(R.id.btn_back_qr)?.setOnClickListener {
             dialog.dismiss()
@@ -377,7 +404,10 @@ class MainActivity : BaseAdActivity() {
                 pbTimeout.progress = (millisUntilFinished / 1000).toInt()
             }
             override fun onFinish() {
-                if (dialog.isShowing) {
+                // A card SALE/VIP-deduct still in flight resolves on its own
+                // (PosLink has its own 60s CommSetting timeout) -- don't
+                // yank the dialog out from under it.
+                if (dialog.isShowing && !paymentInFlight) {
                     Toast.makeText(this@MainActivity, getString(R.string.toast_pay_timeout), Toast.LENGTH_LONG).show()
                     dialog.dismiss()
                     resetAdTimer()
@@ -412,41 +442,91 @@ class MainActivity : BaseAdActivity() {
         layoutStatus.visibility = View.VISIBLE
         tvStatus.text = "VIP Card Detected\nVerifying Balance..."
 
+        paymentInFlight = true
         CoroutineScope(Dispatchers.Main).launch {
-            val success = VipRepository.deductBalance(uid, priceInCents)
-            if (success) {
-                tvStatus.text = "VIP Payment Successful!"
-                delay(1500)
-                startFinalizationSequence(priceInCents, startHex, "VIP_$uid", dialog)
-            } else {
-                Toast.makeText(this@MainActivity, "VIP Card Balance Insufficient", Toast.LENGTH_LONG).show()
-                VoiceManager.playLowBalance(this@MainActivity)
-                layoutStatus.visibility = View.GONE
-                // Restart detection
-                startPaymentFlow(true, priceInCents, startHex) 
+            // A plain true/false here used to collapse "network/RPC call
+            // failed" and "card genuinely has no money" into the same
+            // message ("Balance Insufficient") -- wrong and confusing when
+            // the real cause was a dropped connection. See VipDeductResult
+            // for why this is deliberately NOT retried via a background
+            // queue the way TransactionRepository retries audit writes.
+            when (val result = VipRepository.deductBalance(uid, priceInCents)) {
+                is VipDeductResult.Success -> {
+                    tvStatus.text = "VIP Payment Successful!"
+                    delay(1500)
+                    // Unique per attempt -- ecr_ref_num is UNIQUE in transactions;
+                    // "VIP_$uid" alone would collide on every wash after the
+                    // card's first use and permanently fail into the offline
+                    // queue (confirmed live: "duplicate key value violates
+                    // unique constraint transactions_ecr_ref_num_key").
+                    startFinalizationSequence(priceInCents, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog)
+                }
+                is VipDeductResult.Rejected -> {
+                    paymentInFlight = false
+                    val message = when (result.reason) {
+                        "card_inactive" -> "This VIP Card Has Been Deactivated"
+                        "card_not_found" -> "VIP Card Not Recognized"
+                        else -> "VIP Card Balance Insufficient"
+                    }
+                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                    if (result.reason == "insufficient_balance") {
+                        VoiceManager.playLowBalance(this@MainActivity)
+                    }
+                    layoutStatus.visibility = View.GONE
+                    startPaymentFlow(true, priceInCents, startHex)
+                }
+                VipDeductResult.NetworkError -> {
+                    paymentInFlight = false
+                    Toast.makeText(this@MainActivity, "Network error -- please tap your card again", Toast.LENGTH_LONG).show()
+                    layoutStatus.visibility = View.GONE
+                    startPaymentFlow(true, priceInCents, startHex)
+                }
             }
         }
     }
 
     private fun initCardPayment(priceInCents: Int, startHex: String, dialog: Dialog) {
-        if (isSimulationMode) {
-            CoroutineScope(Dispatchers.Main).launch {
+        // Unique per attempt -- also serves as the transactions.ecr_ref_num
+        // for the PENDING row below (UNIQUE constraint), so a fixed constant
+        // here would collide across repeated simulated attempts.
+        val txRefNum = "CARD_" + System.currentTimeMillis()
+        paymentInFlight = true
+
+        CoroutineScope(Dispatchers.Main).launch {
+            // Pre-write PENDING before calling the bank so a crash between
+            // approval and our own audit write never leaves a
+            // charged-but-untracked transaction (docs/card_payment_integration.md #3).
+            TransactionRepository.recordTransaction(
+                this@MainActivity,
+                TransactionRecord(
+                    device_sn = deviceSn,
+                    amount = priceInCents,
+                    payment_status = "PENDING",
+                    ecr_ref_num = txRefNum
+                )
+            )
+
+            if (isSimulationMode) {
                 delay(3000)
-                startFinalizationSequence(priceInCents, startHex, "MOCK_REF_123", dialog)
-            }
-        } else {
-            PaymentService.startCardPayment(priceInCents, object : PaymentService.PaymentCallback {
-                override fun onSuccess(txId: String, refNum: String) {
-                    startFinalizationSequence(priceInCents, startHex, refNum, dialog)
-                }
-                override fun onFailure(errorMsg: String) {
-                    runOnUiThread {
-                        Toast.makeText(this@MainActivity, "Card Payment Failed: $errorMsg", Toast.LENGTH_LONG).show()
-                        dialog.dismiss()
-                        resetAdTimer()
+                startFinalizationSequence(priceInCents, startHex, "MOCK_REF_123", dialog, txRefNum)
+            } else {
+                PaymentService.startCardPayment(priceInCents, txRefNum, object : PaymentService.PaymentCallback {
+                    override fun onSuccess(txId: String, refNum: String) {
+                        startFinalizationSequence(priceInCents, startHex, refNum, dialog, txRefNum)
                     }
-                }
-            })
+                    override fun onFailure(errorMsg: String) {
+                        paymentInFlight = false
+                        runOnUiThread {
+                            Toast.makeText(this@MainActivity, "Card Payment Failed: $errorMsg", Toast.LENGTH_LONG).show()
+                            dialog.dismiss()
+                            resetAdTimer()
+                        }
+                        CoroutineScope(Dispatchers.Main).launch {
+                            TransactionRepository.updatePaymentStatus(this@MainActivity, txRefNum, "DECLINED")
+                        }
+                    }
+                })
+            }
         }
     }
 
@@ -485,32 +565,52 @@ class MainActivity : BaseAdActivity() {
     /**
      * Sequence of confirmation stages after tap/scan success.
      * Records transaction to cloud and triggers hardware pulses.
+     *
+     * [pendingEcrRefNum] is set only for card payments: initCardPayment
+     * already wrote a PENDING row before calling POSLink, so this flips it
+     * to PAID instead of inserting a second row (ecr_ref_num is UNIQUE).
+     * QR/VIP payments have no pre-write -- their money movement (webhook
+     * PAID / deduct_vip_balance RPC) already happened server-side before
+     * this function runs, so the first audit row is inserted here.
      */
-    private fun startFinalizationSequence(amountCents: Int, startHex: String, refNum: String, dialog: Dialog?) {
+    private fun startFinalizationSequence(
+        amountCents: Int,
+        startHex: String,
+        refNum: String,
+        dialog: Dialog?,
+        pendingEcrRefNum: String? = null
+    ) {
         val layoutStatus = dialog?.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
         val tvStatus = dialog?.findViewById<TextView>(R.id.tv_status_msg)
         val viewSuccessBg = dialog?.findViewById<View>(R.id.view_final_success_bg)
-        
+        val ecrRefNum = pendingEcrRefNum ?: (if (refNum.isEmpty()) "QR_${System.currentTimeMillis()}" else refNum)
+
         CoroutineScope(Dispatchers.Main).launch {
             layoutStatus?.visibility = View.VISIBLE
             tvStatus?.text = getString(R.string.status_approved)
             TtsManager.speak(getString(R.string.status_approved))
-            
+
             // 1. Record transaction to Supabase (v2.0 Audit)
-            val record = TransactionRecord(
-                device_sn = deviceSn,
-                amount = amountCents,
-                payment_status = "PAID",
-                ecr_ref_num = if (refNum.isEmpty()) "QR_${System.currentTimeMillis()}" else refNum
-            )
-            TransactionRepository.recordTransaction(this@MainActivity, record)
+            if (pendingEcrRefNum != null) {
+                TransactionRepository.updatePaymentStatus(this@MainActivity, pendingEcrRefNum, "PAID")
+            } else {
+                TransactionRepository.recordTransaction(
+                    this@MainActivity,
+                    TransactionRecord(
+                        device_sn = deviceSn,
+                        amount = amountCents,
+                        payment_status = "PAID",
+                        ecr_ref_num = ecrRefNum
+                    )
+                )
+            }
 
             delay(1200)
             tvStatus?.text = getString(R.string.status_paid)
             delay(1000)
 
             tvStatus?.text = getString(R.string.status_sending_command)
-            
+
             var successAck = false
             if (isSimulationMode) {
                 delay(1500)
@@ -521,14 +621,14 @@ class MainActivity : BaseAdActivity() {
                 val pulseWeight = settings?.pulse_weight_cents ?: 25
                 val pulseHex = settings?.pulse_hex ?: "AA 01 01 55"
                 val pulseCount = amountCents / pulseWeight
-                
+
                 Log.i("SSP_HARDWARE", "Sending $pulseCount pulses for $$amountCents cents")
                 successAck = SerialPortManager.sendPulses(pulseHex, pulseCount)
             }
 
             if (successAck) {
                 // 3. Update cloud record with hardware success
-                TransactionRepository.updateHardwareStatus(this@MainActivity, record.ecr_ref_num!!, "ACK_RECEIVED")
+                TransactionRepository.updateHardwareStatus(this@MainActivity, ecrRefNum, "ACK_RECEIVED")
 
                 // Receipt printing is cloud-configurable (KioskSettings.print_receipt_enabled) --
                 // never blocks or fails the payment flow either way.
@@ -539,7 +639,7 @@ class MainActivity : BaseAdActivity() {
                             ReceiptPrinterManager.ReceiptData(
                                 brandName = ConfigManager.getConfig()?.branding?.brand_name ?: "GS-SSP",
                                 amountCents = amountCents,
-                                refNum = record.ecr_ref_num!!,
+                                refNum = ecrRefNum,
                                 deviceSn = deviceSn
                             )
                         )
@@ -551,7 +651,8 @@ class MainActivity : BaseAdActivity() {
                 TtsManager.speak(getString(R.string.toast_payment_success_enjoy))
                 viewSuccessBg?.alpha = 0f
                 viewSuccessBg?.animate()?.alpha(1f)?.setDuration(500)?.start()
-                
+
+                paymentInFlight = false
                 delay(5000)
                 dialog?.dismiss()
                 onPaymentSuccess()
@@ -559,15 +660,29 @@ class MainActivity : BaseAdActivity() {
                 layoutStatus?.setBackgroundColor(Color.parseColor("#C62828"))
                 tvStatus?.text = getString(R.string.status_error_refund)
                 TtsManager.speak(getString(R.string.status_error_refund))
-                
+
                 // Industrial Audit: Report hardware failure and trigger VOID
+                // (falling back to REFUND automatically if VOID is declined,
+                // e.g. because the batch already settled).
                 DiagnosticManager.reportError(deviceSn, "HARDWARE_PULSE_FAIL", severity = "CRITICAL")
-                TransactionRepository.updateHardwareStatus(this@MainActivity, record.ecr_ref_num!!, "HARDWARE_ERROR")
+                TransactionRepository.updateHardwareStatus(this@MainActivity, ecrRefNum, "HARDWARE_ERROR")
 
                 if (refNum.isNotEmpty()) {
-                    PaymentService.voidTransaction(refNum)
-                    TransactionRepository.recordTransaction(this@MainActivity, record.copy(payment_status = "VOIDED"))
+                    PaymentService.voidOrRefund(refNum, amountCents) { success, method ->
+                        CoroutineScope(Dispatchers.Main).launch {
+                            if (success) {
+                                TransactionRepository.updatePaymentStatus(
+                                    this@MainActivity, ecrRefNum, if (method == "REFUND") "REFUNDED" else "VOIDED"
+                                )
+                            } else {
+                                // Neither VOID nor REFUND went through -- money was
+                                // captured but no automatic reversal succeeded.
+                                DiagnosticManager.reportError(deviceSn, "VOID_AND_REFUND_FAILED", severity = "CRITICAL")
+                            }
+                        }
+                    }
                 }
+                paymentInFlight = false
                 delay(5000)
                 dialog?.dismiss()
                 resetAdTimer()
@@ -747,17 +862,18 @@ class MainActivity : BaseAdActivity() {
         btnQrTest.setOnClickListener {
             CoroutineScope(Dispatchers.Main).launch {
                 Toast.makeText(this@MainActivity, "Syncing Config...", Toast.LENGTH_SHORT).show()
-                val config = ConfigManager.loadConfig(this@MainActivity)
-                refreshProductsUI(config.products)
 
                 // A technician forcing a sync is also the right moment to clear
                 // any stale lock state (key-health lockout, remote LOCK) so the
                 // terminal doesn't stay dark after they've fixed the underlying issue.
                 KeyHealthMonitor.reset()
                 DeviceAccessManager.setRemoteLock(false)
-                val isActive = DeviceRepository.checkDeviceActive(deviceSn)
-                DeviceAccessManager.applyActiveState(isActive)
+                val identity = DeviceRepository.syncDeviceIdentity(deviceSn)
+                DeviceAccessManager.applyActiveState(identity?.is_active)
                 performHealthCheck()
+
+                val config = ConfigManager.loadConfig(this@MainActivity, identity?.org_id)
+                refreshProductsUI(config.products)
 
                 // Record maintenance action
                 DiagnosticManager.recordMaintenance(deviceSn, "FORCE_SYNC")

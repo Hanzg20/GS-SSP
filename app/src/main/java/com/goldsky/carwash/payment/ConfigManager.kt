@@ -3,13 +3,8 @@ package com.goldsky.carwash.payment
 import android.content.Context
 import android.util.Log
 import com.goldsky.carwash.model.AppConfig
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.engine.android.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.*
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -22,15 +17,12 @@ object ConfigManager {
     private const val TAG = "ConfigManager"
     private const val CACHE_FILE = "app_config_cache.json"
 
-    private val json = Json { 
+    // Used only for local cache/asset file (de)serialization -- the cloud
+    // tier goes through SupabaseClientProvider.client.postgrest, the one
+    // client/session shared by every repository in this app.
+    private val json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
-    }
-
-    private val client = HttpClient(Android) {
-        install(ContentNegotiation) {
-            json(json)
-        }
     }
 
     private var currentConfig: AppConfig? = null
@@ -51,14 +43,11 @@ object ConfigManager {
      */
     suspend fun checkDatabaseHealth(): Boolean = withContext(Dispatchers.IO) {
         try {
-            val token = DeviceRepository.getAuthToken()
-            val response = client.get("${SupabaseConfig.URL}/rest/v1/products") {
-                header("apikey", SupabaseConfig.KEY)
-                header("Authorization", "Bearer ${token ?: SupabaseConfig.KEY}")
-                parameter("limit", "1")
+            SupabaseClientProvider.client.postgrest["products"].select {
+                limit(1)
             }
-            lastDbCheckOk = response.status.isSuccess()
-            lastDbCheckOk
+            lastDbCheckOk = true
+            true
         } catch (e: Exception) {
             Log.w(TAG, "Database health check failed: ${e.message}")
             lastDbCheckOk = false
@@ -68,10 +57,14 @@ object ConfigManager {
 
     /**
      * Entry point to load config. Tries cloud, then cache, then assets.
+     * [orgId] scopes the cloud tier to this device's tenant; pass null when
+     * the device's org isn't known yet (e.g. not yet linked via
+     * DeviceRepository.syncDeviceIdentity) to skip straight to cache/assets
+     * rather than risk fetching an unrelated tenant's config.
      */
-    suspend fun loadConfig(context: Context): AppConfig = withContext(Dispatchers.IO) {
+    suspend fun loadConfig(context: Context, orgId: String?): AppConfig = withContext(Dispatchers.IO) {
         // Tier 1: Try Cloud
-        val remoteConfig = tryFetchRemoteConfig()
+        val remoteConfig = if (orgId != null) tryFetchRemoteConfig(orgId) else null
         if (remoteConfig != null) {
             saveToCache(context, remoteConfig)
             currentConfig = remoteConfig
@@ -94,18 +87,18 @@ object ConfigManager {
         assetConfig
     }
 
-    private suspend fun tryFetchRemoteConfig(): AppConfig? {
+    private suspend fun tryFetchRemoteConfig(orgId: String): AppConfig? {
         return try {
-            // Note: In real world, we might want to query by device SN or Merchant ID
-            val token = DeviceRepository.getAuthToken()
-            val response: List<AppConfig> = client.get("${SupabaseConfig.URL}/rest/v1/app_configurations") {
-                header("apikey", SupabaseConfig.KEY)
-                header("Authorization", "Bearer ${token ?: SupabaseConfig.KEY}")
-                parameter("order", "created_at.desc")
-                parameter("limit", "1")
-            }.body()
+            // Filtered by org_id -- previously this fetched the single most
+            // recently created config row globally, so every device across
+            // every tenant received whichever org's config was inserted last.
+            val result = SupabaseClientProvider.client.postgrest["app_configurations"].select {
+                filter { eq("org_id", orgId) }
+                order("created_at", Order.DESCENDING)
+                limit(1)
+            }
             lastDbCheckOk = true
-            response.firstOrNull()
+            result.decodeList<AppConfig>().firstOrNull()
         } catch (e: Exception) {
             Log.w(TAG, "Cloud fetch failed: ${e.message}")
             lastDbCheckOk = false

@@ -1,17 +1,12 @@
 package com.goldsky.carwash.payment
 
 import android.util.Log
-import io.ktor.client.*
-import io.ktor.client.engine.android.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.serialization.kotlinx.json.*
+import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
 @Serializable
@@ -36,12 +31,6 @@ data class MaintenanceRecord(
 object DiagnosticManager {
     private const val TAG = "DiagnosticManager"
 
-    private val client = HttpClient(Android) {
-        install(ContentNegotiation) {
-            json(Json { ignoreUnknownKeys = true })
-        }
-    }
-
     /**
      * Reports a critical application error to the cloud. Returns the
      * underlying Job so time-sensitive callers (e.g. a crash handler about to
@@ -52,12 +41,7 @@ object DiagnosticManager {
         return CoroutineScope(Dispatchers.IO).launch {
             try {
                 val log = ErrorLog(sn, severity, code, trace)
-                client.post("${SupabaseConfig.URL}/rest/v1/app_error_logs") {
-                    header("apikey", SupabaseConfig.KEY)
-                    header("Authorization", "Bearer ${SupabaseConfig.KEY}")
-                    header("Content-Type", "application/json")
-                    setBody(log)
-                }
+                SupabaseClientProvider.client.postgrest["app_error_logs"].insert(log)
                 Log.i(TAG, "Error reported: $code")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to report error: ${e.message}")
@@ -72,12 +56,7 @@ object DiagnosticManager {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val record = MaintenanceRecord(sn, action, details)
-                client.post("${SupabaseConfig.URL}/rest/v1/maintenance_records") {
-                    header("apikey", SupabaseConfig.KEY)
-                    header("Authorization", "Bearer ${SupabaseConfig.KEY}")
-                    header("Content-Type", "application/json")
-                    setBody(record)
-                }
+                SupabaseClientProvider.client.postgrest["maintenance_records"].insert(record)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to record maintenance: ${e.message}")
             }

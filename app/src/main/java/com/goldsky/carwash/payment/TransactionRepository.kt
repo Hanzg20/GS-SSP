@@ -54,6 +54,23 @@ object TransactionRepository {
         }
 
     /**
+     * Flips payment_status on an existing row (e.g. PENDING -> PAID after
+     * bank approval, or PAID -> VOIDED/REFUNDED after a failed hardware
+     * ACK), queueing it for later replay on failure. Never inserts -- the
+     * row is expected to already exist (ecr_ref_num is UNIQUE), see
+     * MainActivity.initCardPayment for the PENDING pre-write.
+     */
+    suspend fun updatePaymentStatus(context: Context, ecrRefNum: String, status: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val ok = updatePaymentStatusRemote(ecrRefNum, status)
+            if (!ok) {
+                OfflineQueueManager.enqueue(context.filesDir, PendingOp(type = "update_status", ecrRefNum = ecrRefNum, status = status))
+                Log.w(TAG, "Payment status update queued offline: $ecrRefNum -> $status")
+            }
+            ok
+        }
+
+    /**
      * Raw network write, no offline queueing. Used both by the public API
      * above and by TransactionReplayWorker when draining the queue.
      */
@@ -83,6 +100,25 @@ object TransactionRepository {
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error updating status: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun updatePaymentStatusRemote(ecrRefNum: String, status: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            SupabaseClientProvider.client.postgrest["transactions"].update(
+                {
+                    set("payment_status", status)
+                }
+            ) {
+                filter {
+                    eq("ecr_ref_num", ecrRefNum)
+                }
+            }
+            Log.i(TAG, "Payment status updated to $status for $ecrRefNum")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating payment status: ${e.message}")
             false
         }
     }

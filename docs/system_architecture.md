@@ -2,6 +2,68 @@
 
 ## 0. 版本更新记录 (Changelog)
 
+### v2.8 (2026-07-23) — 架构收敛：统一数据访问层，纠正 VIP 失败分类
+应用户要求（"下一步的优化点，如何把想做的更像一个整体，逻辑合理，架构合理"）做的两轮收敛式重构，不新增功能，只消除已确认会导致 bug 的架构不一致：
+
+**第一轮：统一数据访问层。** `DeviceRepository`/`ConfigManager`/`DiagnosticManager`/`HeartbeatWorker` 之前各自持有独立的裸 Ktor client，`TransactionRepository`/`VipRepository`/`QrPaymentRepository`/`ShadowManager`/`RemoteCommandManager` 则用 `SupabaseClientProvider.client.postgrest`——这种"一部分仓库一套访问方式，另一部分另一套"正是 v2.7 双重匿名身份 bug 的根本模式（两条独立路径、两套心智模型）。现已把前四个也收敛到 `SupabaseClientProvider.client.postgrest`/`.rpc()`，全应用只剩 `AdSyncWorker` 用独立 client（下载公开广告文件，不涉及鉴权/RLS，性质不同，予以保留）。验证：真实 session token 直接对 `products` SELECT、`maintenance_records` INSERT 发请求，均成功，与迁移后代码的请求形状一致。
+
+**第二轮：纠正 VipRepository 的失败分类，而非机械套用离线队列。** 原计划是把 `TransactionRepository` 的离线队列（失败进本地文件、后台 Worker 重放）套用到 `VipRepository`/`QrPaymentRepository`，深入代码后发现这个类比不成立，予以修正：
+*   `TransactionRepository` 的队列合理，是因为它写的是**事后审计记录**——洗车已经发生，只是记录动作可以延后补交，重放是安全的（`ecr_ref_num` 唯一约束天然幂等）。
+*   `VipRepository.deductBalance()`/`QrPaymentRepository.createSession()` 是**服务前置的同步网关操作**，顾客正站在机器前等结果。更关键的是 `deduct_vip_balance()` RPC 没有幂等键——如果网络失败是发生在"请求已到服务器、只是响应丢了"这种情况，盲目用队列重放会导致**重复扣款**。
+*   因此真正要修的不是"加队列"，而是**区分"网络/RPC 调用失败"和"业务上真的拒绝了"**——原来两者都返回 `false`，UI 一律显示"余额不足"，网络故障时这是一句误导用户的错误提示。`deductBalance()` 返回类型改为 `VipDeductResult`（`Success`/`Rejected(reason)`/`NetworkError`），MainActivity 按类型分别提示："余额不足"/"卡已停用"/"卡未识别"/"网络错误请重新拍卡"，且 `NetworkError` 明确不重试，避免重复扣款风险。
+*   `QrPaymentRepository.createSession()` 补上了 `retryWithBackoff`（跟 `DeviceRepository.registerDevice()` 一致的即时重试，而非延后队列）——瞬时网络抖动值得在同一次交互里多试几次，而不是让顾客自己手动重新点。
+*   顺带把 `VipRepository.getVipCard()`（此前一直未被调用的死代码）也迁到了 postgrest，保持文件内部一致。
+
+模拟器实测：VIP 扣款成功路径（`Success` 分支）无回归，`assembleDebug`/`assembleRelease`/`testDebugUnitTest` 全绿。
+
+### v2.7 (2026-07-23) — 线上联调：修复双重匿名身份与 VIP 交易唯一键冲突
+针对 v2.4/v2.5/v2.6 的改动首次在真实（已应用新 schema 的）Supabase 项目上做端到端联调，过程中排查出的问题大部分是线上环境状态问题（详见下方"联调过程"），但也定位并修复了两个真实代码 bug：
+*   **发现并修复（严重）：`DeviceRepository` 和 `SupabaseClientProvider` 各自独立匿名登录，产生两个不同的匿名用户**。`DeviceRepository.authenticateDevice()` 之前是自己直接 `POST /auth/v1/signup`，与 `SupabaseClientProvider.ensureAuthenticated()`（supabase-kt SDK 的会话）完全独立。`sync_device_identity()` 用 `DeviceRepository` 的身份调用，把 `device_auth_map` 填的是这个身份；但 `TransactionRepository`/`VipRepository`/`ShadowManager`/`QrPaymentRepository`/`RemoteCommandManager` 全部走 `SupabaseClientProvider.client`，用的是另一个身份——`device_auth_map` 从来没记录过后者，导致所有靠 `device_auth_map` 判权的 RLS 策略对这些仓库永远拒绝，哪怕 `sync_device_identity` 明明返回了 `success:true`。现已改为 `DeviceRepository` 完全复用 `SupabaseClientProvider` 的会话（`SupabaseClientProvider.client.auth.currentAccessTokenOrNull()`），全应用只有一个匿名身份。顺带简化：`DeviceRepository` 不再自己维护 50 分钟 token 有效期缓存，`getAuthToken()` 每次都从 supabase-kt 的会话取最新值（该 SDK 自带后台自动刷新），避免长期运行的收银机进程用到过期 token。
+*   **发现并修复：VIP 交易的 `ecr_ref_num` 固定为 `"VIP_$uid"`，同一张卡第二次消费就会撞 `transactions.ecr_ref_num` 的 UNIQUE 约束**，永久失败并卡进离线队列（线上实测复现："duplicate key value violates unique constraint transactions_ecr_ref_num_key"）。已改为 `"VIP_${uid}_${System.currentTimeMillis()}"`，每次尝试唯一。
+*   **联调过程中定位到的环境问题（非代码 bug，记录备查）**：项目里有一个遗留的 `on_auth_user_created` 触发器挂在 `auth.users` 上，导致匿名注册报 500，已由用户手动 `DROP TRIGGER` 清除；另外多次出现"schema 文件明明重新跑了，但 seed data /函数体/RLS 状态却还是旧的"，根源是 SQL Editor 的编辑框里残留了之前粘贴的内容，点"运行"时把整个缓冲区都执行了一遍——不是脚本本身的问题，用空白编辑框重新粘贴整份文件后问题消失。
+*   模拟器上完整验证：匿名登录 → 设备注册 → `sync_device_identity` → 刷卡支付（PENDING→PAID→ACK_RECEIVED）→ VIP 扣款（`deduct_vip_balance` RPC，余额从 2500 分正确扣至 2100 分）全链路打通，且可重复执行不再冲突；`assembleDebug`/`assembleRelease`/`testDebugUnitTest` 全绿；测试过程中在本地积累的 14 条陈旧离线队列记录（每次模拟器重启都会生成新的随机 mock SN，导致旧记录的 device_sn 再也匹配不上 `device_auth_map`）已清理，真实设备不会有这个问题（硬件 SN 不会变）。
+
+### v2.6 (2026-07-22) — Schema 改为整表重置，种子数据补全
+应用户要求（"schema 中的新建表加入 drop 语句，因为数据库中已经有了一版；seed data 需要再完整一些"）调整了 `docs/supabase_full_schema.sql` 的应用策略与种子数据覆盖面：
+*   **整表重置**：文件开头新增 0.1 节，在所有 `CREATE TABLE` 之前对本文件管理的每一张表执行 `DROP TABLE IF EXISTS ... CASCADE`（以及 `DROP VIEW IF EXISTS public.vw_active_fleet`）。这是一个刻意的策略转向：本项目尚未有真实设备/客户数据（未出货、无真实流量），整表重置比"追踪哪些约束变更（NOT NULL、FK ON DELETE、CHECK 取值）无法通过 `ALTER` 幂等应用"要简单可靠得多。文件头部新增醒目警告：**这份文件现在是破坏性的**，一旦仓库开始承载真实生产数据，必须先改回纯增量迁移写法才能再次执行。原先 `devices.org_id` 的"安全网" `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 也一并移除（不再需要，因为表总是从空重建）。
+*   **种子数据补全**：`transactions` 补齐 `PENDING`/`DECLINED`/`VOIDED`/`REFUNDED` 四种此前完全没有示例数据的状态（对应 v2.5 新加的刷卡可靠性状态机）；新增 `heartbeats`（3 条）、`app_error_logs`（1 条）、`maintenance_records`（1 条）、`device_commands`（1 条）——这四张表此前种子数据完全为空，无法在不接真实设备的情况下验证索引、`vw_active_fleet` 视图或 `RemoteCommandManager` 的订阅路径；`app_configurations` 新增 org 2（LAUNDRY）的配置行，使 `ConfigManager` 的 `org_id` 租户过滤（v2.4）有真实的多租户数据可选，而不是只能走单租户代码路径；`qr_payment_sessions` 补充 `PAID`/`EXPIRED` 示例，覆盖状态机的终态分支。
+*   本轮同样尚未在真实 Supabase 项目上应用——执行前请再次确认这是你愿意接受的整表重置，而不是要保留的现有数据。
+
+### v2.5 (2026-07-22) — 刷卡支付可靠性加固
+应用户要求（"下一步的开发重点" → 选择先做卡支付可靠性）实现了 `docs/card_payment_integration.md` §3.1 的三项高优先级资金安全待办，详见该文档的更新记录（同一批改动，避免重复描述）。核心变化：
+*   `transactions` 表的 `payment_status` CHECK 约束新增 `PENDING`；刷卡在调用 `ProcessTrans()` 前先落一条 `PENDING` 行，批准后原地更新为 `PAID`（不再插入第二行），杜绝"银行已扣款、本地无痕迹"的崩溃窗口。
+*   顺带修复一个相邻 bug：硬件 ACK 失败时，原代码用同一个 `ecr_ref_num` 再插入一条 `VOIDED` 记录，会撞 `ecr_ref_num` 的 UNIQUE 约束——现已改为更新同一行。
+*   新增 `MainActivity.paymentInFlight` 标志与配套的 `TransactionRepository.updatePaymentStatus()` / `PaymentService.ResultCallback` / `PaymentService.voidOrRefund()`；刷卡或 VIP 扣款进行中时，取消按钮与 60 秒支付超时的自动关闭均被抑制（提示"处理中请稍候"），避免 UI 提前解除但银行侧交易仍在后台继续执行的静默不一致。
+*   新增 `PaymentService.refundTransaction()` 与 `voidOrRefund()` 自动降级（VOID 失败自动改走 REFUND），两者都失败时触发 `DiagnosticManager` CRITICAL 告警要求人工介入；REFUND 的 `transType` 编码未经真实 POSLink 文档核实，已在代码与文档中标注。
+*   已在模拟器上完整跑通刷卡模拟支付的端到端链路（PENDING 写入被 RLS 拒绝 → 正确落入离线队列 → PAID/ACK_RECEIVED 状态更新 → 收据打印，`Ref#` 与预写的 `ecr_ref_num` 保持一致），验证方式为真实 `adb`/logcat 观察而非纸面检查；`assembleDebug`/`assembleRelease`/`testDebugUnitTest` 全绿。
+*   本轮同样尚未在真实 Supabase 项目上应用 schema 变更（`payment_status` CHECK 约束新增 `PENDING`），需要人工执行更新后的 `docs/supabase_full_schema.sql`。
+
+### v2.4 (2026-07-22) — 表结构运维/扩展性核查与修复
+应用户要求（"分析目前的表结构是否合理，来有效支撑系统运维和发展"→"直接解决以上发现的问题"）对 `docs/supabase_full_schema.sql` 做了一轮更彻底的核查，重点是 RLS 策略覆盖度与多租户隔离，而不只是字段名对齐。**这份 SQL 尚未在真实 Supabase 项目上执行**，以下改动全部只存在于本地文件中，需要人工在 Supabase SQL Editor 或 `supabase db push` 里应用。
+
+*   **发现并修复（严重）：`devices`/`locations`/`transactions`/`device_shadows` 四张表此前都是"RLS 已开启，但一条策略都没有"**——PostgREST 对没有匹配策略的表默认拒绝所有非 service-role 请求，意味着这四张表对 `anon`/`authenticated` 角色 100% 读写失败（不是"降级"，是彻底不可用）。其中 `transactions` 影响最大：`TransactionRepository` 的每一次交易审计写入都会静默失败并永久落入离线补报队列，从未真正到达云端。已为四张表补齐 `device_auth_map` 范围化的策略；`devices` 单独用一条宽松的自注册策略（`FOR ALL USING(true)`），因为设备第一次注册时 `device_auth_map` 里还没有它的记录，无法用该表做范围限定。
+*   **发现并修复：双重 Supabase 客户端未共享登录态**。`DeviceRepository` 内部用原始 Ktor client 真正执行了匿名登录；但 `SupabaseClientProvider.client`（`TransactionRepository`/`ShadowManager`/`QrPaymentRepository`/`VipRepository`/`RemoteCommandManager` 都用它）虽然装了 `Auth` 插件，却从未调用登录，所有请求实际上都以 `anon` 身份发出。新增 `SupabaseClientProvider.ensureAuthenticated()`，在 `MainActivity.extractDeviceIdentity()` 的异步链路最前面调用。
+*   **发现并修复：`DiagnosticManager` 一直用裸 `anon` key 发请求**，从未使用真实设备 token，导致 `app_error_logs`/`maintenance_records` 的写入无论其他修复是否到位都会被 RLS 拒绝。已改为优先用 `DeviceRepository.getAuthToken()`。
+*   **用 `sync_device_identity(p_sn)` RPC 替换 `checkDeviceActive()`**：`SECURITY DEFINER` 函数在返回 `is_active`/`org_id` 的同时，顺带把 `(auth.uid(), device_sn, org_id)` upsert 进 `device_auth_map`——**这正好解决了 v2.3 里"发现但未修复"的那一项**（谁来写 `device_auth_map`）。答案是：设备用匿名 session 首次联网并调用这个 RPC 时自动写入，不需要额外的供应链/后台预录入流程。
+*   **发现并修复：`ConfigManager.tryFetchRemoteConfig()` 此前完全没有租户过滤**，直接取全表按时间倒序的第一行——多租户环境下，任何设备收到的都是"全平台最后一次插入的那个 org 的配置"，与自己所属租户无关。已改为 `loadConfig(context, orgId)`，`orgId` 为 null（设备身份尚未解析出来）时直接跳到 cache/assets 层，不冒险拉取无关租户的配置。
+*   **发现并修复：`vip_cards.balance` 用 `NUMERIC(10,2)` 浮点货币**，与仓库里其余表（`transactions`/`qr_payment_sessions` 等）统一的"以分为单位存整数"惯例不一致，`deduct_vip_balance()` RPC 内部还要 `/100.0` 转换，累积浮点误差风险。已改为 `balance_cents INTEGER`，RPC 直接整数运算，Kotlin 侧 `VipCard.balance_cents`/`DeductBalanceResult.new_balance_cents` 同步改名改类型。
+*   **发现并修复：`app_error_logs`/`maintenance_records` 的设备外键是 `ON DELETE CASCADE`**——删除一台设备会把它的历史故障/维保记录一起删掉，审计/服务履历应该在设备下线后依然可查。已改为 `ON DELETE SET NULL`（`heartbeats` 保持 `CASCADE`，纯遥测数据没有留存价值）。
+*   **新增缺失索引**：`app_error_logs`/`maintenance_records`/`heartbeats`/`transactions`/`playlists` 均按 `device_sn`（+部分按 `created_at`/`status`）补充索引——原表在这些高频查询列上完全没有索引，设备数/流水量增长后这些表的运维查询会全表扫描。
+*   **收紧 `qr_payment_sessions` 的 RLS 策略**：原策略是 `TO anon, authenticated USING(true)`，对所有人开放；但 `tx_id` 是客户端生成的毫秒时间戳，可枚举，等于任何人都能刮取任意设备的扫码会话数据。已收紧为仅 `authenticated`，并用 `device_auth_map` 范围化。
+*   **发现并修复（脚本级 bug）：种子数据里 `device_auth_map` 的 INSERT 使用了虚构的 `auth_user_id` UUID**，这些 UUID 在真实的 `auth.users` 表里并不存在，会直接违反外键约束，导致整个 schema 脚本执行到这一步就中断——这是本地没有 Postgres 可实际跑一遍脚本、靠人工通读发现的。已删除该 INSERT，改为注释说明 `sync_device_identity()` 会在设备首次联网时自动填充这张表。
+*   **有意搁置（产品/架构决策，非 bug）**：(1) `products.vertical_type` 目前是自由文本而非 CHECK 枚举或独立查找表；(2) `products` 既是一张表又允许 `app_configurations.products` 里塞 JSONB 副本，两者关系未定义——这两项需要你先确认产品方向（是否要支持"未预注册的临时商品"、配置快照是否需要独立于 `products` 表版本化）才能决定怎么改，不属于我能单方面判定的技术修复。
+*   **模拟器实测验证**（非仅编译通过）：`assembleDebug`/`assembleRelease`/`testDebugUnitTest` 全绿；在 `PAX_IM30_MOCK` 模拟器上安装运行，`onCreate`/`extractDeviceIdentity()` 的整条新链路（`ensureAuthenticated()` → `registerDevice()` → `syncDeviceIdentity()` → `applyActiveState()` → `loadInitialConfig()`）实际跑通，无崩溃：因线上 Supabase 项目**尚未应用**这份新 schema，`sync_device_identity` RPC 返回 404、匿名登录因项目未开启 Anonymous Sign-In 而失败——均按设计优雅降级（配置回退到 assets 层，UI 正常渲染），符合"离线优先，绝不因云端不可用而阻塞/崩溃"的既定原则。**额外发现一项需要人工处理的运维事项**：线上 Supabase 项目的 Auth 设置里 Anonymous Sign-In 当前是关闭状态，这是项目配置问题，不是代码 bug——应用这份新 schema 之前，需要先在 Supabase Dashboard 的 Authentication → Providers 里开启 Anonymous Sign-In，否则 `DeviceRepository`/`SupabaseClientProvider` 的整条鉴权链路会持续失败。
+
+### v2.3 (2026-07-22) — 数据库 Schema 统一与代码/表结构一致性核查
+应用户要求，核查了每一个 Kotlin 数据类与其对应 Supabase 表/RPC 的字段是否严格匹配（`kotlinx.serialization` 按字段名精确匹配，不匹配会静默丢数据或直接请求失败），并把所有建表脚本统一到 `docs/supabase_full_schema.sql` 一个文件里。
+*   **`vip_cards` / `qr_payment_sessions` 表、`deduct_vip_balance()` RPC 此前只存在于 `supabase/migrations/*.sql`，`docs/supabase_full_schema.sql`（"Full Database Schema"）里完全没有**——现已合并进去，`supabase/migrations/` 目录已删除，避免两份 schema 各自漂移。
+*   **发现并修复：`app_configurations` 表结构与 `AppConfig.kt` 解码形状不匹配**。原表是单个 `payload JSONB` 列，但 `ConfigManager.tryFetchRemoteConfig()` 把 REST 行直接解码成 `AppConfig`（顶层要 `products`/`settings`/`branding`）。这意味着即使云端配置行存在且请求成功，`products`/`settings`/`branding` 也会静默退化为空/默认值，日志还显示"Loaded config from CLOUD"，云端配置这条链路实际从未真正生效过。已改为顶层 JSONB 列并补充种子数据。
+*   **发现并修复：`HeartbeatWorker` 的请求体字段名 `sn` 与 `heartbeats` 表的列名 `device_sn` 不一致**，导致每次心跳上报都会被 PostgREST 以"列不存在"拒绝——这与模拟器实测时观察到的 `HeartbeatWorker` 持续 `RETRY` 完全吻合。已把 Kotlin 端字段改名为 `device_sn`（而不是改表，因为其余所有表都统一用 `device_sn` 这个命名）。
+*   **顺带修复：`HeartbeatWorker.getSn()` 此前硬编码返回占位符 `"IM30_HARDWARE_SN"`**（代码里甚至留了注释承认这是待办）。新增 `DeviceRepository.persistDeviceSn()`，在 `MainActivity.extractDeviceIdentity()` 解析出真实/模拟 SN 后持久化到 SharedPreferences，供没有 DAL 访问权限的后台 Worker 读取真实值。
+*   `docs/supabase_full_schema.sql` 新增/补全的种子数据：一条真正匹配新 schema 形状的 `app_configurations` 示例行、三张 `vip_cards`（含一张余额不足、一张已停用，UID `VIP_CARD_UID_6789` 与模拟器 mock NFC 检测的硬编码值一致，可端到端测试 `deduct_vip_balance()`）、一条 `qr_payment_sessions` 示例行。
+*   已跑 `assembleDebug` / `assembleRelease` / `testDebugUnitTest` 全绿确认无回归；数据库侧的两处修复（heartbeats 字段名、app_configurations 结构）尚未在真实 Supabase 项目上重新应用/验证，需要人工执行新的 `docs/supabase_full_schema.sql`。
+*   **发现但未修复（需要你的决策，不是纯技术 bug）：`device_auth_map` 表从未被任何代码写入过**。`heartbeats`/`app_error_logs` 的 INSERT 策略、`products` 的 SELECT 策略都要求 `device_sn IN (SELECT device_sn FROM device_auth_map WHERE auth_user_id = auth.uid())`，但没有任何地方在设备匿名登录后把 `(auth_user_id, device_sn, org_id)` 写进这张表——种子数据的注释里其实也承认了这点（"To test RLS, you must manually insert a record"）。实际后果：**只要设备走匿名鉴权流程，`heartbeats`/`app_error_logs` 的写入会被 RLS 永久拒绝**（这可能是心跳持续 `RETRY` 的另一重原因，字段名不匹配只是其中之一）。没有实现的原因是这需要先回答一个产品/供应链问题——"新设备第一次联网时，它的 `org_id` 应该由谁、以什么方式决定？"（管理员后台预先按 SN 录入？设备自注册到一个默认租户？）——这不是我能替你决定的业务逻辑，需要你明确供应链模型后再实现自动写入 `device_auth_map` 的逻辑。
+
 ### v2.2 (2026-07-22) — 支付流程可配置化
 *   `KioskSettings` 新增 `print_receipt_enabled`（是否打印小票，云端可配置，默认 `false`）与 `payment_method_mode`（0=全部/1=仅卡支付/2=仅扫码，默认 0）。
 *   新增 `ReceiptPrinterManager`，封装 `com.pax.dal.IPrinter`（新增的本地占位桩），硬件不可用时自动降级为日志 mock 打印，不阻塞支付流程。
@@ -261,7 +323,7 @@ IM30 端的 App 采用 **MVVM (Model-View-ViewModel)** 架构，结合 **Reposit
     *   `sn`: 主键，物理序列号。
     *   `mid/tid`: 商户与终端编号（用于支付路由）。
     *   `config_version`: 当前设备正在运行的配置版本。
-    *   `is_active`: 管理员手动锁定开关。**[v2.1]** 迁移脚本 `supabase/migrations/0003_devices_is_active.sql` 确保该列存在；`DeviceRepository.checkDeviceActive()` 读取并驱动 `DeviceAccessManager`。
+    *   `is_active`: 管理员手动锁定开关。**[v2.1]** 该列已在 `docs/supabase_full_schema.sql` 的 `devices` 表定义中；`DeviceRepository.checkDeviceActive()` 读取并驱动 `DeviceAccessManager`。
 *   **`app_configs` 表**:
     *   `version`: 时间戳版本号。
     *   `payload`: JSONB 类型，存储价格、指令映射、维护密码。
@@ -270,8 +332,9 @@ IM30 端的 App 采用 **MVVM (Model-View-ViewModel)** 架构，结合 **Reposit
     *   `amount`: 金额。
     *   `payment_status`: APPROVED / DECLINED / VOIDED.
     *   `hardware_status`: ACK_RECEIVED / TIMEOUT / ERROR.
-*   **[v2.1] `vip_cards` 表 — 写权限已收紧**: `anon`/`authenticated` 角色的 `INSERT`/`UPDATE`/`DELETE` 已被 `supabase/migrations/0001_vip_deduct_balance_rpc.sql` revoke；余额扣减唯一合法路径是 `deduct_vip_balance(p_card_uid, p_amount_cents)` RPC（`SECURITY DEFINER`，行锁防并发双花）。此前客户端直接 `PATCH` 该表是可被反编译 APK 绕过的安全漏洞，现已修复。
-*   **[v2.1] `qr_payment_sessions` 表（新增）**: 见 `supabase/migrations/0002_qr_payment_sessions.sql`。
+*   **[v2.1] `vip_cards` 表 — 写权限已收紧**: `anon`/`authenticated` 角色的 `INSERT`/`UPDATE`/`DELETE` 已在 `docs/supabase_full_schema.sql` 中 revoke；余额扣减唯一合法路径是 `deduct_vip_balance(p_card_uid, p_amount_cents)` RPC（`SECURITY DEFINER`，行锁防并发双花）。此前客户端直接 `PATCH` 该表是可被反编译 APK 绕过的安全漏洞，现已修复。
+*   **[v2.1] `qr_payment_sessions` 表（新增）**: 定义见 `docs/supabase_full_schema.sql`。
+*   **[v2.2]** 该表原本没有任何种子数据用于验证 Cloud 层配置是否真的生效，且列结构（`payload` JSONB 单列）与 `AppConfig.kt` 的解码形状（顶层 `products`/`settings`/`branding`）不匹配——`ConfigManager.tryFetchRemoteConfig()` 直接把 REST 行解码成 `AppConfig`，`payload` 列不会被展开，导致即使云端配置行存在，`products`/`settings`/`branding` 也会静默退化成空值/默认值，日志却仍显示"Loaded config from CLOUD"。已在 `docs/supabase_full_schema.sql` 中改为顶层 JSONB 列（`products`/`settings`/`branding`）并补充了一条种子数据，与代码实际解码形状对齐。
     *   `tx_id`: 主键，交易 ID。
     *   `device_sn` / `amount_cents`: 发起设备与金额。
     *   `status`: `PENDING` / `PAID` / `EXPIRED` / `CANCELLED`。`anon`/`authenticated` 仅有 `INSERT`/`SELECT` 权限，**只有 service role（支付网关 webhook）能写 `PAID`**，防止客户端伪造支付成功。
@@ -338,14 +401,14 @@ IM30 端的 App 采用 **MVVM (Model-View-ViewModel)** 架构，结合 **Reposit
 | 领域 | 变更 | 涉及文件 |
 | :--- | :--- | :--- |
 | 构建 | 修复 Supabase-kt 2.x/3.x 依赖版本混用 (`auth-kt`→`gotrue-kt`，`createChannel`→`channel`)，锁定整个 group 版本 | `app/build.gradle`, `SupabaseClientProvider.kt`, `RemoteCommandManager.kt`, `ShadowManager.kt` |
-| 安全 | VIP 余额扣减改为服务端 RPC 原子操作，收回客户端直接写表权限 | `VipRepository.kt`, `supabase/migrations/0001_*.sql` |
-| 支付 | 扫码支付改为真实云端会话轮询，替代客户端伪造成功 | `QrPaymentRepository.kt`, `supabase/migrations/0002_*.sql`, `PaymentService.kt`, `MainActivity.kt` |
+| 安全 | VIP 余额扣减改为服务端 RPC 原子操作，收回客户端直接写表权限 | `VipRepository.kt`, `docs/supabase_full_schema.sql` |
+| 支付 | 扫码支付改为真实云端会话轮询，替代客户端伪造成功 | `QrPaymentRepository.kt`, `docs/supabase_full_schema.sql`, `PaymentService.kt`, `MainActivity.kt` |
 | 硬件 | 串口指令新增 ACK 读取 + 超时重试 (500ms × 3) | `IUart.java`, `SerialPortManager.kt` |
 | 可靠性 | 离线交易补报队列 + 周期重放 Worker | `OfflineQueueManager.kt`, `TransactionReplayWorker.kt`, `TransactionRepository.kt` |
 | 安全 | 密钥健康监控，锁死刷卡通道 | `KeyHealthMonitor.kt`, `PaymentService.kt` |
 | 广告引擎 | MD5 增量同步真正生效（原先只判断文件是否存在） | `AdSyncWorker.kt` |
 | 稳定性 | 崩溃上报改为有界等待，不再被 `System.exit` 打断 | `DiagnosticManager.kt`, `MainActivity.kt` |
-| 运营控制 | 设备合法性网关 (`devices.is_active`) + 远程 LOCK/UNLOCK 真正生效 | `DeviceAccessManager.kt`, `DeviceRepository.kt`, `RemoteCommandManager.kt`, `supabase/migrations/0003_*.sql` |
+| 运营控制 | 设备合法性网关 (`devices.is_active`) + 远程 LOCK/UNLOCK 真正生效 | `DeviceAccessManager.kt`, `DeviceRepository.kt`, `RemoteCommandManager.kt`, `docs/supabase_full_schema.sql` |
 | 可靠性 | Auth Token 持久化 (SharedPreferences, 50 分钟 TTL) + 直连请求指数退避 | `DeviceRepository.kt`, `NetworkUtils.kt` |
 | 生产加固 | Release 包开启 `minifyEnabled` + `shrinkResources`，补齐此前缺失的 `proguard-rules.pro` | `app/build.gradle`, `app/proguard-rules.pro` |
 | 测试 | 新增 18 个单元测试（ACK 帧解析 / 离线队列 / 密钥健康状态机） | `app/src/test/**` |

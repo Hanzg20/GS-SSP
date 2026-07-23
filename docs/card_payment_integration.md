@@ -85,9 +85,9 @@ sequenceDiagram
 ## 3. 待办任务 (TODO)
 
 ### 3.1 高优先级 — 资金安全类
-- [ ] **交易先落库再发起 SALE**：在调用 `ProcessTrans()` 前，先向 `transactions` 表写入一条 `PENDING` 记录并拿到 `tx_id`，SALE 返回后再更新状态，杜绝"崩溃中途无痕迹"。
-- [ ] **实现取消联动**：`btn_back_pay`/`btn_back_qr` 的取消动作在刷卡进行中时，必须调用 POSLink 的取消接口（真实 SDK 是否提供 `CancelTrans()` 需要对照 POSLink 集成文档确认），并且在联动成功前禁用取消按钮或给出"正在取消，请稍候"的过渡态，避免用户以为已取消但银行侧仍在处理。
-- [ ] **REFUND 路径**：`PaymentService` 新增 REFUND 调用（`transType` 需对照 POSLink 文档确认具体码值），并在 VOID 失败时判断失败原因（是否为"已结算无法 VOID"）自动改走 REFUND 重试。
+- [x] **交易先落库再发起 SALE** — 已实现：`initCardPayment()` 在调用 `PaymentService.startCardPayment()` 前，先以 `payment_status = 'PENDING'` 写入 `transactions`（`ecr_ref_num` 用本次尝试生成的唯一 `CARD_<timestamp>`，同时作为传给 POSLink 的 `ecrRefNum`），批准后 `startFinalizationSequence()` 用 `TransactionRepository.updatePaymentStatus()` 把同一行翻转为 `PAID`，而不是插入第二行（`ecr_ref_num` 有 UNIQUE 约束）。`payment_status` 的 CHECK 约束已加入 `PENDING`（`docs/supabase_full_schema.sql`）。顺带修复了一个相邻的潜在 bug：原代码在硬件失败时会用同一个 `ecr_ref_num` 再 `INSERT` 一次 `VOIDED` 记录，会撞 UNIQUE 约束失败——现在硬件失败/VOID/REFUND 全部走 `updatePaymentStatus()` 更新同一行。
+- [x] **取消联动（降级版）** — 已实现能力范围内的部分：本仓库的 `com.pax.poslink.*` 是本地占位桩，没有 `CancelTrans()` 可调用，真实 SDK 是否提供仍需对照厂商集成文档（未变）。已实现 TODO 里点名的兜底方案：新增 `MainActivity.paymentInFlight` 标志，从发起 SALE / VIP 扣款那一刻置真，到该笔交易终态落定为止；`btn_back_pay` 在此期间点击不再 `dismiss()`，而是提示"Payment processing, please wait…"；60 秒支付超时的自动关闭（`dialogTimer.onFinish()`）同样受此标志保护。修复的问题：此前取消按钮点击会 `dialog.dismiss()`，但 `PaymentService.startCardPayment()` 里跑在 `Dispatchers.IO` 的 `ProcessTrans()` 协程并不会因此被取消，银行侧交易仍在继续，只是 UI 已经"看起来"取消了——即会静默产生一笔用户以为已取消、实际仍然入账的交易。真正的 `CancelTrans()` 联动待真实 SDK 集成时补上。
+- [x] **REFUND 路径** — 已实现：`PaymentService.refundTransaction()`（`transType=5`，按 POSLink 常见惯例 1=AUTH/2=SALE/3=FORCE/4=VOID/5=REFUND 猜测，**未经真实厂商文档核实**，已在代码注释标注）；`voidTransaction()` 回调化（`ResultCallback`）以便判断成败；新增 `PaymentService.voidOrRefund()` 统一入口——先尝试 VOID，失败（如已结算无法 VOID）自动改走 REFUND，都失败则触发 `DiagnosticManager.reportError(..., "VOID_AND_REFUND_FAILED", severity="CRITICAL")` 供人工对账介入。`startFinalizationSequence()` 的硬件失败分支已改用这个统一入口，并按实际成功的方式（VOID/REFUND）把 `payment_status` 更新为对应值。
 
 ### 3.2 中优先级 — 合规与体验
 - [ ] **部分批准 (Partial Approval) 处理**：识别该状态后提示用户实际扣款金额与套餐金额不符，走"补差价"或"按已批准金额触发对应时长"的业务分支（需产品决策具体规则）。

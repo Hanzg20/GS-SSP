@@ -51,7 +51,7 @@ sequenceDiagram
 | 环节 | 状态 | 代码位置 |
 | :-- | :-- | :-- |
 | 创建本地会话 | ✅ 已实现 | `QrPaymentRepository.createSession()` |
-| 会话表 + 权限隔离 | ✅ 已实现，`anon`/`authenticated` 只有 INSERT/SELECT，UPDATE 仅限 service role | `supabase/migrations/0002_qr_payment_sessions.sql` |
+| 会话表 + 权限隔离 | ✅ 已实现，`anon`/`authenticated` 只有 INSERT/SELECT，UPDATE 仅限 service role | `docs/supabase_full_schema.sql`（`qr_payment_sessions` 表 + 对应 RLS 策略） |
 | 调用网关下单 API | ❌ 未实现 | — |
 | 二维码内容 | 🟡 渲染逻辑已实现，但编码的是自造的假 URL (`https://gs-ssp.ca/pay?tx=...`)，非网关签发内容 | `PaymentService.generateQrCode()`, `MainActivity.initQrPayment()` |
 | Webhook 接收服务 | ❌ 未实现（不存在任何公网可达端点） | — |
@@ -100,6 +100,6 @@ sequenceDiagram
 | `app/src/main/java/com/goldsky/carwash/payment/QrPaymentRepository.kt` | 客户端会话创建与轮询 |
 | `app/src/main/java/com/goldsky/carwash/payment/PaymentService.kt` | QR 码本地渲染 (`generateQrCode`) |
 | `app/src/main/java/com/goldsky/carwash/MainActivity.kt` | `initQrPayment()` 串联生成二维码 + 创建会话 + 轮询 + 触发硬件 |
-| `supabase/migrations/0002_qr_payment_sessions.sql` | 会话表结构与 RLS 权限 |
+| `docs/supabase_full_schema.sql` | 完整数据库 schema（含 `qr_payment_sessions` 表结构与 RLS 权限，以及全部其他表/RPC，是唯一的建表脚本来源） |
 | `docs/system_architecture.md` | 第 2.2 / 7.1 / 10 章有该功能的架构级描述与已知限制 |
 | `docs/card_payment_integration.md` | 配套的刷卡支付方案文档 |

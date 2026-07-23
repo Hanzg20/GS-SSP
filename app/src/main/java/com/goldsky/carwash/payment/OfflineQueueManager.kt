@@ -10,7 +10,7 @@ import java.io.File
 
 @Serializable
 data class PendingOp(
-    val type: String, // "insert" | "update_hw"
+    val type: String, // "insert" | "update_hw" | "update_status"
     val record: TransactionRecord? = null,
     val ecrRefNum: String? = null,
     val status: String? = null

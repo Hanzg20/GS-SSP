@@ -26,6 +26,15 @@ class TransactionReplayWorker(appContext: Context, params: WorkerParameters) : C
                             true // malformed entry, drop it rather than retry forever
                         }
                     }
+                    "update_status" -> {
+                        val ref = op.ecrRefNum
+                        val status = op.status
+                        if (ref != null && status != null) {
+                            TransactionRepository.updatePaymentStatusRemote(ref, status)
+                        } else {
+                            true // malformed entry, drop it rather than retry forever
+                        }
+                    }
                     else -> true // unknown op type, drop it
                 }
             }

@@ -1,22 +1,16 @@
 package com.goldsky.carwash.payment
 
+import android.util.Log
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.rpc
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.engine.android.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 @Serializable
 data class VipCard(
     val card_uid: String,
-    val balance: Double,
+    val balance_cents: Int,
     val is_active: Boolean = true
 )
 
@@ -29,63 +23,74 @@ private data class DeductBalanceParams(
 @Serializable
 private data class DeductBalanceResult(
     val success: Boolean,
-    val new_balance: Double? = null,
+    val new_balance_cents: Int? = null,
     val message: String? = null
 )
 
 /**
- * Repository using direct REST calls to Supabase for VIP membership data.
+ * Outcome of [VipRepository.deductBalance]. A plain Boolean previously
+ * collapsed "the bank/network call failed" and "the card legitimately has no
+ * money on it" into the same false -- MainActivity showed "Balance
+ * Insufficient" for both, which is simply wrong when the real cause was a
+ * dropped connection (the customer's card may have had plenty of balance).
+ * Deliberately NOT retried via a background queue like TransactionRepository
+ * does for audit writes: this RPC has no idempotency key, so blindly
+ * replaying it after a network failure risks deducting twice if the first
+ * attempt actually reached the server and only the response was lost. The
+ * safe, honest thing to do on NetworkError is tell the customer to try
+ * tapping again, not to silently retry behind their back.
+ */
+sealed class VipDeductResult {
+    data class Success(val newBalanceCents: Int) : VipDeductResult()
+    data class Rejected(val reason: String) : VipDeductResult() // insufficient_balance | card_not_found | card_inactive | invalid_amount
+    object NetworkError : VipDeductResult()
+}
+
+private const val TAG = "VipRepository"
+
+/**
+ * Repository for VIP membership data, backed by Supabase Postgrest.
  */
 object VipRepository {
 
-    private val client = HttpClient(Android) {
-        install(ContentNegotiation) {
-            json(Json {
-                ignoreUnknownKeys = true
-                coerceInputValues = true
-            })
-        }
-    }
-
     /**
-     * Verifies if a VIP card exists via REST API.
+     * Verifies if a VIP card exists.
      */
     suspend fun getVipCard(uid: String): VipCard? = withContext(Dispatchers.IO) {
         try {
-            val response: List<VipCard> = client.get("${SupabaseConfig.URL}/rest/v1/vip_cards") {
-                header("apikey", SupabaseConfig.KEY)
-                header("Authorization", "Bearer ${SupabaseConfig.KEY}")
-                parameter("card_uid", "eq.$uid")
-            }.body()
-            response.firstOrNull()
+            SupabaseClientProvider.client.postgrest["vip_cards"]
+                .select { filter { eq("card_uid", uid) } }
+                .decodeSingleOrNull<VipCard>()
         } catch (e: Exception) {
-            android.util.Log.e("VipRepository", "REST Error: ${e.message}")
+            Log.e(TAG, "Failed to fetch VIP card: ${e.message}")
             null
         }
     }
 
     /**
      * Deducts balance via the server-side deduct_vip_balance RPC (see
-     * supabase/migrations/0001_vip_deduct_balance_rpc.sql). The check
-     * (balance/active) and the deduction happen atomically in Postgres, under
-     * a row lock -- this must NOT be re-implemented as a client-side
-     * read-then-PATCH, since the anon key embedded in BuildConfig gives any
-     * extracted APK direct table-write access otherwise.
+     * docs/supabase_full_schema.sql). The check (balance/active) and the
+     * deduction happen atomically in Postgres, under a row lock -- this must
+     * NOT be re-implemented as a client-side read-then-PATCH, since the anon
+     * key embedded in BuildConfig gives any extracted APK direct table-write
+     * access otherwise.
      */
-    suspend fun deductBalance(uid: String, amountInCents: Int): Boolean = withContext(Dispatchers.IO) {
+    suspend fun deductBalance(uid: String, amountInCents: Int): VipDeductResult = withContext(Dispatchers.IO) {
         try {
             val result = SupabaseClientProvider.client.postgrest.rpc(
                 "deduct_vip_balance",
                 DeductBalanceParams(p_card_uid = uid, p_amount_cents = amountInCents)
             )
             val decoded = result.decodeAs<DeductBalanceResult>()
-            if (!decoded.success) {
-                android.util.Log.w("VipRepository", "Deduct rejected: ${decoded.message}")
+            if (decoded.success) {
+                VipDeductResult.Success(decoded.new_balance_cents ?: 0)
+            } else {
+                Log.w(TAG, "Deduct rejected: ${decoded.message}")
+                VipDeductResult.Rejected(decoded.message ?: "unknown")
             }
-            decoded.success
         } catch (e: Exception) {
-            android.util.Log.e("VipRepository", "Deduct RPC error: ${e.message}")
-            false
+            Log.e(TAG, "Deduct RPC error (network/transport): ${e.message}")
+            VipDeductResult.NetworkError
         }
     }
 }

@@ -2,7 +2,7 @@
 
 本文档定义了 GS-SSP 平台级后端数据模型。新版本引入了多租户隔离、通用产品模型及工业级诊断审计体系。
 
-> **[v2.1 增补]** 本轮加固新增/变更了三张表，迁移脚本见 `supabase/migrations/`（需人工执行，本文档未自动同步到线上库）。详细动机见 `docs/system_architecture.md` 第 10 章。
+> **[v2.1 增补，v2.2 起已合并入 Full Schema]** 本轮加固新增/变更了三张表，建表脚本现已统一在 `docs/supabase_full_schema.sql`（需人工执行，本文档未自动同步到线上库；此前拆分在 `supabase/migrations/` 下的三个文件已合并删除，避免两份 schema 各自漂移）。详细动机见 `docs/system_architecture.md` 第 10 章。
 > *   `vip_cards`：`anon`/`authenticated` 的 `INSERT`/`UPDATE`/`DELETE` 已被收回，余额扣减唯一入口是 `deduct_vip_balance()` RPC（`0001_vip_deduct_balance_rpc.sql`）。
 > *   `qr_payment_sessions`（新增）：扫码支付会话表，见 `0002_qr_payment_sessions.sql`，`status` 只能由 service role 写 `PAID`。
 > *   `devices.is_active`：迁移脚本 `0003_devices_is_active.sql` 确保列存在，供 `DeviceAccessManager` 读取作为远程锁定网关。

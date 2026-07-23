@@ -5,7 +5,7 @@ import android.content.Context
 /**
  * Single source of truth for whether the terminal is allowed to take
  * payments. Locked either by an admin disabling the device
- * (devices.is_active, checked via DeviceRepository.checkDeviceActive) or by
+ * (devices.is_active, checked via DeviceRepository.syncDeviceIdentity) or by
  * an explicit remote LOCK command (RemoteCommandManager). The remote-lock
  * flag is persisted so it survives an app/process restart until explicitly
  * cleared by an UNLOCK command.
@@ -40,7 +40,7 @@ object DeviceAccessManager {
     }
 
     /**
-     * Feed the result of DeviceRepository.checkDeviceActive() here. Pass null
+     * Feed the is_active result of DeviceRepository.syncDeviceIdentity() here. Pass null
      * (network failure / unknown) to intentionally leave the current state
      * untouched -- a connectivity blip must never lock out a legitimate device.
      */

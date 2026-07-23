@@ -23,6 +23,11 @@ object PaymentService {
         fun onFailure(errorMsg: String)
     }
 
+    interface ResultCallback {
+        fun onSuccess()
+        fun onFailure(errorMsg: String)
+    }
+
     /**
      * Initializes communication settings for internal AIDL connection on PAX IM30.
      */
@@ -37,8 +42,13 @@ object PaymentService {
 
     /**
      * Triggers the card payment flow (Tap/Insert/Swipe) using PAX POSLink SALE.
+     * [txRefNum] must match the ecr_ref_num of the PENDING transaction row
+     * already written by the caller before this is invoked (see
+     * MainActivity.initCardPayment) -- pre-writing before ProcessTrans()
+     * means a crash between bank approval and our own audit write no longer
+     * leaves a charged-but-untracked transaction.
      */
-    fun startCardPayment(amountInCents: Int, callback: PaymentCallback) {
+    fun startCardPayment(amountInCents: Int, txRefNum: String, callback: PaymentCallback) {
         if (!KeyHealthMonitor.isPaymentAllowed()) {
             val reason = KeyHealthMonitor.lockReason() ?: "key health check failed"
             Log.e(TAG, "Card payment blocked: $reason")
@@ -46,7 +56,7 @@ object PaymentService {
             return
         }
 
-        Log.i(TAG, "Initiating SALE for amount: $amountInCents cents")
+        Log.i(TAG, "Initiating SALE for amount: $amountInCents cents, ref: $txRefNum")
 
         val posLink = PosLink()
         posLink.commSetting = getCommSetting()
@@ -55,7 +65,7 @@ object PaymentService {
             transType = 2 // SALE
             tenderType = 1 // CREDIT (Standard for Tap)
             amount = amountInCents.toString()
-            ecrRefNum = System.currentTimeMillis().toString()
+            ecrRefNum = txRefNum
         }
         posLink.paymentRequest = request
 
@@ -95,10 +105,13 @@ object PaymentService {
      * Voids a transaction (Industrial Fault Tolerance).
      * Called when hardware fails after successful bank authorization.
      */
-    fun voidTransaction(refNum: String) {
-        if (refNum.isEmpty()) return
+    fun voidTransaction(refNum: String, callback: ResultCallback) {
+        if (refNum.isEmpty()) {
+            callback.onFailure("Empty refNum")
+            return
+        }
         Log.w(TAG, "Initiating VOID for RefNum: $refNum")
-        
+
         val posLink = PosLink()
         posLink.commSetting = getCommSetting()
 
@@ -115,14 +128,93 @@ object PaymentService {
                 withContext(Dispatchers.Main) {
                     if (result != null && result.code == ProcessTransResult.ProcessTransExitCode.OK && posLink.paymentResponse?.resultCode == "000000") {
                         Log.i(TAG, "VOID Successful for $refNum")
+                        callback.onSuccess()
                     } else {
-                        Log.e(TAG, "VOID Failed for $refNum. Manual intervention required.")
+                        val msg = posLink.paymentResponse?.resultMsg ?: result?.msg ?: "VOID declined"
+                        Log.e(TAG, "VOID Failed for $refNum: $msg")
+                        callback.onFailure(msg)
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Exception during VOID: ${e.message}")
+                withContext(Dispatchers.Main) { callback.onFailure(e.message ?: "Unknown error") }
             }
         }
+    }
+
+    /**
+     * Refunds a settled transaction. VOID only works pre-settlement; once a
+     * batch has closed, the terminal must REFUND instead -- see
+     * [voidOrRefund] for the automatic fallback.
+     *
+     * transType=5 is a placeholder matching common POSLink convention
+     * (1=AUTH, 2=SALE, 3=FORCE, 4=VOID, 5=REFUND) but is UNVERIFIED against
+     * the real vendor SDK/integration guide (this repo only has local stub
+     * classes, not the proprietary PAX jar) -- confirm the exact code before
+     * relying on this against real hardware.
+     */
+    fun refundTransaction(refNum: String, amountInCents: Int, callback: ResultCallback) {
+        if (refNum.isEmpty()) {
+            callback.onFailure("Empty refNum")
+            return
+        }
+        Log.w(TAG, "Initiating REFUND for RefNum: $refNum")
+
+        val posLink = PosLink()
+        posLink.commSetting = getCommSetting()
+
+        val request = PaymentRequest().apply {
+            transType = 5 // REFUND (placeholder -- verify against real POSLink integration guide)
+            origRefNum = refNum
+            amount = amountInCents.toString()
+            ecrRefNum = "R" + System.currentTimeMillis()
+        }
+        posLink.paymentRequest = request
+
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val result = posLink.ProcessTrans()
+                withContext(Dispatchers.Main) {
+                    if (result != null && result.code == ProcessTransResult.ProcessTransExitCode.OK && posLink.paymentResponse?.resultCode == "000000") {
+                        Log.i(TAG, "REFUND Successful for $refNum")
+                        callback.onSuccess()
+                    } else {
+                        val msg = posLink.paymentResponse?.resultMsg ?: result?.msg ?: "REFUND declined"
+                        Log.e(TAG, "REFUND Failed for $refNum: $msg")
+                        callback.onFailure(msg)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception during REFUND: ${e.message}")
+                withContext(Dispatchers.Main) { callback.onFailure(e.message ?: "Unknown error") }
+            }
+        }
+    }
+
+    /**
+     * Industrial Fault Tolerance entry point: attempts VOID first (the
+     * common case -- hardware failure discovered within the same batch),
+     * automatically falls back to REFUND if VOID is declined (e.g. already
+     * settled). Reports which method actually succeeded so the caller can
+     * record the correct final payment_status ("VOIDED" vs "REFUNDED"); if
+     * both fail, [onResolved] fires with success=false and the caller must
+     * flag it for manual reconciliation -- money was captured but neither
+     * reversal path worked.
+     */
+    fun voidOrRefund(refNum: String, amountInCents: Int, onResolved: (success: Boolean, method: String) -> Unit) {
+        voidTransaction(refNum, object : ResultCallback {
+            override fun onSuccess() = onResolved(true, "VOID")
+            override fun onFailure(errorMsg: String) {
+                Log.w(TAG, "VOID failed ($errorMsg), falling back to REFUND for $refNum")
+                refundTransaction(refNum, amountInCents, object : ResultCallback {
+                    override fun onSuccess() = onResolved(true, "REFUND")
+                    override fun onFailure(errorMsg: String) {
+                        Log.e(TAG, "REFUND fallback also failed for $refNum: $errorMsg -- manual reconciliation required")
+                        onResolved(false, "NONE")
+                    }
+                })
+            }
+        })
     }
 
     /**

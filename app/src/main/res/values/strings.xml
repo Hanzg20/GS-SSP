@@ -60,6 +60,7 @@
     <string name="toast_serial_fail">Failed to communicate with controller</string>
     <string name="toast_wash_finish">Wash cycle complete. Thank you!</string>
     <string name="toast_pay_timeout">Payment timed out. Please try again.</string>
+    <string name="toast_payment_processing_wait">Payment processing, please wait…</string>
 
     <string name="status_processing">Processing Payment...</string>
     <string name="status_approved">Transaction Approved</string>

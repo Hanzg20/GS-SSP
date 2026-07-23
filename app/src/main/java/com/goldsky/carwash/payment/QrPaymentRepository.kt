@@ -28,11 +28,22 @@ private data class QrSessionStatus(val status: String)
 object QrPaymentRepository {
     private const val TAG = "QrPaymentRepository"
 
+    /**
+     * Not backed by a background offline queue like TransactionRepository's
+     * audit writes -- the customer is standing at the kiosk waiting for a QR
+     * code right now, so a failure here has to surface immediately rather
+     * than being silently retried after they've already walked away. It
+     * does get a few quick in-band retries (matching DeviceRepository's
+     * pattern) since transient network blips are common and worth absorbing
+     * before making the customer tap "try again" themselves.
+     */
     suspend fun createSession(txId: String, deviceSn: String, amountCents: Int): Boolean =
         withContext(Dispatchers.IO) {
             try {
-                SupabaseClientProvider.client.postgrest["qr_payment_sessions"]
-                    .insert(QrPaymentSession(tx_id = txId, device_sn = deviceSn, amount_cents = amountCents))
+                retryWithBackoff(times = 3) {
+                    SupabaseClientProvider.client.postgrest["qr_payment_sessions"]
+                        .insert(QrPaymentSession(tx_id = txId, device_sn = deviceSn, amount_cents = amountCents))
+                }
                 true
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to create QR session: ${e.message}")

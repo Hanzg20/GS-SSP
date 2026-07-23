@@ -4,13 +4,12 @@ import android.content.Context
 import android.util.Log
 import com.pax.dal.IDAL
 import com.pax.neptunelite.api.NeptuneLiteUser
+import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.realtime.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.launchIn
+import io.github.jan.supabase.storage.storage
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -31,7 +30,7 @@ object RemoteCommandManager {
     fun startListening(context: Context, sn: String, onSyncRequested: () -> Unit) {
         val client = SupabaseClientProvider.client
         
-        // Supabase-kt 2.x: Realtime.channel(name), not the 3.x Realtime.createChannel(name)
+        // Supabase-kt 2.x: Realtime.channel(name)
         val channel = client.realtime.channel("commands_$sn")
 
         val changeFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
@@ -44,7 +43,7 @@ object RemoteCommandManager {
                     val command = action.decodeRecord<DeviceCommand>()
                     if (command.device_sn == sn) {
                         Log.i(TAG, "Received remote command: ${command.command}")
-                        executeCommand(context, command.command, onSyncRequested)
+                        executeCommand(context, command, onSyncRequested)
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to decode command: ${e.message}")
@@ -62,30 +61,80 @@ object RemoteCommandManager {
         }
     }
 
-    private fun executeCommand(context: Context, cmd: String, onSyncRequested: () -> Unit) {
-        when (cmd) {
-            "REBOOT" -> {
-                Log.w(TAG, "Executing Remote REBOOT...")
-                try {
-                    val dal: IDAL = NeptuneLiteUser.getInstance().getDal(context)
-                    dal.getSys().reboot()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Reboot failed: ${e.message}")
+    private fun executeCommand(context: Context, deviceCommand: DeviceCommand, onSyncRequested: () -> Unit) {
+        val cmd = deviceCommand.command
+        CoroutineScope(Dispatchers.IO).launch {
+            updateCommandStatus(deviceCommand.id, "EXECUTING")
+            
+            var success = true
+            try {
+                when (cmd) {
+                    "REBOOT" -> {
+                        Log.w(TAG, "Executing Remote REBOOT...")
+                        val dal: IDAL = NeptuneLiteUser.getInstance().getDal(context)
+                        dal.getSys().reboot()
+                    }
+                    "SYNC_CONFIG" -> {
+                        Log.i(TAG, "Executing Remote SYNC_CONFIG...")
+                        withContext(Dispatchers.Main) { onSyncRequested() }
+                    }
+                    "LOCK" -> {
+                        Log.w(TAG, "Executing Remote LOCK...")
+                        DeviceAccessManager.setRemoteLock(true)
+                    }
+                    "UNLOCK" -> {
+                        Log.i(TAG, "Executing Remote UNLOCK...")
+                        DeviceAccessManager.setRemoteLock(false)
+                    }
+                    "FETCH_LOGS" -> {
+                        Log.i(TAG, "Executing Remote FETCH_LOGS...")
+                        success = uploadLogcat(deviceCommand.device_sn)
+                    }
+                    else -> {
+                        Log.d(TAG, "Unknown command: $cmd")
+                        success = false
+                    }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Command execution failed: ${e.message}")
+                success = false
             }
-            "SYNC_CONFIG" -> {
-                Log.i(TAG, "Executing Remote SYNC_CONFIG...")
-                onSyncRequested()
+
+            updateCommandStatus(deviceCommand.id, if (success) "SUCCESS" else "FAILED")
+        }
+    }
+
+    private suspend fun updateCommandStatus(id: String, status: String) {
+        try {
+            SupabaseClientProvider.client.postgrest["device_commands"].update(
+                {
+                    set("status", status)
+                }
+            ) {
+                filter { eq("id", id) }
             }
-            "LOCK" -> {
-                Log.w(TAG, "Executing Remote LOCK...")
-                DeviceAccessManager.setRemoteLock(true)
-            }
-            "UNLOCK" -> {
-                Log.i(TAG, "Executing Remote UNLOCK...")
-                DeviceAccessManager.setRemoteLock(false)
-            }
-            else -> Log.d(TAG, "Unknown command: $cmd")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update command status: ${e.message}")
+        }
+    }
+
+    private suspend fun uploadLogcat(sn: String): Boolean {
+        return try {
+            val process = Runtime.getRuntime().exec("logcat -d -t 2000")
+            val logText = process.inputStream.bufferedReader().use { it.readText() }
+            val fileName = "logs/${sn}_${System.currentTimeMillis()}.txt"
+            
+            // In 2.6.1 upload has an optional 'upsert' parameter directly
+            SupabaseClientProvider.client.storage["device-logs"].upload(
+                path = fileName,
+                data = logText.toByteArray(),
+                upsert = true
+            )
+            Log.i(TAG, "Logcat uploaded to storage: $fileName")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Logcat upload failed: ${e.message}")
+            false
         }
     }
 
