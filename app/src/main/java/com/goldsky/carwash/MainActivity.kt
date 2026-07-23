@@ -788,8 +788,11 @@ class MainActivity : BaseAdActivity() {
         
         dialog.findViewById<View>(R.id.btn_tech_confirm).setOnClickListener {
             val pin = etPin.text.toString().trim()
-            Log.d("SSP_TECH", "Attempting login with PIN: $pin")
-            if (pin == "1234") {
+            // Was hardcoded to the literal "1234" -- AppConfig.KioskSettings
+            // already has a cloud-configurable maintenance_pin field (same
+            // "1234" default) that nothing ever actually read.
+            val expectedPin = ConfigManager.getConfig()?.settings?.maintenance_pin ?: "1234"
+            if (pin == expectedPin) {
                 dialog.dismiss()
                 openTechTools()
             } else {

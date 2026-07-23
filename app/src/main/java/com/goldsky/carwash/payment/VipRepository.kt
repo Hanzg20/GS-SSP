@@ -46,6 +46,19 @@ sealed class VipDeductResult {
     object NetworkError : VipDeductResult()
 }
 
+/**
+ * Pure mapping from the RPC's decoded response fields to [VipDeductResult],
+ * pulled out of [VipRepository.deductBalance] so this classification (the
+ * actual fix for the Boolean-collapsing bug) is unit-testable without a
+ * network stack or Android Context.
+ */
+internal fun classifyDeductResult(success: Boolean, newBalanceCents: Int?, message: String?): VipDeductResult =
+    if (success) {
+        VipDeductResult.Success(newBalanceCents ?: 0)
+    } else {
+        VipDeductResult.Rejected(message ?: "unknown")
+    }
+
 private const val TAG = "VipRepository"
 
 /**
@@ -82,12 +95,10 @@ object VipRepository {
                 DeductBalanceParams(p_card_uid = uid, p_amount_cents = amountInCents)
             )
             val decoded = result.decodeAs<DeductBalanceResult>()
-            if (decoded.success) {
-                VipDeductResult.Success(decoded.new_balance_cents ?: 0)
-            } else {
+            if (!decoded.success) {
                 Log.w(TAG, "Deduct rejected: ${decoded.message}")
-                VipDeductResult.Rejected(decoded.message ?: "unknown")
             }
+            classifyDeductResult(decoded.success, decoded.new_balance_cents, decoded.message)
         } catch (e: Exception) {
             Log.e(TAG, "Deduct RPC error (network/transport): ${e.message}")
             VipDeductResult.NetworkError

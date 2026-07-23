@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.6 (2026-07-22)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.9 (2026-07-23)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -83,11 +83,23 @@ CREATE TABLE IF NOT EXISTS public.devices (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Generic Product Catalog (Billing Units)
+-- Generic Product Catalog (Billing Units). This is the editable "draft"
+-- source -- an admin's working set of products per org/vertical. It is NOT
+-- what ConfigManager reads at runtime (see app_configurations.products
+-- below); the two used to look like accidental duplication with no
+-- resolved relationship (flagged as a deferred architecture decision in
+-- v2.4). Resolved: this table is the catalog you edit; app_configurations
+-- is the frozen, versioned snapshot you publish from it. Keeping them
+-- separate is intentional, not a bug -- it's what makes app_configurations
+-- version rows immutable/rollback-able (see comment there). There is no
+-- publish tooling yet (no admin UI, config rows are still hand-authored/
+-- seeded), so today the two must be kept in sync by hand; an RPC that
+-- assembles app_configurations.products from this table at publish time
+-- would remove that manual step if/when an admin flow gets built.
 CREATE TABLE IF NOT EXISTS public.products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
-    vertical_type TEXT NOT NULL,
+    vertical_type TEXT NOT NULL CHECK (vertical_type IN ('WASH', 'LAUNDRY', 'EV', 'VEND')), -- kept in sync with devices.vertical_type below; a lookup table was considered and rejected (see v2.9 changelog) since only WASH is actually in use today
     name TEXT NOT NULL,
     price_cents INTEGER NOT NULL,
     attributes JSONB DEFAULT '{}',       -- Hardware-specific: { "serial_hex": "AA...", "pulse": 12 }
@@ -96,6 +108,13 @@ CREATE TABLE IF NOT EXISTS public.products (
 );
 
 -- Global App Configuration (Cloud tier of ConfigManager's 3-tier strategy).
+-- `products` here is a frozen snapshot published from the public.products
+-- catalog above -- NOT a live view of it -- precisely so that editing the
+-- catalog can never retroactively change what an already-published config
+-- version looks like to devices already pinned to it (devices.config_version).
+-- That immutability is the entire point of versioning by `version TEXT
+-- PRIMARY KEY` instead of updating rows in place.
+--
 -- IMPORTANT: column shape must mirror AppConfig.kt exactly (top-level
 -- version/org_id/vertical_type/products/settings/branding), NOT a wrapped
 -- payload blob -- ConfigManager decodes REST rows directly into AppConfig

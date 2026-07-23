@@ -2,6 +2,12 @@
 
 ## 0. 版本更新记录 (Changelog)
 
+### v2.9 (2026-07-23) — 结项两个搁置的架构决策
+应用户要求（"两个搁置的架构决策，按照评估后的最佳方案"）对 v2.4 提出但一直搁置的两项做出决定并落地，卡支付次要项按要求继续搁置（等厂商 POSLink SDK 文档到位后再处理，本轮不动）。
+
+*   **`vertical_type` 枚举/查找表：决定不建查找表。** 现在系统只有 WASH 一个业态真正在跑（LAUNDRY 只存在于种子数据，从未接入任何 UI），为一个假设的未来业态提前建查找表属于过度设计。改为最小代价修复实际的不一致：`products.vertical_type` 之前是裸 `TEXT`，没有约束，而 `devices.vertical_type` 有 `CHECK (... IN ('WASH','LAUNDRY','EV','VEND'))`——两张表本该同源却一个有约束一个没有，`products` 表能悄悄插入拼错的业态值。现已给 `products.vertical_type` 补上跟 `devices` 完全一致的 CHECK 约束。
+*   **`products` 表与 `app_configurations.products` JSONB 的关系：明确为"目录 vs 已发布快照"，不是重复数据。** `ConfigManager` 运行时读的是 `app_configurations.products`（JSONB 快照），从来不查 `products` 表本身——这不是 bug，而是 `app_configurations` 按 `version` 主键做版本化、要求已发布版本不可变（设备靠 `devices.config_version` 钉住某个具体版本）这个设计的必然结果：如果 JSONB 是 `products` 表的实时视图，编辑目录会反向改动已经发布给设备的历史版本，版本化就失去意义了。现状是：`products` 表是可编辑的"目录/草稿"，`app_configurations.products` 是发布时的"冻结快照"，两者故意分离。已在 schema 注释里把这个关系写清楚。**未完全解决的部分**：目前没有任何后台/发布工具，两边种子数据仍是手工对应的，存在人工同步漏改的风险；等以后真的做管理后台时，应该做一个"从 `products` 表组装 `app_configurations.products` 并发布新版本"的 RPC，把手工同步这一步去掉——这属于新增功能而不是架构决策本身，本轮未实现。
+
 ### v2.8 (2026-07-23) — 架构收敛：统一数据访问层，纠正 VIP 失败分类
 应用户要求（"下一步的优化点，如何把想做的更像一个整体，逻辑合理，架构合理"）做的两轮收敛式重构，不新增功能，只消除已确认会导致 bug 的架构不一致：
 
