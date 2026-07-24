@@ -124,7 +124,7 @@ object RemoteCommandManager {
             val logText = process.inputStream.bufferedReader().use { it.readText() }
             val fileName = "logs/${sn}_${System.currentTimeMillis()}.txt"
             
-            // In 2.6.1 upload has an optional 'upsert' parameter directly
+            // In 2.6.1 upload has a direct 'upsert' boolean parameter
             SupabaseClientProvider.client.storage["device-logs"].upload(
                 path = fileName,
                 data = logText.toByteArray(),

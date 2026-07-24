@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.9 (2026-07-23)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.15 (2026-07-24)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -30,10 +30,19 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- depends on them: indexes, triggers, policies, FKs, the vw_active_fleet
 -- view) so every CREATE TABLE below always runs clean. Order doesn't matter
 -- functionally (CASCADE resolves dependencies), listed child-to-parent for
--- readability. auth.users / auth.* are Supabase-managed and never touched.
+-- readability. auth.users/auth.* rows themselves are Supabase-managed and
+-- never touched -- the one exception is the on_auth_user_created trigger
+-- (public.handle_new_profile(), see §1 below), which this file owns and
+-- must drop/recreate on every reset the same as everything else here.
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP VIEW IF EXISTS public.vw_active_fleet;
 DROP TABLE IF EXISTS public.device_commands CASCADE;
 DROP TABLE IF EXISTS public.device_auth_map CASCADE;
+DROP TABLE IF EXISTS public.audit_logs CASCADE;
+DROP TABLE IF EXISTS public.org_members CASCADE;
+DROP TABLE IF EXISTS public.coupon_redemptions CASCADE;
+DROP TABLE IF EXISTS public.coupons CASCADE;
+DROP TABLE IF EXISTS public.profiles CASCADE;
 DROP TABLE IF EXISTS public.qr_payment_sessions CASCADE;
 DROP TABLE IF EXISTS public.transactions CASCADE;
 DROP TABLE IF EXISTS public.device_shadows CASCADE;
@@ -57,6 +66,80 @@ CREATE TABLE IF NOT EXISTS public.organizations (
     tier TEXT DEFAULT 'FREE' CHECK (tier IN ('FREE', 'PRO', 'ENT')),
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Recursive hierarchy for future DISTRIBUTOR/regional tiers (see
+-- docs/cloud_management_platform_design.md §1/§2). NULL = top-level org
+-- (every org today). Additive/inert on its own -- nothing reads this column
+-- yet: redeem_coupon()/issue_compensation_coupon() and every existing RLS
+-- policy still match org_id by exact equality, not by walking this tree.
+-- Actually scoping a DISTRIBUTOR to "this org + its descendants" requires a
+-- WITH RECURSIVE lookup added to each of those call sites -- separate,
+-- not-yet-designed work; this column alone doesn't unlock that role.
+-- ON DELETE SET NULL (not CASCADE): deleting a parent org should orphan its
+-- children back to top-level, never cascade-delete an entire org subtree
+-- (and its devices/transactions) as a side effect of removing one row.
+ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES public.organizations(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_organizations_parent ON public.organizations(parent_id);
+
+-- Human identity for the cloud management platform (CMP) -- distinct from
+-- device identity (devices/device_auth_map below, which is anonymous-auth
+-- and has no human attached). One row per signed-up Supabase Auth user,
+-- auto-created by the handle_new_profile() trigger on auth.users (see §9) --
+-- nothing else populates this table. See docs/cloud_management_platform_design.md
+-- §2/§7.1: this was the single blocking prerequisite for the CMP's human
+-- IAM subsystem; MVP scope only (see org_members below), not the full
+-- five-role model that section describes.
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id UUID NOT NULL,
+    email TEXT NOT NULL,
+    full_name TEXT NULL,
+    created_at TIMESTAMPTZ NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NULL DEFAULT now(),
+    CONSTRAINT profiles_pkey PRIMARY KEY (id),
+    CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users (id) ON DELETE CASCADE
+);
+
+-- Who has which role on which org (MVP: SYS_ADMIN global / MERCHANT_ADMIN
+-- per-org -- see docs/cloud_management_platform_design.md §2's role table;
+-- DISTRIBUTOR/LOC_MANAGER deliberately deferred -- organizations.parent_id
+-- exists now, but the CHECK below still only allows SYS_ADMIN/MERCHANT_ADMIN,
+-- and no recursive-scoping logic has been added anywhere yet; there's also
+-- no real multi-site customer needing them today). org_id NULL = global scope,
+-- enforced by the CHECK below so the two scopes can never be confused --
+-- this also means a single role column on profiles wouldn't have worked
+-- (a MERCHANT_ADMIN is scoped to exactly one org; a future DISTRIBUTOR
+-- would need several), hence a separate table.
+CREATE TABLE IF NOT EXISTS public.org_members (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    profile_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('SYS_ADMIN', 'MERCHANT_ADMIN')),
+    CONSTRAINT org_members_scope_check CHECK ((role = 'SYS_ADMIN') = (org_id IS NULL)),
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+-- Two partial unique indexes instead of one UNIQUE(profile_id, org_id) --
+-- Postgres treats every NULL as distinct for uniqueness purposes, so a
+-- plain unique constraint would silently allow duplicate SYS_ADMIN
+-- (org_id IS NULL) rows for the same profile.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_org_members_org_role_uniq ON public.org_members(profile_id, org_id) WHERE org_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_org_members_global_role_uniq ON public.org_members(profile_id) WHERE org_id IS NULL;
+
+-- Insert-only audit trail for portal/admin actions (distinct from
+-- maintenance_records/app_error_logs below, which cover device-side
+-- technician actions). Written only by SECURITY DEFINER RPCs (see
+-- issue_compensation_coupon() in §9) -- never directly by client code, same
+-- trust boundary as every other audit-sensitive table in this file.
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_profile_id UUID REFERENCES public.profiles(id),
+    org_id UUID REFERENCES public.organizations(id), -- nullable: a SYS_ADMIN action may not be org-scoped
+    action TEXT NOT NULL,
+    target_table TEXT,
+    target_id TEXT,
+    details JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_org_created ON public.audit_logs(org_id, created_at DESC);
 
 -- Physical Locations
 CREATE TABLE IF NOT EXISTS public.locations (
@@ -147,6 +230,12 @@ CREATE TABLE IF NOT EXISTS public.vip_cards (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- 12-character member QR code (see docs/coupon_redemption_integration.md
+-- §2.1) -- a separate generated field, NOT card_uid (which is the NFC
+-- serial). Nullable: not every card has one issued yet.
+ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS qr_code TEXT UNIQUE;
+CREATE INDEX IF NOT EXISTS idx_vip_cards_qr_code ON public.vip_cards(qr_code);
+
 -- 3. MEDIA ENGINE
 -- Advertising Materials
 CREATE TABLE IF NOT EXISTS public.advertisements (
@@ -230,6 +319,51 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 CREATE INDEX IF NOT EXISTS idx_transactions_device_created ON public.transactions(device_sn, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transactions_status ON public.transactions(payment_status);
 
+-- Coupons / promotions / compensation vouchers (see
+-- docs/coupon_redemption_integration.md for the full design). Writes
+-- (issuance) are NOT done by IM30 -- the cloud management platform is the
+-- only writer; IM30 only ever calls redeem_coupon() below. Defined here
+-- (after transactions, not back up with vip_cards/app_configurations) --
+-- related_transaction_id/coupon_redemptions.transaction_id both reference
+-- public.transactions(id), which must already exist as a table before this
+-- one is created (moved here 2026-07-24 after this exact ordering bug broke
+-- a live apply: "relation public.transactions does not exist").
+CREATE TABLE IF NOT EXISTS public.coupons (
+    code TEXT PRIMARY KEY,
+    org_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK (type IN ('PERCENT_OFF', 'FIXED_OFF', 'FREE_WASH')), -- compensation vouchers are FIXED_OFF + issued_reason='COMPENSATION', not a separate type
+    value INTEGER NOT NULL,              -- PERCENT_OFF: 0-100; FIXED_OFF: cents; FREE_WASH: ignored
+    applicable_product_id UUID REFERENCES public.products(id), -- NULL = any package
+    max_uses INTEGER NOT NULL DEFAULT 1,
+    uses_count INTEGER NOT NULL DEFAULT 0,
+    expires_at TIMESTAMPTZ,
+    issued_reason TEXT,                  -- 'PROMOTION' | 'COMPENSATION' | 'MARKETING' -- audit/reporting only
+    -- Which MERCHANT_ADMIN/SYS_ADMIN issued this (compensation coupons via
+    -- issue_compensation_coupon(), §9) -- nullable since not every coupon is
+    -- human-issued (e.g. bulk marketing imports might not be, if that path
+    -- is ever added).
+    issued_by_profile_id UUID REFERENCES public.profiles(id),
+    related_transaction_id UUID REFERENCES public.transactions(id), -- compensation: which failed transaction this offsets
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_coupons_org ON public.coupons(org_id) WHERE is_active;
+
+-- Redemption audit trail -- one row per successful redemption, even for a
+-- coupon whose max_uses > 1.
+CREATE TABLE IF NOT EXISTS public.coupon_redemptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    coupon_code TEXT NOT NULL REFERENCES public.coupons(code),
+    device_sn TEXT NOT NULL REFERENCES public.devices(sn) ON DELETE SET NULL,
+    -- The resulting (discounted) transaction, if the customer went on to
+    -- complete payment -- left NULL otherwise (scanned but abandoned).
+    -- Not populated by the app in the initial redemption flow; would need
+    -- TransactionRepository to surface the generated transaction id first.
+    transaction_id UUID REFERENCES public.transactions(id),
+    redeemed_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_code ON public.coupon_redemptions(coupon_code);
+
 -- Scan-to-pay sessions (Alipay/WeChat/Apple Pay/Google Pay QR flow).
 -- status can only be flipped to PAID by the service role (payment gateway
 -- webhook, not yet implemented -- see docs/qr_payment_integration.md);
@@ -259,10 +393,29 @@ CREATE TABLE IF NOT EXISTS public.device_auth_map (
 );
 
 -- 7. ENABLE ROW LEVEL SECURITY (RLS)
+--
+-- Every one of these is force-enabled by this Supabase project regardless
+-- of whether it's listed here (confirmed live 2026-07-24 via
+-- pg_class.relrowsecurity -- true for every public-schema table this file
+-- creates, including ones this file never explicitly enabled it for). These
+-- ALTER TABLE statements are kept for documentation/portability (a vanilla
+-- Postgres instance without that platform default would need them), but
+-- don't assume "not listed here" means "no RLS, plain GRANTs apply" on THIS
+-- project -- it doesn't. Every table needs an actual policy, or it's
+-- default-deny for anon/authenticated no matter what's GRANTed.
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.org_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.devices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.device_auth_map ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vip_cards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_configurations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.advertisements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.playlists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.device_commands ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.heartbeats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_error_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.maintenance_records ENABLE ROW LEVEL SECURITY;
@@ -284,6 +437,115 @@ ALTER TABLE public.qr_payment_sessions ENABLE ROW LEVEL SECURITY;
 --     been fixed in SupabaseClientProvider.kt to also sign in anonymously;
 --     without that fix, every TO authenticated-only policy below would
 --     silently reject those repositories' requests.
+
+-- Human/portal identity (profiles/org_members) -- self-read-only. Scoped by
+-- a *real* Supabase Auth session (auth.uid() = a signed-up human's
+-- auth.users id), not the device anonymous-auth sessions the rest of this
+-- section is about. No write policies here on purpose: writes to org_members
+-- (granting roles) are a manual/service_role bootstrap step for now (see the
+-- seed-data comment below) -- the actual authorization logic for CMP actions
+-- lives inside SECURITY DEFINER RPCs like issue_compensation_coupon() (§9),
+-- not in table-level RLS, per docs/cloud_management_platform_design.md
+-- §7.2's note that the intended portal access pattern is
+-- Edge-Functions-with-service_role, not broad per-table RLS the way the
+-- device side works.
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
+CREATE POLICY "Users can view own profile" ON public.profiles
+FOR SELECT TO authenticated
+USING (id = auth.uid());
+
+DROP POLICY IF EXISTS "Users can view own org memberships" ON public.org_members;
+CREATE POLICY "Users can view own org memberships" ON public.org_members
+FOR SELECT TO authenticated
+USING (profile_id = auth.uid());
+
+-- device_auth_map: a device can read its OWN row. This was missing entirely
+-- -- found live 2026-07-24 testing the coupon feature on an emulator, but
+-- it's not a coupon-specific bug: this Supabase project auto-enables RLS on
+-- every new public-schema table (confirmed via pg_class.relrowsecurity --
+-- true for every table in this file, including ones like vip_cards/
+-- app_configurations that were never given an explicit ENABLE ROW LEVEL
+-- SECURITY here), and RLS-enabled-with-zero-policies is default-deny, not
+-- "fall through to plain GRANTs". Without this policy, EVERY other table's
+-- policy that subqueries device_auth_map (products, heartbeats,
+-- app_error_logs, device_shadows, transactions, qr_payment_sessions --
+-- effectively all of §8) silently returns zero rows for every device,
+-- because that subquery itself runs under the caller's own RLS-restricted
+-- view of device_auth_map. Verified live: before this policy existed, a
+-- real device querying its own device_auth_map row, or products in its own
+-- org, both returned empty despite matching rows actually existing.
+DROP POLICY IF EXISTS "devices can read own auth map row" ON public.device_auth_map;
+CREATE POLICY "devices can read own auth map row" ON public.device_auth_map
+FOR SELECT TO authenticated
+USING (auth_user_id = auth.uid());
+
+-- vip_cards / app_configurations: both were designed assuming "no RLS,
+-- SELECT via plain table GRANT" (see the REVOKE-only comments on these two
+-- tables above) -- wrong on this project for the same reason as
+-- device_auth_map above (RLS is force-enabled regardless). Scoped by org
+-- via device_auth_map, same pattern as "Devices can see own org products"
+-- below -- a device from one org must not be able to look up another org's
+-- VIP cards or pull another org's config.
+DROP POLICY IF EXISTS "Devices can see own org vip cards" ON public.vip_cards;
+CREATE POLICY "Devices can see own org vip cards" ON public.vip_cards
+FOR SELECT TO authenticated
+USING (
+  org_id IN (
+    SELECT org_id FROM public.device_auth_map
+    WHERE auth_user_id = auth.uid()
+  )
+);
+
+DROP POLICY IF EXISTS "Devices can see own org app configurations" ON public.app_configurations;
+CREATE POLICY "Devices can see own org app configurations" ON public.app_configurations
+FOR SELECT TO authenticated
+USING (
+  org_id IN (
+    SELECT org_id FROM public.device_auth_map
+    WHERE auth_user_id = auth.uid()
+  )
+);
+
+-- advertisements: no org_id column at all (global media library, not
+-- tenant-scoped by design) -- open SELECT for any authenticated device.
+DROP POLICY IF EXISTS "Authenticated devices can read advertisements" ON public.advertisements;
+CREATE POLICY "Authenticated devices can read advertisements" ON public.advertisements
+FOR SELECT TO authenticated
+USING (true);
+
+-- playlists: device-scoped (not org-scoped) -- a device only needs its own
+-- playlist mapping.
+DROP POLICY IF EXISTS "Devices can see own playlist" ON public.playlists;
+CREATE POLICY "Devices can see own playlist" ON public.playlists
+FOR SELECT TO authenticated
+USING (
+  device_sn IN (
+    SELECT device_sn FROM public.device_auth_map
+    WHERE auth_user_id = auth.uid()
+  )
+);
+
+-- device_commands: RemoteCommandManager both subscribes via Realtime
+-- (which enforces the same RLS as a direct SELECT) and UPDATEs status after
+-- executing a command -- needs both, scoped to the device's own commands.
+DROP POLICY IF EXISTS "Devices can see own commands" ON public.device_commands;
+CREATE POLICY "Devices can see own commands" ON public.device_commands
+FOR SELECT TO authenticated
+USING (
+  device_sn IN (
+    SELECT device_sn FROM public.device_auth_map
+    WHERE auth_user_id = auth.uid()
+  )
+);
+DROP POLICY IF EXISTS "Devices can update own command status" ON public.device_commands;
+CREATE POLICY "Devices can update own command status" ON public.device_commands
+FOR UPDATE TO authenticated
+USING (
+  device_sn IN (
+    SELECT device_sn FROM public.device_auth_map
+    WHERE auth_user_id = auth.uid()
+  )
+);
 
 -- Devices: self-registration/heartbeat-style upsert. Any authenticated
 -- (anonymous-auth) caller can create/update a device row for a self-declared
@@ -429,11 +691,53 @@ USING (
 
 -- VIP Cards: balance is only ever written via the deduct_vip_balance() RPC
 -- (SECURITY DEFINER, defined below). Direct table writes from client-side
--- keys are revoked so a decompiled APK can't PATCH arbitrary balances --
--- this does NOT require RLS (no ALTER TABLE ... ENABLE ROW LEVEL SECURITY
--- for vip_cards), a plain REVOKE is sufficient and simpler; SELECT stays
--- open since VipRepository.getVipCard() reads with the anon key.
+-- keys are revoked so a decompiled APK can't PATCH arbitrary balances.
+-- SELECT is handled by the "Devices can see own org vip cards" RLS policy
+-- above (§8), not by a plain GRANT -- this table WAS assumed RLS-free
+-- ("plain REVOKE is sufficient") until live testing 2026-07-24 showed RLS
+-- is force-enabled on this project regardless, which made SELECT return
+-- nothing at all until that policy was added.
 REVOKE UPDATE, INSERT, DELETE ON public.vip_cards FROM anon, authenticated;
+
+-- App Configurations: same gap as vip_cards had, found during a review of
+-- docs/cloud_management_platform_design.md -- this table was never locked
+-- down (no REVOKE), so any authenticated device session could
+-- INSERT/UPDATE arbitrary rows here, including config belonging to a
+-- different org_id (no per-tenant write policy exists to stop it either).
+-- ConfigManager only ever SELECTs this table from the app (via the "Devices
+-- can see own org app configurations" RLS policy above, §8); nothing on the
+-- device side writes to it, so revoking write access breaks nothing.
+-- Publishing a new version (once that tooling exists, see
+-- docs/cloud_management_platform_design.md 3.2) must go through
+-- service_role or a dedicated SECURITY DEFINER RPC, never a device's own
+-- authenticated session.
+REVOKE UPDATE, INSERT, DELETE ON public.app_configurations FROM anon, authenticated;
+
+-- Coupons / coupon_redemptions: unlike vip_cards, nothing in the app reads
+-- these tables directly -- every interaction goes through the
+-- redeem_coupon() SECURITY DEFINER RPC below (see
+-- docs/coupon_redemption_integration.md §3), so there's no need to leave
+-- SELECT open the way vip_cards does for VipRepository.getVipCard(). RLS
+-- enabled with no policies (default-deny) plus an explicit REVOKE ALL is
+-- belt-and-suspenders against both the table-level grant and a future
+-- accidental policy add.
+ALTER TABLE public.coupons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.coupon_redemptions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.coupons FROM anon, authenticated;
+REVOKE ALL ON public.coupon_redemptions FROM anon, authenticated;
+
+-- Profiles / org_members: SELECT stays open at the table-privilege level so
+-- the "own row only" RLS policies above can actually apply (REVOKE SELECT
+-- would block that regardless of policy) -- same pattern as vip_cards.
+-- Writes are fully revoked: profiles is only ever written by
+-- handle_new_profile() (auth.users trigger, §9); org_members role grants are
+-- a manual/service_role bootstrap step for MVP (see seed-data comment below).
+REVOKE UPDATE, INSERT, DELETE ON public.profiles, public.org_members FROM anon, authenticated;
+
+-- audit_logs: no policies at all (default-deny) -- nothing in the app or
+-- portal reads this directly yet (no audit UI built), only SECURITY DEFINER
+-- RPCs write to it. Same belt-and-suspenders REVOKE ALL as coupons above.
+REVOKE ALL ON public.audit_logs FROM anon, authenticated;
 
 -- 9. AUTOMATION FUNCTIONS & TRIGGERS
 
@@ -470,6 +774,51 @@ CREATE TRIGGER on_device_shadow_update
 BEFORE UPDATE ON public.device_shadows
 FOR EACH ROW
 EXECUTE FUNCTION public.touch_updated_at();
+
+CREATE TRIGGER on_profiles_update
+BEFORE UPDATE ON public.profiles
+FOR EACH ROW
+EXECUTE FUNCTION public.touch_updated_at();
+
+-- Function: auto-provision a public.profiles row for every new Supabase Auth
+-- human sign-up (standard Supabase pattern). Nothing else in this schema
+-- populates profiles -- without this trigger, a real login would create an
+-- auth.users row with no matching profiles row, and every FK depending on
+-- profiles (coupons.issued_by_profile_id, org_members.profile_id,
+-- audit_logs.actor_profile_id) would have nothing to reference. SECURITY
+-- DEFINER because the auth.users insert happens under Supabase's internal
+-- auth role, which has no direct grant on public.profiles.
+--
+-- MUST skip anonymous sign-ins (IF NEW.is_anonymous below): every IM30
+-- device authenticates anonymously (auth.users.email IS NULL for those
+-- rows -- see the comment above the RLS policies in §8), but profiles.email
+-- is NOT NULL. Without this guard, every new anonymous device session
+-- fails the profiles insert, which as an AFTER INSERT trigger rolls back
+-- the anonymous auth.users insert itself -- confirmed live 2026-07-24 on
+-- an emulator run: SupabaseClientProvider's anonymous sign-in broke with
+-- "Database error creating anonymous user" the first time this trigger
+-- shipped without the guard. Anonymous sessions have no human identity to
+-- record here anyway, so skipping them is also the semantically correct
+-- behavior, not just a workaround.
+CREATE OR REPLACE FUNCTION public.handle_new_profile()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.is_anonymous THEN
+    RETURN NEW;
+  END IF;
+  INSERT INTO public.profiles (id, email) VALUES (NEW.id, NEW.email);
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER on_auth_user_created
+AFTER INSERT ON auth.users
+FOR EACH ROW
+EXECUTE FUNCTION public.handle_new_profile();
 
 -- Function: Atomically check-and-deduct a VIP card balance, in cents. Runs
 -- under a row lock (FOR UPDATE) so two concurrent taps on the same card
@@ -514,6 +863,134 @@ $$;
 
 REVOKE ALL ON FUNCTION public.deduct_vip_balance(TEXT, INT) FROM public;
 GRANT EXECUTE ON FUNCTION public.deduct_vip_balance(TEXT, INT) TO anon, authenticated;
+
+-- Function: Atomically check-and-redeem a coupon, in the same style as
+-- deduct_vip_balance() above -- FOR UPDATE row lock so two near-simultaneous
+-- redemptions of the same code (screenshot forwarded to two people, printed
+-- voucher photocopied) can't both succeed. This is the ONLY path allowed to
+-- modify coupons.uses_count / write coupon_redemptions (see REVOKE above).
+-- Only 'authenticated' is granted EXECUTE (not 'anon' like
+-- deduct_vip_balance) since by the time this is reachable the app has
+-- already completed its anonymous sign-in (see SupabaseClientProvider.kt).
+CREATE OR REPLACE FUNCTION public.redeem_coupon(p_code TEXT, p_device_sn TEXT)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_coupon RECORD;
+  v_device_org_id UUID;
+BEGIN
+  SELECT org_id INTO v_device_org_id FROM public.devices WHERE sn = p_device_sn;
+  IF NOT FOUND THEN
+    RETURN json_build_object('success', false, 'message', 'device_not_registered');
+  END IF;
+
+  SELECT * INTO v_coupon FROM public.coupons WHERE code = p_code FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN json_build_object('success', false, 'message', 'not_found');
+  END IF;
+  IF NOT v_coupon.is_active THEN
+    RETURN json_build_object('success', false, 'message', 'inactive');
+  END IF;
+  IF v_coupon.expires_at IS NOT NULL AND v_coupon.expires_at < now() THEN
+    RETURN json_build_object('success', false, 'message', 'expired');
+  END IF;
+  IF v_coupon.uses_count >= v_coupon.max_uses THEN
+    RETURN json_build_object('success', false, 'message', 'already_used');
+  END IF;
+  IF v_coupon.org_id != v_device_org_id THEN -- no cross-tenant coupons; org_id is NOT NULL on both sides
+    RETURN json_build_object('success', false, 'message', 'wrong_org');
+  END IF;
+
+  UPDATE public.coupons SET uses_count = uses_count + 1 WHERE code = p_code;
+  INSERT INTO public.coupon_redemptions (coupon_code, device_sn) VALUES (p_code, p_device_sn);
+
+  RETURN json_build_object(
+    'success', true,
+    'type', v_coupon.type,
+    'value', v_coupon.value,
+    'applicable_product_id', v_coupon.applicable_product_id
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.redeem_coupon(TEXT, TEXT) FROM public;
+GRANT EXECUTE ON FUNCTION public.redeem_coupon(TEXT, TEXT) TO authenticated;
+
+-- Function: operationalizes docs/cloud_management_platform_design.md
+-- §3.3.1's "Service Compensation (One-Click)" workflow -- a MERCHANT_ADMIN
+-- (or SYS_ADMIN) issues a compensation coupon, typically against a specific
+-- failed transaction spotted in the Dynamic Transaction Monitor. Authorization
+-- is checked here, not via table-level RLS on coupons (see the RLS section
+-- comment above org_members' policies for why) -- this is the only path
+-- allowed to write coupons.issued_by_profile_id with a real value. The
+-- coupon code is generated server-side (pgcrypto, already enabled via the
+-- extension at the top of this file) rather than accepted from the caller,
+-- per docs/coupon_redemption_integration.md §4.2's "must be unpredictable,
+-- not guessable" requirement.
+CREATE OR REPLACE FUNCTION public.issue_compensation_coupon(
+  p_org_id UUID,
+  p_value_cents INT,
+  p_max_uses INT DEFAULT 1,
+  p_related_transaction_id UUID DEFAULT NULL
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_code TEXT;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN json_build_object('success', false, 'message', 'not_authenticated');
+  END IF;
+
+  IF p_value_cents <= 0 THEN
+    RETURN json_build_object('success', false, 'message', 'invalid_amount');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.org_members
+    WHERE profile_id = auth.uid() AND (
+      role = 'SYS_ADMIN' OR (role = 'MERCHANT_ADMIN' AND org_id = p_org_id)
+    )
+  ) THEN
+    RETURN json_build_object('success', false, 'message', 'not_authorized');
+  END IF;
+
+  -- gen_random_uuid() (built into core Postgres 13+, always resolvable
+  -- regardless of search_path) instead of pgcrypto's gen_random_bytes() --
+  -- on Supabase, pgcrypto installs into the `extensions` schema, not
+  -- `public`, so the unqualified call failed under this function's
+  -- SET search_path = public (caught live during testing 2026-07-24:
+  -- "function gen_random_bytes(integer) does not exist"). Same
+  -- unpredictability requirement from docs/coupon_redemption_integration.md
+  -- §4.2 is still met -- a v4 UUID has 122 bits of randomness, more than
+  -- gen_random_bytes(8)'s 64.
+  v_code := 'COMP-' || replace(gen_random_uuid()::text, '-', '');
+
+  INSERT INTO public.coupons (
+    code, org_id, type, value, max_uses, issued_reason, issued_by_profile_id, related_transaction_id
+  ) VALUES (
+    v_code, p_org_id, 'FIXED_OFF', p_value_cents, p_max_uses, 'COMPENSATION', auth.uid(), p_related_transaction_id
+  );
+
+  INSERT INTO public.audit_logs (actor_profile_id, org_id, action, target_table, target_id, details)
+  VALUES (
+    auth.uid(), p_org_id, 'ISSUE_COMPENSATION_COUPON', 'coupons', v_code,
+    json_build_object('value_cents', p_value_cents, 'max_uses', p_max_uses, 'related_transaction_id', p_related_transaction_id)
+  );
+
+  RETURN json_build_object('success', true, 'code', v_code);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.issue_compensation_coupon(UUID, INT, INT, UUID) FROM public;
+GRANT EXECUTE ON FUNCTION public.issue_compensation_coupon(UUID, INT, INT, UUID) TO authenticated;
 
 -- Function: link an authenticated (anonymous-auth) session to a device SN,
 -- populating device_auth_map -- which every device-scoped RLS policy above
@@ -763,6 +1240,10 @@ VALUES
 ('VIP_CARD_INACTIVE', '00000000-0000-0000-0000-000000000001', 10000, false)
 ON CONFLICT (card_uid) DO NOTHING;
 
+-- 12-char member QR code for the same card, so the scan-to-identify path
+-- (docs/coupon_redemption_integration.md §2.1) has a real row to resolve.
+UPDATE public.vip_cards SET qr_code = 'MBRQR6789ABC' WHERE card_uid = 'VIP_CARD_UID_6789';
+
 -- 16. QR payment sessions covering every status value -- PENDING is useful
 -- for manually flipping to PAID while testing the poll path (real payment
 -- gateway webhook not implemented yet, see docs/qr_payment_integration.md);
@@ -773,3 +1254,34 @@ VALUES
 ('TX_SAMPLE_0002', 'PAX-IM30-WASH-001', 600, 'PAID', now() - INTERVAL '2 hours'),
 ('TX_SAMPLE_0003', 'PAX-IM30-LAUN-002', 350, 'EXPIRED', NULL)
 ON CONFLICT (tx_id) DO NOTHING;
+
+-- 17. Sample coupons -- codes deliberately NOT 12 alphanumeric characters
+-- (some contain hyphens, others are a different length) so they can never
+-- collide with the 12-char member-QR-code format's routing regex
+-- (docs/coupon_redemption_integration.md §2.1). All applicable_product_id
+-- NULL ("any package") -- see the client-side matching gap noted in
+-- MainActivity's coupon handling for why a product-restricted coupon isn't
+-- seeded here yet. Org 1 / WASH vertical, matching PAX-IM30-WASH-001 and
+-- the "starter" package ($4.00) from the app_configurations seed above.
+INSERT INTO public.coupons (code, org_id, type, value, max_uses, uses_count, expires_at, issued_reason, is_active)
+VALUES
+-- 20% off any package.
+('DEMO-PCT20-COUPON', '00000000-0000-0000-0000-000000000001', 'PERCENT_OFF', 20, 1, 0, NULL, 'PROMOTION', true),
+-- Compensation voucher covering exactly the $4.00 "starter" package -- redeeming
+-- this and picking Starter should reach finalPriceCents == 0 (free wash path).
+('DEMO-FIXED4-COUPON', '00000000-0000-0000-0000-000000000001', 'FIXED_OFF', 400, 1, 0, NULL, 'COMPENSATION', true),
+-- Already at max_uses -- exercises the 'already_used' rejection path.
+('DEMO-USED-COUPON', '00000000-0000-0000-0000-000000000001', 'FIXED_OFF', 200, 1, 1, NULL, 'PROMOTION', true),
+-- Expired yesterday -- exercises the 'expired' rejection path.
+('DEMO-EXPIRED-COUPON', '00000000-0000-0000-0000-000000000001', 'PERCENT_OFF', 50, 1, 0, now() - INTERVAL '1 day', 'PROMOTION', true)
+ON CONFLICT (code) DO NOTHING;
+
+-- 18. profiles/org_members are intentionally NOT seeded here -- same reason
+-- as §13's device_auth_map: profiles.id has a REFERENCES auth.users(id)
+-- foreign key, and there's no way to fabricate a placeholder UUID that
+-- satisfies it. A profiles row only exists once a real human signs up
+-- (auto-created by the on_auth_user_created trigger, §9). To test
+-- issue_compensation_coupon() manually, sign up a real user, then:
+--   insert into public.org_members (profile_id, org_id, role)
+--   values ('<real-auth-uid>', '00000000-0000-0000-0000-000000000001', 'MERCHANT_ADMIN');
+-- (org_id NULL + role 'SYS_ADMIN' for a global admin instead.)

@@ -61,6 +61,11 @@
     <string name="toast_wash_finish">Wash cycle complete. Thank you!</string>
     <string name="toast_pay_timeout">Payment timed out. Please try again.</string>
     <string name="toast_payment_processing_wait">Payment processing, please wait…</string>
+    <string name="toast_member_recognized">Member recognized! Please select your wash package.</string>
+    <string name="toast_member_code_invalid">Member code not recognized</string>
+    <string name="toast_coupon_applied">Coupon applied! Please select your wash package.</string>
+    <string name="toast_coupon_invalid">This coupon can\'t be used, please see staff</string>
+    <string name="toast_coupon_see_staff">This coupon needs staff assistance to redeem</string>
 
     <string name="status_processing">Processing Payment...</string>
     <string name="status_approved">Transaction Approved</string>

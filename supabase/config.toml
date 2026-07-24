@@ -1,0 +1,24 @@
+# Supabase CLI config for Edge Functions deployment/local dev.
+# See: supabase functions deploy <name>
+#
+# Secrets are set separately via the Supabase CLI/Dashboard, never committed
+# here or anywhere in this repo:
+#   supabase secrets set PAYMENT_GATEWAY=stripe
+#   supabase secrets set STRIPE_SECRET_KEY=sk_...       (Restricted Key: Checkout Sessions - Write, that's all this flow needs)
+#   supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_... (only available AFTER create-qr-session/payment-webhook are deployed and a webhook endpoint pointing at payment-webhook's URL is created in the Stripe Dashboard -- see docs/qr_payment_integration.md)
+#
+# PAYMENT_GATEWAY unset/anything else falls back to the stub gateway (see
+# _shared/gateways/stub.ts) -- sessions get created and QR codes render, but
+# nothing can ever mark one PAID.
+
+project_id = "ttbtxxpnvkcbyugzdqfw"
+
+[functions.create-qr-session]
+# Default (true): only a signed-in device's Supabase session may call this.
+verify_jwt = true
+
+[functions.payment-webhook]
+# The caller here is the payment gateway, not a signed-in device -- there is
+# no Supabase JWT to check. Authenticity comes entirely from
+# gateway.verifyWebhook()'s signature verification inside the function.
+verify_jwt = false

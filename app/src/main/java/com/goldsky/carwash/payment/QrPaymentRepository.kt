@@ -2,28 +2,34 @@ package com.goldsky.carwash.payment
 
 import android.util.Log
 import io.github.jan.supabase.postgrest.postgrest
+import io.ktor.client.call.*
+import io.ktor.http.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class QrPaymentSession(
+private data class CreateSessionRequest(
     val tx_id: String,
     val device_sn: String,
-    val amount_cents: Int,
-    val status: String = "PENDING"
+    val amount_cents: Int
 )
+
+@Serializable
+private data class CreateSessionResponse(val code_url: String)
 
 @Serializable
 private data class QrSessionStatus(val status: String)
 
 /**
  * Backs the "scan-to-pay" flow with a real Supabase-persisted session instead
- * of a client-side fake timer. A gateway webhook (Alipay/WeChat/Stripe --
- * external integration, needs merchant credentials this repo doesn't have)
- * is expected to flip `status` to PAID once it confirms funds; this class
- * only creates the session and polls it, never marks it paid itself.
+ * of a client-side fake timer. Session creation goes through the
+ * create-qr-session Edge Function (supabase/functions/create-qr-session),
+ * which is the only place that ever talks to a payment gateway -- gateway
+ * secret keys must never reach the APK. A gateway webhook
+ * (supabase/functions/payment-webhook) is the only thing that flips
+ * `status` to PAID; this class only creates the session and polls it.
  */
 object QrPaymentRepository {
     private const val TAG = "QrPaymentRepository"
@@ -36,18 +42,28 @@ object QrPaymentRepository {
      * does get a few quick in-band retries (matching DeviceRepository's
      * pattern) since transient network blips are common and worth absorbing
      * before making the customer tap "try again" themselves.
+     *
+     * Returns the code_url to render as a QR code, or null on failure. Until
+     * a real gateway is wired in (see supabase/functions/_shared/gateways),
+     * the Edge Function's stub gateway returns an unpayable placeholder URL
+     * -- sessions will always time out, which is expected pre-launch.
      */
-    suspend fun createSession(txId: String, deviceSn: String, amountCents: Int): Boolean =
+    suspend fun createSession(txId: String, deviceSn: String, amountCents: Int): String? =
         withContext(Dispatchers.IO) {
             try {
                 retryWithBackoff(times = 3) {
-                    SupabaseClientProvider.client.postgrest["qr_payment_sessions"]
-                        .insert(QrPaymentSession(tx_id = txId, device_sn = deviceSn, amount_cents = amountCents))
+                    val response = SupabaseClientProvider.invokeFunction(
+                        "create-qr-session",
+                        CreateSessionRequest(tx_id = txId, device_sn = deviceSn, amount_cents = amountCents)
+                    )
+                    if (!response.status.isSuccess()) {
+                        throw IllegalStateException("create-qr-session failed: ${response.status}")
+                    }
+                    response.body<CreateSessionResponse>().code_url
                 }
-                true
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to create QR session: ${e.message}")
-                false
+                null
             }
         }
 

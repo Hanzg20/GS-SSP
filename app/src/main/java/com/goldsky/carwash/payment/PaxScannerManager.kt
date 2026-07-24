@@ -91,10 +91,21 @@ class PaxScannerManager(private val context: Context) {
      * Simulates a successful scan after 4 seconds.
      */
     private fun startMockScan(callback: ScanCallback) {
-        Log.d(TAG, "Mock scanner: will simulate payment token scan in 4 seconds")
+        Log.d(TAG, "Mock scanner: will simulate a scan in 4 seconds")
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            // Typical Alipay/WeChat payment code starts with specific prefixes (28, 30, etc.)
-            val mockToken = "280047291039485${System.currentTimeMillis() % 1000}"
+            // Cycles between a generic payment-code-shaped token and the two
+            // seeded values from docs/supabase_full_schema.sql (a member QR
+            // code and a coupon code) so both consumers of startScan() --
+            // MainActivity's Tech Dashboard raw scanner test and its coupon/
+            // member scan entry (initCouponScan(), see
+            // docs/coupon_redemption_integration.md) -- are exercisable
+            // end-to-end off real hardware.
+            val mockResults = listOf(
+                "280047291039485${System.currentTimeMillis() % 1000}", // typical Alipay/WeChat-shaped payment token
+                "MBRQR6789ABC", // seeded vip_cards.qr_code
+                "DEMO-PCT20-COUPON" // seeded coupons.code
+            )
+            val mockToken = mockResults[((System.currentTimeMillis() / 4000) % mockResults.size).toInt()]
             Log.i(TAG, "Mock scan result: $mockToken")
             callback.onScanSuccess(mockToken)
         }, 4000)

@@ -1,6 +1,18 @@
 # GS-SSP 系统架构设计规格书 (System Architecture Specification)
 
-## 0. 版本更新记录 (Changelog)
+### v2.11 (2026-07-23) — Stripe 接入并跑通完整闭环
+选定网关（Stripe，Checkout Session 模式）后，实现了 `_shared/gateways/stripe.ts`：`createPaymentIntent` 建 Checkout Session（`client_reference_id` 存 `tx_id` 用于 webhook 回调对应）；`verifyWebhook` 用 `constructEventAsync` + `SubtleCryptoProvider`（Deno 边缘运行时没有 Node `crypto` 模块）验签，按事件类型分流成 `invalid`/`ignored`/`event` 三态。
+
+部署到 Supabase 后用 Stripe CLI（`stripe listen` / `stripe trigger`）+ 真实测试模式付款做了完整调试，过程中发现并修复两个真实问题（细节见 `docs/qr_payment_integration.md` §3.4）：`payment-webhook` 的 JWT 校验关闭在重新部署已存在函数时可能不生效（Supabase CLI 已知 bug，靠 Dashboard 手动关闭解决）；密钥设置命令手滑导致 `PAYMENT_GATEWAY` 变量的值被设成了 Stripe 密钥本身，让网关选择一直悄悄退化到 stub——靠临时诊断日志定位。**2026-07-23 用 Stripe 测试模式的测试卡实测跑通了全链路**：建会话 → 真实收银页 → 付款 → webhook → `qr_payment_sessions` 正确标记 `PAID`。
+
+剩余已知问题：`success_url`/`cancel_url` 还是占位域名，付款后客户会看到一个报错页（不影响支付本身，但体验待改进）；重复 webhook 的幂等性、webhook 延迟的定时兜底查询这两项还没有专门测过。调试过程中出现过一次 Stripe **live** 模式密钥被贴入对话的情况，已引导用户在 Stripe Dashboard 上 roll 掉；这提醒了一个操作规范：任何密钥都应该由用户自己在本地终端设置，不经过对话过程。
+
+### v2.10 (2026-07-23) — QR 支付网关无关的骨架
+应用户要求（"先做成和具体网关无关的"）搭好了 `create-qr-session`/`payment-webhook` 两个 Supabase Edge Function 的骨架（`supabase/functions/`），核心是一个 `PaymentGateway` 接口（`_shared/gateway.ts`）把"下单"和"验签+解析回调"两件事跟具体网关（Stripe/支付宝/微信）完全解耦——两个 Edge Function 只认这个接口，选哪个网关只影响 `_shared/gateways/<name>.ts` 这一个新文件和一个环境变量，不改函数本体。默认生效的是 `stub` 实现（造假 `code_url`，`verifyWebhook` 恒返回 null），保证在没有商户账号之前也能把 `create-qr-session` 全链路跑通（建会话、渲二维码、轮询超时），只是永远等不到 PAID。
+
+客户端配合改动：`QrPaymentRepository.createSession()` 从直接 `INSERT qr_payment_sessions` 改为调用 `create-qr-session`（返回值也从 `Boolean` 改成真实 `code_url`），`MainActivity.initQrPayment()` 渲染这个真实 URL 而不是拼接的假地址。新增 `SupabaseClientProvider.invokeFunction()` 作为 Edge Function 调用的统一入口——supabase-kt 2.6.1 没有 Functions 插件，用了一个专用小 Ktor client，但鉴权 token 仍取自 `client.auth` 这一个共享会话，没有重新引入 v2.7 修的双重匿名身份问题。
+
+`assembleDebug`/`assembleRelease`/`testDebugUnitTest` 全绿；直接 curl 未部署的 Edge Function 端点确认返回干净的 404（`sb-error-code: NOT_FOUND`），验证了 App 侧的失败处理路径行为符合预期。**这些 Edge Function 尚未部署**（`supabase functions deploy` 还没跑过），且真实网关适配器（`_shared/gateways/stripe.ts` 等）尚未实现——这两步仍卡在需要先选定网关+拿到商户凭证。
 
 ### v2.9 (2026-07-23) — 结项两个搁置的架构决策
 应用户要求（"两个搁置的架构决策，按照评估后的最佳方案"）对 v2.4 提出但一直搁置的两项做出决定并落地，卡支付次要项按要求继续搁置（等厂商 POSLink SDK 文档到位后再处理，本轮不动）。

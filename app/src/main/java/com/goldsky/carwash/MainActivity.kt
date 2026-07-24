@@ -57,6 +57,14 @@ class MainActivity : BaseAdActivity() {
     // from a bank transaction that's still actually in progress server-side.
     @Volatile private var paymentInFlight = false
 
+    // Set by a home-screen "Scan Coupon / Member QR Code" scan (see
+    // initCouponScan()) and consumed the moment the customer picks a
+    // package/custom amount -- mutually exclusive, since a single scan
+    // result is routed to exactly one of the two (see docs/
+    // coupon_redemption_integration.md §2.1's format-based routing).
+    private var pendingVipCardUid: String? = null
+    private var pendingCoupon: CouponRedeemResult.Success? = null
+
     // Technician/Maintenance Variables
     private var logoClickCount = 0
     private var lastClickTime = 0L
@@ -190,6 +198,10 @@ class MainActivity : BaseAdActivity() {
         findViewById<View>(R.id.layout_vip_banner).setOnClickListener {
             startActivity(Intent(this, VipActivity::class.java))
         }
+
+        findViewById<View>(R.id.layout_scan_belt).setOnClickListener {
+            initCouponScan()
+        }
     }
 
     /**
@@ -230,9 +242,9 @@ class MainActivity : BaseAdActivity() {
             
             cardView.setOnClickListener {
                 // Extract serial hex from generic attributes
-                val serialHex = product.attributes?.get("serial_hex")?.jsonPrimitive?.contentOrNull 
+                val serialHex = product.attributes?.get("serial_hex")?.jsonPrimitive?.contentOrNull
                     ?: "AA000055"
-                showPaymentDialog(product.price_cents, serialHex)
+                startPackagePurchaseFlow(product.price_cents, serialHex)
             }
         }
 
@@ -269,7 +281,7 @@ class MainActivity : BaseAdActivity() {
         dialog.findViewById<Button>(R.id.btn_confirm_custom).setOnClickListener {
             dialog.dismiss()
             val hex = "AA 01 ${"%02X".format(amount)} 55"
-            showPaymentDialog(amount * 100, hex)
+            startPackagePurchaseFlow(amount * 100, hex)
         }
         
         dialog.findViewById<Button>(R.id.btn_cancel_custom).setOnClickListener {
@@ -279,6 +291,102 @@ class MainActivity : BaseAdActivity() {
         
         dialog.setOnShowListener { applyKioskWindowFlags() }
         dialog.show()
+    }
+
+    /**
+     * Entry point for the home-screen "Scan Coupon / Member QR Code" belt
+     * (layout_scan_belt) -- previously pure decoration with no backing logic
+     * (see docs/coupon_redemption_integration.md). Routes the scanned string
+     * by format (§2.1): a 12-character alphanumeric code is a member QR
+     * code, anything else is a coupon/voucher code. The client never judges
+     * a coupon's validity itself -- redeem_coupon() does that atomically,
+     * server-side; the client only routes the result.
+     */
+    private fun initCouponScan() {
+        if (paymentDialog?.isShowing == true) return // a payment is already in flight, ignore
+
+        scannerManager?.startScan(object : PaxScannerManager.ScanCallback {
+            override fun onScanSuccess(result: String) {
+                val scanned = result.trim()
+                runOnUiThread {
+                    if (Regex("^[A-Za-z0-9]{12}$").matches(scanned)) {
+                        CoroutineScope(Dispatchers.Main).launch {
+                            val cardUid = VipRepository.resolveCardUidByQrCode(scanned)
+                            if (cardUid != null) {
+                                pendingCoupon = null
+                                pendingVipCardUid = cardUid
+                                Toast.makeText(this@MainActivity, getString(R.string.toast_member_recognized), Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(this@MainActivity, getString(R.string.toast_member_code_invalid), Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    } else {
+                        CoroutineScope(Dispatchers.Main).launch {
+                            when (val redemption = CouponRepository.redeemCoupon(scanned, deviceSn)) {
+                                is CouponRedeemResult.Success -> {
+                                    if (redemption.applicableProductId == null) {
+                                        pendingVipCardUid = null
+                                        pendingCoupon = redemption
+                                        Toast.makeText(this@MainActivity, getString(R.string.toast_coupon_applied), Toast.LENGTH_LONG).show()
+                                    } else {
+                                        // Already consumed server-side (uses_count incremented) -- the
+                                        // client has no reliable way to match it against the currently
+                                        // selected package, see the plan's product-id matching gap note.
+                                        Toast.makeText(this@MainActivity, getString(R.string.toast_coupon_see_staff), Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                                is CouponRedeemResult.Rejected, CouponRedeemResult.NetworkError -> {
+                                    // Never distinguish the reason to the customer (not_found vs
+                                    // already_used vs expired, etc.) -- see doc §4.6.
+                                    Toast.makeText(this@MainActivity, getString(R.string.toast_coupon_invalid), Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            override fun onScanFailure(errorMsg: String) {
+                Log.w("MainActivity", "Coupon scan failed: $errorMsg")
+            }
+        })
+    }
+
+    /**
+     * Single entry point for "customer has picked a price" -- both
+     * refreshProductsUI's package cards and showCustomAmountDialog's confirm
+     * button call this instead of showPaymentDialog directly, so any pending
+     * scan result from initCouponScan() is applied exactly once, regardless
+     * of which path the customer took to get here. [priceInCents]/[startHex]
+     * are the package's own (pre-discount) price and hardware command.
+     */
+    private fun startPackagePurchaseFlow(priceInCents: Int, startHex: String) {
+        val vipUid = pendingVipCardUid
+        if (vipUid != null) {
+            pendingVipCardUid = null
+            startPreAuthenticatedVipFlow(priceInCents, startHex, vipUid)
+            return
+        }
+
+        val coupon = pendingCoupon
+        if (coupon != null) {
+            pendingCoupon = null
+            // Formula from docs/coupon_redemption_integration.md §3.2 --
+            // clamped at 0, never negative (no "change back to the customer").
+            val finalPriceCents = when (coupon.type) {
+                "PERCENT_OFF" -> priceInCents - (priceInCents * coupon.value / 100)
+                "FIXED_OFF" -> maxOf(0, priceInCents - coupon.value)
+                "FREE_WASH" -> 0
+                else -> priceInCents
+            }
+            if (finalPriceCents <= 0) {
+                startFreeWashFlow(priceInCents, startHex)
+            } else {
+                showPaymentDialog(finalPriceCents, startHex)
+            }
+            return
+        }
+
+        showPaymentDialog(priceInCents, startHex)
     }
 
     /**
@@ -395,8 +503,12 @@ class MainActivity : BaseAdActivity() {
             }
         }
         dialog.findViewById<View>(R.id.btn_back_qr)?.setOnClickListener {
-            dialog.dismiss()
-            showPaymentDialog(priceInCents, startHex)
+            if (paymentInFlight) {
+                Toast.makeText(this@MainActivity, getString(R.string.toast_payment_processing_wait), Toast.LENGTH_SHORT).show()
+            } else {
+                dialog.dismiss()
+                showPaymentDialog(priceInCents, startHex)
+            }
         }
 
         val dialogTimer = object : CountDownTimer(60000, 100) {
@@ -404,9 +516,15 @@ class MainActivity : BaseAdActivity() {
                 pbTimeout.progress = (millisUntilFinished / 1000).toInt()
             }
             override fun onFinish() {
-                // A card SALE/VIP-deduct still in flight resolves on its own
-                // (PosLink has its own 60s CommSetting timeout) -- don't
-                // yank the dialog out from under it.
+                // A card SALE/VIP-deduct/QR poll still in flight resolves on
+                // its own (PosLink has its own 60s CommSetting timeout;
+                // QrPaymentRepository.pollUntilPaid() polls for up to 120s)
+                // -- don't yank the dialog out from under it. Without this
+                // guard, a QR payment that took the customer 60-120s to
+                // complete on their own phone would get its dialog
+                // auto-dismissed (which cancels pollingJob) right as, or
+                // just before, Stripe actually confirms it -- money moves,
+                // app never finds out.
                 if (dialog.isShowing && !paymentInFlight) {
                     Toast.makeText(this@MainActivity, getString(R.string.toast_pay_timeout), Toast.LENGTH_LONG).show()
                     dialog.dismiss()
@@ -485,6 +603,71 @@ class MainActivity : BaseAdActivity() {
         }
     }
 
+    /**
+     * Like startPaymentFlow(isCard=true, ...) but for when the VIP identity
+     * is already known from a home-screen member-QR-code scan
+     * (initCouponScan()) -- skips the "please tap your card" guidance screen
+     * entirely and goes straight into the same deduct-balance/finalization
+     * logic initVipPayment() already implements for the NFC-tap path (on
+     * rejection/network error, initVipPayment falls back to
+     * startPaymentFlow(true, ...) itself, letting the customer tap a
+     * physical card instead -- no special-casing needed here for that).
+     * Deliberately a small dedicated function rather than folding into
+     * startPaymentFlow -- that function's shape exists to race NFC detection
+     * between EMV and MIFARE when the identity isn't known yet, which
+     * doesn't apply here.
+     */
+    private fun startPreAuthenticatedVipFlow(priceInCents: Int, startHex: String, uid: String) {
+        val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
+        dialog.setContentView(R.layout.dialog_payment)
+        paymentDialog = dialog
+
+        dialog.findViewById<ConstraintLayout>(R.id.layout_card_guidance).visibility = View.GONE
+        dialog.findViewById<ConstraintLayout>(R.id.layout_qr_guidance).visibility = View.GONE
+        dialog.findViewById<TextView>(R.id.shared_subtitle).text = getString(R.string.prompt_pay_subtitle, "$${priceInCents / 100}")
+
+        dialog.setOnShowListener { applyKioskWindowFlags() }
+        dialog.setOnDismissListener {
+            pollingJob?.cancel()
+            scannerManager?.stopScan()
+        }
+        dialog.show()
+
+        initVipPayment(uid, priceInCents, startHex, dialog)
+    }
+
+    /**
+     * A redeemed coupon fully covered the package price (finalPriceCents ==
+     * 0, see startPackagePurchaseFlow) -- skip card/QR/VIP payment entirely
+     * and go straight to hardware dispense. [originalPriceCents] is the
+     * package's own pre-discount price: startFinalizationSequence's real-
+     * hardware path derives pulse count from the amount charged, and
+     * amountCents=0 there would silently send zero pulses
+     * (SerialPortManager.sendPulses short-circuits on count<=0) -- the
+     * customer would see "Enjoy your wash" and get nothing. pulseAmountCents
+     * keeps "money charged" (0, for the transaction record) and "wash
+     * dispensed" (the full package) as separate concerns.
+     */
+    private fun startFreeWashFlow(originalPriceCents: Int, startHex: String) {
+        val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
+        dialog.setContentView(R.layout.dialog_payment)
+        paymentDialog = dialog
+
+        dialog.findViewById<ConstraintLayout>(R.id.layout_card_guidance).visibility = View.GONE
+        dialog.findViewById<ConstraintLayout>(R.id.layout_qr_guidance).visibility = View.GONE
+        dialog.findViewById<TextView>(R.id.shared_subtitle).text = getString(R.string.prompt_pay_subtitle, "$0")
+
+        dialog.setOnShowListener { applyKioskWindowFlags() }
+        dialog.setOnDismissListener {
+            pollingJob?.cancel()
+            scannerManager?.stopScan()
+        }
+        dialog.show()
+
+        paymentInFlight = true
+        startFinalizationSequence(0, startHex, "", dialog, pulseAmountCents = originalPriceCents)
+    }
+
     private fun initCardPayment(priceInCents: Int, startHex: String, dialog: Dialog) {
         // Unique per attempt -- also serves as the transactions.ecr_ref_num
         // for the PENDING row below (UNIQUE constraint), so a fixed constant
@@ -533,33 +716,51 @@ class MainActivity : BaseAdActivity() {
     private fun initQrPayment(priceInCents: Int, startHex: String, dialog: Dialog) {
         val qrImageView = dialog.findViewById<ImageView>(R.id.img_pay_qr)
         val txId = "TX_" + System.currentTimeMillis()
-        val checkoutUrl = "https://gs-ssp.ca/pay?tx=$txId&amt=${priceInCents}"
-        val qrBitmap: Bitmap? = PaymentService.generateQrCode(checkoutUrl, 250, 250)
-        if (qrBitmap != null) {
-            qrImageView.setImageBitmap(qrBitmap)
-        }
 
+        // Set for the whole create-session+poll window (up to ~2 minutes,
+        // matching pollUntilPaid's own 60x2s budget below), not just around
+        // the finalization sequence like card/VIP -- the customer completes
+        // payment on their OWN phone, entirely outside our control, so there
+        // is no earlier "safe to cancel" point: once a Checkout Session
+        // exists, we can't tell from the kiosk side whether they're still
+        // typing a card number or have already hit submit. Guards both the
+        // Back button (btn_back_qr) and the 60s dialogTimer auto-dismiss --
+        // without this, either could tear down the dialog (which cancels
+        // pollingJob) while Stripe is mid-processing, leaving a paid session
+        // the app never finds out about.
+        paymentInFlight = true
         pollingJob = CoroutineScope(Dispatchers.Main).launch {
-            // Persist a real session so status can only flip to PAID from the
-            // server side (payment gateway webhook), never from the client
-            // itself faking success after N poll ticks.
-            val created = QrPaymentRepository.createSession(txId, deviceSn, priceInCents)
-            if (!created) {
+            // create-qr-session (Edge Function) is the only thing that talks
+            // to the payment gateway and is the only writer of this session
+            // row -- status can only flip to PAID from the server side
+            // (payment-webhook), never from the client itself faking success
+            // after N poll ticks. code_url comes from the gateway, not a
+            // client-fabricated placeholder.
+            val codeUrl = QrPaymentRepository.createSession(txId, deviceSn, priceInCents)
+            if (codeUrl == null) {
+                paymentInFlight = false
                 Toast.makeText(this@MainActivity, "Failed to start QR session, try again", Toast.LENGTH_LONG).show()
                 return@launch
             }
+            val qrBitmap: Bitmap? = PaymentService.generateQrCode(codeUrl, 250, 250)
+            if (qrBitmap != null) {
+                qrImageView.setImageBitmap(qrBitmap)
+            }
             val paid = QrPaymentRepository.pollUntilPaid(txId)
             if (paid) {
+                // paymentInFlight is cleared by startFinalizationSequence itself once it's done.
                 startFinalizationSequence(priceInCents, startHex, "", dialog)
+            } else {
+                // Polling gave up (customer never completed payment, or it's
+                // still processing beyond our 2-minute budget) -- previously
+                // this branch did nothing at all, leaving the dialog sitting
+                // open forever with no way for the kiosk to recover on its own.
+                paymentInFlight = false
+                Toast.makeText(this@MainActivity, getString(R.string.toast_pay_timeout), Toast.LENGTH_LONG).show()
+                dialog.dismiss()
+                resetAdTimer()
             }
         }
-
-        scannerManager?.startScan(object : PaxScannerManager.ScanCallback {
-            override fun onScanSuccess(result: String) {
-                startFinalizationSequence(priceInCents, startHex, "", dialog)
-            }
-            override fun onScanFailure(errorMsg: String) {}
-        })
     }
 
     /**
@@ -578,7 +779,13 @@ class MainActivity : BaseAdActivity() {
         startHex: String,
         refNum: String,
         dialog: Dialog?,
-        pendingEcrRefNum: String? = null
+        pendingEcrRefNum: String? = null,
+        // Defaults to amountCents (unchanged behavior for every existing
+        // call site). Separate parameter for startFreeWashFlow, where the
+        // amount charged (0, what gets recorded/audited) and the amount of
+        // wash to actually dispense (the package's full price) diverge --
+        // see that function's doc comment.
+        pulseAmountCents: Int = amountCents
     ) {
         val layoutStatus = dialog?.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
         val tvStatus = dialog?.findViewById<TextView>(R.id.tv_status_msg)
@@ -620,9 +827,9 @@ class MainActivity : BaseAdActivity() {
                 val settings = ConfigManager.getConfig()?.settings
                 val pulseWeight = settings?.pulse_weight_cents ?: 25
                 val pulseHex = settings?.pulse_hex ?: "AA 01 01 55"
-                val pulseCount = amountCents / pulseWeight
+                val pulseCount = pulseAmountCents / pulseWeight
 
-                Log.i("SSP_HARDWARE", "Sending $pulseCount pulses for $$amountCents cents")
+                Log.i("SSP_HARDWARE", "Sending $pulseCount pulses for $$amountCents cents charged (dispensing $$pulseAmountCents worth)")
                 successAck = SerialPortManager.sendPulses(pulseHex, pulseCount)
             }
 

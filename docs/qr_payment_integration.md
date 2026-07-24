@@ -67,29 +67,43 @@ sequenceDiagram
 
 ## 3. 待办任务 (TODO)
 
-### 3.1 需要你决策/提供的前置条件（我这边做不了）
-- [ ] **选定支付网关**：支付宝 + 微信支付（需要中国大陆或跨境商户资质），或 **Stripe**（一家网关同时支持 Apple Pay / Google Pay / 信用卡，北美场景下集成量远小于分别接支付宝+微信，个人建议优先考虑）。
-- [ ] 申请/提供商户号、APPID、API 密钥（或私钥）等网关凭证。
-- [ ] 决定 Webhook 服务的落地位置：推荐 **Supabase Edge Function**（离数据库最近，密钥可用 Supabase Secrets 管理，无需额外运维一台服务器）。
+### 3.1 前置条件
+- [x] **网关选定：Stripe**（Checkout Session，见下）。
+- [x] 已生成 Stripe **Restricted Key**（`Checkout Sessions: Write` 权限即可，不需要全权限的标准密钥）。
+- [x] Webhook 落地在 **Supabase Edge Function**（`payment-webhook`）。
 
-### 3.2 后端 / Edge Function（拿到网关凭证后可实现）
-- [ ] 新建 Edge Function：`create-qr-session`，服务端持有密钥，调用网关"预下单"API，返回真实 `code_url` 给终端。
-- [ ] 新建 Edge Function：`payment-webhook`，接收网关异步回调：
-  - [ ] 验证签名（Alipay RSA2 / 微信 HMAC-SHA256 或 RSA / Stripe Webhook Signing Secret）
-  - [ ] 校验金额与 `qr_payment_sessions` 记录一致
-  - [ ] 更新 `status = 'PAID'`，记录 `paid_at`
-  - [ ] 按网关要求的格式应答（如支付宝要求原样返回字符串 `"success"`，否则会重复重试回调）
-- [ ] 新建定时任务（Supabase Cron 或 Edge Function + `pg_cron`）：扫描 PENDING 超过 N 分钟且未过期的会话，调用网关"查单"API 兜底，并对彻底超时的会话调用"关单"API。
+### 3.2 后端 / Edge Function
+- [x] **网关无关的骨架**（`supabase/functions/`）：
+  - `_shared/gateway.ts` —— `PaymentGateway` 接口（`createPaymentIntent`/`verifyWebhook`）+ `getGateway()` 工厂（读 `PAYMENT_GATEWAY` 环境变量选择实现）。`verifyWebhook` 返回一个三态的 `WebhookVerifyResult`（`invalid`/`ignored`/`event`），不是简单的 `null`——网关会给同一个 webhook 地址推很多跟支付无关的事件类型，"签名有效但不是我们关心的事件"跟"签名校验失败"必须分开处理，否则前者会被当 401 回给网关，网关会一直重试一个我们永远不会处理的事件。
+  - `_shared/gateways/stub.ts` —— 占位实现，默认生效，保证没有真实网关凭证时 `create-qr-session` 也能端到端跑通（建会话、渲二维码、轮询），只是永远等不到 PAID。
+  - `_shared/gateways/stripe.ts` —— **已实现**。`createPaymentIntent` 建一个 Stripe **Checkout Session**（不是裸 PaymentIntent）——客户在自己手机上扫码打开的是 Stripe 托管收银页，信用卡/Apple Pay/Google Pay（以后账户开通了还能加支付宝/微信）都在同一个页面，比自建支付 UI 简单可靠。`client_reference_id` 设成我们的 `tx_id`，webhook 靠这个字段把回调对应回 `qr_payment_sessions` 行，不需要额外的映射表。`verifyWebhook` 用 `constructEventAsync` + `SubtleCryptoProvider`（Deno 边缘运行时没有 Node 的 `crypto` 模块，必须用这个而不是同步版的 `constructEvent`）。
+  - `create-qr-session/index.ts` —— 校验请求体 → 调 `gateway.createPaymentIntent()` → 用 service_role 写入 `qr_payment_sessions` → 把 `code_url` 返回给设备。
+  - `payment-webhook/index.ts` —— 调 `gateway.verifyWebhook()` → 按 `invalid`/`ignored`/`event` 三态分别处理 → 幂等 `UPDATE ... WHERE status='PENDING' AND amount_cents=...`。
+  - `config.toml` —— `create-qr-session` 走正常 JWT 校验（只有登录设备能调），`payment-webhook` 关掉 JWT 校验（调用方是网关，没有 Supabase 会话，鉴权完全靠 `verifyWebhook()` 的签名校验）。
+- [ ] **部署前必须做的（你这边的操作，我做不了）**：
+  1. `supabase secrets set PAYMENT_GATEWAY=stripe STRIPE_SECRET_KEY=sk_...`（用你生成的 Restricted Key，不要用 `pk_live_...` 那个 publishable key——那个是给客户端用的，这条流程里用不上）
+  2. **强烈建议先用 Stripe 测试模式的 Restricted Key（`sk_test_...`）跑通一遍全流程，再切生产密钥**——这套 webhook 验签、幂等处理目前还没有过一次真实请求的检验。
+  3. `supabase functions deploy create-qr-session payment-webhook`
+  4. 部署后去 Stripe Dashboard → Developers → Webhooks，新建一个 Endpoint，URL 填 `payment-webhook` 部署后的地址，订阅事件类型：`checkout.session.completed`、`checkout.session.async_payment_succeeded`、`checkout.session.expired`、`checkout.session.async_payment_failed`
+  5. Stripe 会给这个 Endpoint 生成一个 Signing Secret（`whsec_...`），`supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...`
+- [ ] 新建定时任务（Supabase Cron / `pg_cron`）：扫描 PENDING 超过 N 分钟且未过期的会话，调用网关"查单"API 兜底，并对彻底超时的会话调用"关单"API。
 
-### 3.3 客户端改动（Edge Function 就绪后需要联动修改）
-- [ ] `QrPaymentRepository.createSession()` 改为调用 `create-qr-session` Edge Function（而不是直接 INSERT 表），拿到网关返回的真实 `code_url`。
-- [ ] `MainActivity.initQrPayment()` / `PaymentService.generateQrCode()` 改为渲染网关返回的 `code_url`，不再拼接假 URL。
+### 3.3 客户端改动
+- [x] `QrPaymentRepository.createSession()` 已改为调用 `create-qr-session` Edge Function（不再直接 INSERT 表），返回值从 `Boolean` 改成 `String?`（拿到网关的真实 `code_url`）。`SupabaseClientProvider.invokeFunction()` 是新增的统一入口——supabase-kt 2.6.1 没有 Functions 插件，所以走的是一个专用的小 Ktor client，但鉴权 token 仍然取自 `client.auth`（同一个共享会话），不会重蹈 v2.7 双重身份的覆辙。
+- [x] `MainActivity.initQrPayment()` 已改为渲染 `createSession()` 返回的真实 `code_url`，不再拼接假 URL。
 - [ ] 轮询超时（`pollUntilPaid` 返回 false）时的用户提示文案需要区分"支付失败"与"支付确认中，请勿重复扫码"（因为可能网关那边其实还在处理）。
 
 ### 3.4 测试与验证
-- [ ] 用网关提供的沙箱/测试环境跑一次完整链路：下单 → 沙箱扫码 → Webhook 到达 → 终端轮询捕获 PAID → 触发硬件模拟指令。
-- [ ] 故意让 Webhook 延迟/丢失一次，验证超时兜底查询能补上状态。
-- [ ] 验证重复 Webhook（网关重试机制）不会导致重复触发硬件/重复记账（需要 `payment-webhook` 做幂等处理，例如已是 PAID 状态则直接返回成功，不重复执行副作用）。
+- [x] **2026-07-23 用 Stripe 测试模式跑通了完整链路**：`create-qr-session` 建会话 → 拿到真实 Stripe Checkout 链接 → 测试卡（`4242 4242 4242 4242`）付款 → `payment-webhook` 验签通过 → `qr_payment_sessions` 正确更新为 `status='PAID'` 并写入 `paid_at`。调试过程中顺带修了两个真实 bug：
+  - `config.toml` 里 `verify_jwt = false` 对已存在的函数重新部署时可能不生效（Supabase CLI 已知问题），最终靠 Dashboard 手动关闭 "Enforce JWT Verification" 解决；`config.toml` 的配置仍然保留（新建函数/Supabase 修复此 bug 后仍然有效）。
+  - 密钥设置时手滑把 Stripe 密钥的值设进了 `PAYMENT_GATEWAY` 变量（`supabase secrets set` 那几条命令名字和值对应错了），导致一直悄悄退化到 stub 网关——加了临时诊断日志才定位到，修复后已移除。
+  - "Timestamp outside the tolerance zone" 报错是调试期间 401 失败事件的陈旧重试，不是真 bug，换一个新触发的事件后消失。
+- [x] **2026-07-24 真机扫码实测**：手机摄像头对着模拟器屏幕扫码 → 跳转 Stripe 收银页 → 测试卡付款 → 数据库确认 `status='PAID'`。扫码识别、跳转体验均正常。
+- [x] **修复扫码支付的等待窗口/取消保护缺口**（真机测试时发现）：`initQrPayment()` 之前完全没有接入 `paymentInFlight`，导致两个问题：(1) 弹窗自带的 60 秒可视倒计时会在 `pollUntilPaid()` 自己 120 秒的轮询预算跑完之前就把弹窗关掉（关闭会连带取消 `pollingJob`），客户如果付款慢一点，钱付了但 App 已经放弃监听；(2) `btn_back_qr` 完全没有取消保护，客户手机上正在付款时点"Back"会直接退出。现在 `initQrPayment()` 全程（建会话到轮询结束）设置 `paymentInFlight = true`，同时补上了 `paid == false`（轮询超时）分支的处理——之前这个分支什么都不做，弹窗会永远卡在原地。模拟器实测确认：等待期间点 Back 不再关闭弹窗。
+- [ ] 故意让 Webhook 延迟/丢失一次，验证超时兜底查询能补上状态（依赖 3.2 里还没做的定时任务）。
+- [ ] 验证重复 Webhook（网关重试机制）不会导致重复触发硬件/重复记账——`payment-webhook` 的 `WHERE status='PENDING'` 幂等设计理论上覆盖了这个，但还没有专门用 Stripe CLI 故意重放同一个事件测过。
+- [ ] `success_url`/`cancel_url` 目前指向不存在的占位域名（`https://gs-ssp.ca/pay/complete`），客户付款后会看到浏览器报错页——虽然不影响支付本身（Stripe 端已经算成功），但体验不好，需要换成真实存在的页面（哪怕只是一个"可以收起手机了"的静态提示页）。
+- [x] **发现并修复一个跟本次网关接入无关、但被它牵出来的严重资金安全漏洞**：`MainActivity.initQrPayment()` 里除了真正的 `pollUntilPaid()` 轮询，还并行挂了一段 `scannerManager?.startScan(...)`——这是早期遗留代码，任何"扫描仪扫到东西"（`PaxScannerManager` 无真实硬件时会在模拟模式下 4 秒后自动模拟"扫到了"）都会直接调用 `startFinalizationSequence()` 当作已付款处理，完全不管 Stripe 那边是否真的收到钱。模拟器上实测复现：不付款，4 秒后界面照样显示 "Payment Successful"。真机上如果扫描仪硬件在等待付款期间扫到任意条码/二维码（不一定是这笔支付的），同样会被当成付款成功直接放行洗车。已删除这段代码，付款结果现在只由 `pollUntilPaid()` 一条路径判定；模拟器实测确认修复后不再有这个 4 秒误触发。
 
 ---
 

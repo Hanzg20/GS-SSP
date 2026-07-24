@@ -81,6 +81,25 @@ object VipRepository {
     }
 
     /**
+     * Resolves a 12-character member QR code (see
+     * docs/coupon_redemption_integration.md §2.1) to the card_uid the rest
+     * of the VIP flow (deductBalance, initVipPayment) actually operates on.
+     * A plain SELECT is fine here (unlike deductBalance) -- this is a
+     * read-only lookup with no state change, so there's no race to guard
+     * against.
+     */
+    suspend fun resolveCardUidByQrCode(qrCode: String): String? = withContext(Dispatchers.IO) {
+        try {
+            SupabaseClientProvider.client.postgrest["vip_cards"]
+                .select { filter { eq("qr_code", qrCode) } }
+                .decodeSingleOrNull<VipCard>()?.card_uid
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to resolve card by QR code: ${e.message}")
+            null
+        }
+    }
+
+    /**
      * Deducts balance via the server-side deduct_vip_balance RPC (see
      * docs/supabase_full_schema.sql). The check (balance/active) and the
      * deduction happen atomically in Postgres, under a row lock -- this must

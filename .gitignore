@@ -18,7 +18,9 @@
 *.apk
 *.aar
 *.jar
+!gradle/wrapper/gradle-wrapper.jar
 .artifacts/
 docs/walkthrough.artifact.md
 docs/implementation_plan.artifact.md
 docs/task.artifact.md
+supabase/.temp/
