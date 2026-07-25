@@ -19,6 +19,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.airbnb.lottie.LottieAnimationView
+import com.goldsky.carwash.dispense.DispenseEngine
+import com.goldsky.carwash.dispense.DispenseJob
+import com.goldsky.carwash.dispense.DispenseOutcome
 import com.goldsky.carwash.model.PaymentMethodMode
 import com.goldsky.carwash.model.Product
 import com.goldsky.carwash.model.WashPackage
@@ -643,7 +646,7 @@ class MainActivity : BaseAdActivity() {
      * package's own pre-discount price: startFinalizationSequence's real-
      * hardware path derives pulse count from the amount charged, and
      * amountCents=0 there would silently send zero pulses
-     * (SerialPortManager.sendPulses short-circuits on count<=0) -- the
+     * (PulseCreditAdapter short-circuits on count<=0) -- the
      * customer would see "Enjoy your wash" and get nothing. pulseAmountCents
      * keeps "money charged" (0, for the transaction record) and "wash
      * dispensed" (the full package) as separate concerns.
@@ -740,12 +743,25 @@ class MainActivity : BaseAdActivity() {
             if (codeUrl == null) {
                 paymentInFlight = false
                 Toast.makeText(this@MainActivity, "Failed to start QR session, try again", Toast.LENGTH_LONG).show()
+                dialog.dismiss()
+                resetAdTimer()
                 return@launch
             }
             val qrBitmap: Bitmap? = PaymentService.generateQrCode(codeUrl, 250, 250)
-            if (qrBitmap != null) {
-                qrImageView.setImageBitmap(qrBitmap)
+            if (qrBitmap == null) {
+                // Session was created (money-side is fine) but the customer has
+                // nothing to scan -- must not fall through to pollUntilPaid,
+                // which would silently wait up to 2 minutes on a QR that was
+                // never shown, with no error and no way for the customer to
+                // recover on their own.
+                Log.e("SSP_QR", "generateQrCode returned null for codeUrl (len=${codeUrl.length})")
+                paymentInFlight = false
+                Toast.makeText(this@MainActivity, "Failed to render QR code, try again", Toast.LENGTH_LONG).show()
+                dialog.dismiss()
+                resetAdTimer()
+                return@launch
             }
+            qrImageView.setImageBitmap(qrBitmap)
             val paid = QrPaymentRepository.pollUntilPaid(txId)
             if (paid) {
                 // paymentInFlight is cleared by startFinalizationSequence itself once it's done.
@@ -818,24 +834,25 @@ class MainActivity : BaseAdActivity() {
 
             tvStatus?.text = getString(R.string.status_sending_command)
 
-            var successAck = false
-            if (isSimulationMode) {
-                delay(1500)
-                successAck = true
-            } else {
-                // 2. Calculate and send pulses based on settings
-                val settings = ConfigManager.getConfig()?.settings
-                val pulseWeight = settings?.pulse_weight_cents ?: 25
-                val pulseHex = settings?.pulse_hex ?: "AA 01 01 55"
-                val pulseCount = pulseAmountCents / pulseWeight
+            // 2. Delegate to the protocol/ack-strategy this device is configured
+            // for (KioskSettings.dispense_protocol/dispense_ack_mode) -- see
+            // com.goldsky.carwash.dispense.DispenseEngine.
+            val outcome = DispenseEngine.dispense(
+                DispenseJob(pulseAmountCents, startHex, deviceSn, ecrRefNum),
+                isSimulationMode
+            )
+            Log.i("SSP_HARDWARE", "Dispense outcome for $$amountCents cents charged (dispensing $$pulseAmountCents worth): $outcome")
 
-                Log.i("SSP_HARDWARE", "Sending $pulseCount pulses for $$amountCents cents charged (dispensing $$pulseAmountCents worth)")
-                successAck = SerialPortManager.sendPulses(pulseHex, pulseCount)
-            }
-
-            if (successAck) {
-                // 3. Update cloud record with hardware success
-                TransactionRepository.updateHardwareStatus(this@MainActivity, ecrRefNum, "ACK_RECEIVED")
+            if (outcome !is DispenseOutcome.Failed) {
+                // 3. Update cloud record with hardware success. DeliveredUnconfirmed
+                // (older boards with no ACK) gets its own status rather than being
+                // folded into ACK_RECEIVED, so an audit query can tell "we know it
+                // ran" from "we only know we sent it".
+                val hwStatus = if (outcome is DispenseOutcome.Confirmed) "ACK_RECEIVED" else "COMMAND_SENT_UNCONFIRMED"
+                TransactionRepository.updateHardwareStatus(this@MainActivity, ecrRefNum, hwStatus)
+                if (outcome is DispenseOutcome.DeliveredUnconfirmed) {
+                    DiagnosticManager.reportError(deviceSn, "HARDWARE_ACK_UNAVAILABLE", severity = "INFO")
+                }
 
                 // Receipt printing is cloud-configurable (KioskSettings.print_receipt_enabled) --
                 // never blocks or fails the payment flow either way.
@@ -870,8 +887,11 @@ class MainActivity : BaseAdActivity() {
 
                 // Industrial Audit: Report hardware failure and trigger VOID
                 // (falling back to REFUND automatically if VOID is declined,
-                // e.g. because the batch already settled).
-                DiagnosticManager.reportError(deviceSn, "HARDWARE_PULSE_FAIL", severity = "CRITICAL")
+                // e.g. because the batch already settled). Only DispenseOutcome.Failed
+                // reaches this branch -- DeliveredUnconfirmed is handled above and
+                // deliberately does NOT auto-void (see DispenseOutcome's doc comment).
+                val failReason = (outcome as? DispenseOutcome.Failed)?.reason ?: "unknown"
+                DiagnosticManager.reportError(deviceSn, "HARDWARE_PULSE_FAIL", severity = "CRITICAL", trace = failReason)
                 TransactionRepository.updateHardwareStatus(this@MainActivity, ecrRefNum, "HARDWARE_ERROR")
 
                 if (refNum.isNotEmpty()) {

@@ -158,26 +158,6 @@ object SerialPortManager {
     }
 
     /**
-     * Sends multiple pulses, each confirmed by [sendCommandWithAck]. Aborts the
-     * remaining sequence as soon as one pulse fails to ACK, so callers can void
-     * the payment instead of assuming the wash started.
-     */
-    suspend fun sendPulses(hexStr: String, count: Int): Boolean {
-        if (count <= 0) return true
-        Log.i(TAG, "Starting pulse sequence: $count pulses of $hexStr")
-
-        for (i in 1..count) {
-            val acked = sendCommandWithAck(hexStr)
-            if (!acked) {
-                Log.e(TAG, "Pulse $i/$count failed to ACK — aborting sequence")
-                return false
-            }
-            kotlinx.coroutines.delay(200)
-        }
-        return true
-    }
-
-    /**
      * Closes the UART channel and releases hardware resources.
      */
     fun closePort() {

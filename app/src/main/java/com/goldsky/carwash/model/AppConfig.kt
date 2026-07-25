@@ -37,7 +37,12 @@ data class KioskSettings(
     val pulse_hex: String = "AA 01 01 55", // Command for 1 pulse
     val locale_tag: String = "en-US", // For dynamic TTS localization
     val print_receipt_enabled: Boolean = false, // Cloud-configurable; some sites run without paper loaded
-    val payment_method_mode: Int = PaymentMethodMode.ALL // 0=ALL, 1=CARD_ONLY, 2=SCAN_ONLY -- see PaymentMethodMode
+    val payment_method_mode: Int = PaymentMethodMode.ALL, // 0=ALL, 1=CARD_ONLY, 2=SCAN_ONLY -- see PaymentMethodMode
+    // Device-level dispense config (see com.goldsky.carwash.dispense.DispenseEngine).
+    // "pulse_credit" (default) | "single_command" | "mdb_vend"
+    val dispense_protocol: String = "pulse_credit",
+    // "framed_ack" (default, waits for the [0xBB]..[0xEE] reply frame) | "assumed_success" (older boards with no feedback)
+    val dispense_ack_mode: String = "framed_ack"
 )
 
 /**
