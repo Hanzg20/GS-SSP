@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.16 (2026-07-25)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.17 (2026-07-25)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -572,6 +572,18 @@ CREATE POLICY "Org admins can update org coupons" ON public.coupons
 FOR UPDATE TO authenticated
 USING (public.has_capability('admin') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
 
+-- vip_cards: additive to "Devices can see own org vip cards" above (that one
+-- scopes a device's own anonymous session via device_auth_map; this scopes a
+-- human portal login via org_members) -- lets the CMP's VIP card page list
+-- real vip_cards rows instead of only the unrelated jc_vip_cards table.
+-- balance_cents itself stays unwritable by any client role (INSERT/UPDATE/
+-- DELETE revoked, see §6/§8) -- only admin_create_vip_card()/
+-- admin_topup_vip_card() below can change it or create a row.
+DROP POLICY IF EXISTS "Org members can view org vip cards" ON public.vip_cards;
+CREATE POLICY "Org members can view org vip cards" ON public.vip_cards
+FOR SELECT TO authenticated
+USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
+
 -- transactions/device_commands only carry device_sn, not org_id directly --
 -- scoped via a join through devices.org_id instead of member_org_ids()
 -- directly.
@@ -1141,6 +1153,165 @@ $$;
 
 REVOKE ALL ON FUNCTION public.issue_compensation_coupon(UUID, INT, INT, UUID) FROM public;
 GRANT EXECUTE ON FUNCTION public.issue_compensation_coupon(UUID, INT, INT, UUID) TO authenticated;
+
+-- Function: portal-side VIP card provisioning. Same authorization shape as
+-- issue_compensation_coupon() above (capability='admin' AND (SYS_ADMIN OR
+-- MERCHANT_ADMIN of p_org_id)) -- card_uid is the physical NFC card's own
+-- serial (read by whatever card reader the front-desk uses to provision it),
+-- supplied by the caller rather than generated, since it must match the
+-- number actually encoded on the card. qr_code IS generated server-side
+-- (same gen_random_uuid() approach as issue_compensation_coupon, not
+-- gen_random_bytes() -- pgcrypto lives in the extensions schema, not public,
+-- under this function's SET search_path).
+CREATE OR REPLACE FUNCTION public.admin_create_vip_card(
+  p_org_id UUID,
+  p_card_uid TEXT,
+  p_initial_balance_cents INT DEFAULT 0
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_qr_code TEXT;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN json_build_object('success', false, 'message', 'not_authenticated');
+  END IF;
+
+  IF p_initial_balance_cents < 0 THEN
+    RETURN json_build_object('success', false, 'message', 'invalid_amount');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.org_members
+    WHERE profile_id = auth.uid() AND capability = 'admin' AND (
+      role = 'SYS_ADMIN' OR (role = 'MERCHANT_ADMIN' AND org_id = p_org_id)
+    )
+  ) THEN
+    RETURN json_build_object('success', false, 'message', 'not_authorized');
+  END IF;
+
+  v_qr_code := 'MBR' || upper(replace(gen_random_uuid()::text, '-', ''));
+
+  BEGIN
+    INSERT INTO public.vip_cards (card_uid, org_id, balance_cents, is_active, qr_code)
+    VALUES (p_card_uid, p_org_id, p_initial_balance_cents, true, v_qr_code);
+  EXCEPTION WHEN unique_violation THEN
+    RETURN json_build_object('success', false, 'message', 'card_uid_exists');
+  END;
+
+  INSERT INTO public.audit_logs (actor_profile_id, org_id, action, target_table, target_id, details)
+  VALUES (auth.uid(), p_org_id, 'CREATE_VIP_CARD', 'vip_cards', p_card_uid,
+    json_build_object('initial_balance_cents', p_initial_balance_cents));
+
+  RETURN json_build_object('success', true, 'card_uid', p_card_uid, 'qr_code', v_qr_code);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_create_vip_card(UUID, TEXT, INT) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_create_vip_card(UUID, TEXT, INT) TO authenticated;
+
+-- Function: portal-side balance top-up (the admin-facing counterpart to
+-- deduct_vip_balance() -- that one is the kiosk spending a card down, this is
+-- staff crediting one up, e.g. a manual reload or goodwill credit). Looks up
+-- org_id from the card itself (the caller doesn't supply it) so authorization
+-- can't be spoofed by passing a different org_id than the card actually
+-- belongs to. FOR UPDATE row lock, same reasoning as deduct_vip_balance --
+-- a top-up racing a kiosk deduction on the same card must not lose an update.
+CREATE OR REPLACE FUNCTION public.admin_topup_vip_card(p_card_uid TEXT, p_amount_cents INT)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id UUID;
+  v_new_balance INT;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN json_build_object('success', false, 'message', 'not_authenticated');
+  END IF;
+
+  IF p_amount_cents <= 0 THEN
+    RETURN json_build_object('success', false, 'message', 'invalid_amount');
+  END IF;
+
+  SELECT org_id INTO v_org_id FROM public.vip_cards WHERE card_uid = p_card_uid FOR UPDATE;
+  IF v_org_id IS NULL THEN
+    RETURN json_build_object('success', false, 'message', 'card_not_found');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.org_members
+    WHERE profile_id = auth.uid() AND capability = 'admin' AND (
+      role = 'SYS_ADMIN' OR (role = 'MERCHANT_ADMIN' AND org_id = v_org_id)
+    )
+  ) THEN
+    RETURN json_build_object('success', false, 'message', 'not_authorized');
+  END IF;
+
+  UPDATE public.vip_cards SET balance_cents = balance_cents + p_amount_cents
+  WHERE card_uid = p_card_uid
+  RETURNING balance_cents INTO v_new_balance;
+
+  INSERT INTO public.audit_logs (actor_profile_id, org_id, action, target_table, target_id, details)
+  VALUES (auth.uid(), v_org_id, 'TOPUP_VIP_CARD', 'vip_cards', p_card_uid,
+    json_build_object('amount_cents', p_amount_cents, 'new_balance_cents', v_new_balance));
+
+  RETURN json_build_object('success', true, 'new_balance_cents', v_new_balance);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_topup_vip_card(TEXT, INT) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_topup_vip_card(TEXT, INT) TO authenticated;
+
+-- Function: activate/deactivate a VIP card from the portal (lost-card
+-- freeze, reissue, etc.) -- same authorization + audit-log shape as the two
+-- functions above. is_active isn't money, but it's still gated through a
+-- function rather than a direct UPDATE grant for consistency with the rest
+-- of this table (all writes to vip_cards go through one of these three RPCs,
+-- never a raw client UPDATE).
+CREATE OR REPLACE FUNCTION public.admin_set_vip_card_status(p_card_uid TEXT, p_is_active BOOLEAN)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id UUID;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN json_build_object('success', false, 'message', 'not_authenticated');
+  END IF;
+
+  SELECT org_id INTO v_org_id FROM public.vip_cards WHERE card_uid = p_card_uid FOR UPDATE;
+  IF v_org_id IS NULL THEN
+    RETURN json_build_object('success', false, 'message', 'card_not_found');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.org_members
+    WHERE profile_id = auth.uid() AND capability = 'admin' AND (
+      role = 'SYS_ADMIN' OR (role = 'MERCHANT_ADMIN' AND org_id = v_org_id)
+    )
+  ) THEN
+    RETURN json_build_object('success', false, 'message', 'not_authorized');
+  END IF;
+
+  UPDATE public.vip_cards SET is_active = p_is_active WHERE card_uid = p_card_uid;
+
+  INSERT INTO public.audit_logs (actor_profile_id, org_id, action, target_table, target_id, details)
+  VALUES (auth.uid(), v_org_id, 'SET_VIP_CARD_STATUS', 'vip_cards', p_card_uid,
+    json_build_object('is_active', p_is_active));
+
+  RETURN json_build_object('success', true);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_set_vip_card_status(TEXT, BOOLEAN) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_set_vip_card_status(TEXT, BOOLEAN) TO authenticated;
 
 -- Function: link an authenticated (anonymous-auth) session to a device SN,
 -- populating device_auth_map -- which every device-scoped RLS policy above
