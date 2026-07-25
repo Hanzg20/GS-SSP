@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0A0A0A"
+    android:background="@color/bg_dark"
     android:padding="16dp">
 
     <!-- Header -->
@@ -12,7 +12,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="TECH DASHBOARD"
-        android:textColor="#FFB800"
+        android:textColor="@color/gold_accent"
         android:textSize="22sp"
         android:textStyle="bold"
         app:layout_constraintEnd_toStartOf="@id/btn_dash_exit"
@@ -23,9 +23,9 @@
         android:id="@+id/btn_dash_exit"
         android:layout_width="wrap_content"
         android:layout_height="40dp"
-        android:backgroundTint="#C62828"
+        android:backgroundTint="@color/alert_red_bg"
         android:text="EXIT"
-        android:textColor="#FFFFFF"
+        android:textColor="@color/text_light"
         android:textSize="12sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
@@ -36,7 +36,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:background="#1A1A1A"
+        android:background="@color/bg_card_selected"
         android:orientation="horizontal"
         android:padding="8dp"
         app:layout_constraintTop_toBottomOf="@id/tv_dash_title">
@@ -47,7 +47,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Serial: --"
-            android:textColor="#999999"
+            android:textColor="@color/text_muted"
             android:textSize="12sp" />
 
         <TextView
@@ -56,7 +56,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Net: --"
-            android:textColor="#999999"
+            android:textColor="@color/text_muted"
             android:textSize="12sp" />
 
         <TextView
@@ -65,7 +65,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="DB: --"
-            android:textColor="#999999"
+            android:textColor="@color/text_muted"
             android:textSize="12sp" />
     </LinearLayout>
 
@@ -76,7 +76,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:text="RELAY TEST (SEND HEX)"
-        android:textColor="#666666"
+        android:textColor="@color/text_muted"
         android:textSize="10sp"
         android:textStyle="bold"
         app:layout_constraintStart_toStartOf="parent"
@@ -97,7 +97,7 @@
             android:layout_height="50dp"
             android:layout_columnWeight="1"
             android:layout_margin="4dp"
-            android:backgroundTint="#333333"
+            android:backgroundTint="@color/btn_neutral_bg"
             android:text="$4 (AA010455)"
             android:textSize="10sp" />
 
@@ -107,7 +107,7 @@
             android:layout_height="50dp"
             android:layout_columnWeight="1"
             android:layout_margin="4dp"
-            android:backgroundTint="#333333"
+            android:backgroundTint="@color/btn_neutral_bg"
             android:text="$6 (AA010655)"
             android:textSize="10sp" />
 
@@ -117,7 +117,7 @@
             android:layout_height="50dp"
             android:layout_columnWeight="1"
             android:layout_margin="4dp"
-            android:backgroundTint="#333333"
+            android:backgroundTint="@color/btn_neutral_bg"
             android:text="$8 (AA010855)"
             android:textSize="10sp" />
 
@@ -127,7 +127,7 @@
             android:layout_height="50dp"
             android:layout_columnWeight="1"
             android:layout_margin="4dp"
-            android:backgroundTint="#455A64"
+            android:backgroundTint="@color/diag_slate"
             android:text="STOP (AA000055)"
             android:textSize="10sp" />
     </GridLayout>
@@ -139,7 +139,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:text="PERIPHERALS"
-        android:textColor="#666666"
+        android:textColor="@color/text_muted"
         android:textSize="10sp"
         android:textStyle="bold"
         app:layout_constraintStart_toStartOf="parent"
@@ -159,7 +159,7 @@
             android:layout_height="60dp"
             android:layout_margin="4dp"
             android:layout_weight="1"
-            android:backgroundTint="#00796B"
+            android:backgroundTint="@color/diag_teal"
             android:text="SCAN TEST"
             android:textSize="12sp" />
 
@@ -169,7 +169,7 @@
             android:layout_height="60dp"
             android:layout_margin="4dp"
             android:layout_weight="1"
-            android:backgroundTint="#512DA8"
+            android:backgroundTint="@color/diag_deep_purple"
             android:text="QR GEN TEST"
             android:textSize="12sp" />
 
@@ -179,7 +179,7 @@
             android:layout_height="60dp"
             android:layout_margin="4dp"
             android:layout_weight="1"
-            android:backgroundTint="#FF6D00"
+            android:backgroundTint="@color/diag_orange"
             android:text="SIM HANG"
             android:textSize="12sp" />
     </LinearLayout>
@@ -191,7 +191,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:text="DIAGNOSTICS"
-        android:textColor="#666666"
+        android:textColor="@color/text_muted"
         android:textSize="10sp"
         android:textStyle="bold"
         app:layout_constraintStart_toStartOf="parent"
@@ -211,7 +211,7 @@
             android:layout_height="50dp"
             android:layout_margin="2dp"
             android:layout_weight="1"
-            android:backgroundTint="#01579B"
+            android:backgroundTint="@color/diag_blue"
             android:text="DB"
             android:textSize="10sp" />
 
@@ -221,7 +221,7 @@
             android:layout_height="50dp"
             android:layout_margin="2dp"
             android:layout_weight="1"
-            android:backgroundTint="#33691E"
+            android:backgroundTint="@color/diag_olive"
             android:text="LED"
             android:textSize="10sp" />
 
@@ -231,7 +231,7 @@
             android:layout_height="50dp"
             android:layout_margin="2dp"
             android:layout_weight="1"
-            android:backgroundTint="#4527A0"
+            android:backgroundTint="@color/diag_purple"
             android:text="VOICE"
             android:textSize="10sp" />
 
@@ -241,7 +241,7 @@
             android:layout_height="50dp"
             android:layout_margin="2dp"
             android:layout_weight="1"
-            android:backgroundTint="#2E7D32"
+            android:backgroundTint="@color/success_bg"
             android:text="NFC"
             android:textSize="10sp" />
 
@@ -251,7 +251,7 @@
             android:layout_height="50dp"
             android:layout_margin="2dp"
             android:layout_weight="1"
-            android:backgroundTint="#EF6C00"
+            android:backgroundTint="@color/diag_amber"
             android:text="LUX"
             android:textSize="10sp" />
     </LinearLayout>
@@ -263,7 +263,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="100dp"
         android:text="SIMULATION MODE"
-        android:textColor="#FFFFFF"
+        android:textColor="@color/text_light"
         android:textSize="14sp"
         app:layout_constraintTop_toBottomOf="@id/layout_periph" />
 
@@ -272,7 +272,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Industrial SSP Platform • GS-SSP v1.0.0"
-        android:textColor="#333333"
+        android:textColor="@color/text_faint"
         android:textSize="8sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

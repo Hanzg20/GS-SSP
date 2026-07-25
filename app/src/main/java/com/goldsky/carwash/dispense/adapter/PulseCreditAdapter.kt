@@ -15,7 +15,11 @@ import kotlinx.coroutines.delay
  * unchanged from MainActivity.startFinalizationSequence.
  */
 class PulseCreditAdapter : IDispenseAdapter {
-    override suspend fun dispense(job: DispenseJob, ackStrategy: IAckStrategy): DispenseOutcome {
+    override suspend fun dispense(
+        job: DispenseJob,
+        ackStrategy: IAckStrategy,
+        onProgress: (Int, Int) -> Unit
+    ): DispenseOutcome {
         val settings = ConfigManager.getConfig()?.settings
         val pulseWeight = settings?.pulse_weight_cents?.takeIf { it > 0 } ?: 25
         val pulseHex = settings?.pulse_hex ?: "AA 01 01 55"
@@ -24,12 +28,14 @@ class PulseCreditAdapter : IDispenseAdapter {
         if (pulseCount <= 0) return DispenseOutcome.Confirmed("no pulses required for ${job.amountCents} cents")
 
         var sawUnconfirmed = false
+        onProgress(0, pulseCount)
         for (i in 1..pulseCount) {
             when (ackStrategy.confirm(pulseHex)) {
                 AckConfidence.CONFIRMED -> { /* keep going */ }
                 AckConfidence.UNCONFIRMED -> sawUnconfirmed = true
                 AckConfidence.FAILED -> return DispenseOutcome.Failed("pulse $i/$pulseCount not delivered")
             }
+            onProgress(i, pulseCount)
             delay(200)
         }
 

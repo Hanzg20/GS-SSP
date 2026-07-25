@@ -1,10 +1,31 @@
 <resources>
-    <!-- Base application theme. -->
-    <style name="Theme.SSP" parent="Theme.AppCompat.NoActionBar">
-        <!-- Customize your theme here. -->
-        <item name="colorPrimary">@color/royal_blue</item>
-        <item name="colorPrimaryDark">@color/bg_dark</item>
-        <item name="colorAccent">@color/gold_accent</item>
+    <!--
+      Material3 base theme. The `material:1.8.0` dependency (app/build.gradle)
+      was already present but unused: every screen was hand-rolling its own
+      shape drawables and one-off hex colors instead of going through a
+      design system. Switching the parent theme (and defining the Material3
+      color roles below from the existing GoldSky palette, not new colors)
+      makes every stock widget (Button, EditText, ProgressBar, etc) that
+      AppCompatActivity auto-inflates pick up consistent elevation, ripple,
+      and shape from one place instead of none. Per-layout hardcoded colors
+      are a separate follow-up, not part of this pass.
+    -->
+    <style name="Theme.SSP" parent="Theme.Material3.Dark.NoActionBar">
+        <!-- colorPrimary is the gold accent, not royal_blue: matches how
+             the layouts actually use color today (gold dominates CTAs,
+             prices, labels; blue is a sparingly-used secondary highlight),
+             even though the previous theme had this backwards. -->
+        <item name="colorPrimary">@color/gold_accent</item>
+        <item name="colorOnPrimary">@color/text_dark</item>
+        <item name="colorSecondary">@color/royal_blue</item>
+        <item name="colorOnSecondary">@color/text_dark</item>
+        <item name="colorError">@color/coral_red</item>
+        <item name="colorOnError">@color/text_light</item>
+        <item name="colorSurface">@color/bg_card</item>
+        <item name="colorOnSurface">@color/text_light</item>
+        <item name="colorSurfaceVariant">@color/bg_card_selected</item>
+        <item name="colorOnSurfaceVariant">@color/text_muted</item>
+        <item name="colorOutline">@color/border_light</item>
         <item name="android:windowBackground">@color/bg_dark</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>

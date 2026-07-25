@@ -1,6 +1,7 @@
 package com.goldsky.carwash
 
 import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
 import android.app.Dialog
 import android.content.Intent
@@ -12,13 +13,14 @@ import android.util.Log
 import android.view.View
 import android.view.animation.AlphaAnimation
 import android.view.animation.Animation
+import android.view.animation.OvershootInterpolator
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.constraintlayout.widget.ConstraintLayout
-import com.airbnb.lottie.LottieAnimationView
+import androidx.core.content.ContextCompat
 import com.goldsky.carwash.dispense.DispenseEngine
 import com.goldsky.carwash.dispense.DispenseJob
 import com.goldsky.carwash.dispense.DispenseOutcome
@@ -806,12 +808,34 @@ class MainActivity : BaseAdActivity() {
         val layoutStatus = dialog?.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
         val tvStatus = dialog?.findViewById<TextView>(R.id.tv_status_msg)
         val viewSuccessBg = dialog?.findViewById<View>(R.id.view_final_success_bg)
+        val ivStatusIcon = dialog?.findViewById<ImageView>(R.id.iv_status_icon)
+        val layoutWashStepper = dialog?.findViewById<ConstraintLayout>(R.id.layout_wash_stepper)
+        val pbWashStages = dialog?.findViewById<ProgressBar>(R.id.pb_wash_stages)
+        val tvStageLabel = dialog?.findViewById<TextView>(R.id.tv_stage_label)
+        val stageLabels = resources.getStringArray(R.array.wash_stage_labels)
         val ecrRefNum = pendingEcrRefNum ?: (if (refNum.isEmpty()) "QR_${System.currentTimeMillis()}" else refNum)
+        var washIconAnimator: ObjectAnimator? = null
 
         CoroutineScope(Dispatchers.Main).launch {
             layoutStatus?.visibility = View.VISIBLE
             tvStatus?.text = getString(R.string.status_approved)
             TtsManager.speak(getString(R.string.status_approved))
+
+            // The whole approved->paid->dispensing wait is unattended (nothing
+            // for the customer to tap), so the water-drop icon breathes for
+            // the entire overlay lifetime, not just during hardware dispense --
+            // otherwise the first two stages would look frozen.
+            washIconAnimator = ivStatusIcon?.let { icon ->
+                ObjectAnimator.ofPropertyValuesHolder(
+                    icon,
+                    PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.2f, 1f),
+                    PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.2f, 1f)
+                ).apply {
+                    duration = 900
+                    repeatCount = ValueAnimator.INFINITE
+                    start()
+                }
+            }
 
             // 1. Record transaction to Supabase (v2.0 Audit)
             if (pendingEcrRefNum != null) {
@@ -833,17 +857,32 @@ class MainActivity : BaseAdActivity() {
             delay(1000)
 
             tvStatus?.text = getString(R.string.status_sending_command)
+            layoutWashStepper?.visibility = View.VISIBLE
+            pbWashStages?.progress = 0
+            tvStageLabel?.text = stageLabels.firstOrNull()
 
             // 2. Delegate to the protocol/ack-strategy this device is configured
             // for (KioskSettings.dispense_protocol/dispense_ack_mode) -- see
-            // com.goldsky.carwash.dispense.DispenseEngine.
+            // com.goldsky.carwash.dispense.DispenseEngine. onProgress drives the
+            // stepper off real dispense progress (pulses acked / commands sent),
+            // not a fixed timer, so it stays honest if hardware is slow/stuck.
             val outcome = DispenseEngine.dispense(
                 DispenseJob(pulseAmountCents, startHex, deviceSn, ecrRefNum),
                 isSimulationMode
-            )
+            ) { unitsSent, totalUnits ->
+                val fraction = if (totalUnits <= 0) 1f else unitsSent.toFloat() / totalUnits
+                pbWashStages?.progress = (fraction * 100).toInt()
+                val stageIdx = (fraction * stageLabels.size).toInt().coerceIn(0, stageLabels.size - 1)
+                tvStageLabel?.text = stageLabels[stageIdx]
+            }
             Log.i("SSP_HARDWARE", "Dispense outcome for $$amountCents cents charged (dispensing $$pulseAmountCents worth): $outcome")
 
+            washIconAnimator?.cancel()
+            layoutWashStepper?.visibility = View.GONE
+
             if (outcome !is DispenseOutcome.Failed) {
+                ivStatusIcon?.setImageResource(R.drawable.ic_check_circle)
+                popIcon(ivStatusIcon)
                 // 3. Update cloud record with hardware success. DeliveredUnconfirmed
                 // (older boards with no ACK) gets its own status rather than being
                 // folded into ACK_RECEIVED, so an audit query can tell "we know it
@@ -881,7 +920,9 @@ class MainActivity : BaseAdActivity() {
                 dialog?.dismiss()
                 onPaymentSuccess()
             } else {
-                layoutStatus?.setBackgroundColor(Color.parseColor("#C62828"))
+                layoutStatus?.setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.alert_red_bg))
+                ivStatusIcon?.setImageResource(R.drawable.ic_error_circle)
+                popIcon(ivStatusIcon)
                 tvStatus?.text = getString(R.string.status_error_refund)
                 TtsManager.speak(getString(R.string.status_error_refund))
 
@@ -915,6 +956,14 @@ class MainActivity : BaseAdActivity() {
                 resetAdTimer()
             }
         }
+    }
+
+    /** Scale-up-from-zero reveal with overshoot, used for the terminal check/error icon. */
+    private fun popIcon(view: ImageView?) {
+        view ?: return
+        view.scaleX = 0f
+        view.scaleY = 0f
+        view.animate().scaleX(1f).scaleY(1f).setDuration(400).setInterpolator(OvershootInterpolator()).start()
     }
 
     private fun onPaymentSuccess() {
@@ -977,11 +1026,13 @@ class MainActivity : BaseAdActivity() {
         val isKeyOk = KeyHealthMonitor.isPaymentAllowed()
 
         // Black: admin/remote locked. Red: hardware/DB/key fault. Yellow: sim mode. Green: operational.
+        // Uses the app's own palette (not raw Color.RED/GREEN/YELLOW primaries)
+        // so this status dot doesn't clash with everything else on screen.
         when {
-            isLocked -> indicator.setBackgroundColor(Color.BLACK)
-            !isSerialOk || !isDbOk || !isKeyOk -> indicator.setBackgroundColor(Color.RED)
-            isSimulationMode -> indicator.setBackgroundColor(Color.YELLOW)
-            else -> indicator.setBackgroundColor(Color.GREEN)
+            isLocked -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.bg_dark))
+            !isSerialOk || !isDbOk || !isKeyOk -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.coral_red))
+            isSimulationMode -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.gold_accent))
+            else -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.emerald_green))
         }
     }
 

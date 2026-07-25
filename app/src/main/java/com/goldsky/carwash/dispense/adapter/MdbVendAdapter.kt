@@ -16,7 +16,11 @@ import com.goldsky.carwash.dispense.IDispenseAdapter
  * traceably instead of silently falling back to the wrong adapter.
  */
 class MdbVendAdapter : IDispenseAdapter {
-    override suspend fun dispense(job: DispenseJob, ackStrategy: IAckStrategy): DispenseOutcome {
+    override suspend fun dispense(
+        job: DispenseJob,
+        ackStrategy: IAckStrategy,
+        onProgress: (Int, Int) -> Unit
+    ): DispenseOutcome {
         Log.e(TAG, "MDB vending protocol requested but not implemented -- needs a real MDB transport driver")
         return DispenseOutcome.Failed("mdb_not_implemented")
     }

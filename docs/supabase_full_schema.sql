@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.15 (2026-07-24)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.16 (2026-07-25)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -109,11 +109,22 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- this also means a single role column on profiles wouldn't have worked
 -- (a MERCHANT_ADMIN is scoped to exactly one org; a future DISTRIBUTOR
 -- would need several), hence a separate table.
+-- capability is a second, orthogonal axis from role: role answers "which
+-- org's data can this profile see" (scope), capability answers "what can
+-- they do within that scope" (permission level). Originally the CMP portal
+-- had a second, uncoordinated role system for this (a Lovable-scaffold
+-- `user_roles`/`app_role` enum: admin/employee/decision_maker, no org
+-- concept at all) -- merged into this single table instead of leaving two
+-- systems live (see §9 for the DROP of that scaffold). Defaults to 'admin'
+-- so every pre-existing SYS_ADMIN/MERCHANT_ADMIN row (there were none live
+-- yet when this column was added, but future ones via plain INSERT without
+-- this column) isn't silently locked out of write actions.
 CREATE TABLE IF NOT EXISTS public.org_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     profile_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
     role TEXT NOT NULL CHECK (role IN ('SYS_ADMIN', 'MERCHANT_ADMIN')),
+    capability TEXT NOT NULL DEFAULT 'admin' CHECK (capability IN ('admin', 'employee', 'decision_maker')),
     CONSTRAINT org_members_scope_check CHECK ((role = 'SYS_ADMIN') = (org_id IS NULL)),
     created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -123,6 +134,19 @@ CREATE TABLE IF NOT EXISTS public.org_members (
 -- (org_id IS NULL) rows for the same profile.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_org_members_org_role_uniq ON public.org_members(profile_id, org_id) WHERE org_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_org_members_global_role_uniq ON public.org_members(profile_id) WHERE org_id IS NULL;
+
+-- gs-ssp-cmp (the Lovable-generated CMP frontend repo) provisioned its own,
+-- uncoordinated identity/role system on this same Supabase project before
+-- org_members existed: an `app_role` enum (admin/employee/decision_maker),
+-- a `user_roles` table (auth.users.id -> role, no org concept at all), and
+-- a `has_role()` check function. Found live 2026-07-25 with 2 real rows
+-- (both real portal logins) while wiring RLS for the CMP -- org_members.role
+-- (scope) + org_members.capability (permission level, added above) is the
+-- one system going forward; migrate those 2 rows into org_members by hand
+-- before running this DROP against a database that still needs them.
+DROP TABLE IF EXISTS public.user_roles CASCADE;
+DROP TYPE IF EXISTS public.app_role CASCADE;
+DROP FUNCTION IF EXISTS public.has_role(UUID, public.app_role);
 
 -- Insert-only audit trail for portal/admin actions (distinct from
 -- maintenance_records/app_error_logs below, which cover device-side
@@ -443,12 +467,22 @@ ALTER TABLE public.qr_payment_sessions ENABLE ROW LEVEL SECURITY;
 -- auth.users id), not the device anonymous-auth sessions the rest of this
 -- section is about. No write policies here on purpose: writes to org_members
 -- (granting roles) are a manual/service_role bootstrap step for now (see the
--- seed-data comment below) -- the actual authorization logic for CMP actions
--- lives inside SECURITY DEFINER RPCs like issue_compensation_coupon() (§9),
--- not in table-level RLS, per docs/cloud_management_platform_design.md
--- §7.2's note that the intended portal access pattern is
--- Edge-Functions-with-service_role, not broad per-table RLS the way the
--- device side works.
+-- seed-data comment below).
+--
+-- REVISED 2026-07-25: docs/cloud_management_platform_design.md §7.2 had
+-- originally called for Edge-Functions-with-service_role instead of
+-- per-table RLS for the portal, same reasoning as issue_compensation_coupon()
+-- below (money-moving writes want a single audited choke point). But the
+-- actual gs-ssp-cmp frontend that got built (Lovable-generated) already
+-- calls supabase.from(...) directly from ~6 components for reads (devices,
+-- transactions, coupons, products, app_configurations, device_commands) --
+-- routing all of that through new Edge Functions would mean rewriting the
+-- frontend's data layer, not just adding backend policy. Chose org-scoped
+-- RLS for reads instead (below), matching the device side's existing
+-- pattern, and keeping SECURITY DEFINER RPCs for the actual money-moving
+-- writes (issue_compensation_coupon still the only way to mint a
+-- compensation coupon; plain org-scoped RLS covers direct marketing-coupon
+-- CRUD and config/product edits, which aren't ledger-sensitive the same way).
 DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile" ON public.profiles
 FOR SELECT TO authenticated
@@ -458,6 +492,122 @@ DROP POLICY IF EXISTS "Users can view own org memberships" ON public.org_members
 CREATE POLICY "Users can view own org memberships" ON public.org_members
 FOR SELECT TO authenticated
 USING (profile_id = auth.uid());
+
+-- Helper functions for the CMP org-scoped policies below. Plain SQL
+-- functions (not SECURITY DEFINER) so they run as the calling role -- safe
+-- because org_members' own RLS policy above ("own row only") already lets a
+-- caller see their own membership rows, which is all these need to read.
+CREATE OR REPLACE FUNCTION public.member_org_ids()
+RETURNS SETOF UUID
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public
+AS $$
+  SELECT org_id FROM public.org_members WHERE profile_id = auth.uid() AND org_id IS NOT NULL;
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_sys_admin()
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public
+AS $$
+  SELECT EXISTS (SELECT 1 FROM public.org_members WHERE profile_id = auth.uid() AND role = 'SYS_ADMIN');
+$$;
+
+-- True if the caller has an org_members row (any org, or the global
+-- SYS_ADMIN row) with the given capability -- used to gate writes
+-- (device commands, product/config edits, marketing coupons) separately
+-- from the read-scoping the other two helpers provide.
+CREATE OR REPLACE FUNCTION public.has_capability(target_capability TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public
+AS $$
+  SELECT EXISTS (SELECT 1 FROM public.org_members WHERE profile_id = auth.uid() AND capability = target_capability);
+$$;
+
+-- CMP portal (human) read/write access to fleet data, scoped by
+-- org_members. Additive to the device-side policies elsewhere in this
+-- section -- a device's own anonymous session and a human portal session
+-- reach these tables through entirely different policies, neither
+-- interferes with the other.
+DROP POLICY IF EXISTS "Org members can view org devices" ON public.devices;
+CREATE POLICY "Org members can view org devices" ON public.devices
+FOR SELECT TO authenticated
+USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
+
+DROP POLICY IF EXISTS "Org members can view org products" ON public.products;
+CREATE POLICY "Org members can view org products" ON public.products
+FOR SELECT TO authenticated
+USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
+
+DROP POLICY IF EXISTS "Org admins can edit org products" ON public.products;
+CREATE POLICY "Org admins can edit org products" ON public.products
+FOR INSERT TO authenticated
+WITH CHECK (public.has_capability('admin') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
+
+DROP POLICY IF EXISTS "Org admins can update org products" ON public.products;
+CREATE POLICY "Org admins can update org products" ON public.products
+FOR UPDATE TO authenticated
+USING (public.has_capability('admin') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
+
+DROP POLICY IF EXISTS "Org members can view org app configurations" ON public.app_configurations;
+CREATE POLICY "Org members can view org app configurations" ON public.app_configurations
+FOR SELECT TO authenticated
+USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
+
+DROP POLICY IF EXISTS "Org admins can publish app configurations" ON public.app_configurations;
+CREATE POLICY "Org admins can publish app configurations" ON public.app_configurations
+FOR INSERT TO authenticated
+WITH CHECK (public.has_capability('admin') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
+
+DROP POLICY IF EXISTS "Org members can view org coupons" ON public.coupons;
+CREATE POLICY "Org members can view org coupons" ON public.coupons
+FOR SELECT TO authenticated
+USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
+
+DROP POLICY IF EXISTS "Org admins can create org coupons" ON public.coupons;
+CREATE POLICY "Org admins can create org coupons" ON public.coupons
+FOR INSERT TO authenticated
+WITH CHECK (public.has_capability('admin') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
+
+DROP POLICY IF EXISTS "Org admins can update org coupons" ON public.coupons;
+CREATE POLICY "Org admins can update org coupons" ON public.coupons
+FOR UPDATE TO authenticated
+USING (public.has_capability('admin') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
+
+-- transactions/device_commands only carry device_sn, not org_id directly --
+-- scoped via a join through devices.org_id instead of member_org_ids()
+-- directly.
+DROP POLICY IF EXISTS "Org members can view org transactions" ON public.transactions;
+CREATE POLICY "Org members can view org transactions" ON public.transactions
+FOR SELECT TO authenticated
+USING (
+  public.is_sys_admin() OR
+  device_sn IN (SELECT sn FROM public.devices WHERE org_id IN (SELECT public.member_org_ids()))
+);
+
+DROP POLICY IF EXISTS "Org members can view org device commands" ON public.device_commands;
+CREATE POLICY "Org members can view org device commands" ON public.device_commands
+FOR SELECT TO authenticated
+USING (
+  public.is_sys_admin() OR
+  device_sn IN (SELECT sn FROM public.devices WHERE org_id IN (SELECT public.member_org_ids()))
+);
+
+DROP POLICY IF EXISTS "Org admins can send device commands" ON public.device_commands;
+CREATE POLICY "Org admins can send device commands" ON public.device_commands
+FOR INSERT TO authenticated
+WITH CHECK (
+  public.has_capability('admin') AND (
+    public.is_sys_admin() OR
+    device_sn IN (SELECT sn FROM public.devices WHERE org_id IN (SELECT public.member_org_ids()))
+  )
+);
+
+-- coupons/app_configurations had table-level grants fully or partially
+-- revoked (see §6) back when nothing but SECURITY DEFINER RPCs and the
+-- device's own session touched them -- re-grant what the portal policies
+-- above now need. RLS (above) still does the actual per-row gating; these
+-- GRANTs just stop it being blocked one layer earlier.
+GRANT SELECT, INSERT, UPDATE ON public.coupons TO authenticated;
+GRANT INSERT ON public.app_configurations TO authenticated;
 
 -- device_auth_map: a device can read its OWN row. This was missing entirely
 -- -- found live 2026-07-24 testing the coupon feature on an emulator, but
@@ -955,7 +1105,7 @@ BEGIN
 
   IF NOT EXISTS (
     SELECT 1 FROM public.org_members
-    WHERE profile_id = auth.uid() AND (
+    WHERE profile_id = auth.uid() AND capability = 'admin' AND (
       role = 'SYS_ADMIN' OR (role = 'MERCHANT_ADMIN' AND org_id = p_org_id)
     )
   ) THEN

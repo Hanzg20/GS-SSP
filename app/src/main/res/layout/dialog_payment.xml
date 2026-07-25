@@ -1,16 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#051626">
+    android:background="@color/bg_dark">
 
     <View
         android:id="@+id/view_status_bg"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:alpha="0"
-        android:background="#FFB800" />
+        android:background="@color/gold_accent" />
 
     <!-- 1. CARD GUIDANCE VIEW -->
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -25,7 +26,7 @@
             android:id="@+id/header_bg"
             android:layout_width="match_parent"
             android:layout_height="60dp"
-            android:background="#0A2436"
+            android:background="@color/bg_card"
             app:layout_constraintTop_toTopOf="parent" />
 
         <TextView
@@ -35,7 +36,7 @@
             android:layout_marginStart="16dp"
             android:gravity="center_vertical"
             android:text="@string/btn_back"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/text_light"
             android:textSize="18sp"
             android:clickable="true"
             android:focusable="true"
@@ -50,7 +51,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"
             android:text="@string/prompt_tap_card"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/text_light"
             android:textSize="32sp"
             android:textStyle="bold"
             app:layout_constraintEnd_toEndOf="parent"
@@ -82,7 +83,7 @@
             android:id="@+id/animated_card"
             android:layout_width="90dp"
             android:layout_height="56dp"
-            app:cardBackgroundColor="#00D1FF"
+            app:cardBackgroundColor="@color/royal_blue"
             app:cardCornerRadius="4dp"
             app:cardElevation="10dp"
             app:layout_constraintBottom_toBottomOf="@id/device_outline"
@@ -113,7 +114,7 @@
             android:layout_height="wrap_content"
             android:layout_margin="16dp"
             android:text="@string/btn_back"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/text_light"
             android:textSize="18sp"
             app:drawableStartCompat="@android:drawable/ic_menu_revert"
             app:layout_constraintStart_toStartOf="parent"
@@ -135,7 +136,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="@string/prompt_qr_guide"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/text_light"
             android:textSize="16sp"
             android:textStyle="bold"
             app:layout_constraintEnd_toEndOf="parent"
@@ -149,7 +150,7 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="24dp"
         android:text="Total: $10.00"
-        android:textColor="#FFB800"
+        android:textColor="@color/gold_accent"
         android:textSize="22sp"
         android:textStyle="bold"
         app:layout_constraintBottom_toTopOf="@id/pb_pay_timeout"
@@ -163,14 +164,14 @@
         android:layout_height="8dp"
         android:max="60"
         android:progress="60"
-        android:progressTint="#00D1FF"
+        android:progressTint="@color/royal_blue"
         app:layout_constraintBottom_toBottomOf="parent" />
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/layout_status_overlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#DD000000"
+        android:background="@color/scrim_dark"
         android:elevation="20dp"
         android:visibility="gone">
 
@@ -179,13 +180,22 @@
             android:id="@+id/view_final_success_bg"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="#2E7D32"
+            android:background="@color/success_bg"
             android:visibility="gone" />
 
-        <com.airbnb.lottie.LottieAnimationView
-            android:id="@+id/lottie_status"
-            android:layout_width="150dp"
-            android:layout_height="150dp"
+        <!--
+          Was a LottieAnimationView with no animation ever assigned to it from
+          Kotlin (dead view, always blank): replaced with a plain ImageView
+          driven natively (icon swap + scale animation from MainActivity) so
+          the whole "payment approved to hardware dispensing to enjoy wash"
+          sequence, which used to be text-only, actually has visual feedback
+          during the unattended wait.
+        -->
+        <ImageView
+            android:id="@+id/iv_status_icon"
+            android:layout_width="96dp"
+            android:layout_height="96dp"
+            android:src="@drawable/ic_water_drop"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
@@ -198,12 +208,58 @@
             android:layout_marginTop="24dp"
             android:gravity="center"
             android:text="@string/status_processing"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/text_light"
             android:textSize="24sp"
             android:textStyle="bold"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/lottie_status" />
+            app:layout_constraintTop_toBottomOf="@id/iv_status_icon" />
+
+        <!--
+          Stage stepper: only shown while hardware pulses are actually being
+          sent (see MainActivity.startFinalizationSequence). Progress and the
+          stage label both driven by DispenseEngine's real onProgress
+          callback, not a fixed timer: this is the actual "something is
+          happening" evidence, the icon above is just the accompanying visual.
+        -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/layout_wash_stepper"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            app:layout_constraintWidth_percent="0.7"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_status_msg"
+            android:layout_marginTop="32dp">
+
+            <ProgressBar
+                android:id="@+id/pb_wash_stages"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="0dp"
+                android:layout_height="6dp"
+                android:max="100"
+                android:progress="0"
+                android:progressTint="@color/gold_accent"
+                android:progressBackgroundTint="@color/border_light"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+            <TextView
+                android:id="@+id/tv_stage_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center"
+                android:textColor="@color/text_muted"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                app:layout_constraintTop_toBottomOf="@id/pb_wash_stages"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                tools:text="Rinsing…" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

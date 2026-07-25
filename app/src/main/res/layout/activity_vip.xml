@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="@color/bg_dark">
 
     <!-- Back Button -->
     <Button
@@ -12,9 +12,9 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_margin="16dp"
-        android:backgroundTint="#222222"
+        android:backgroundTint="@color/btn_neutral_bg"
         android:text="BACK"
-        android:textColor="#FFFFFF"
+        android:textColor="@color/text_light"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -35,7 +35,7 @@
             android:layout_height="wrap_content"
             android:layout_margin="16dp"
             android:text="EAGLESON COIN WASH"
-            android:textColor="#000000"
+            android:textColor="@color/text_dark"
             android:textSize="18sp"
             android:textStyle="bold"
             app:layout_constraintStart_toStartOf="parent"
@@ -46,7 +46,7 @@
             android:layout_height="wrap_content"
             android:layout_margin="16dp"
             android:text="VIP"
-            android:textColor="#000000"
+            android:textColor="@color/text_dark"
             android:textSize="48sp"
             android:textStyle="bold"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -78,19 +78,19 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/vip_tier1_load"
-                android:textColor="#000000"
+                android:textColor="@color/text_dark"
                 android:textSize="12sp"
                 android:textStyle="bold" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="→"
-                android:textColor="#333333" />
+                android:textColor="@color/text_dark" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/vip_tier1_get"
-                android:textColor="#000000"
+                android:textColor="@color/text_dark"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -109,19 +109,19 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/vip_tier2_load"
-                android:textColor="#000000"
+                android:textColor="@color/text_dark"
                 android:textSize="12sp"
                 android:textStyle="bold" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="→"
-                android:textColor="#333333" />
+                android:textColor="@color/text_dark" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/vip_tier2_get"
-                android:textColor="#000000"
+                android:textColor="@color/text_dark"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -140,19 +140,19 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/vip_tier3_load"
-                android:textColor="#000000"
+                android:textColor="@color/text_dark"
                 android:textSize="12sp"
                 android:textStyle="bold" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="→"
-                android:textColor="#333333" />
+                android:textColor="@color/text_dark" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/vip_tier3_get"
-                android:textColor="#000000"
+                android:textColor="@color/text_dark"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -162,7 +162,7 @@
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:background="#111111"
+        android:background="@color/bg_card"
         android:layout_marginTop="24dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toBottomOf="@id/layout_tiers">
@@ -185,7 +185,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="@string/vip_scan_buy"
-            android:textColor="#FFB800"
+            android:textColor="@color/gold_accent"
             android:textSize="14sp"
             android:textStyle="bold"
             app:layout_constraintBottom_toBottomOf="parent"

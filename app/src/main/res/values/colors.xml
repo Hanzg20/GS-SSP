@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Backgrounds -->
+    <!-- Backgrounds. Every full-screen/dialog root uses bg_dark and every
+         inset panel/header-strip uses bg_card: previously each screen had
+         picked its own one-off near-black (#0A0A0A, #0A2436, #051626,
+         #111111, ...) with no visual reason for the difference. -->
     <color name="bg_dark">#000000</color>
     <color name="bg_card">#121212</color>
     <color name="bg_card_selected">#1A1A1A</color>
+    <color name="scrim_dark">#DD000000</color>
+    <color name="scrim_light">#66000000</color>
 
     <!-- GoldSky Brand Colors -->
     <color name="goldsky_gold_start">#FFB800</color>
@@ -14,14 +19,37 @@
     <color name="gold_accent">#FFB800</color>
     <color name="emerald_green">#4CAF50</color>
     <color name="royal_blue">#00D1FF</color>
+    <color name="royal_blue_translucent">#6600D1FF</color>
     <color name="coral_red">#FF5252</color>
+    <color name="alert_red_bg">#C62828</color>
+    <color name="success_bg">#2E7D32</color>
+
+    <!-- Neutral controls: one shared fill for every secondary/cancel button
+         (previously split between #333333 and #222222 with no distinction). -->
+    <color name="btn_neutral_bg">#333333</color>
 
     <!-- Typography -->
     <color name="text_light">#FFFFFF</color>
     <color name="text_muted">#94A3B8</color>
+    <color name="text_faint">#333333</color>
     <color name="text_dark">#0F172A</color>
+    <color name="text_warning">#FFCC00</color>
 
     <!-- Gradients / Borders -->
     <color name="border_light">#334155</color>
     <color name="ripple_color">#475569</color>
+
+    <!-- Technician diagnostics panel only (dialog_maintenance.xml): one color
+         per test button is a deliberate quick-scan affordance for a
+         technician debug screen, not part of the customer-facing brand
+         palette: named here only so the layout has no bare hex left, the
+         actual values are intentionally left alone. -->
+    <color name="diag_teal">#00796B</color>
+    <color name="diag_deep_purple">#512DA8</color>
+    <color name="diag_orange">#FF6D00</color>
+    <color name="diag_blue">#01579B</color>
+    <color name="diag_olive">#33691E</color>
+    <color name="diag_purple">#4527A0</color>
+    <color name="diag_amber">#EF6C00</color>
+    <color name="diag_slate">#455A64</color>
 </resources>

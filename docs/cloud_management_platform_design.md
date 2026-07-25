@@ -97,6 +97,8 @@ The Voucher Hub is designed to drive consumer traffic and resolve field service 
 
 ## 4. Dashboard & Visualization Design (Inspired by Nayax Core)
 
+> **Detailed Specification**: For full mathematical formulas, Bento-box grid specifications, real-time WebSocket protocol flows, and interactive drill-down drawers, refer to [dashboard_design_specification.md](file:///c:/workspace/gs-ssp/docs/dashboard_design_specification.md).
+
 The CMP dashboard is designed as a centralized "Command Center" that provides actionable insights through hierarchical views. It differentiates between long-term strategic analysis and immediate field operations.
 
 ### 4.1 Global Operational Dashboard (The "MoMa" Style)
@@ -119,14 +121,32 @@ Deep-dive view for a single machine, providing the granularity needed for "desk-
 *   **Command Execution History**: Audited list of all remote commands sent to the machine and their exact completion time.
 *   **Remote Console**: A window displaying the live `Logcat` stream when requested via the `FETCH_LOGS` command.
 
-### 4.4 [Future] High-Impact Visual Elements (Smart Screen Influences)
-While the CMP is a web-based portal, it borrows specific design philosophies from "Smart Large Screen" (智慧大屏) and "Command Center" aesthetics to provide a high-end (高大上) operational experience. These elements are integrated into the standard web dashboard rather than requiring a separate system.
+### 4.4 Advanced UI & UX Design System Specification (正式纳入的先进 UI 设计规范体系)
 
-*   **Aesthetic Influence**: Usage of "Immersive Dark Mode" with high-contrast "Technological Blue" accents to highlight critical IoT data flows and machine states.
-*   **Modular "Bento Box" Layout**: Using a grid-based, high-density card system (Glassmorphism effect) to group related hardware vitals, sales data, and alerts into a single, scannable browser view.
-*   **3D State Indicators**: Instead of flat icons, using lightweight 3D CSS/WebGL elements to represent device components. For example, a spinning 3D brush icon that accelerates/decelerates based on the real-time hardware ACK status.
-*   **Data Visualization "Pulses"**: Incorporating subtle animations where successful transactions trigger a visual "ripple" or "pulse" across the web dashboard, providing immediate psychological feedback of a healthy, active fleet.
-*   **Dynamic Typography**: High-visibility "Mechanical Flip" or odometer-style animations for top-level revenue counters, emphasizing the "live" nature of the telemetry.
+The CMP formally incorporates next-generation industrial UI/UX design standards—combining modern SaaS minimalism (Vercel/Linear), Nayax Core operational density, and Smart Command Center (智慧大屏) aesthetics—into the core system specification:
+
+1. **Bento Box Modular Architecture (便当盒高密度模块化布局)**:
+   - Grid-based, high-density card container layout. Replaces sprawling traditional admin tables with scannable, prioritized visual modules.
+   - Fixed aspect-ratio cards with clear typographic hierarchy and unified border radii (`rounded-xl` / `rounded-2xl`).
+
+2. **Glassmorphism & Technological Spatial Depth (毛玻璃材质与高科技空间深度)**:
+   - Layered translucent containers (`bg-slate-900/80 backdrop-blur-md`) with ultra-fine borders (`border-white/10` or `border-slate-800`).
+   - Multi-layer drop shadows (`shadow-2xl shadow-black/50`) providing clear Z-index spatial depth between background telemetry feeds and foreground control drawers.
+
+3. **Curated Color System & High-Contrast Status Tokens (精调 HSL 色彩体系与高对比度状态语义)**:
+   - **Base Canvas**: Deep Slate `#0F172A` / Industrial Midnight `#0B0F17`.
+   - **Emerald `#10B981`**: ACK Verified, Healthy Device, Positive Sales Growth.
+   - **Amber `#F59E0B`**: System Alerts, Low Sales Warning, Compensation Pending.
+   - **Rose/Red `#EF4444`**: ACK Missing (扣款未洗车), Hardware Fault, Communication Offline.
+   - **Electric Blue `#3B82F6`**: Active Command Dispatch, WebSocket Telemetry Feed, Primary Action Triggers.
+
+4. **Dynamic Micro-animations & Psychological Feedback (动态微交互与脉冲反馈)**:
+   - **Telemetry Pulses (`animate-pulse`)**: Real-time visual pulses triggered whenever a successful hardware ACK or WebSocket transaction arrives.
+   - **Odometer Odometer Counter**: Mechanical flip / smooth digital animation on top-level revenue counters to reinforce live telemetry activity.
+   - **Hover Scaling (`hover:scale-102`)**: Micro-physics feedback on interactive device nodes and command buttons.
+
+5. **Contextual Slide-Over Drawers & Non-Disruptive Modals (上下文非中断抽框与模态交互)**:
+   - Slide-over drawers (Device Black-Box Drawer) keep the user grounded in their macro operational dashboard view while performing deep-dive Logcat troubleshooting or remote command execution.
 
 ---
 

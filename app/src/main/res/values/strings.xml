@@ -77,5 +77,16 @@
     <string name="status_start_wash">Starting Wash Cycle</string>
     <string name="status_verifying">Verifying credentials...</string>
 
+    <!-- Wash-stage stepper shown during startFinalizationSequence's hardware
+         dispense phase: a fixed 4-stage narrative mapped onto real dispense
+         progress (see DispenseEngine's onProgress callback), not literal
+         per-pulse steps, since pulse count varies by amount charged. -->
+    <string-array name="wash_stage_labels">
+        <item>Rinsing…</item>
+        <item>Applying Soap…</item>
+        <item>Final Rinse…</item>
+        <item>Drying…</item>
+    </string-array>
+
     <string name="ad_prompt">TOUCH SCREEN TO START</string>
 </resources>

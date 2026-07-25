@@ -13,11 +13,18 @@ import com.goldsky.carwash.dispense.IDispenseAdapter
  * board is trusted to run its own cycle/timer after accepting the command.
  */
 class SingleCommandAdapter : IDispenseAdapter {
-    override suspend fun dispense(job: DispenseJob, ackStrategy: IAckStrategy): DispenseOutcome {
-        return when (ackStrategy.confirm(job.startHex)) {
+    override suspend fun dispense(
+        job: DispenseJob,
+        ackStrategy: IAckStrategy,
+        onProgress: (Int, Int) -> Unit
+    ): DispenseOutcome {
+        onProgress(0, 1)
+        val outcome = when (ackStrategy.confirm(job.startHex)) {
             AckConfidence.CONFIRMED -> DispenseOutcome.Confirmed()
             AckConfidence.UNCONFIRMED -> DispenseOutcome.DeliveredUnconfirmed()
-            AckConfidence.FAILED -> DispenseOutcome.Failed("command '${job.startHex}' not delivered")
+            AckConfidence.FAILED -> return DispenseOutcome.Failed("command '${job.startHex}' not delivered")
         }
+        onProgress(1, 1)
+        return outcome
     }
 }

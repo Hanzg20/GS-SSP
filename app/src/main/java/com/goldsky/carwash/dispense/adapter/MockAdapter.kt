@@ -13,8 +13,19 @@ import kotlinx.coroutines.delay
  * is no hardware to ask.
  */
 class MockAdapter : IDispenseAdapter {
-    override suspend fun dispense(job: DispenseJob, ackStrategy: IAckStrategy): DispenseOutcome {
-        delay(1500)
+    override suspend fun dispense(
+        job: DispenseJob,
+        ackStrategy: IAckStrategy,
+        onProgress: (Int, Int) -> Unit
+    ): DispenseOutcome {
+        // Reports progress in 4 even steps over the same total delay as
+        // before, purely so the wash-stage stepper has something to animate
+        // in simulation mode too -- most day-to-day testing happens here.
+        val steps = 4
+        repeat(steps) { i ->
+            delay(1500L / steps)
+            onProgress(i + 1, steps)
+        }
         return DispenseOutcome.Confirmed("simulated")
     }
 }

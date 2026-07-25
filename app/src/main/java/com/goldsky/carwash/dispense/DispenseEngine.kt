@@ -21,8 +21,12 @@ import com.goldsky.carwash.payment.ConfigManager
  * dispense_protocol set in their cloud config keep working unchanged.
  */
 object DispenseEngine {
-    suspend fun dispense(job: DispenseJob, isSimulationMode: Boolean): DispenseOutcome {
-        if (isSimulationMode) return MockAdapter().dispense(job, FramedAckStrategy)
+    suspend fun dispense(
+        job: DispenseJob,
+        isSimulationMode: Boolean,
+        onProgress: (unitsSent: Int, totalUnits: Int) -> Unit = { _, _ -> }
+    ): DispenseOutcome {
+        if (isSimulationMode) return MockAdapter().dispense(job, FramedAckStrategy, onProgress)
 
         val settings = ConfigManager.getConfig()?.settings
         val adapter = when (settings?.dispense_protocol) {
@@ -34,6 +38,6 @@ object DispenseEngine {
             "assumed_success" -> AssumedSuccessAckStrategy()
             else -> FramedAckStrategy
         }
-        return adapter.dispense(job, ackStrategy)
+        return adapter.dispense(job, ackStrategy, onProgress)
     }
 }
