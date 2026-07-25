@@ -1159,10 +1159,17 @@ GRANT EXECUTE ON FUNCTION public.issue_compensation_coupon(UUID, INT, INT, UUID)
 -- MERCHANT_ADMIN of p_org_id)) -- card_uid is the physical NFC card's own
 -- serial (read by whatever card reader the front-desk uses to provision it),
 -- supplied by the caller rather than generated, since it must match the
--- number actually encoded on the card. qr_code IS generated server-side
--- (same gen_random_uuid() approach as issue_compensation_coupon, not
--- gen_random_bytes() -- pgcrypto lives in the extensions schema, not public,
--- under this function's SET search_path).
+-- number actually encoded on the card. qr_code IS generated server-side, but
+-- MUST be exactly 12 alphanumeric characters -- per
+-- docs/coupon_redemption_integration.md §2.1, the IM30 scanner routes a scan
+-- to the member-QR path purely by matching ^[A-Za-z0-9]{12}$ (coupon codes
+-- are deliberately 16+ chars so the two never collide on length). Using
+-- issue_compensation_coupon's gen_random_uuid()-based approach here would
+-- produce a 35-char string that the client would silently misroute to
+-- redeem_coupon() instead -- built from the same 36-char alphabet
+-- cmpService.generateVipQrCode() already uses client-side for the same
+-- format, not gen_random_bytes() (pgcrypto lives in the extensions schema,
+-- not public, under this function's SET search_path).
 CREATE OR REPLACE FUNCTION public.admin_create_vip_card(
   p_org_id UUID,
   p_card_uid TEXT,
@@ -1193,13 +1200,20 @@ BEGIN
     RETURN json_build_object('success', false, 'message', 'not_authorized');
   END IF;
 
-  v_qr_code := 'MBR' || upper(replace(gen_random_uuid()::text, '-', ''));
+  -- floor(), not a bare ::int cast -- Postgres rounds a float->int cast to
+  -- the nearest integer rather than truncating, so ::int alone occasionally
+  -- yields 36 (when random()*36 lands in [35.5, 36)), an out-of-range substr
+  -- position that silently returns NULL and gets dropped by string_agg,
+  -- producing an 11-char code (caught live: "HNYN0F93N3Y" before this fix).
+  SELECT string_agg(
+    substr('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', floor(random() * 36)::int + 1, 1), ''
+  ) INTO v_qr_code FROM generate_series(1, 12);
 
   BEGIN
     INSERT INTO public.vip_cards (card_uid, org_id, balance_cents, is_active, qr_code)
     VALUES (p_card_uid, p_org_id, p_initial_balance_cents, true, v_qr_code);
   EXCEPTION WHEN unique_violation THEN
-    RETURN json_build_object('success', false, 'message', 'card_uid_exists');
+    RETURN json_build_object('success', false, 'message', 'card_uid_or_qr_code_exists');
   END;
 
   INSERT INTO public.audit_logs (actor_profile_id, org_id, action, target_table, target_id, details)
