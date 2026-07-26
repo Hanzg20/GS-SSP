@@ -85,11 +85,41 @@ The Voucher Hub is designed to drive consumer traffic and resolve field service 
 *   **Location Heatmaps**: Visualizes which sites have the highest voucher usage, helping operators optimize regional promotions.
 *   **Fraud Detection Dashboard**: Flags suspicious patterns, such as the same code being scanned across different cities within minutes.
 
-### 3.4 [Future] Dynamic Transaction Monitor (DTM)
+### 3.4 [MVP] VIP Membership & Loyalty Ledger
+The CMP provides operators with a full digital ledger for their VIP card program, replacing physical front-desk terminals with a centralized web interface.
+
+#### 3.4.1 Provisioning & Lifecycle
+*   **Card Issuance**: Admins register physical NFC cards by their UID and optionally link them to a consumer's email/name.
+*   **Digital Onboarding**: For consumers without physical cards, the system generates a **Member QR** code (§3.3.1) that can be scanned at any terminal within the organization.
+*   **Balance Management**: 
+    *   **Top-ups**: Admins can credit a card balance (e.g., "Add $50") via a `SECURITY DEFINER` RPC that ensures the transaction is atomic and audited.
+    *   **Freezes/Deactivations**: Instant remote deactivation of lost or compromised cards to protect consumer funds.
+
+#### 3.4.2 Financial Auditing & Loyalty Analytics
+*   **Deduction History**: Real-time view of every "Spent At" event, showing the specific terminal SN, amount, and timestamp.
+*   **Merchant Reconciliation**: Aggregated reports showing total VIP liability (unspent balance across all cards) and monthly revenue recognized via VIP deductions.
+*   **Churn Prediction**: Highlighting members who haven't used their card in 30+ days for targeted marketing re-engagement.
+
+### 3.5 [MVP] Multi-Vertical Media Engine (Advertising)
+The media module manages the distribution of high-definition marketing content across the fleet, optimized for low-bandwidth 4G environments.
+
+#### 3.5.1 Content Distribution Pipeline
+*   **Asset Management**: Centralized repository of videos and images. The CMP automatically calculates **MD5 Fingerprints** for every file to enable incremental terminal-side syncing and integrity verification.
+*   **Playlist Orchestration**: 
+    *   Operators group assets into playlists.
+    *   Targeting can be set at the **Vertical level** (e.g., "All Car Wash machines") or **Site level** (e.g., "Only Toronto Downtown").
+    *   `play_order` allows for precise sequencing of marketing loops.
+*   **Delta Sync Control**: The system only notifies terminals to download a file if the cloud MD5 differs from the last-reported local MD5, significantly reducing data usage.
+
+#### 3.5.2 Playback Monitoring & Reporting
+*   **Proof of Play**: CMP aggregates `play_event` signals from terminals to provide reach and exposure reports to advertisers.
+*   **Operational Health**: Visual indicators for machines that have failed to download their assigned assets (e.g., due to "Storage Full" or "Low Signal").
+
+### 3.6 [Future] Dynamic Transaction Monitor (DTM)
 *   **Real-time Stream**: Watch sales as they happen across all locations.
 *   **Fault Detection**: Automatically highlight "Charged but not Vended" transactions (Bank PAID vs. Hardware ACK mismatch).
 
-### 3.5 [Future] Financial Settlement
+### 3.7 [Future] Financial Settlement
 *   **Payout Calculation**: Aggregating transactions into merchant settlement batches.
 *   **Commission Engine**: Automated fee splitting between GoldSky and distributors.
 

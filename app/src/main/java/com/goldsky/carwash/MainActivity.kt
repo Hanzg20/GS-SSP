@@ -1,5 +1,6 @@
 package com.goldsky.carwash
 
+import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
@@ -54,6 +55,9 @@ class MainActivity : BaseAdActivity() {
     private var deviceSn: String = "SIMULATOR_SN"
     private var deviceControl: com.pax.dal.IDeviceControl? = null
     private var watchdogJob: Job? = null
+    private var laserAnimator: ObjectAnimator? = null
+    private var coordinatedTapAnimator: AnimatorSet? = null
+    private var pulseAnimator: ValueAnimator? = null
 
     // True from the moment money-movement is initiated (card SALE sent to
     // POSLink, or a VIP balance deduction in flight) until it's fully
@@ -177,6 +181,8 @@ class MainActivity : BaseAdActivity() {
         // Enable scanner LED for voucher scan on main menu
         scannerManager?.setScannerLed(true)
         performHealthCheck()
+        startLaserAnimation()
+        start3DStatusPulse()
     }
 
     override fun onPause() {
@@ -184,6 +190,8 @@ class MainActivity : BaseAdActivity() {
         stopAdTimer()
         // Disable scanner LED when leaving main menu
         scannerManager?.setScannerLed(false)
+        stopLaserAnimation()
+        stop3DStatusPulse()
     }
 
     private fun setupClickListeners() {
@@ -197,16 +205,28 @@ class MainActivity : BaseAdActivity() {
         }
 
         findViewById<View>(R.id.card_custom).setOnClickListener {
+            applyClickFeedback(it)
             showCustomAmountDialog()
         }
 
         findViewById<View>(R.id.layout_vip_banner).setOnClickListener {
+            applyClickFeedback(it)
             startActivity(Intent(this, VipActivity::class.java))
+        }
+
+        listOf(R.id.card_standard, R.id.card_delux, R.id.card_wax).forEach { id ->
+            findViewById<View>(id)?.setOnClickListener { applyClickFeedback(it) }
         }
 
         findViewById<View>(R.id.layout_scan_belt).setOnClickListener {
             initCouponScan()
         }
+    }
+
+    private fun applyClickFeedback(view: View) {
+        view.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).withEndAction {
+            view.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+        }.start()
     }
 
     /**
@@ -242,11 +262,13 @@ class MainActivity : BaseAdActivity() {
             val labelView = findViewById<TextView>(labelId)
 
             cardView.visibility = View.VISIBLE
-            priceView.text = "$${product.price_cents / 100}"
+            val oldPrice = priceView.text.toString().filter { it.isDigit() }.toIntOrNull() ?: 0
+            val newPrice = product.price_cents / 100
+            animatePrice(priceView, oldPrice, newPrice)
             labelView.text = product.name
             
             cardView.setOnClickListener {
-                // Extract serial hex from generic attributes
+                // ... same click logic ...
                 val serialHex = product.attributes?.get("serial_hex")?.jsonPrimitive?.contentOrNull
                     ?: "AA000055"
                 startPackagePurchaseFlow(product.price_cents, serialHex)
@@ -267,29 +289,40 @@ class MainActivity : BaseAdActivity() {
         dialog.setContentView(R.layout.dialog_custom_amount)
         
         var amount = 10
-        val tvAmount = dialog.findViewById<TextView>(R.id.tv_amount_display)
+        val flipTens = dialog.findViewById<com.goldsky.carwash.view.FlipDigitView>(R.id.flip_tens)
+        val flipOnes = dialog.findViewById<com.goldsky.carwash.view.FlipDigitView>(R.id.flip_ones)
+        
+        // Init values
+        flipTens?.setValue(1, false)
+        flipOnes?.setValue(0, false)
         
         dialog.findViewById<Button>(R.id.btn_plus).setOnClickListener {
-            if (amount < 50) {
-                amount += 2
-                tvAmount.text = "$$amount"
+            applyClickFeedback(it)
+            if (amount < 40) {
+                amount += 1
+                flipTens?.setValue(amount / 10)
+                flipOnes?.setValue(amount % 10)
             }
         }
         
         dialog.findViewById<Button>(R.id.btn_minus).setOnClickListener {
-            if (amount > 2) {
-                amount -= 2
-                tvAmount.text = "$$amount"
+            applyClickFeedback(it)
+            if (amount > 4) {
+                amount -= 1
+                flipTens?.setValue(amount / 10)
+                flipOnes?.setValue(amount % 10)
             }
         }
         
         dialog.findViewById<Button>(R.id.btn_confirm_custom).setOnClickListener {
+            applyClickFeedback(it)
             dialog.dismiss()
             val hex = "AA 01 ${"%02X".format(amount)} 55"
             startPackagePurchaseFlow(amount * 100, hex)
         }
         
         dialog.findViewById<Button>(R.id.btn_cancel_custom).setOnClickListener {
+            applyClickFeedback(it)
             dialog.dismiss()
             resetAdTimer()
         }
@@ -437,16 +470,19 @@ class MainActivity : BaseAdActivity() {
         selectionDialog.setContentView(R.layout.dialog_payment_selection)
         
         selectionDialog.findViewById<View>(R.id.btn_choice_card).setOnClickListener {
+            applyClickFeedback(it)
             selectionDialog.dismiss()
             startPaymentFlow(true, priceInCents, startHex)
         }
         
         selectionDialog.findViewById<View>(R.id.btn_choice_scan).setOnClickListener {
+            applyClickFeedback(it)
             selectionDialog.dismiss()
             startPaymentFlow(false, priceInCents, startHex)
         }
         
         selectionDialog.findViewById<Button>(R.id.btn_cancel_choice).setOnClickListener {
+            applyClickFeedback(it)
             selectionDialog.dismiss()
             resetAdTimer()
         }
@@ -470,7 +506,7 @@ class MainActivity : BaseAdActivity() {
         if (isCard) {
             layoutCard.visibility = View.VISIBLE
             layoutQr.visibility = View.GONE
-            startTapCardAnimation(dialog)
+            startCoordinatedTapAnimation(dialog)
             
             // DYNAMIC VOICE: Localized amount and instruction
             TtsManager.announceAmount(priceInCents, "Total amount is")
@@ -500,6 +536,7 @@ class MainActivity : BaseAdActivity() {
         }
 
         dialog.findViewById<View>(R.id.btn_back_pay)?.setOnClickListener {
+            applyClickFeedback(it)
             if (paymentInFlight) {
                 Toast.makeText(this@MainActivity, getString(R.string.toast_payment_processing_wait), Toast.LENGTH_SHORT).show()
             } else {
@@ -508,6 +545,7 @@ class MainActivity : BaseAdActivity() {
             }
         }
         dialog.findViewById<View>(R.id.btn_back_qr)?.setOnClickListener {
+            applyClickFeedback(it)
             if (paymentInFlight) {
                 Toast.makeText(this@MainActivity, getString(R.string.toast_payment_processing_wait), Toast.LENGTH_SHORT).show()
             } else {
@@ -544,19 +582,11 @@ class MainActivity : BaseAdActivity() {
             dialogTimer.cancel()
             scannerManager?.stopScan()
             pollingJob?.cancel()
+            stopCoordinatedTapAnimation()
         }
         dialog.show()
     }
 
-    private fun startTapCardAnimation(dialog: Dialog) {
-        val animatedCard = dialog.findViewById<View>(R.id.animated_card)
-        ObjectAnimator.ofFloat(animatedCard, "translationY", 100f, -50f).apply {
-            duration = 1500
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.REVERSE
-            start()
-        }
-    }
 
     private fun initVipPayment(uid: String, priceInCents: Int, startHex: String, dialog: Dialog) {
         val layoutStatus = dialog.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
@@ -807,7 +837,6 @@ class MainActivity : BaseAdActivity() {
     ) {
         val layoutStatus = dialog?.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
         val tvStatus = dialog?.findViewById<TextView>(R.id.tv_status_msg)
-        val viewSuccessBg = dialog?.findViewById<View>(R.id.view_final_success_bg)
         val ivStatusIcon = dialog?.findViewById<ImageView>(R.id.iv_status_icon)
         val layoutWashStepper = dialog?.findViewById<ConstraintLayout>(R.id.layout_wash_stepper)
         val pbWashStages = dialog?.findViewById<ProgressBar>(R.id.pb_wash_stages)
@@ -861,11 +890,7 @@ class MainActivity : BaseAdActivity() {
             pbWashStages?.progress = 0
             tvStageLabel?.text = stageLabels.firstOrNull()
 
-            // 2. Delegate to the protocol/ack-strategy this device is configured
-            // for (KioskSettings.dispense_protocol/dispense_ack_mode) -- see
-            // com.goldsky.carwash.dispense.DispenseEngine. onProgress drives the
-            // stepper off real dispense progress (pulses acked / commands sent),
-            // not a fixed timer, so it stays honest if hardware is slow/stuck.
+            // 2. Delegate to the protocol/ack-strategy
             val outcome = DispenseEngine.dispense(
                 DispenseJob(pulseAmountCents, startHex, deviceSn, ecrRefNum),
                 isSimulationMode
@@ -875,7 +900,7 @@ class MainActivity : BaseAdActivity() {
                 val stageIdx = (fraction * stageLabels.size).toInt().coerceIn(0, stageLabels.size - 1)
                 tvStageLabel?.text = stageLabels[stageIdx]
             }
-            Log.i("SSP_HARDWARE", "Dispense outcome for $$amountCents cents charged (dispensing $$pulseAmountCents worth): $outcome")
+            Log.i("SSP_HARDWARE", "Dispense outcome: $outcome")
 
             washIconAnimator?.cancel()
             layoutWashStepper?.visibility = View.GONE
@@ -883,7 +908,7 @@ class MainActivity : BaseAdActivity() {
             if (outcome !is DispenseOutcome.Failed) {
                 ivStatusIcon?.setImageResource(R.drawable.ic_check_circle)
                 popIcon(ivStatusIcon)
-                // 3. Update cloud record with hardware success. DeliveredUnconfirmed
+                // 3. Update cloud record with hardware success
                 // (older boards with no ACK) gets its own status rather than being
                 // folded into ACK_RECEIVED, so an audit query can tell "we know it
                 // ran" from "we only know we sent it".
@@ -909,11 +934,8 @@ class MainActivity : BaseAdActivity() {
                     }
                 }
 
-                viewSuccessBg?.visibility = View.VISIBLE
                 tvStatus?.text = getString(R.string.status_enjoy_wash)
                 TtsManager.speak(getString(R.string.toast_payment_success_enjoy))
-                viewSuccessBg?.alpha = 0f
-                viewSuccessBg?.animate()?.alpha(1f)?.setDuration(500)?.start()
 
                 paymentInFlight = false
                 delay(5000)
@@ -1117,13 +1139,26 @@ class MainActivity : BaseAdActivity() {
         tvDb.setTextColor(if (ConfigManager.isDatabaseOnline()) Color.GREEN else Color.RED)
 
         // 3. Relay Command Buttons
-        dialog.findViewById<Button>(R.id.btn_test_4).setOnClickListener { sendTestCmd("AA 01 04 55") }
-        dialog.findViewById<Button>(R.id.btn_test_6).setOnClickListener { sendTestCmd("AA 01 06 55") }
-        dialog.findViewById<Button>(R.id.btn_test_8).setOnClickListener { sendTestCmd("AA 01 08 55") }
-        dialog.findViewById<Button>(R.id.btn_test_stop).setOnClickListener { sendTestCmd("AA 00 00 55") }
+        dialog.findViewById<Button>(R.id.btn_test_4).setOnClickListener {
+            applyClickFeedback(it)
+            sendTestCmd("AA 01 04 55")
+        }
+        dialog.findViewById<Button>(R.id.btn_test_6).setOnClickListener {
+            applyClickFeedback(it)
+            sendTestCmd("AA 01 06 55")
+        }
+        dialog.findViewById<Button>(R.id.btn_test_8).setOnClickListener {
+            applyClickFeedback(it)
+            sendTestCmd("AA 01 08 55")
+        }
+        dialog.findViewById<Button>(R.id.btn_test_stop).setOnClickListener {
+            applyClickFeedback(it)
+            sendTestCmd("AA 00 00 55")
+        }
 
         // 4. Peripherals
         dialog.findViewById<Button>(R.id.btn_test_scan).setOnClickListener {
+            applyClickFeedback(it)
             Toast.makeText(this, "Scanner Active...", Toast.LENGTH_SHORT).show()
             scannerManager?.startScan(object : PaxScannerManager.ScanCallback {
                 override fun onScanSuccess(result: String) {
@@ -1141,6 +1176,7 @@ class MainActivity : BaseAdActivity() {
         
         btnQrTest.text = "FORCE SYNC"
         btnQrTest.setOnClickListener {
+            applyClickFeedback(it)
             CoroutineScope(Dispatchers.Main).launch {
                 Toast.makeText(this@MainActivity, "Syncing Config...", Toast.LENGTH_SHORT).show()
 
@@ -1168,6 +1204,7 @@ class MainActivity : BaseAdActivity() {
         }
 
         dialog.findViewById<Button>(R.id.btn_sim_hang).setOnClickListener {
+            applyClickFeedback(it)
             Toast.makeText(this, "System will hang in 2s. Watchdog should reboot.", Toast.LENGTH_LONG).show()
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 while(true) { /* INFINITE HANG */ }
@@ -1176,6 +1213,7 @@ class MainActivity : BaseAdActivity() {
 
         // 6. Diagnostics
         dialog.findViewById<Button>(R.id.btn_test_db).setOnClickListener {
+            applyClickFeedback(it)
             CoroutineScope(Dispatchers.Main).launch {
                 tvDb.text = "DB: TESTING..."
                 tvDb.setTextColor(Color.YELLOW)
@@ -1188,6 +1226,7 @@ class MainActivity : BaseAdActivity() {
 
         var ledCycle = 0
         dialog.findViewById<Button>(R.id.btn_test_led).setOnClickListener {
+            applyClickFeedback(it)
             val indicator = findViewById<View>(R.id.view_health_indicator)
             when (ledCycle % 3) {
                 0 -> indicator?.setBackgroundColor(Color.RED)
@@ -1199,11 +1238,13 @@ class MainActivity : BaseAdActivity() {
         }
 
         dialog.findViewById<Button>(R.id.btn_test_voice).setOnClickListener {
+            applyClickFeedback(it)
             TtsManager.speak("GS-SSP system voice test successful. Speaker and volume are operational.")
             Toast.makeText(this, "Playing Test Voice...", Toast.LENGTH_SHORT).show()
         }
 
         dialog.findViewById<Button>(R.id.btn_test_nfc).setOnClickListener {
+            applyClickFeedback(it)
             Toast.makeText(this, "NFC Probing for 10s... Tap a card.", Toast.LENGTH_LONG).show()
             scannerManager?.startCardDetection(object : PaxScannerManager.CardCallback {
                 override fun onCardDetected(type: String, uid: String) {
@@ -1219,6 +1260,7 @@ class MainActivity : BaseAdActivity() {
         }
 
         dialog.findViewById<Button>(R.id.btn_test_brightness).setOnClickListener {
+            applyClickFeedback(it)
             if (isSimulationMode) {
                 isHighBrightness = !isHighBrightness
                 Toast.makeText(this, "Simulating Brightness: ${if (isHighBrightness) "100%" else "50%"}", Toast.LENGTH_SHORT).show()
@@ -1291,6 +1333,110 @@ class MainActivity : BaseAdActivity() {
         } else {
             val sent = SerialPortManager.sendHexString(hex)
             Toast.makeText(this, if (sent) "Sent: $hex" else "Send FAILED", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // --- UI Refinement Animations ---
+
+    private fun startLaserAnimation() {
+        val laserLine = findViewById<View>(R.id.view_laser_line) ?: return
+        laserAnimator = ObjectAnimator.ofFloat(laserLine, "translationY", 0f, 150f).apply {
+            duration = 1500
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            start()
+        }
+    }
+
+    private fun stopLaserAnimation() {
+        laserAnimator?.cancel()
+    }
+
+    private fun start3DStatusPulse() {
+        val indicator = findViewById<View>(R.id.view_health_indicator) ?: return
+        pulseAnimator = ValueAnimator.ofFloat(1f, 1.3f, 1f).apply {
+            duration = 2000
+            repeatCount = ValueAnimator.INFINITE
+            addUpdateListener { anim ->
+                val scale = anim.animatedValue as Float
+                indicator.scaleX = scale
+                indicator.scaleY = scale
+            }
+            start()
+        }
+    }
+
+    private fun stop3DStatusPulse() {
+        pulseAnimator?.cancel()
+    }
+
+    /**
+     * Unified rhythm-based animation for card tapping.
+     * Synchronizes card vertical movement with a triple-ripple effect.
+     */
+    private fun startCoordinatedTapAnimation(dialog: Dialog) {
+        val animatedCard = dialog.findViewById<View>(R.id.animated_card) ?: return
+        val ring1 = dialog.findViewById<View>(R.id.view_tap_ring_1) ?: return
+        val ring2 = dialog.findViewById<View>(R.id.view_tap_ring_2) ?: return
+        val ring3 = dialog.findViewById<View>(R.id.view_tap_ring_3) ?: return
+
+        coordinatedTapAnimator = AnimatorSet().apply {
+            // 1. Card Movement (1800ms cycle)
+            val cardAnim = ObjectAnimator.ofFloat(animatedCard, "translationY", 100f, -60f).apply {
+                duration = 1800
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+            }
+
+            // 2. Triple Ripple (timed to trigger at peak of card movement)
+            val createRipple = { view: View, delay: Long ->
+                AnimatorSet().apply {
+                    playTogether(
+                        ObjectAnimator.ofFloat(view, "scaleX", 0.8f, 1.8f),
+                        ObjectAnimator.ofFloat(view, "scaleY", 0.8f, 1.8f),
+                        ObjectAnimator.ofFloat(view, "alpha", 0.8f, 0f)
+                    )
+                    duration = 1200
+                    startDelay = delay
+                }
+            }
+
+            val ripple1 = createRipple(ring1, 0)
+            val ripple2 = createRipple(ring2, 200)
+            val ripple3 = createRipple(ring3, 400)
+
+            val rippleGroup = AnimatorSet().apply {
+                playTogether(ripple1, ripple2, ripple3)
+            }
+
+            // Coordination logic: trigger ripples periodically
+            val loopHandler = android.os.Handler(android.os.Looper.getMainLooper())
+            val rippleRunnable = object : Runnable {
+                override fun run() {
+                    if (dialog.isShowing) {
+                        rippleGroup.start()
+                        loopHandler.postDelayed(this, 2000)
+                    }
+                }
+            }
+
+            play(cardAnim)
+            loopHandler.post(rippleRunnable)
+            start()
+        }
+    }
+
+    private fun stopCoordinatedTapAnimation() {
+        coordinatedTapAnimator?.cancel()
+    }
+
+    private fun animatePrice(textView: TextView, start: Int, end: Int) {
+        ValueAnimator.ofInt(start, end).apply {
+            duration = 1000
+            addUpdateListener { anim ->
+                textView.text = "$${anim.animatedValue}"
+            }
+            start()
         }
     }
 }

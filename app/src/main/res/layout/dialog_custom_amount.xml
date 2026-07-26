@@ -18,44 +18,81 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <TextView
-        android:id="@+id/tv_amount_display"
-        android:layout_width="wrap_content"
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="$10"
-        android:textColor="@color/gold_accent"
-        android:textSize="80sp"
-        android:textStyle="bold"
+        android:background="@drawable/bg_glass_card"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="32dp"
+        android:paddingBottom="32dp"
+        android:elevation="8dp"
         app:layout_constraintBottom_toTopOf="@id/btn_confirm_custom"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tv_custom_title" />
+        app:layout_constraintTop_toBottomOf="@id/tv_custom_title"
+        android:layout_marginTop="32dp"
+        android:layout_marginBottom="32dp">
 
-    <Button
-        android:id="@+id/btn_minus"
-        android:layout_width="80dp"
-        android:layout_height="80dp"
-        android:backgroundTint="@color/btn_neutral_bg"
-        android:text="-"
-        android:textColor="@color/text_light"
-        android:textSize="40sp"
-        app:layout_constraintBottom_toBottomOf="@id/tv_amount_display"
-        app:layout_constraintEnd_toStartOf="@id/tv_amount_display"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@id/tv_amount_display" />
+        <!-- Mechanical Flip Counter Container (Z-axis prioritized) -->
+        <LinearLayout
+            android:id="@+id/layout_flip_counter"
+            android:layout_width="wrap_content"
+            android:layout_height="120dp"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:elevation="12dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/btn_plus"
+            app:layout_constraintStart_toEndOf="@id/btn_minus"
+            app:layout_constraintTop_toTopOf="parent">
 
-    <Button
-        android:id="@+id/btn_plus"
-        android:layout_width="80dp"
-        android:layout_height="80dp"
-        android:backgroundTint="@color/btn_neutral_bg"
-        android:text="+"
-        android:textColor="@color/text_light"
-        android:textSize="40sp"
-        app:layout_constraintBottom_toBottomOf="@id/tv_amount_display"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/tv_amount_display"
-        app:layout_constraintTop_toTopOf="@id/tv_amount_display" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="$"
+                android:textColor="@color/gold_accent"
+                android:textSize="36sp"
+                android:textStyle="bold"
+                android:layout_marginEnd="6dp"/>
+
+            <com.goldsky.carwash.view.FlipDigitView
+                android:id="@+id/flip_tens"
+                android:layout_width="55dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="4dp" />
+
+            <com.goldsky.carwash.view.FlipDigitView
+                android:id="@+id/flip_ones"
+                android:layout_width="55dp"
+                android:layout_height="match_parent" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btn_minus"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:backgroundTint="@color/btn_neutral_bg"
+            android:text="-"
+            android:textColor="@color/text_light"
+            android:textSize="20sp"
+            android:padding="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <Button
+            android:id="@+id/btn_plus"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:backgroundTint="@color/btn_neutral_bg"
+            android:text="+"
+            android:textColor="@color/text_light"
+            android:textSize="20sp"
+            android:padding="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
     <Button
         android:id="@+id/btn_confirm_custom"

@@ -65,10 +65,11 @@
             android:id="@+id/card_standard"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_margin="4dp"
-            android:background="@drawable/card_brand_bg"
+            android:layout_margin="6dp"
+            android:background="@drawable/bg_glass_card"
             android:clickable="true"
             android:focusable="true"
+            android:elevation="4dp"
             app:layout_constraintBottom_toTopOf="@id/guideline_h"
             app:layout_constraintEnd_toEndOf="@id/guideline_v"
             app:layout_constraintStart_toStartOf="parent"
@@ -105,10 +106,11 @@
             android:id="@+id/card_delux"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_margin="4dp"
-            android:background="@drawable/card_brand_bg"
+            android:layout_margin="6dp"
+            android:background="@drawable/bg_glass_card"
             android:clickable="true"
             android:focusable="true"
+            android:elevation="4dp"
             app:layout_constraintBottom_toTopOf="@id/guideline_h"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="@id/guideline_v"
@@ -145,10 +147,11 @@
             android:id="@+id/card_wax"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_margin="4dp"
-            android:background="@drawable/card_brand_bg"
+            android:layout_margin="6dp"
+            android:background="@drawable/bg_glass_card"
             android:clickable="true"
             android:focusable="true"
+            android:elevation="4dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="@id/guideline_v"
             app:layout_constraintStart_toStartOf="parent"
@@ -185,11 +188,11 @@
             android:id="@+id/card_custom"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_margin="4dp"
-            android:background="@drawable/card_brand_bg"
-            android:backgroundTint="@color/btn_neutral_bg"
+            android:layout_margin="6dp"
+            android:background="@drawable/bg_glass_card"
             android:clickable="true"
             android:focusable="true"
+            android:elevation="4dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="@id/guideline_v"
@@ -264,11 +267,13 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintHeight_percent="0.12">
 
+        <!-- Laser Line with subtle glow -->
         <View
             android:id="@+id/view_laser_line"
             android:layout_width="match_parent"
-            android:layout_height="2dp"
-            android:background="@color/royal_blue_translucent"
+            android:layout_height="3dp"
+            android:background="@drawable/laser_line"
+            android:alpha="0.8"
             app:layout_constraintTop_toTopOf="parent" />
 
         <TextView
@@ -287,13 +292,13 @@
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <!-- ================== 5. WORKING LAYOUT (Overlay) ================== -->
+    <!-- Content moved to dialog_payment.xml for top-level rendering -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/layout_working"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@color/scrim_dark"
-        android:visibility="gone">
-    </androidx.constraintlayout.widget.ConstraintLayout>
+        android:visibility="gone" />
 
     <!-- ================== 6. STATUS & VERSION (Technician) ================== -->
     <View

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 1. Outer Metal Frame (Depth & Shadow) -->
+    <item>
+        <shape>
+            <corners android:radius="22dp" />
+            <solid android:color="@color/metal_shadow" />
+        </shape>
+    </item>
+
+    <!-- 2. CNC Brushed Surface -->
+    <item android:bottom="2dp" android:left="2dp" android:right="2dp" android:top="2dp">
+        <shape>
+            <corners android:radius="20dp" />
+            <gradient
+                android:angle="135"
+                android:endColor="@color/metal_surface_dark"
+                android:startColor="#333333"
+                android:type="linear" />
+            <stroke
+                android:width="1dp"
+                android:color="#444444" />
+        </shape>
+    </item>
+
+    <!-- 3. CNC Bevel Highlight (Edge light) -->
+    <item android:bottom="3dp" android:left="3dp" android:right="3dp" android:top="3dp">
+        <shape>
+            <corners android:radius="18dp" />
+            <stroke
+                android:width="1dp"
+                android:color="@color/metal_rim_highlight" />
+        </shape>
+    </item>
+
+    <!-- 4. Inner Obsidian Panel (Device Center) -->
+    <item
+        android:bottom="12dp"
+        android:left="12dp"
+        android:right="12dp"
+        android:top="12dp">
+        <shape>
+            <corners android:radius="14dp" />
+            <solid android:color="@color/deep_obsidian" />
+            <stroke
+                android:width="1dp"
+                android:color="#1A1A1A" />
+        </shape>
+    </item>
+</layer-list>

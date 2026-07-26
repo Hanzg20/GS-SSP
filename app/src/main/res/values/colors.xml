@@ -15,6 +15,22 @@
     <color name="goldsky_gold_end">#FF8A00</color>
     <color name="goldsky_blue">#00D1FF</color>
 
+    <!-- Glassmorphism & High-End Accents -->
+    <color name="glass_white_high">#22FFFFFF</color>
+    <color name="glass_white_low">#0AFFFFFF</color>
+    <color name="glass_border">#44FFFFFF</color>
+    <color name="glow_gold">#88FFB800</color>
+    <color name="glow_blue">#8800D1FF</color>
+    <color name="glow_green">#884CAF50</color>
+    <color name="laser_red">#FFFF0000</color>
+    <color name="laser_red_glow">#44FF0000</color>
+
+    <!-- Metal & Obsidian Textures -->
+    <color name="metal_rim_highlight">#66FFFFFF</color>
+    <color name="metal_surface_dark">#222222</color>
+    <color name="metal_shadow">#000000</color>
+    <color name="deep_obsidian">#050505</color>
+
     <!-- Functional Colors -->
     <color name="gold_accent">#FFB800</color>
     <color name="emerald_green">#4CAF50</color>
