@@ -527,6 +527,20 @@ $$;
 -- section -- a device's own anonymous session and a human portal session
 -- reach these tables through entirely different policies, neither
 -- interferes with the other.
+
+-- organizations itself: ENABLE ROW LEVEL SECURITY was set (§0.2) but no
+-- policy was ever added, which is silent default-deny, not "readable by
+-- default" (same gap device_auth_map had, see the comment on that policy
+-- below) -- found live 2026-07-25 testing VipCardLedger/VoucherHub/
+-- ConfigPricingManager's org picker: cmpService.getOrganizations() was
+-- returning an empty list for every user including SYS_ADMIN, silently
+-- blocking every org-scoped create/publish flow in the CMP (the org
+-- <select> always rendered "暂无可选商户" with nothing to pick).
+DROP POLICY IF EXISTS "Org members can view own organizations" ON public.organizations;
+CREATE POLICY "Org members can view own organizations" ON public.organizations
+FOR SELECT TO authenticated
+USING (public.is_sys_admin() OR id IN (SELECT public.member_org_ids()));
+
 DROP POLICY IF EXISTS "Org members can view org devices" ON public.devices;
 CREATE POLICY "Org members can view org devices" ON public.devices
 FOR SELECT TO authenticated
