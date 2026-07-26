@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.17 (2026-07-25)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.18 (2026-07-25)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -259,6 +259,40 @@ CREATE TABLE IF NOT EXISTS public.vip_cards (
 -- serial). Nullable: not every card has one issued yet.
 ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS qr_code TEXT UNIQUE;
 CREATE INDEX IF NOT EXISTS idx_vip_cards_qr_code ON public.vip_cards(qr_code);
+
+-- Five fields ported from the legacy jc_vip_cards table (a real
+-- card-processor schema, unlike this project's own earlier scaffolding) --
+-- picked out as the ones this table was genuinely missing, not a wholesale
+-- copy of that table's ~40 columns:
+--
+-- display_card_number: the number printed/embossed on the physical card, as
+-- opposed to card_uid (the NFC chip's own serial, read electronically and
+-- not human-legible off the card face). Without this there was no way to
+-- look up a card from what a customer reads over the phone, or for staff to
+-- key one in by hand if the NFC reader fails.
+ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS display_card_number TEXT UNIQUE;
+CREATE INDEX IF NOT EXISTS idx_vip_cards_display_card_number ON public.vip_cards(display_card_number);
+-- cardholder_name / mobile_phone: this table previously carried zero
+-- identity for who holds a card -- just a bare balance ledger keyed by
+-- serial. No way to contact a customer about a low balance or verify a
+-- lost-card claim.
+ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS cardholder_name TEXT;
+ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS mobile_phone TEXT;
+-- card_expiration_date: cards never expired before this; needed for
+-- promotional/gift-card balances that must be used by a date, and to
+-- eventually write off abandoned balances. Enforced in deduct_vip_balance()
+-- below, same rejection shape as the is_active check.
+ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS card_expiration_date DATE;
+-- max_daily_cents (+ its two tracking columns): deduct_vip_balance() below
+-- previously only checked sufficient balance -- a lost/stolen/cloned card
+-- could be drained in a single transaction. NULL = no limit (every existing
+-- card keeps today's unlimited behavior). daily_spent_cents/daily_spent_date
+-- are bookkeeping, not one of the five fields themselves -- deduct_vip_balance
+-- resets the counter whenever it sees a stale date rather than needing a
+-- separate midnight cron.
+ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS max_daily_cents INTEGER;
+ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS daily_spent_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS daily_spent_date DATE;
 
 -- 3. MEDIA ENGINE
 -- Advertising Materials
@@ -1009,12 +1043,17 @@ AS $$
 DECLARE
   v_balance_cents INT;
   v_active BOOLEAN;
+  v_expiration DATE;
+  v_max_daily_cents INT;
+  v_daily_spent_cents INT;
+  v_daily_spent_date DATE;
 BEGIN
   IF p_amount_cents <= 0 THEN
     RETURN json_build_object('success', false, 'message', 'invalid_amount');
   END IF;
 
-  SELECT balance_cents, is_active INTO v_balance_cents, v_active
+  SELECT balance_cents, is_active, card_expiration_date, max_daily_cents, daily_spent_cents, daily_spent_date
+  INTO v_balance_cents, v_active, v_expiration, v_max_daily_cents, v_daily_spent_cents, v_daily_spent_date
   FROM public.vip_cards
   WHERE card_uid = p_card_uid
   FOR UPDATE;
@@ -1027,11 +1066,30 @@ BEGIN
     RETURN json_build_object('success', false, 'message', 'card_inactive');
   END IF;
 
+  IF v_expiration IS NOT NULL AND v_expiration < CURRENT_DATE THEN
+    RETURN json_build_object('success', false, 'message', 'card_expired');
+  END IF;
+
   IF v_balance_cents < p_amount_cents THEN
     RETURN json_build_object('success', false, 'message', 'insufficient_balance');
   END IF;
 
-  UPDATE public.vip_cards SET balance_cents = balance_cents - p_amount_cents WHERE card_uid = p_card_uid;
+  -- Stale (or never-set) daily_spent_date means today's spend is really 0,
+  -- not whatever was left over from a previous day -- reset inline instead
+  -- of relying on a separate midnight job.
+  IF v_daily_spent_date IS DISTINCT FROM CURRENT_DATE THEN
+    v_daily_spent_cents := 0;
+  END IF;
+
+  IF v_max_daily_cents IS NOT NULL AND v_daily_spent_cents + p_amount_cents > v_max_daily_cents THEN
+    RETURN json_build_object('success', false, 'message', 'daily_limit_exceeded');
+  END IF;
+
+  UPDATE public.vip_cards
+  SET balance_cents = balance_cents - p_amount_cents,
+      daily_spent_cents = v_daily_spent_cents + p_amount_cents,
+      daily_spent_date = CURRENT_DATE
+  WHERE card_uid = p_card_uid;
 
   RETURN json_build_object('success', true, 'new_balance_cents', v_balance_cents - p_amount_cents);
 END;
@@ -1184,10 +1242,20 @@ GRANT EXECUTE ON FUNCTION public.issue_compensation_coupon(UUID, INT, INT, UUID)
 -- cmpService.generateVipQrCode() already uses client-side for the same
 -- format, not gen_random_bytes() (pgcrypto lives in the extensions schema,
 -- not public, under this function's SET search_path).
+-- Postgres overloads by signature -- the 3-arg version from before this
+-- pass would otherwise keep existing alongside the new 8-arg one instead of
+-- being replaced by it.
+DROP FUNCTION IF EXISTS public.admin_create_vip_card(UUID, TEXT, INT);
+
 CREATE OR REPLACE FUNCTION public.admin_create_vip_card(
   p_org_id UUID,
   p_card_uid TEXT,
-  p_initial_balance_cents INT DEFAULT 0
+  p_initial_balance_cents INT DEFAULT 0,
+  p_display_card_number TEXT DEFAULT NULL,
+  p_cardholder_name TEXT DEFAULT NULL,
+  p_mobile_phone TEXT DEFAULT NULL,
+  p_card_expiration_date DATE DEFAULT NULL,
+  p_max_daily_cents INT DEFAULT NULL
 )
 RETURNS JSON
 LANGUAGE plpgsql
@@ -1203,6 +1271,10 @@ BEGIN
 
   IF p_initial_balance_cents < 0 THEN
     RETURN json_build_object('success', false, 'message', 'invalid_amount');
+  END IF;
+
+  IF p_max_daily_cents IS NOT NULL AND p_max_daily_cents <= 0 THEN
+    RETURN json_build_object('success', false, 'message', 'invalid_max_daily');
   END IF;
 
   IF NOT EXISTS (
@@ -1224,22 +1296,95 @@ BEGIN
   ) INTO v_qr_code FROM generate_series(1, 12);
 
   BEGIN
-    INSERT INTO public.vip_cards (card_uid, org_id, balance_cents, is_active, qr_code)
-    VALUES (p_card_uid, p_org_id, p_initial_balance_cents, true, v_qr_code);
+    INSERT INTO public.vip_cards (
+      card_uid, org_id, balance_cents, is_active, qr_code,
+      display_card_number, cardholder_name, mobile_phone, card_expiration_date, max_daily_cents
+    )
+    VALUES (
+      p_card_uid, p_org_id, p_initial_balance_cents, true, v_qr_code,
+      p_display_card_number, p_cardholder_name, p_mobile_phone, p_card_expiration_date, p_max_daily_cents
+    );
   EXCEPTION WHEN unique_violation THEN
-    RETURN json_build_object('success', false, 'message', 'card_uid_or_qr_code_exists');
+    RETURN json_build_object('success', false, 'message', 'card_uid_qr_code_or_display_number_exists');
   END;
 
   INSERT INTO public.audit_logs (actor_profile_id, org_id, action, target_table, target_id, details)
   VALUES (auth.uid(), p_org_id, 'CREATE_VIP_CARD', 'vip_cards', p_card_uid,
-    json_build_object('initial_balance_cents', p_initial_balance_cents));
+    json_build_object('initial_balance_cents', p_initial_balance_cents, 'max_daily_cents', p_max_daily_cents));
 
   RETURN json_build_object('success', true, 'card_uid', p_card_uid, 'qr_code', v_qr_code);
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.admin_create_vip_card(UUID, TEXT, INT) FROM public;
-GRANT EXECUTE ON FUNCTION public.admin_create_vip_card(UUID, TEXT, INT) TO authenticated;
+REVOKE ALL ON FUNCTION public.admin_create_vip_card(UUID, TEXT, INT, TEXT, TEXT, TEXT, DATE, INT) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_create_vip_card(UUID, TEXT, INT, TEXT, TEXT, TEXT, DATE, INT) TO authenticated;
+
+-- Function: edit a VIP card's profile fields (not balance, not org) from the
+-- portal -- customer updates their phone number, staff corrects a mistyped
+-- display number, or sets/changes an expiration or daily-spend cap after the
+-- card was already issued. Same authorization + audit-log shape as
+-- admin_topup_vip_card below (org resolved from the card itself, not trusted
+-- from the caller).
+CREATE OR REPLACE FUNCTION public.admin_update_vip_card_profile(
+  p_card_uid TEXT,
+  p_display_card_number TEXT DEFAULT NULL,
+  p_cardholder_name TEXT DEFAULT NULL,
+  p_mobile_phone TEXT DEFAULT NULL,
+  p_card_expiration_date DATE DEFAULT NULL,
+  p_max_daily_cents INT DEFAULT NULL
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id UUID;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN json_build_object('success', false, 'message', 'not_authenticated');
+  END IF;
+
+  IF p_max_daily_cents IS NOT NULL AND p_max_daily_cents <= 0 THEN
+    RETURN json_build_object('success', false, 'message', 'invalid_max_daily');
+  END IF;
+
+  SELECT org_id INTO v_org_id FROM public.vip_cards WHERE card_uid = p_card_uid FOR UPDATE;
+  IF v_org_id IS NULL THEN
+    RETURN json_build_object('success', false, 'message', 'card_not_found');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.org_members
+    WHERE profile_id = auth.uid() AND capability = 'admin' AND (
+      role = 'SYS_ADMIN' OR (role = 'MERCHANT_ADMIN' AND org_id = v_org_id)
+    )
+  ) THEN
+    RETURN json_build_object('success', false, 'message', 'not_authorized');
+  END IF;
+
+  BEGIN
+    UPDATE public.vip_cards
+    SET display_card_number = p_display_card_number,
+        cardholder_name = p_cardholder_name,
+        mobile_phone = p_mobile_phone,
+        card_expiration_date = p_card_expiration_date,
+        max_daily_cents = p_max_daily_cents
+    WHERE card_uid = p_card_uid;
+  EXCEPTION WHEN unique_violation THEN
+    RETURN json_build_object('success', false, 'message', 'display_number_exists');
+  END;
+
+  INSERT INTO public.audit_logs (actor_profile_id, org_id, action, target_table, target_id, details)
+  VALUES (auth.uid(), v_org_id, 'UPDATE_VIP_CARD_PROFILE', 'vip_cards', p_card_uid,
+    json_build_object('max_daily_cents', p_max_daily_cents, 'card_expiration_date', p_card_expiration_date));
+
+  RETURN json_build_object('success', true);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_update_vip_card_profile(TEXT, TEXT, TEXT, TEXT, DATE, INT) FROM public;
+GRANT EXECUTE ON FUNCTION public.admin_update_vip_card_profile(TEXT, TEXT, TEXT, TEXT, DATE, INT) TO authenticated;
 
 -- Function: portal-side balance top-up (the admin-facing counterpart to
 -- deduct_vip_balance() -- that one is the kiosk spending a card down, this is
