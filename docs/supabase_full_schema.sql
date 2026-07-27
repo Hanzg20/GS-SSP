@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.18 (2026-07-25)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.19 (2026-07-27)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -376,6 +376,18 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 );
 CREATE INDEX IF NOT EXISTS idx_transactions_device_created ON public.transactions(device_sn, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transactions_status ON public.transactions(payment_status);
+
+-- payment_method / product_id: this table recorded neither before -- the
+-- CMP's Transaction Monitor and compensation-coupon flow had no way to show
+-- which channel a customer paid with or which package they bought, and
+-- showed 'UNKNOWN'/'--' placeholders for both on every row (see
+-- cmpService.ts TransactionItem before this pass). The IM30 app now sets
+-- both on the row's one INSERT (initCardPayment's PENDING pre-write, or
+-- startFinalizationSequence's insert branch for VIP/QR/free-wash) -- never
+-- patched in by a later UPDATE, so no RLS/grant changes needed beyond what
+-- INSERT on this table already allowed.
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (payment_method IN ('CREDIT_CARD', 'VIP_CARD', 'QR_CODE', 'COUPON'));
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS product_id UUID REFERENCES public.products(id) ON DELETE SET NULL;
 
 -- Coupons / promotions / compensation vouchers (see
 -- docs/coupon_redemption_integration.md for the full design). Writes

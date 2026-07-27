@@ -16,7 +16,13 @@ data class TransactionRecord(
     val hardware_status: String? = null,
     val auth_code: String? = null,
     val ecr_ref_num: String? = null,
-    val currency: String = "USD"
+    val currency: String = "USD",
+    // 'CREDIT_CARD' | 'VIP_CARD' | 'QR_CODE' | 'COUPON'. Set on this row's
+    // one INSERT (initCardPayment's PENDING pre-write, or
+    // startFinalizationSequence's insert branch for VIP/QR/free-wash) --
+    // never patched in by a later UPDATE.
+    val payment_method: String? = null,
+    val product_id: String? = null
 )
 
 /**

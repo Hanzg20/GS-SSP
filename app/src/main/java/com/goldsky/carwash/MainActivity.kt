@@ -271,7 +271,7 @@ class MainActivity : BaseAdActivity() {
                 // ... same click logic ...
                 val serialHex = product.attributes?.get("serial_hex")?.jsonPrimitive?.contentOrNull
                     ?: "AA000055"
-                startPackagePurchaseFlow(product.price_cents, serialHex)
+                startPackagePurchaseFlow(product.price_cents, serialHex, product.id)
             }
         }
 
@@ -397,11 +397,11 @@ class MainActivity : BaseAdActivity() {
      * of which path the customer took to get here. [priceInCents]/[startHex]
      * are the package's own (pre-discount) price and hardware command.
      */
-    private fun startPackagePurchaseFlow(priceInCents: Int, startHex: String) {
+    private fun startPackagePurchaseFlow(priceInCents: Int, startHex: String, productId: String? = null) {
         val vipUid = pendingVipCardUid
         if (vipUid != null) {
             pendingVipCardUid = null
-            startPreAuthenticatedVipFlow(priceInCents, startHex, vipUid)
+            startPreAuthenticatedVipFlow(priceInCents, startHex, vipUid, productId)
             return
         }
 
@@ -417,14 +417,14 @@ class MainActivity : BaseAdActivity() {
                 else -> priceInCents
             }
             if (finalPriceCents <= 0) {
-                startFreeWashFlow(priceInCents, startHex)
+                startFreeWashFlow(priceInCents, startHex, productId)
             } else {
-                showPaymentDialog(finalPriceCents, startHex)
+                showPaymentDialog(finalPriceCents, startHex, productId)
             }
             return
         }
 
-        showPaymentDialog(priceInCents, startHex)
+        showPaymentDialog(priceInCents, startHex, productId)
     }
 
     /**
@@ -441,7 +441,7 @@ class MainActivity : BaseAdActivity() {
      * selection page is skipped entirely and the terminal goes straight into
      * that flow.
      */
-    private fun showPaymentDialog(priceInCents: Int, startHex: String) {
+    private fun showPaymentDialog(priceInCents: Int, startHex: String, productId: String? = null) {
         if (DeviceAccessManager.isLocked()) {
             Toast.makeText(this, "Terminal locked: ${DeviceAccessManager.lockReason()}", Toast.LENGTH_LONG).show()
             resetAdTimer()
@@ -451,12 +451,12 @@ class MainActivity : BaseAdActivity() {
         when (ConfigManager.getConfig()?.settings?.payment_method_mode ?: PaymentMethodMode.ALL) {
             PaymentMethodMode.CARD_ONLY -> {
                 stopAdTimer()
-                startPaymentFlow(true, priceInCents, startHex)
+                startPaymentFlow(true, priceInCents, startHex, productId)
                 return
             }
             PaymentMethodMode.SCAN_ONLY -> {
                 stopAdTimer()
-                startPaymentFlow(false, priceInCents, startHex)
+                startPaymentFlow(false, priceInCents, startHex, productId)
                 return
             }
             // Any other value (including ALL) falls through to the selection
@@ -468,17 +468,17 @@ class MainActivity : BaseAdActivity() {
 
         val selectionDialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         selectionDialog.setContentView(R.layout.dialog_payment_selection)
-        
+
         selectionDialog.findViewById<View>(R.id.btn_choice_card).setOnClickListener {
             applyClickFeedback(it)
             selectionDialog.dismiss()
-            startPaymentFlow(true, priceInCents, startHex)
+            startPaymentFlow(true, priceInCents, startHex, productId)
         }
-        
+
         selectionDialog.findViewById<View>(R.id.btn_choice_scan).setOnClickListener {
             applyClickFeedback(it)
             selectionDialog.dismiss()
-            startPaymentFlow(false, priceInCents, startHex)
+            startPaymentFlow(false, priceInCents, startHex, productId)
         }
         
         selectionDialog.findViewById<Button>(R.id.btn_cancel_choice).setOnClickListener {
@@ -491,7 +491,7 @@ class MainActivity : BaseAdActivity() {
         selectionDialog.show()
     }
 
-    private fun startPaymentFlow(isCard: Boolean, priceInCents: Int, startHex: String) {
+    private fun startPaymentFlow(isCard: Boolean, priceInCents: Int, startHex: String, productId: String? = null) {
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         dialog.setContentView(R.layout.dialog_payment)
         paymentDialog = dialog
@@ -517,12 +517,12 @@ class MainActivity : BaseAdActivity() {
                 override fun onCardDetected(type: String, uid: String) {
                     if (type == "MIFARE") {
                         // VIP Membership detected
-                        initVipPayment(uid, priceInCents, startHex, dialog)
+                        initVipPayment(uid, priceInCents, startHex, dialog, productId)
                     } else {
                         // Payment Card (EMV) detected - Hand over to POSLink
                         // Critical: We must close the low-level PICC before POSLink takes over
                         scannerManager?.stopCardDetection()
-                        initCardPayment(priceInCents, startHex, dialog)
+                        initCardPayment(priceInCents, startHex, dialog, productId)
                     }
                 }
                 override fun onDetectionError(error: String) {
@@ -532,7 +532,7 @@ class MainActivity : BaseAdActivity() {
         } else {
             layoutCard.visibility = View.GONE
             layoutQr.visibility = View.VISIBLE
-            initQrPayment(priceInCents, startHex, dialog)
+            initQrPayment(priceInCents, startHex, dialog, productId)
         }
 
         dialog.findViewById<View>(R.id.btn_back_pay)?.setOnClickListener {
@@ -541,7 +541,7 @@ class MainActivity : BaseAdActivity() {
                 Toast.makeText(this@MainActivity, getString(R.string.toast_payment_processing_wait), Toast.LENGTH_SHORT).show()
             } else {
                 dialog.dismiss()
-                showPaymentDialog(priceInCents, startHex)
+                showPaymentDialog(priceInCents, startHex, productId)
             }
         }
         dialog.findViewById<View>(R.id.btn_back_qr)?.setOnClickListener {
@@ -550,7 +550,7 @@ class MainActivity : BaseAdActivity() {
                 Toast.makeText(this@MainActivity, getString(R.string.toast_payment_processing_wait), Toast.LENGTH_SHORT).show()
             } else {
                 dialog.dismiss()
-                showPaymentDialog(priceInCents, startHex)
+                showPaymentDialog(priceInCents, startHex, productId)
             }
         }
 
@@ -588,7 +588,7 @@ class MainActivity : BaseAdActivity() {
     }
 
 
-    private fun initVipPayment(uid: String, priceInCents: Int, startHex: String, dialog: Dialog) {
+    private fun initVipPayment(uid: String, priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null) {
         val layoutStatus = dialog.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
         val tvStatus = dialog.findViewById<TextView>(R.id.tv_status_msg)
 
@@ -612,7 +612,7 @@ class MainActivity : BaseAdActivity() {
                     // card's first use and permanently fail into the offline
                     // queue (confirmed live: "duplicate key value violates
                     // unique constraint transactions_ecr_ref_num_key").
-                    startFinalizationSequence(priceInCents, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog)
+                    startFinalizationSequence(priceInCents, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog, productId = productId, paymentMethod = "VIP_CARD")
                 }
                 is VipDeductResult.Rejected -> {
                     paymentInFlight = false
@@ -626,13 +626,13 @@ class MainActivity : BaseAdActivity() {
                         VoiceManager.playLowBalance(this@MainActivity)
                     }
                     layoutStatus.visibility = View.GONE
-                    startPaymentFlow(true, priceInCents, startHex)
+                    startPaymentFlow(true, priceInCents, startHex, productId)
                 }
                 VipDeductResult.NetworkError -> {
                     paymentInFlight = false
                     Toast.makeText(this@MainActivity, "Network error -- please tap your card again", Toast.LENGTH_LONG).show()
                     layoutStatus.visibility = View.GONE
-                    startPaymentFlow(true, priceInCents, startHex)
+                    startPaymentFlow(true, priceInCents, startHex, productId)
                 }
             }
         }
@@ -652,7 +652,7 @@ class MainActivity : BaseAdActivity() {
      * between EMV and MIFARE when the identity isn't known yet, which
      * doesn't apply here.
      */
-    private fun startPreAuthenticatedVipFlow(priceInCents: Int, startHex: String, uid: String) {
+    private fun startPreAuthenticatedVipFlow(priceInCents: Int, startHex: String, uid: String, productId: String? = null) {
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         dialog.setContentView(R.layout.dialog_payment)
         paymentDialog = dialog
@@ -668,7 +668,7 @@ class MainActivity : BaseAdActivity() {
         }
         dialog.show()
 
-        initVipPayment(uid, priceInCents, startHex, dialog)
+        initVipPayment(uid, priceInCents, startHex, dialog, productId)
     }
 
     /**
@@ -683,7 +683,7 @@ class MainActivity : BaseAdActivity() {
      * keeps "money charged" (0, for the transaction record) and "wash
      * dispensed" (the full package) as separate concerns.
      */
-    private fun startFreeWashFlow(originalPriceCents: Int, startHex: String) {
+    private fun startFreeWashFlow(originalPriceCents: Int, startHex: String, productId: String? = null) {
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         dialog.setContentView(R.layout.dialog_payment)
         paymentDialog = dialog
@@ -700,10 +700,10 @@ class MainActivity : BaseAdActivity() {
         dialog.show()
 
         paymentInFlight = true
-        startFinalizationSequence(0, startHex, "", dialog, pulseAmountCents = originalPriceCents)
+        startFinalizationSequence(0, startHex, "", dialog, pulseAmountCents = originalPriceCents, productId = productId, paymentMethod = "COUPON")
     }
 
-    private fun initCardPayment(priceInCents: Int, startHex: String, dialog: Dialog) {
+    private fun initCardPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null) {
         // Unique per attempt -- also serves as the transactions.ecr_ref_num
         // for the PENDING row below (UNIQUE constraint), so a fixed constant
         // here would collide across repeated simulated attempts.
@@ -714,13 +714,18 @@ class MainActivity : BaseAdActivity() {
             // Pre-write PENDING before calling the bank so a crash between
             // approval and our own audit write never leaves a
             // charged-but-untracked transaction (docs/card_payment_integration.md #3).
+            // payment_method/product_id are set here, on the only INSERT for
+            // this row -- startFinalizationSequence's later PENDING->PAID
+            // transition is an UPDATE that only ever touches payment_status.
             TransactionRepository.recordTransaction(
                 this@MainActivity,
                 TransactionRecord(
                     device_sn = deviceSn,
                     amount = priceInCents,
                     payment_status = "PENDING",
-                    ecr_ref_num = txRefNum
+                    ecr_ref_num = txRefNum,
+                    payment_method = "CREDIT_CARD",
+                    product_id = productId
                 )
             )
 
@@ -748,7 +753,7 @@ class MainActivity : BaseAdActivity() {
         }
     }
 
-    private fun initQrPayment(priceInCents: Int, startHex: String, dialog: Dialog) {
+    private fun initQrPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null) {
         val qrImageView = dialog.findViewById<ImageView>(R.id.img_pay_qr)
         val txId = "TX_" + System.currentTimeMillis()
 
@@ -797,7 +802,7 @@ class MainActivity : BaseAdActivity() {
             val paid = QrPaymentRepository.pollUntilPaid(txId)
             if (paid) {
                 // paymentInFlight is cleared by startFinalizationSequence itself once it's done.
-                startFinalizationSequence(priceInCents, startHex, "", dialog)
+                startFinalizationSequence(priceInCents, startHex, "", dialog, productId = productId, paymentMethod = "QR_CODE")
             } else {
                 // Polling gave up (customer never completed payment, or it's
                 // still processing beyond our 2-minute budget) -- previously
@@ -833,7 +838,13 @@ class MainActivity : BaseAdActivity() {
         // amount charged (0, what gets recorded/audited) and the amount of
         // wash to actually dispense (the package's full price) diverge --
         // see that function's doc comment.
-        pulseAmountCents: Int = amountCents
+        pulseAmountCents: Int = amountCents,
+        // Only used on the insert branch below (pendingEcrRefNum == null,
+        // i.e. VIP/QR/free-wash) -- the card path already wrote both of
+        // these on its own PENDING insert in initCardPayment, and the
+        // PENDING->PAID transition here is an UPDATE that doesn't touch them.
+        productId: String? = null,
+        paymentMethod: String = "UNKNOWN"
     ) {
         val layoutStatus = dialog?.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
         val tvStatus = dialog?.findViewById<TextView>(R.id.tv_status_msg)
@@ -876,7 +887,9 @@ class MainActivity : BaseAdActivity() {
                         device_sn = deviceSn,
                         amount = amountCents,
                         payment_status = "PAID",
-                        ecr_ref_num = ecrRefNum
+                        ecr_ref_num = ecrRefNum,
+                        payment_method = paymentMethod,
+                        product_id = productId
                     )
                 )
             }
