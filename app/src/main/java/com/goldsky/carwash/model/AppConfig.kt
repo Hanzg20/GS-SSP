@@ -59,7 +59,21 @@ object PaymentMethodMode {
 @Serializable
 data class AdMedia(
     val id: String,
-    val media_url: String,
-    val media_type: String, // "VIDEO" or "IMAGE"
-    val md5_hash: String
+    // Null when media_type == "TEXT" (announcement has no backing file).
+    val media_url: String? = null,
+    val media_type: String, // "VIDEO", "IMAGE", or "TEXT"
+    // Nullable, matching the actual column (TEXT, no NOT NULL) -- a
+    // non-nullable String here would throw on decode for any row without a
+    // hash set, rather than falling through to md5Matches' "no hash to
+    // compare against, assume unchanged" path.
+    val md5_hash: String? = null,
+    // Populated only when media_type == "TEXT"; the announcement's display text.
+    val text_content: String? = null
+)
+
+/** A row of the per-device `playlists` table -- what curates which [AdMedia] a given terminal actually receives. */
+@Serializable
+data class PlaylistEntry(
+    val ad_id: String,
+    val play_order: Int = 0
 )

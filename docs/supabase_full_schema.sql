@@ -296,12 +296,24 @@ ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS daily_spent_date DATE;
 
 -- 3. MEDIA ENGINE
 -- Advertising Materials
+-- TEXT vs TEXT_AD (2026-07-28): both are plain text with no backing file, but
+-- distinct in purpose and on-device styling -- TEXT is a formal operator
+-- announcement/notice (AdActivity's blue "ANNOUNCEMENT" glass card), TEXT_AD
+-- is promotional copy for products/services (gold/amber promotional look,
+-- matching video/image ad styling). Not just a label difference: keep them
+-- as separate media_type values so the client can render each correctly.
 CREATE TABLE IF NOT EXISTS public.advertisements (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    media_url TEXT NOT NULL,
-    media_type TEXT CHECK (media_type IN ('VIDEO', 'IMAGE')),
-    md5_hash TEXT,                       -- For delta sync
-    created_at TIMESTAMPTZ DEFAULT now()
+    media_url TEXT,                      -- required for VIDEO/IMAGE, null for TEXT/TEXT_AD
+    media_type TEXT CHECK (media_type IN ('VIDEO', 'IMAGE', 'TEXT', 'TEXT_AD')),
+    md5_hash TEXT,                       -- For delta sync (VIDEO/IMAGE only)
+    text_content TEXT,                   -- required for TEXT/TEXT_AD, null otherwise
+    created_at TIMESTAMPTZ DEFAULT now(),
+    CONSTRAINT advertisements_content_presence_check CHECK (
+        (media_type IN ('VIDEO', 'IMAGE') AND media_url IS NOT NULL)
+        OR
+        (media_type IN ('TEXT', 'TEXT_AD') AND text_content IS NOT NULL)
+    )
 );
 
 -- Device Playlist Mapping
@@ -758,6 +770,49 @@ USING (
     SELECT device_sn FROM public.device_auth_map
     WHERE auth_user_id = auth.uid()
   )
+);
+
+-- CMP admin write access for both tables (2026-07-28): the CMP web app's
+-- ad-management UI needs to INSERT/UPDATE/DELETE advertisements/playlists,
+-- but "authenticated" alone doesn't distinguish a real CMP human from an
+-- anonymous IM30 device session -- both use Supabase's `authenticated` role.
+-- handle_new_profile() (defined later in this file, §9) only creates a
+-- `profiles` row for real sign-ups, explicitly skipping anonymous ones, so
+-- "has a profiles row" is the correct proxy for "is a real logged-in CMP
+-- user" and keeps device sessions read-only exactly as before.
+DROP POLICY IF EXISTS "CMP admins can manage advertisements" ON public.advertisements;
+CREATE POLICY "CMP admins can manage advertisements" ON public.advertisements
+FOR ALL TO authenticated
+USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid()))
+WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid()));
+
+DROP POLICY IF EXISTS "CMP admins can manage playlists" ON public.playlists;
+CREATE POLICY "CMP admins can manage playlists" ON public.playlists
+FOR ALL TO authenticated
+USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid()))
+WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid()));
+
+-- The ad-media Storage bucket is public (serves objects via /object/public/
+-- without RLS -- how AdSyncWorker.kt's plain HTTP GET has worked all along),
+-- but storage.objects RLS still applies to writes. Discovered live
+-- (2026-07-28) when the CMP's browser upload -- using the authenticated/anon
+-- key, not the service_role key originally used to create the bucket --
+-- failed with "new row violates row-level security policy" because
+-- storage.objects had zero policies of any kind.
+DROP POLICY IF EXISTS "CMP admins can upload ad media" ON storage.objects;
+CREATE POLICY "CMP admins can upload ad media" ON storage.objects
+FOR INSERT TO authenticated
+WITH CHECK (
+  bucket_id = 'ad-media'
+  AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid())
+);
+
+DROP POLICY IF EXISTS "CMP admins can delete ad media" ON storage.objects;
+CREATE POLICY "CMP admins can delete ad media" ON storage.objects
+FOR DELETE TO authenticated
+USING (
+  bucket_id = 'ad-media'
+  AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid())
 );
 
 -- device_commands: RemoteCommandManager both subscribes via Realtime

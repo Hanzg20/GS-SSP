@@ -90,4 +90,8 @@
     </string-array>
 
     <string name="ad_prompt">TOUCH SCREEN TO START</string>
+    <string name="ad_announcement_label">ANNOUNCEMENT</string>
+    <string name="ad_promo_label">PROMOTION</string>
+    <string name="ad_pause_content_description">Pause</string>
+    <string name="ad_resume_content_description">Resume</string>
 </resources>

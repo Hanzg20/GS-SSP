@@ -5,6 +5,9 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.goldsky.carwash.model.AdMedia
+import com.goldsky.carwash.model.PlaylistEntry
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Order
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.android.*
@@ -23,6 +26,10 @@ import java.security.MessageDigest
 
 class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
 
+    // Only for the raw media-file downloads below (Supabase Storage URLs,
+    // not the data API) -- the advertisements row fetch goes through
+    // SupabaseClientProvider.client.postgrest so it carries the device's
+    // real session token, not this client.
     private val client = HttpClient(Android) {
         install(ContentNegotiation) {
             json(Json { ignoreUnknownKeys = true })
@@ -32,12 +39,66 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
             Log.i("AdSyncWorker", "Starting Ad Sync...")
-            
-            // 1. Fetch remote playlist
-            val remoteAds: List<AdMedia> = client.get("${SupabaseConfig.URL}/rest/v1/advertisements") {
-                header("apikey", SupabaseConfig.KEY)
-                header("Authorization", "Bearer ${SupabaseConfig.KEY}")
-            }.body()
+
+            // advertisements' RLS policy is "SELECT TO authenticated" (see
+            // docs/supabase_full_schema.sql) -- the previous plain GET below
+            // sent the static anon key as its own bearer token, which
+            // PostgREST resolves to role=anon (the key's own embedded JWT
+            // claim, not something a header choice can override), always
+            // getting RLS-filtered to zero rows regardless of how many ads
+            // existed. Same dual-identity bug class already fixed for
+            // TransactionRepository/VipRepository/etc. via
+            // ensureAuthenticated() (see SupabaseClientProvider's doc
+            // comment) -- this worker used its own bespoke HttpClient
+            // instead of the shared one, so it never got that fix. Verified
+            // live: anon role sees 0 rows, authenticated sees the real 2.
+            SupabaseClientProvider.ensureAuthenticated()
+
+            // 1. Fetch remote playlist -- curated per device via `playlists`
+            // (device_sn -> ad_id, play_order), not a global broadcast of
+            // every advertisements row. A device with no persisted SN yet
+            // (cold-start race with extractDeviceIdentity()) or no playlist
+            // rows assigned bails out via Result.retry()/empty rather than
+            // wiping any already-synced local playlist.
+            val deviceSn = DeviceRepository.getPersistedDeviceSn()
+            if (deviceSn == null) {
+                Log.w("AdSyncWorker", "No device SN persisted yet, retrying later")
+                return@withContext Result.retry()
+            }
+
+            // `playlists`' RLS policy scopes rows to device_sn IN (SELECT
+            // device_sn FROM device_auth_map WHERE auth_user_id = auth.uid()),
+            // i.e. it depends on sync_device_identity() having already linked
+            // this anon session to deviceSn. That linkage is normally
+            // established by MainActivity's own startup coroutine, but this
+            // worker's periodic first-run can race ahead of it on a cold
+            // start (verified: playlists silently returned 0 rows the first
+            // time, even with rows present, because device_auth_map's insert
+            // hadn't landed yet). Calling it here too is idempotent and
+            // removes the dependency on ordering against MainActivity.
+            DeviceRepository.syncDeviceIdentity(deviceSn)
+
+            val entries: List<PlaylistEntry> = SupabaseClientProvider.client.postgrest["playlists"]
+                .select {
+                    filter { eq("device_sn", deviceSn) }
+                    order("play_order", Order.ASCENDING)
+                }
+                .decodeList<PlaylistEntry>()
+
+            val remoteAds: List<AdMedia> = if (entries.isEmpty()) {
+                emptyList()
+            } else {
+                val adIds = entries.map { it.ad_id }
+                val adsById = SupabaseClientProvider.client.postgrest["advertisements"]
+                    .select {
+                        filter { isIn("id", adIds) }
+                    }
+                    .decodeList<AdMedia>()
+                    .associateBy { it.id }
+                // Re-sort by this device's play_order -- the advertisements
+                // fetch above has no ordering guarantee of its own.
+                entries.mapNotNull { adsById[it.ad_id] }
+            }
 
             val adsDir = AdManager.getAdsDir(applicationContext)
             val localFiles = adsDir.listFiles()?.toList() ?: emptyList()
@@ -47,16 +108,23 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
             // this only checked existence, so a changed asset with the same
             // id/filename would never be re-downloaded).
             remoteAds.forEach { ad ->
-                val fileName = ad.id + getExtension(ad.media_url)
+                // TEXT (announcement) and TEXT_AD (promotional copy) both
+                // carry their content inline via text_content -- no media
+                // file to fetch, just the DB row synced via
+                // AdManager.savePlaylist below.
+                if (ad.media_type == "TEXT" || ad.media_type == "TEXT_AD") return@forEach
+                val mediaUrl = ad.media_url ?: return@forEach
+
+                val fileName = ad.id + getExtension(mediaUrl)
                 val targetFile = File(adsDir, fileName)
 
                 val needsDownload = !targetFile.exists() || !md5Matches(targetFile, ad.md5_hash)
                 if (needsDownload) {
-                    downloadFile(ad.media_url, targetFile)
+                    downloadFile(mediaUrl, targetFile)
 
                     // Verify integrity post-download; a corrupted/truncated
                     // download must not be left in place for the player to choke on.
-                    if (ad.md5_hash.isNotBlank() && !md5Matches(targetFile, ad.md5_hash)) {
+                    if (!ad.md5_hash.isNullOrBlank() && !md5Matches(targetFile, ad.md5_hash)) {
                         Log.e("AdSyncWorker", "MD5 mismatch after download for ${ad.id}, discarding")
                         targetFile.delete()
                     }
@@ -99,8 +167,8 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
         }
     }
 
-    private fun md5Matches(file: File, expectedMd5: String): Boolean {
-        if (expectedMd5.isBlank()) return true // no hash to compare against, assume unchanged
+    private fun md5Matches(file: File, expectedMd5: String?): Boolean {
+        if (expectedMd5.isNullOrBlank()) return true // no hash to compare against, assume unchanged
         return try {
             val digest = MessageDigest.getInstance("MD5")
             file.inputStream().use { input ->
