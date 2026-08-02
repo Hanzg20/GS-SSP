@@ -22,7 +22,12 @@ data class TransactionRecord(
     // startFinalizationSequence's insert branch for VIP/QR/free-wash) --
     // never patched in by a later UPDATE.
     val payment_method: String? = null,
-    val product_id: String? = null
+    val product_id: String? = null,
+    // How the card was actually presented (MSR/EMV/CTLS); null for
+    // non-card payment methods (VIP/QR/coupon) or when the card path's
+    // PENDING pre-write hasn't resolved a method yet -- only known once
+    // updatePaymentStatus's PENDING->PAID transition supplies it.
+    val entry_mode: String? = null
 )
 
 /**
@@ -65,12 +70,19 @@ object TransactionRepository {
      * ACK), queueing it for later replay on failure. Never inserts -- the
      * row is expected to already exist (ecr_ref_num is UNIQUE), see
      * MainActivity.initCardPayment for the PENDING pre-write.
+     *
+     * [entryMode], when non-null, is written in the same UPDATE (only the
+     * card-payment PENDING->PAID transition has one to supply -- see
+     * IPaymentProvider.PaymentCallback.onSuccess).
      */
-    suspend fun updatePaymentStatus(context: Context, ecrRefNum: String, status: String): Boolean =
+    suspend fun updatePaymentStatus(context: Context, ecrRefNum: String, status: String, entryMode: String? = null): Boolean =
         withContext(Dispatchers.IO) {
-            val ok = updatePaymentStatusRemote(ecrRefNum, status)
+            val ok = updatePaymentStatusRemote(ecrRefNum, status, entryMode)
             if (!ok) {
-                OfflineQueueManager.enqueue(context.filesDir, PendingOp(type = "update_status", ecrRefNum = ecrRefNum, status = status))
+                OfflineQueueManager.enqueue(
+                    context.filesDir,
+                    PendingOp(type = "update_status", ecrRefNum = ecrRefNum, status = status, entryMode = entryMode)
+                )
                 Log.w(TAG, "Payment status update queued offline: $ecrRefNum -> $status")
             }
             ok
@@ -110,11 +122,12 @@ object TransactionRepository {
         }
     }
 
-    suspend fun updatePaymentStatusRemote(ecrRefNum: String, status: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun updatePaymentStatusRemote(ecrRefNum: String, status: String, entryMode: String? = null): Boolean = withContext(Dispatchers.IO) {
         try {
             SupabaseClientProvider.client.postgrest["transactions"].update(
                 {
                     set("payment_status", status)
+                    if (entryMode != null) set("entry_mode", entryMode)
                 }
             ) {
                 filter {

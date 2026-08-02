@@ -389,6 +389,19 @@ CREATE INDEX IF NOT EXISTS idx_transactions_status ON public.transactions(paymen
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (payment_method IN ('CREDIT_CARD', 'VIP_CARD', 'QR_CODE', 'COUPON'));
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS product_id UUID REFERENCES public.products(id) ON DELETE SET NULL;
 
+-- entry_mode: how the card was actually presented (see
+-- docs/card_payment_integration.md §3.3 "Entry Mode 未落库"). Unlike
+-- payment_method/product_id above, this is NOT known at the row's initial
+-- PENDING INSERT (the customer hasn't touched a card yet) -- it's only
+-- known once the reader reports a result, so it's set on the same UPDATE
+-- that flips PENDING->PAID (TransactionRepository.updatePaymentStatus).
+-- Free text, not a CHECK-constrained enum: the ID TECH path currently can't
+-- distinguish EMV_CONTACT from EMV_CTLS from the SDK's result code alone
+-- (see IdTechPaymentProvider.emvTransactionData), so it reports a
+-- best-effort raw value (e.g. "EMV_OR_CTLS(cardType=7)") rather than a
+-- clean enum value that would be lying about the certainty it has.
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS entry_mode TEXT;
+
 -- Coupons / promotions / compensation vouchers (see
 -- docs/coupon_redemption_integration.md for the full design). Writes
 -- (issuance) are NOT done by IM30 -- the cloud management platform is the

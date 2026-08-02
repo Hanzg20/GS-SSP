@@ -30,7 +30,7 @@ class TransactionReplayWorker(appContext: Context, params: WorkerParameters) : C
                         val ref = op.ecrRefNum
                         val status = op.status
                         if (ref != null && status != null) {
-                            TransactionRepository.updatePaymentStatusRemote(ref, status)
+                            TransactionRepository.updatePaymentStatusRemote(ref, status, op.entryMode)
                         } else {
                             true // malformed entry, drop it rather than retry forever
                         }
