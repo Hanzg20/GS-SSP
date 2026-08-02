@@ -100,12 +100,7 @@ class PaxScannerManager(private val context: Context) {
             // member scan entry (initCouponScan(), see
             // docs/coupon_redemption_integration.md) -- are exercisable
             // end-to-end off real hardware.
-            val mockResults = listOf(
-                "280047291039485${System.currentTimeMillis() % 1000}", // typical Alipay/WeChat-shaped payment token
-                "MBRQR6789ABC", // seeded vip_cards.qr_code
-                "DEMO-PCT20-COUPON" // seeded coupons.code
-            )
-            val mockToken = mockResults[((System.currentTimeMillis() / 4000) % mockResults.size).toInt()]
+            val mockToken = "MBRQR6789ABC" // Force member QR for testing
             Log.i(TAG, "Mock scan result: $mockToken")
             callback.onScanSuccess(mockToken)
         }, 4000)
