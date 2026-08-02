@@ -1,5 +1,11 @@
 # GS-SSP 系统架构设计规格书 (System Architecture Specification)
 
+### v2.13 (2026-08-01) — 补充参考架构四段式合规性核查
+新增 §3.4，用行业通用的"①终端发起支付请求 → ②支付网关清算与鉴权 → ③硬件控制与出货确认 → ④云端对账与设备状态"四段式参考架构，逐段核对 §3.3 列出的现状 API，标注 ✅/🟡/🔴。结论：①③④基本遵循（③④各有一处局部缺口：ID TECH 的 void/refund 未接、每日批结算未做），②（网关清算）是唯一真正的空白——ID TECH 的 `GO_ONLINE` 目前故意拒绝而非转发给网关，卡在收单行（Worldpay/Elavon/PayFacto）尚未选定。
+
+### v2.12 (2026-08-01) — 补充半集成支付架构与核心 API 调用清单
+新增 §3.3，把 PAX POSLink / ID TECH NEO2 两条"半集成 (Semi-Integrated)"刷卡路径、Stripe 网关托管扫码支付、VIP 闭环余额、优惠券核销、硬件出闸、记账/离线补报/诊断这几层实际会跑到的 API 调用，逐一列成表格（作用/所属文件/入参/出参）。文档层面此前只有 §2.2 一张偏 PAX-only 的时序图和 §3.1/3.2 的配置/串口协议，没有一份"调用点清单"能覆盖当前已经并存的多套支付路径，容易让人以为只有一条主线。
+
 ### v2.11 (2026-07-23) — Stripe 接入并跑通完整闭环
 选定网关（Stripe，Checkout Session 模式）后，实现了 `_shared/gateways/stripe.ts`：`createPaymentIntent` 建 Checkout Session（`client_reference_id` 存 `tx_id` 用于 webhook 回调对应）；`verifyWebhook` 用 `constructEventAsync` + `SubtleCryptoProvider`（Deno 边缘运行时没有 Node `crypto` 模块）验签，按事件类型分流成 `invalid`/`ignored`/`event` 三态。
 
@@ -227,6 +233,134 @@ sequenceDiagram
     *   `AA 01 08 55`: 8分钟模式
     *   `AA 00 00 55`: 紧急停止 (Emergency Stop)
 *   **[v2.1] 反馈帧（已实现，见 8.1）**: `SerialPortManager.sendCommandWithAck()` 发送指令后等待 `[0xBB][Status][Checksum][0xEE]`，500ms 超时、最多重试 3 次。**Checksum 当前实现为 `XOR(Header, Status)`，这是合理占位，尚未与真实继电器板协议文档核对，量产前必须与硬件厂商确认。**
+
+### 3.3 半集成支付架构与核心 API 调用清单 (Semi-Integrated Payment Architecture & Core API Inventory)
+
+**"半集成 (Semi-Integrated)"在本平台里的准确含义**：App 只负责"传金额进去、拿结果出来"，敏感卡片数据（磁道、芯片明文、PIN）、密钥管理、EMV/CTLS 内核处理全部封装在终端/读卡器一侧，App 进程从不接触、也不存储任何明文卡片数据——这是行业标准做法，好处是显著缩小 App 自身的 PCI-DSS 合规范围（能落在 SAQ A-EP，而不是要求全量合规的 SAQ D）。**但不是本平台所有支付路径都是这个模式**，下面按实际架构性质分组，不要混为一谈：
+
+| 路径 | 是否半集成 | 原因 |
+| :-- | :-- | :-- |
+| PAX POSLink（刷卡，当前主线） | ✅ 半集成 | App 只发 `PaymentRequest`（金额+ECR参考号）给本机 `127.0.0.1:10009` 的 PAX 内部 AIDL 进程，卡片数据在 PAX 自己的安全模块里处理，App 只收到 `resultCode`/`authCode` |
+| ID TECH NEO2（刷卡，多厂商 HAL 备选路径） | ✅ 半集成 | App 只调 `emv_startTransaction`/`ctls_startTransaction`/`msr_startMSRSwipe` 传金额，卡片数据在读卡器自己的安全硬件里处理，App 只收到 `IDTEMVData.result` 等状态码 |
+| Stripe QR（扫码支付） | ❌ 不是半集成，是**网关托管收银页** | 客户在**自己手机**上打开 Stripe 托管的收银页完成支付，App 全程不经手任何支付信息，连"半集成"的直连读卡器都没有，PCI 范围比半集成更小（SAQ A） |
+| VIP 余额扣款 | ❌ 不适用 PCI 分类 | 不涉及银行卡，是纯内部储值账本操作，直接调己方 Supabase RPC |
+
+---
+
+#### 3.3.1 半集成刷卡支付层 — PAX POSLink（当前主线）
+
+| API / 方法 | 作用 | 所属文件 | 入参 | 出参 |
+| :-- | :-- | :-- | :-- | :-- |
+| `PaymentService.startCardPayment()` | 发起 SALE 交易（Tap/Insert/Swipe），先过 `KeyHealthMonitor` 密钥健康前置校验 | `payment/PaymentService.kt` | `amountInCents: Int`, `txRefNum: String`, `callback: PaymentCallback` | 回调 `onSuccess(txId, refNum)` 或 `onFailure(errorMsg)`；内部经 `PosLink().ProcessTrans()`，读 `paymentResponse.resultCode`（`"000000"`=批准） |
+| `PaymentService.voidTransaction()` | 撤销一笔未结算的授权（硬件故障时的第一选择） | `payment/PaymentService.kt` | `refNum: String`, `callback: ResultCallback` | 回调 `onSuccess()` 或 `onFailure(errorMsg)` |
+| `PaymentService.refundTransaction()` | 冲正一笔已结算的交易（VOID 失败后的降级路径） | `payment/PaymentService.kt` | `refNum: String`, `amountInCents: Int`, `callback: ResultCallback` | 回调 `onSuccess()` 或 `onFailure(errorMsg)`；`transType=5` 是按行业惯例的占位值，**未经真实 POSLink 文档核实** |
+| `PaymentService.voidOrRefund()` | 统一容错入口：先试 VOID，失败自动降级 REFUND，两者都失败则要求人工对账 | `payment/PaymentService.kt` | `refNum: String`, `amountInCents: Int`, `onResolved: (success, method) -> Unit` | `onResolved(success: Boolean, method: "VOID"\|"REFUND"\|"NONE")` |
+| `KeyHealthMonitor.isPaymentAllowed()` / `recordResult()` | 发起交易前的密钥健康门禁；每次交易结果反馈进状态机（连续 2 次密钥类失败即锁定终端） | `payment/KeyHealthMonitor.kt` | `recordResult(resultCode: String?, message: String?)` | `isPaymentAllowed(): Boolean`, `lockReason(): String?` |
+
+#### 3.3.2 半集成刷卡支付层 — ID TECH NEO2（多厂商 HAL 备选路径，本轮加固对象）
+
+| API / 方法 | 作用 | 所属文件 | 入参 | 出参 |
+| :-- | :-- | :-- | :-- | :-- |
+| `HardwareFactory.getPaymentProvider()` | 按 `hardwareVendor` 配置返回对应厂商的支付驱动实例（当前只有 IDTECH 分支） | `payment/hardware/HardwareFactory.kt` | `context: Context`, `vendor: String` | `IPaymentProvider` 实例 |
+| `IdTechPaymentProvider.startSale()` | 并发武装插卡(EMV)+拍卡(CTLS)+刷卡(MSR) 三通道，谁先出结果谁生效 | `payment/hardware/idtech/IdTechPaymentProvider.kt` | `amountInCents: Int`, `ecrRefNum: String`, `callback: PaymentCallback` | 回调 `onSuccess(authCode, refNum)` 或 `onFailure(errorMsg, isHardwareFault)` |
+| `IdTechPaymentProvider.cancelCurrentTransaction()` | 用户中途取消：同时取消三通道 + 熄灭背光，防止 USB 句柄锁死 | `payment/hardware/idtech/IdTechPaymentProvider.kt` | 无 | 无返回值（副作用：三通道停止监听） |
+| `IdTechPaymentProvider.voidTransaction()` / `refundTransaction()` | 冲正/退款接口 | `payment/hardware/idtech/IdTechPaymentProvider.kt` | `refNum: String`（refund 另需 `amountInCents: Int`）, `callback: PaymentCallback` | **恒定** `onFailure("... not yet implemented for ID TECH")`——尚未接入真实网关，诚实报未实现而非假装成功 |
+| `classifyEmvResult()` | 把 SDK 原始状态码（`IDTEMVData.result`）映射为业务分类 | `payment/hardware/idtech/EmvResultClassifier.kt` | `result: Int` | `EmvResultCategory`（`APPROVED`/`DECLINED`/`ONLINE_AUTH_REQUIRED`/`TIMEOUT`/... 共 10 类，纯函数，已单元测试覆盖） |
+| `IdTechHardwareProvider.getFirmwareVersion()` / `getSerialNumber()` | 读取读卡器固件版本/物理序列号，用于运维面板与云端设备身份 | `payment/hardware/idtech/IdTechHardwareProvider.kt` | `context: Context`（仅 `getSerialNumber`） | `String`（失败时分别返回 `"FW_UNKNOWN"`/`"SN_UNKNOWN"`） |
+
+#### 3.3.3 网关托管扫码支付层 — Stripe Checkout（非半集成）
+
+| API / 方法 | 作用 | 所属文件 | 入参 | 出参 |
+| :-- | :-- | :-- | :-- | :-- |
+| `QrPaymentRepository.createSession()` | 调云端 Edge Function 建支付会话，拿网关签发的真实收银页 URL | `payment/QrPaymentRepository.kt` | `txId: String`, `deviceSn: String`, `amountCents: Int` | `code_url: String?`（渲染成二维码；失败返回 `null`） |
+| `PaymentService.generateQrCode()` | 把 `code_url` 本地渲染成二维码位图，纯本地 ZXing 操作 | `payment/PaymentService.kt` | `url: String`, `width/height: Int = 300` | `Bitmap?` |
+| `QrPaymentRepository.pollUntilPaid()` | 轮询会话状态直到 `PAID`/`CANCELLED`/`EXPIRED` 或超时 | `payment/QrPaymentRepository.kt` | `txId: String`, `maxAttempts: Int = 60`, `intervalMs: Long = 2000` | `Boolean`（仅当后端真实标记 PAID 才返回 true，从不本地伪造成功） |
+| `create-qr-session`（Edge Function，服务端） | 唯一持有网关密钥的地方；调 `PaymentGateway.createPaymentIntent()` 建 Stripe Checkout Session | `supabase/functions/create-qr-session/index.ts` | HTTP Body：`tx_id`, `device_sn`, `amount_cents` | `{ code_url: string }` |
+| `payment-webhook`（Edge Function，服务端） | 唯一能把 `qr_payment_sessions.status` 写成 `PAID` 的地方；验签+幂等更新 | `supabase/functions/payment-webhook/index.ts` | Stripe 推送的 webhook 请求体+签名头 | 200/401（对网关的响应），副作用：`UPDATE qr_payment_sessions ... WHERE status='PENDING'` |
+
+#### 3.3.4 闭环储值支付层 — VIP 余额（不涉及银行卡，直连己方 RPC）
+
+| API / 方法 | 作用 | 所属文件 | 入参 | 出参 |
+| :-- | :-- | :-- | :-- | :-- |
+| `VipRepository.getVipCard()` | 按 NFC 拍卡读到的 `card_uid` 查会员卡 | `payment/VipRepository.kt` | `uid: String` | `VipCard?`（`card_uid`, `balance_cents`, `is_active`） |
+| `VipRepository.resolveCardUidByQrCode()` | 按扫码扫到的 12 位会员码反查 `card_uid` | `payment/VipRepository.kt` | `qrCode: String` | `String?`（card_uid，查不到返回 null） |
+| `VipRepository.deductBalance()` | 调 `deduct_vip_balance` RPC 原子扣款（校验+扣减在同一 Postgres 事务里，行锁防并发重复扣款） | `payment/VipRepository.kt` | `uid: String`, `amountInCents: Int` | `VipDeductResult`：`Success(newBalanceCents)` \| `Rejected(reason)` \| `NetworkError` |
+
+#### 3.3.5 优惠券 / 会员码核销层（非支付类 RPC，用于折扣计算）
+
+| API / 方法 | 作用 | 所属文件 | 入参 | 出参 |
+| :-- | :-- | :-- | :-- | :-- |
+| `CouponRepository.redeemCoupon()` | 调 `redeem_coupon` RPC 原子核销（存在性/有效期/次数/租户校验+计数在同一事务里） | `payment/CouponRepository.kt` | `code: String`, `deviceSn: String` | `CouponRedeemResult`：`Success(type, value, applicableProductId)` \| `Rejected(reason)` \| `NetworkError` |
+
+#### 3.3.6 硬件出闸执行层（授权通过后，触发继电器/出水）
+
+| API / 方法 | 作用 | 所属文件 | 入参 | 出参 |
+| :-- | :-- | :-- | :-- | :-- |
+| `DispenseEngine.dispense()` | 支付成功后的唯一入口，按云端配置选协议适配器(`PulseCreditAdapter`等)+确认策略(`FramedAckStrategy`等) | `dispense/DispenseEngine.kt` | `job: DispenseJob`（`amountCents`, `startHex`, `deviceSn`, `txRef`）, `isSimulationMode: Boolean`, `onProgress: (unitsSent, totalUnits) -> Unit` | `DispenseOutcome`：`Confirmed` \| `DeliveredUnconfirmed` \| `Failed(reason)` |
+| `SerialPortManager.sendCommandWithAck()` | 发送单帧 hex 指令并等待继电器板 ACK 帧，超时/故障最多重试 3 次 | `serial/SerialPortManager.kt` | `hexStr: String`, `timeoutMs: Int = 500`, `maxRetries: Int = 3` | `Boolean`（是否收到有效 ACK） |
+| `SerialPortManager.sendHexString()` / `sendBytes()` | 无确认的裸发送（用于不回 ACK 的旧款板子） | `serial/SerialPortManager.kt` | `hexStr: String` 或 `data: ByteArray` | `Boolean`（是否成功写出串口，不代表板子执行了） |
+
+#### 3.3.7 记账、离线补报与诊断层（跨所有支付路径复用）
+
+| API / 方法 | 作用 | 所属文件 | 入参 | 出参 |
+| :-- | :-- | :-- | :-- | :-- |
+| `TransactionRepository.recordTransaction()` | 写入一笔新交易记录（银行授权前预写 PENDING，防止崩溃导致有钱无痕迹） | `payment/TransactionRepository.kt` | `context: Context`, `record: TransactionRecord`（`device_sn`, `amount`, `payment_status`, `ecr_ref_num`, `payment_method`, `product_id` 等） | `Boolean`；失败自动降级进 `OfflineQueueManager` 本地队列 |
+| `TransactionRepository.updatePaymentStatus()` / `updateHardwareStatus()` | 翻转已有行的支付状态（PENDING→PAID/VOIDED/REFUNDED）或硬件执行状态 | `payment/TransactionRepository.kt` | `context: Context`, `ecrRefNum: String`, `status: String` | `Boolean`；同样失败降级进离线队列 |
+| `OfflineQueueManager.enqueue()` / `drain()` | 文件落盘的断网重试队列；联网后由 `TransactionReplayWorker` 定期调 `drain()` 补报 | `payment/OfflineQueueManager.kt` | `enqueue`: `filesDir: File`, `op: PendingOp`；`drain`: `filesDir: File`, `send: suspend (PendingOp) -> Boolean` | `enqueue` 无返回值；`drain` 无返回值，副作用是把失败的 op 重新写回队列文件 |
+| `DiagnosticManager.reportError()` | 上报关键故障供云端运维可见（如 `IDTECH_HARDWARE_FAULT`/`HARDWARE_PULSE_FAIL`/`VOID_AND_REFUND_FAILED`） | `payment/DiagnosticManager.kt` | `sn: String`, `code: String`, `severity: String = "ERROR"`, `trace: String? = null` | `Job`（可选 `.join()` 等待，供崩溃处理器这类"进程即将退出"场景使用） |
+
+### 3.4 参考架构四段式合规性核查 (Reference Architecture Compliance Check)
+
+行业通用的无人值守收单终端参考架构把支付/出货全链路拆成四段：**① 终端发起支付请求 → ② 支付网关清算与鉴权 → ③ 硬件控制与出货确认 → ④ 云端对账与设备状态**。逐段核对 GS-SSP 当前实现（对应 §3.3 的具体 API），标注遵循程度：
+
+| 状态 | 含义 |
+| :-- | :-- |
+| ✅ | 已实现，符合参考架构要求 |
+| 🟡 | 部分实现，存在已知的局部缺口 |
+| 🔴 | 未实现/明确留白 |
+
+#### ① 💳 终端发起支付请求 API — ✅ 基本遵循
+
+| 参考要求 | GS-SSP 现状 |
+| :-- | :-- |
+| 调用方：边缘客户端/大屏 UI → 支付终端接口 | `MainActivity` → `PaymentService`（PAX）/ `IdTechPaymentProvider`（ID TECH），见 §3.3.1/3.3.2 |
+| 协议：本地 SDK / TCP / Serial / HTTP | PAX 走本机 AIDL（`127.0.0.1:10009`）；ID TECH 走本地 USB SDK 直连——均属"本地 SDK"一类 |
+| 传输：交易金额、交易类型、超时时间 | PAX：`PaymentRequest.amount`+`transType`+`CommSetting.timeout="60000"`；ID TECH：`emv_startTransaction(amount, ..., 30, ...)`/`ctls_startTransaction(amount, ..., 30, ...)`，30 秒超时显式传参 |
+| 作用：唤醒终端硬件，引导刷卡/插卡/Tap | `IdTechPaymentProvider.startSale()` 并发武装插卡(EMV)+拍卡(CTLS)+刷卡(MSR) 三通道，同时唤醒三种输入方式（见 §3.3.2 表） |
+
+#### ② 🔐 支付网关清算与鉴权 API — 🔴 当前唯一真正未打通的环节
+
+| 参考要求 | GS-SSP 现状 |
+| :-- | :-- |
+| 调用方：终端 → 收单行网关（Worldpay/Elavon/PayFacto） | 🟡 PAX：封装在 `PosLink().ProcessTrans()` 内部，是黑盒——PAX 自己的证书化模块处理 ISO 8583 报文，App 侧代码看不到也不需要实现 |
+| 加密卡密文、KSN、TID、交易金额 | 🔴 ID TECH：`GO_ONLINE`/`GO_ONLINE_CTLS` 回调（`emvTransactionData()`）正是该把加密数据转发给网关的节点，**目前故意实现为拒绝而非转发**——`reader?.emv_completeTransaction(false, ...)`，见 §3.3.2。此前版本这里是伪造批准，本轮已改为"拒绝而非造假"消除资金安全风险，但这不等于环节②被实现，只是把"假成功"换成了"诚实失败" |
+| 收单行解密 → 卡组织扣款 → 返回 Approval/Decline | 🔴 尚无任何真实网关对接代码。Worldpay/Elavon/PayFacto 三选一未定；SDK jar 内置的 `WorldPay`/`forwardTransaction` 类可用但未接线，另两家无对应实现 |
+| KSN/TID 传递 | 🔴 `device_getKSN()`、Terminal ID 获取均在 API 清单内但从未被调用 |
+
+**结论**：这是四段里唯一"设计上明确留白"的环节，卡在收单行选择——选定后才能确定该往哪个具体网关接、用哪套协议（Worldpay 走 SDK 内置桥接类；PayFacto/Elavon 目前证据显示更可能走 PAX 原生认证路径而非 ID TECH，见此前分析）。
+
+#### ③ ⚙️ 硬件控制与出货确认 API — ✅ 机制遵循，🟡 ID TECH 失败闭环不完整
+
+| 参考要求 | GS-SSP 现状 |
+| :-- | :-- |
+| 调用方：边缘控制服务 → 设备控制器/继电器板 | `DispenseEngine.dispense()` → `SerialPortManager`，见 §3.3.6 |
+| 协议：MDB / GPIO / RS232 / MQTT | 用 RS232（`SerialPortManager` 走 UART_1，对应 `/dev/ttyS1`）；本场景（洗车继电器）不需要 MDB/MQTT，不算缺口 |
+| 出货指令、状态查询、ACK/NACK | `SerialPortManager.sendCommandWithAck()` 解析 `[0xBB][Status][Checksum][0xEE]` 帧，映射 `OK/FAULT/TIMEOUT/MALFORMED`，500ms 超时、重试 3 次 |
+| 出货失败 → 触发撤单/退款 API | 🟡 PAX 路径完整：`startFinalizationSequence` 硬件失败分支调 `PaymentService.voidOrRefund()`。**ID TECH 路径这一环是断的**：`IdTechPaymentProvider.voidTransaction()`/`refundTransaction()` 恒定返回"未实现"（见 §3.3.2），插卡成功但出闸失败时钱退不回去 |
+
+#### ④ ☁️ 云端对账与设备状态 API — ✅ 基本遵循，一处已知缺口
+
+| 参考要求 | GS-SSP 现状 |
+| :-- | :-- |
+| 协议：HTTPS REST / WebSocket | Supabase Postgrest/RPC/Edge Function（HTTPS）+ Supabase Realtime（`RemoteCommandManager`，WebSocket） |
+| 交易凭证（Token/AuthCode） | `TransactionRepository.recordTransaction()` 写 `auth_code`/`ecr_ref_num`，见 §3.3.7 |
+| 设备心跳 | `HeartbeatWorker`（周期性 WorkManager 任务） |
+| 故障日志 | `DiagnosticManager.reportError()`，本轮已把 ID TECH 硬件故障接入（`IDTECH_HARDWARE_FAULT`） |
+| 每日 Batch 结算状态 | 🔴 未实现，`docs/card_payment_integration.md` §3.2 已记录为已知缺口："需确认由网关自动完成还是需要 App/后端显式触发" |
+
+#### 总体结论
+
+四段里 **①③④ 基本遵循参考架构**（③④ 各有一处局部缺口：ID TECH 的 void/refund 未接、每日批结算未做），**唯独②（网关清算）是真正的空白**——不是实现质量问题，是尚无网关可接。这也是为什么本轮的优先级判断始终是：先确定收单行、拿到密钥注入信息，环节②才有具体的下手点；在此之前继续深化 ID TECH，价值仅限于①③④这三段的通用加固（本轮已完成的 CTLS 接线、USB 静默授权、状态码分类、并发解析防重复等，均属于此类）。
 
 ---
 
