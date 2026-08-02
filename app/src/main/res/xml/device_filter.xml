@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Matches the ID TECH NEO2 USB reader so Android auto-grants USB permission to
+  this app the moment the reader is plugged in, instead of showing the usual
+  "Allow app to access device?" system dialog: there is no one at an
+  unattended kiosk to tap that dialog, so without this the reader is
+  permanently unusable on real hardware even though all the driver code is
+  correct.
+
+  TODO before real-hardware bring-up: vendor-id/product-id below are
+  PLACEHOLDERS, not verified values; do not ship as-is. The vendored SDK jar
+  (app/libs/Universal_SDK_1.00.190_os.jar) has this baked into obfuscated
+  bytecode (com.idtechproducts.device.usb.UsbController), so it can't be
+  reliably read back out by inspection. Get the real values one of two ways:
+    1. Plug the NEO2 into the IM30 (or any Android device) and run
+       `adb shell dumpsys usb`, then look for the reader's vendorId/productId
+       in the currently-connected device list.
+    2. ID TECH's NEO2 integration manual / Universal SDK developer guide
+       (see docs/idtech_integration_hardening_spec.md section 7.2) lists it directly.
+  The values below are plain decimal integers, matching what dumpsys usb
+  reports; hex ("0x....") also parses if that's what you source instead.
+-->
+<resources>
+    <!-- 0/0 is not a real USB vendor/product ID, so this filter deliberately
+         matches nothing (falling back to the normal permission dialog) until
+         replaced with real values. -->
+    <usb-device vendor-id="0" product-id="0" />
+</resources>

@@ -24,6 +24,11 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
+    <!-- ID TECH NEO2 connects as a USB host peripheral (DEVICE_NEO2_USB). Not
+         required=true: devices without a NEO2 attached (PAX-only deployments)
+         must still install/run. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
@@ -55,6 +60,17 @@
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- Matching this + device_filter.xml is what makes Android grant
+                 USB permission for the NEO2 silently instead of popping the
+                 "Allow app to access device?" dialog nobody is there to tap.
+                 Only takes effect once device_filter.xml has real vendor/
+                 product IDs (see TODO in that file). -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter" />
         </activity>
 
         <!-- AdActivity: Full screen looping advertisement activity -->
