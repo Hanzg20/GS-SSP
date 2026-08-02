@@ -135,6 +135,24 @@ CREATE TABLE IF NOT EXISTS public.org_members (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_org_members_org_role_uniq ON public.org_members(profile_id, org_id) WHERE org_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_org_members_global_role_uniq ON public.org_members(profile_id) WHERE org_id IS NULL;
 
+-- Invite-only signup gate (2026-07-28): org_members has no client-facing
+-- write policy at all (grants are REVOKEd below in §9), so before this table
+-- existed there was no way for ANY human to get org access except a manual
+-- service_role INSERT. handle_new_profile() (§9) now checks this table on
+-- every real signup -- reject if the email isn't here (and not yet
+-- accepted), auto-grant the org_members row from it if it is.
+CREATE TABLE IF NOT EXISTS public.invited_emails (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT NOT NULL UNIQUE,
+    org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('SYS_ADMIN', 'MERCHANT_ADMIN')),
+    capability TEXT NOT NULL DEFAULT 'admin' CHECK (capability IN ('admin', 'employee', 'decision_maker')),
+    invited_by UUID REFERENCES public.profiles(id),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    accepted_at TIMESTAMPTZ,
+    CONSTRAINT invited_emails_scope_check CHECK ((role = 'SYS_ADMIN') = (org_id IS NULL))
+);
+
 -- gs-ssp-cmp (the Lovable-generated CMP frontend repo) provisioned its own,
 -- uncoordinated identity/role system on this same Supabase project before
 -- org_members existed: an `app_role` enum (admin/employee/decision_maker),
@@ -502,6 +520,7 @@ ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.org_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.invited_emails ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.devices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.device_auth_map ENABLE ROW LEVEL SECURITY;
@@ -631,6 +650,24 @@ DROP POLICY IF EXISTS "Org admins can update org products" ON public.products;
 CREATE POLICY "Org admins can update org products" ON public.products
 FOR UPDATE TO authenticated
 USING (public.has_capability('admin') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
+
+-- invited_emails: gates who may join at all (§1/§9) -- readable/writable by
+-- SYS_ADMIN globally, or by an org's own admin-capability member for their
+-- own org's invites only.
+DROP POLICY IF EXISTS "Admins can view invites" ON public.invited_emails;
+CREATE POLICY "Admins can view invites" ON public.invited_emails
+FOR SELECT TO authenticated
+USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
+
+DROP POLICY IF EXISTS "Admins can create invites" ON public.invited_emails;
+CREATE POLICY "Admins can create invites" ON public.invited_emails
+FOR INSERT TO authenticated
+WITH CHECK (public.is_sys_admin() OR (org_id IN (SELECT public.member_org_ids()) AND public.has_capability('admin')));
+
+DROP POLICY IF EXISTS "Admins can revoke invites" ON public.invited_emails;
+CREATE POLICY "Admins can revoke invites" ON public.invited_emails
+FOR DELETE TO authenticated
+USING (public.is_sys_admin() OR (org_id IN (SELECT public.member_org_ids()) AND public.has_capability('admin')));
 
 DROP POLICY IF EXISTS "Org members can view org app configurations" ON public.app_configurations;
 CREATE POLICY "Org members can view org app configurations" ON public.app_configurations
@@ -1090,17 +1127,43 @@ EXECUTE FUNCTION public.touch_updated_at();
 -- shipped without the guard. Anonymous sessions have no human identity to
 -- record here anyway, so skipping them is also the semantically correct
 -- behavior, not just a workaround.
+--
+-- Invite-only gate (2026-07-28): every real signup must now match a
+-- pending row in invited_emails, or the whole auth.users insert rolls back
+-- via RAISE EXCEPTION -- same rollback mechanism as the anonymous-guard
+-- incident above, but this time deliberate. Verified live against the CMP's
+-- actual signup endpoint (not the anonymous-device endpoint, which is the
+-- one that wraps errors per the note above): a rejected signup surfaces the
+-- raw exception text verbatim as `{"code":"P0001","message":"email_not_invited"}`,
+-- not a generic wrapped message, so the CMP's AuthContext.tsx can safely
+-- pattern-match on 'email_not_invited' for a friendly error. An invited
+-- signup gets its org_members row granted from the invite in the same
+-- transaction -- previously (before invited_emails existed) a fresh signup
+-- got a profiles row and nothing else, no path to org access short of a
+-- manual service_role INSERT.
 CREATE OR REPLACE FUNCTION public.handle_new_profile()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_invite public.invited_emails%ROWTYPE;
 BEGIN
   IF NEW.is_anonymous THEN
     RETURN NEW;
   END IF;
+
+  SELECT * INTO v_invite FROM public.invited_emails WHERE email = NEW.email AND accepted_at IS NULL;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'email_not_invited';
+  END IF;
+
   INSERT INTO public.profiles (id, email) VALUES (NEW.id, NEW.email);
+  INSERT INTO public.org_members (profile_id, org_id, role, capability)
+    VALUES (NEW.id, v_invite.org_id, v_invite.role, v_invite.capability);
+  UPDATE public.invited_emails SET accepted_at = now() WHERE id = v_invite.id;
+
   RETURN NEW;
 END;
 $$;
@@ -1854,8 +1917,16 @@ ON CONFLICT (code) DO NOTHING;
 -- as §13's device_auth_map: profiles.id has a REFERENCES auth.users(id)
 -- foreign key, and there's no way to fabricate a placeholder UUID that
 -- satisfies it. A profiles row only exists once a real human signs up
--- (auto-created by the on_auth_user_created trigger, §9). To test
--- issue_compensation_coupon() manually, sign up a real user, then:
---   insert into public.org_members (profile_id, org_id, role)
---   values ('<real-auth-uid>', '00000000-0000-0000-0000-000000000001', 'MERCHANT_ADMIN');
--- (org_id NULL + role 'SYS_ADMIN' for a global admin instead.)
+-- (auto-created by the on_auth_user_created trigger, §9).
+--
+-- As of 2026-07-28 that trigger requires an invited_emails row to let the
+-- signup through at all -- so to provision a test/new admin, insert the
+-- invite FIRST, then have that real email sign up through the CMP's normal
+-- signup form (org_members gets granted automatically from the invite,
+-- no manual org_members INSERT needed anymore):
+--   insert into public.invited_emails (email, org_id, role, capability)
+--   values ('person@example.com', '00000000-0000-0000-0000-000000000001', 'MERCHANT_ADMIN', 'admin');
+-- (org_id NULL + role 'SYS_ADMIN' for a global admin instead.) The old
+-- manual "sign up then hand-INSERT org_members" path still technically
+-- works under service_role for one-off bootstrapping, but isn't the normal
+-- path anymore.
