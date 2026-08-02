@@ -10,6 +10,7 @@ import io.github.jan.supabase.storage.Storage
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.android.*
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -26,6 +27,13 @@ object SupabaseClientProvider {
         supabaseUrl = SupabaseConfig.URL,
         supabaseKey = SupabaseConfig.KEY
     ) {
+        // ktor-client-android (used elsewhere in this file for
+        // functionsHttpClient) has no WebSocket support, so Realtime must be
+        // pinned to OkHttp explicitly -- leaving httpEngine unset lets Ktor's
+        // engine auto-detection pick either one non-deterministically since
+        // both are on the classpath, and picking Android silently breaks
+        // RemoteCommandManager's realtime subscription.
+        httpEngine = OkHttp.create()
         install(Postgrest)
         install(Auth)
         install(Realtime)

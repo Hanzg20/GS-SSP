@@ -71,8 +71,13 @@ object RemoteCommandManager {
                 when (cmd) {
                     "REBOOT" -> {
                         Log.w(TAG, "Executing Remote REBOOT...")
-                        val dal: IDAL = NeptuneLiteUser.getInstance().getDal(context)
-                        dal.getSys().reboot()
+                        val dal: IDAL? = try { NeptuneLiteUser.getInstance().getDal(context) } catch (e: Exception) { null }
+                        if (dal != null) {
+                            dal.getSys().reboot()
+                        } else {
+                            Log.w(TAG, "Reboot ignored: DAL not available")
+                            success = false
+                        }
                     }
                     "SYNC_CONFIG" -> {
                         Log.i(TAG, "Executing Remote SYNC_CONFIG...")

@@ -76,7 +76,11 @@ object ShadowManager {
      */
     private fun applyDesiredState(context: Context, desired: JsonObject) {
         try {
-            val dal: IDAL = NeptuneLiteUser.getInstance().getDal(context)
+            val dal: IDAL? = try { NeptuneLiteUser.getInstance().getDal(context) } catch (e: Exception) { null }
+            if (dal == null) {
+                Log.w(TAG, "Skipping remote state apply: DAL not available (Simulation Mode?)")
+                return
+            }
             
             desired["brightness"]?.jsonPrimitive?.intOrNull?.let { value ->
                 Log.i(TAG, "Applying remote brightness: $value")
@@ -95,7 +99,7 @@ object ShadowManager {
     fun syncReportedState(context: Context, sn: String) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val dal: IDAL = NeptuneLiteUser.getInstance().getDal(context)
+                val dal: IDAL? = try { NeptuneLiteUser.getInstance().getDal(context) } catch (e: Exception) { null }
                 
                 val currentState = ShadowState(
                     last_sync_at = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())
