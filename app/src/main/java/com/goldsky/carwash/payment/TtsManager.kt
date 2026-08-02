@@ -34,11 +34,8 @@ object TtsManager : DefaultLifecycleObserver {
                     isInitialized = true
                     applyLocale(currentLocale)
                     Log.i(TAG, "TTS Engine initialized successfully")
-                    // DEBUG TOAST
-                    android.widget.Toast.makeText(context, "TTS Ready (${currentLocale})", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
                     Log.e(TAG, "TTS Initialization failed: $status")
-                    android.widget.Toast.makeText(context, "TTS Init Failed: $status", android.widget.Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -86,9 +83,7 @@ object TtsManager : DefaultLifecycleObserver {
         }
 
         Log.d(TAG, "Speaking: $text")
-        // DEBUG: Ensure we see what it's trying to say
-        // Toast can only be shown on Main thread, so we're safe here as TtsManager is called from UI usually
-        
+
         requestDucking()
         
         // Use QUEUE_FLUSH to interrupt any previous guidance for better UX

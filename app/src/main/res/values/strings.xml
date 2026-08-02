@@ -66,6 +66,7 @@
     <string name="toast_coupon_applied">Coupon applied! Please select your wash package.</string>
     <string name="toast_coupon_invalid">This coupon can\'t be used, please see staff</string>
     <string name="toast_coupon_see_staff">This coupon needs staff assistance to redeem</string>
+    <string name="voice_vip_low_balance">Insufficient balance. Please top up your card or choose another payment method.</string>
 
     <string name="status_processing">Processing Payment...</string>
     <string name="status_approved">Transaction Approved</string>
