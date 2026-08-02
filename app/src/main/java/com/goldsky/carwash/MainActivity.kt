@@ -53,6 +53,7 @@ class MainActivity : BaseAdActivity() {
     private var pollingJob: Job? = null
     private var scannerManager: PaxScannerManager? = null
     private var deviceSn: String = "SIMULATOR_SN"
+    private var hardwareVendor: String = "IDTECH" // "PAX" or "IDTECH"
     private var deviceControl: com.pax.dal.IDeviceControl? = null
     private var watchdogJob: Job? = null
     private var laserAnimator: ObjectAnimator? = null
@@ -94,6 +95,11 @@ class MainActivity : BaseAdActivity() {
 
         DeviceRepository.init(this)
         DeviceAccessManager.init(this)
+
+        // Initialize Hardware Layer (ID TECH / PAX)
+        val hardware = com.goldsky.carwash.payment.hardware.HardwareFactory.getHardwareProvider(hardwareVendor)
+        hardware.init(this)
+        hardware.registerLifecycle(this, this)
 
         setupClickListeners()
         setupMaintenanceTrigger()
@@ -139,9 +145,9 @@ class MainActivity : BaseAdActivity() {
             Log.i("SSP_IDENTITY", "Simulated SN: $deviceSn")
         } else {
             try {
-                val dal: IDAL = NeptuneLiteUser.getInstance().getDal(this)
-                deviceSn = dal.getSys().getTermSerial() ?: "UNKNOWN_SN"
-                Log.i("SSP_IDENTITY", "Hardware SN: $deviceSn")
+                val hardware = com.goldsky.carwash.payment.hardware.HardwareFactory.getHardwareProvider(hardwareVendor)
+                deviceSn = hardware.getSerialNumber(this)
+                Log.i("SSP_IDENTITY", "Hardware SN ($hardwareVendor): $deviceSn")
             } catch (e: Exception) {
                 Log.e("SSP_IDENTITY", "Failed to get hardware SN: ${e.message}")
             }
@@ -179,7 +185,8 @@ class MainActivity : BaseAdActivity() {
         applyKioskWindowFlags()
         resetAdTimer()
         // Enable scanner LED for voucher scan on main menu
-        scannerManager?.setScannerLed(true)
+        val scanner = com.goldsky.carwash.payment.hardware.HardwareFactory.getScannerProvider(this, hardwareVendor)
+        scanner.setScannerLed(true)
         performHealthCheck()
         startLaserAnimation()
         start3DStatusPulse()
@@ -189,7 +196,8 @@ class MainActivity : BaseAdActivity() {
         super.onPause()
         stopAdTimer()
         // Disable scanner LED when leaving main menu
-        scannerManager?.setScannerLed(false)
+        val scanner = com.goldsky.carwash.payment.hardware.HardwareFactory.getScannerProvider(this, hardwareVendor)
+        scanner.setScannerLed(false)
         stopLaserAnimation()
         stop3DStatusPulse()
     }
@@ -512,21 +520,24 @@ class MainActivity : BaseAdActivity() {
             TtsManager.announceAmount(priceInCents, "Total amount is")
             TtsManager.speak(getString(R.string.prompt_card_guide))
 
-            // Start background NFC detection to distinguish between EMV and VIP
-            scannerManager?.startCardDetection(object : PaxScannerManager.CardCallback {
-                override fun onCardDetected(type: String, uid: String) {
-                    if (type == "MIFARE") {
-                        // VIP Membership detected
-                        initVipPayment(uid, priceInCents, startHex, dialog, productId)
-                    } else {
-                        // Payment Card (EMV) detected - Hand over to POSLink
-                        // Critical: We must close the low-level PICC before POSLink takes over
-                        scannerManager?.stopCardDetection()
-                        initCardPayment(priceInCents, startHex, dialog, productId)
+            // Presence-check step -- a no-op pass-through for ID TECH (which has
+            // no cheap detection separate from the real sale; see
+            // IdTechPaymentProvider.startCardDetection's doc), so this resolves
+            // immediately and initCardPayment() -> startSale() is what actually
+            // arms the reader for insert/tap/swipe.
+            val provider = com.goldsky.carwash.payment.hardware.HardwareFactory.getPaymentProvider(this, hardwareVendor)
+            provider.startCardDetection(priceInCents, object : com.goldsky.carwash.payment.hardware.IPaymentProvider.PaymentCallback {
+                override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
+                    initCardPayment(priceInCents, startHex, dialog, productId)
+                }
+                override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
+                    Log.e("MainActivity", "Card detection error: $errorMsg")
+                    if (isHardwareFault) {
+                        DiagnosticManager.reportError(deviceSn, "IDTECH_HARDWARE_FAULT", severity = "CRITICAL", trace = errorMsg)
                     }
                 }
-                override fun onDetectionError(error: String) {
-                    Log.e("MainActivity", "NFC detection error: $error")
+                override fun onProgress(message: String) {
+                    runOnUiThread { dialog.findViewById<TextView>(R.id.tv_status_msg)?.text = message }
                 }
             })
         } else {
@@ -540,6 +551,10 @@ class MainActivity : BaseAdActivity() {
             if (paymentInFlight) {
                 Toast.makeText(this@MainActivity, getString(R.string.toast_payment_processing_wait), Toast.LENGTH_SHORT).show()
             } else {
+                // Cancel ongoing hardware session
+                val provider = com.goldsky.carwash.payment.hardware.HardwareFactory.getPaymentProvider(this, hardwareVendor)
+                provider.cancelCurrentTransaction()
+                
                 dialog.dismiss()
                 showPaymentDialog(priceInCents, startHex, productId)
             }
@@ -612,7 +627,7 @@ class MainActivity : BaseAdActivity() {
                     // card's first use and permanently fail into the offline
                     // queue (confirmed live: "duplicate key value violates
                     // unique constraint transactions_ecr_ref_num_key").
-                    startFinalizationSequence(priceInCents, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog, productId = productId, paymentMethod = "VIP_CARD")
+                    startFinalizationSequence(priceInCents, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog, productId = productId, paymentMethod = "VIP_CARD", entryMode = "NFC_TAP")
                 }
                 is VipDeductResult.Rejected -> {
                     paymentInFlight = false
@@ -623,7 +638,7 @@ class MainActivity : BaseAdActivity() {
                     }
                     Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
                     if (result.reason == "insufficient_balance") {
-                        VoiceManager.playLowBalance(this@MainActivity)
+                        TtsManager.speak(getString(R.string.voice_vip_low_balance))
                     }
                     layoutStatus.visibility = View.GONE
                     startPaymentFlow(true, priceInCents, startHex, productId)
@@ -731,21 +746,31 @@ class MainActivity : BaseAdActivity() {
 
             if (isSimulationMode) {
                 delay(3000)
-                startFinalizationSequence(priceInCents, startHex, "MOCK_REF_123", dialog, txRefNum)
+                startFinalizationSequence(priceInCents, startHex, "MOCK_REF_123", dialog, txRefNum, entryMode = "SIMULATED")
             } else {
-                PaymentService.startCardPayment(priceInCents, txRefNum, object : PaymentService.PaymentCallback {
-                    override fun onSuccess(txId: String, refNum: String) {
-                        startFinalizationSequence(priceInCents, startHex, refNum, dialog, txRefNum)
+                val provider = com.goldsky.carwash.payment.hardware.HardwareFactory.getPaymentProvider(this@MainActivity, hardwareVendor)
+                provider.startSale(priceInCents, txRefNum, object : com.goldsky.carwash.payment.hardware.IPaymentProvider.PaymentCallback {
+                    override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
+                        startFinalizationSequence(priceInCents, startHex, refNum, dialog, txRefNum, entryMode = entryMode)
                     }
-                    override fun onFailure(errorMsg: String) {
+                    override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                         paymentInFlight = false
                         runOnUiThread {
-                            Toast.makeText(this@MainActivity, "Card Payment Failed: $errorMsg", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this@MainActivity, "Payment Failed: $errorMsg", Toast.LENGTH_LONG).show()
                             dialog.dismiss()
                             resetAdTimer()
                         }
+                        if (isHardwareFault) {
+                            DiagnosticManager.reportError(deviceSn, "IDTECH_HARDWARE_FAULT", severity = "CRITICAL", trace = errorMsg)
+                        }
                         CoroutineScope(Dispatchers.Main).launch {
                             TransactionRepository.updatePaymentStatus(this@MainActivity, txRefNum, "DECLINED")
+                        }
+                    }
+                    override fun onProgress(message: String) {
+                        runOnUiThread { 
+                            // Update status msg if available
+                            dialog.findViewById<TextView>(R.id.tv_status_msg)?.text = message
                         }
                     }
                 })
@@ -844,7 +869,8 @@ class MainActivity : BaseAdActivity() {
         // these on its own PENDING insert in initCardPayment, and the
         // PENDING->PAID transition here is an UPDATE that doesn't touch them.
         productId: String? = null,
-        paymentMethod: String = "UNKNOWN"
+        paymentMethod: String = "UNKNOWN",
+        entryMode: String? = null
     ) {
         val layoutStatus = dialog?.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
         val tvStatus = dialog?.findViewById<TextView>(R.id.tv_status_msg)
@@ -879,7 +905,7 @@ class MainActivity : BaseAdActivity() {
 
             // 1. Record transaction to Supabase (v2.0 Audit)
             if (pendingEcrRefNum != null) {
-                TransactionRepository.updatePaymentStatus(this@MainActivity, pendingEcrRefNum, "PAID")
+                TransactionRepository.updatePaymentStatus(this@MainActivity, pendingEcrRefNum, "PAID", entryMode)
             } else {
                 TransactionRepository.recordTransaction(
                     this@MainActivity,
@@ -889,7 +915,8 @@ class MainActivity : BaseAdActivity() {
                         payment_status = "PAID",
                         ecr_ref_num = ecrRefNum,
                         payment_method = paymentMethod,
-                        product_id = productId
+                        product_id = productId,
+                        entry_mode = entryMode
                     )
                 )
             }
@@ -1017,7 +1044,11 @@ class MainActivity : BaseAdActivity() {
         super.onDestroy()
         paymentDialog?.dismiss()
         pollingJob?.cancel()
-        scannerManager?.stopScan()
+        val scanner = com.goldsky.carwash.payment.hardware.HardwareFactory.getScannerProvider(this, hardwareVendor)
+        scanner.stopScan()
+        
+        com.goldsky.carwash.payment.hardware.HardwareFactory.getHardwareProvider(hardwareVendor).release()
+
         if (!isSimulationMode) {
             SerialPortManager.closePort()
         }
@@ -1059,13 +1090,21 @@ class MainActivity : BaseAdActivity() {
         val isDbOk = isSimulationMode || ConfigManager.isDatabaseOnline()
         val isLocked = DeviceAccessManager.isLocked()
         val isKeyOk = KeyHealthMonitor.isPaymentAllowed()
+        // Previously this light only reflected serial/DB/key health -- a card
+        // reader silently going offline (unplugged NEO2, USB fault) left the
+        // indicator green with no signal that card payments were dead until
+        // a customer actually tried and it failed. isOperational() is cheap
+        // (no I/O, just a connection-state check), safe to call every
+        // performHealthCheck() tick.
+        val isReaderOk = isSimulationMode ||
+            com.goldsky.carwash.payment.hardware.HardwareFactory.getHardwareProvider(hardwareVendor).isOperational()
 
         // Black: admin/remote locked. Red: hardware/DB/key fault. Yellow: sim mode. Green: operational.
         // Uses the app's own palette (not raw Color.RED/GREEN/YELLOW primaries)
         // so this status dot doesn't clash with everything else on screen.
         when {
             isLocked -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.bg_dark))
-            !isSerialOk || !isDbOk || !isKeyOk -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.coral_red))
+            !isSerialOk || !isDbOk || !isKeyOk || !isReaderOk -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.coral_red))
             isSimulationMode -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.gold_accent))
             else -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.emerald_green))
         }
@@ -1129,6 +1168,8 @@ class MainActivity : BaseAdActivity() {
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         dialog.setContentView(R.layout.dialog_maintenance)
         
+        val hardware = com.goldsky.carwash.payment.hardware.HardwareFactory.getHardwareProvider(hardwareVendor)
+
         // 1. Header & Exit
         dialog.findViewById<Button>(R.id.btn_dash_exit).setOnClickListener { dialog.dismiss() }
 
@@ -1137,9 +1178,10 @@ class MainActivity : BaseAdActivity() {
         val tvNet = dialog.findViewById<TextView>(R.id.tv_status_network)
         val tvDb = dialog.findViewById<TextView>(R.id.tv_status_db)
         
-        val serialStatus = if (isSimulationMode) "MOCK" else if (SerialPortManager.isOpened()) "OPEN" else "OFF"
-        tvSerial.text = "Serial: $serialStatus"
-        tvSerial.setTextColor(if (serialStatus == "OFF") Color.RED else Color.GREEN)
+        val serial = if (isSimulationMode) "MOCK_SN" else hardware.getSerialNumber(this)
+        val fw = if (isSimulationMode) "MOCK_FW" else hardware.getFirmwareVersion()
+        tvSerial.text = "$hardwareVendor SN: $serial | FW: $fw"
+        tvSerial.setTextColor(if (hardware.isOperational()) Color.GREEN else Color.RED)
 
         val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
         val netInfo = cm.activeNetworkInfo
@@ -1172,15 +1214,9 @@ class MainActivity : BaseAdActivity() {
         // 4. Peripherals
         dialog.findViewById<Button>(R.id.btn_test_scan).setOnClickListener {
             applyClickFeedback(it)
-            Toast.makeText(this, "Scanner Active...", Toast.LENGTH_SHORT).show()
-            scannerManager?.startScan(object : PaxScannerManager.ScanCallback {
-                override fun onScanSuccess(result: String) {
-                    runOnUiThread { Toast.makeText(this@MainActivity, "Scan: $result", Toast.LENGTH_LONG).show() }
-                }
-                override fun onScanFailure(errorMsg: String) {
-                    runOnUiThread { Toast.makeText(this@MainActivity, "Scan Failed", Toast.LENGTH_SHORT).show() }
-                }
-            })
+            // Trigger the REAL coupon scan logic but let it fall back to mock string
+            initCouponScan()
+            dialog.dismiss()
         }
 
         val btnQrTest = dialog.findViewById<Button>(R.id.btn_test_qr_gen)
