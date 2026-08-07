@@ -18,9 +18,13 @@
 *.apk
 *.aar
 *.jar
+*.zip
 !gradle/wrapper/gradle-wrapper.jar
 .artifacts/
 docs/walkthrough.artifact.md
 docs/implementation_plan.artifact.md
 docs/task.artifact.md
 supabase/.temp/
+
+# scratch/reference dirs (vendor demo pulls, extracted AARs, SDK downloads) — not source
+temp_*/

@@ -359,9 +359,20 @@ CREATE INDEX IF NOT EXISTS idx_heartbeats_device_created ON public.heartbeats(de
 -- Application Error Logs (Stack Traces). ON DELETE SET NULL (not CASCADE) --
 -- error history has diagnostic/warranty value independent of whether the
 -- device row still exists (e.g. after a hardware swap or decommission).
+--
+-- 2026-08-06: device_sn here (and on maintenance_records, transactions,
+-- coupon_redemptions, qr_payment_sessions below) was NOT NULL until today --
+-- self-contradictory with ON DELETE SET NULL, which can never actually fire
+-- against a NOT NULL column. Found by deleting 24 stale test/mock devices
+-- (MOCK_SN_*, plus two placeholder rows PAX-IM30-WASH-001/LAUN-002 that were
+-- never real deployments -- confirmed test data, not a live-fleet incident):
+-- every one of these five tables aborted the DELETE with a NOT NULL
+-- violation instead of preserving history the way the design intent (see
+-- comments above/below) describes. Dropped NOT NULL on all five so device
+-- decommissioning actually works going forward.
 CREATE TABLE IF NOT EXISTS public.app_error_logs (
     id BIGSERIAL PRIMARY KEY,
-    device_sn TEXT NOT NULL REFERENCES public.devices(sn) ON DELETE SET NULL,
+    device_sn TEXT REFERENCES public.devices(sn) ON DELETE SET NULL,
     severity TEXT DEFAULT 'ERROR',
     error_code TEXT,
     stack_trace TEXT,
@@ -374,7 +385,7 @@ CREATE INDEX IF NOT EXISTS idx_app_error_logs_device_created ON public.app_error
 -- app_error_logs -- service history should outlive the device record.
 CREATE TABLE IF NOT EXISTS public.maintenance_records (
     id BIGSERIAL PRIMARY KEY,
-    device_sn TEXT NOT NULL REFERENCES public.devices(sn) ON DELETE SET NULL,
+    device_sn TEXT REFERENCES public.devices(sn) ON DELETE SET NULL,
     action TEXT NOT NULL,                -- e.g., 'RELAY_TEST', 'REBOOT'
     payload JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT now()
@@ -395,7 +406,7 @@ CREATE TABLE IF NOT EXISTS public.device_shadows (
 -- NULL, so a device record being removed later never deletes financial history.
 CREATE TABLE IF NOT EXISTS public.transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    device_sn TEXT NOT NULL REFERENCES public.devices(sn) ON DELETE SET NULL,
+    device_sn TEXT REFERENCES public.devices(sn) ON DELETE SET NULL,
     amount INTEGER NOT NULL,
     currency TEXT DEFAULT 'USD',
     payment_status TEXT CHECK (payment_status IN ('PENDING', 'PAID', 'DECLINED', 'VOIDED', 'REFUNDED')),
@@ -467,7 +478,7 @@ CREATE INDEX IF NOT EXISTS idx_coupons_org ON public.coupons(org_id) WHERE is_ac
 CREATE TABLE IF NOT EXISTS public.coupon_redemptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     coupon_code TEXT NOT NULL REFERENCES public.coupons(code),
-    device_sn TEXT NOT NULL REFERENCES public.devices(sn) ON DELETE SET NULL,
+    device_sn TEXT REFERENCES public.devices(sn) ON DELETE SET NULL,
     -- The resulting (discounted) transaction, if the customer went on to
     -- complete payment -- left NULL otherwise (scanned but abandoned).
     -- Not populated by the app in the initial redemption flow; would need
@@ -484,7 +495,7 @@ CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_code ON public.coupon_redempti
 -- enforced via RLS below.
 CREATE TABLE IF NOT EXISTS public.qr_payment_sessions (
     tx_id TEXT PRIMARY KEY,
-    device_sn TEXT NOT NULL REFERENCES public.devices(sn) ON DELETE SET NULL,
+    device_sn TEXT REFERENCES public.devices(sn) ON DELETE SET NULL,
     amount_cents INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PAID', 'EXPIRED', 'CANCELLED')),
     created_at TIMESTAMPTZ DEFAULT now(),
@@ -909,6 +920,32 @@ WITH CHECK (
   )
 );
 
+-- 2026-08-06: this table had an INSERT policy but no SELECT policy at all --
+-- harmless for a bare `INSERT`, but PostgREST's `Prefer: return=representation`
+-- (the default for most Supabase client SDKs' `.insert()` calls, including
+-- whatever the IM30 app's HeartbeatWorker uses) re-selects the just-inserted
+-- row to return it in the response body, and that re-select is subject to
+-- full RLS same as any other SELECT. With no applicable SELECT policy, every
+-- heartbeat insert requesting representation failed with "new row violates
+-- row-level security policy for table heartbeats" -- misleading, since the
+-- INSERT's own WITH CHECK was passing fine; confirmed by isolating that a
+-- plain INSERT (no Prefer header) succeeded while the identical insert with
+-- return=representation didn't, then confirming the fix by re-adding it.
+-- This -- not bad device_auth_map data -- was the real root cause of the
+-- production heartbeat failures found 2026-08-06 (a batch of 24 stale
+-- MOCK_SN_*/placeholder devices with no device_auth_map row at all was a
+-- separate, real problem cleaned up the same day, but fixing only that
+-- wouldn't have fixed this).
+DROP POLICY IF EXISTS "Devices can read own heartbeats" ON public.heartbeats;
+CREATE POLICY "Devices can read own heartbeats" ON public.heartbeats
+FOR SELECT TO authenticated
+USING (
+  device_sn IN (
+    SELECT device_sn FROM public.device_auth_map
+    WHERE auth_user_id = auth.uid()
+  )
+);
+
 -- Error Logs: Devices can only report for themselves
 DROP POLICY IF EXISTS "Devices can insert own error logs" ON public.app_error_logs;
 CREATE POLICY "Devices can insert own error logs" ON public.app_error_logs
@@ -1141,6 +1178,18 @@ EXECUTE FUNCTION public.touch_updated_at();
 -- transaction -- previously (before invited_emails existed) a fresh signup
 -- got a profiles row and nothing else, no path to org access short of a
 -- manual service_role INSERT.
+-- 2026-08-05: this project is now also shared by gs-epos (GS-SSP Personal,
+-- SoftPOS), which needs open self-signup -- previously the RAISE EXCEPTION
+-- branch below aborted the *entire* auth.users insert for any uninvited
+-- email, which blocks signup project-wide, not just for the CMP. Live-tested
+-- via gs-epos: a plain Supabase email-OTP signup for an uninvited address
+-- failed with "Database error saving new user" (GoTrue's generic surface for
+-- a trigger exception) before this change. Narrow fix: uninvited signups now
+-- succeed with no CMP identity at all (no profiles row, no org_members row)
+-- instead of failing outright. profiles/org_members remain exactly as
+-- invite-gated as before for CMP purposes -- nothing about who can get CMP
+-- access changed, only whether an unrelated app sharing this project's Auth
+-- can create users.
 CREATE OR REPLACE FUNCTION public.handle_new_profile()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -1156,7 +1205,7 @@ BEGIN
 
   SELECT * INTO v_invite FROM public.invited_emails WHERE email = NEW.email AND accepted_at IS NULL;
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'email_not_invited';
+    RETURN NEW;
   END IF;
 
   INSERT INTO public.profiles (id, email) VALUES (NEW.id, NEW.email);

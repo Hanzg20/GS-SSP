@@ -2,6 +2,9 @@ package com.goldsky.carwash.payment.hardware
 
 import android.content.Context
 import com.goldsky.carwash.payment.hardware.idtech.IdTechHardwareProvider
+import com.goldsky.carwash.payment.hardware.pax.PaxHardwareProvider
+import com.goldsky.carwash.payment.hardware.pax.PaxPaymentProvider
+import com.goldsky.carwash.payment.hardware.pax.PaxScannerProvider
 
 /**
  * Factory to instantiate the correct hardware provider based on environment/config.
@@ -18,7 +21,7 @@ object HardwareFactory {
         if (hardwareProvider == null) {
             hardwareProvider = when (vendor.uppercase()) {
                 "IDTECH" -> IdTechHardwareProvider()
-                // "PAX" -> PaxHardwareProvider() // Future implementation
+                "PAX" -> PaxHardwareProvider()
                 else -> throw IllegalArgumentException("Unknown hardware vendor: $vendor")
             }
         }
@@ -26,36 +29,33 @@ object HardwareFactory {
     }
 
     /**
-     * returns the payment provider for the current configuration. The IdTech
-     * payment provider is owned by [IdTechHardwareProvider] (it's also the SDK's
-     * registered OnReceiverListener), so this fetches the same instance rather
-     * than constructing a second, disconnected one. Calls [getHardwareProvider]'s
-     * `init` defensively in case the caller never did (it's a no-op if already
-     * initialized).
+     * returns the payment provider for the current configuration.
      */
     fun getPaymentProvider(context: Context, vendor: String = "IDTECH"): IPaymentProvider {
         val hardware = getHardwareProvider(vendor)
         hardware.init(context)
         return when (hardware) {
             is IdTechHardwareProvider -> hardware.getPaymentProvider()
+            is PaxHardwareProvider -> PaxPaymentProvider(context)
             else -> throw IllegalArgumentException("Unknown hardware vendor: $vendor")
         }
     }
 
     /**
      * returns the scanner provider for the current configuration.
-     *
-     * NOT IMPLEMENTED for ID TECH: this is a silent no-op (callbacks never fire,
-     * LED control does nothing). The existing member/coupon QR scan flow still
-     * goes through PaxScannerManager directly and does not call this. Do not
-     * route new scan features through this until a real implementation exists --
-     * they would hang forever waiting on a callback that never arrives.
      */
     fun getScannerProvider(context: Context, vendor: String = "IDTECH"): IScannerProvider {
-        return object : IScannerProvider {
-            override fun startScan(callback: IScannerProvider.ScanCallback) {}
-            override fun stopScan() {}
-            override fun setScannerLed(enabled: Boolean) {}
+        val hardware = getHardwareProvider(vendor)
+        return when (hardware) {
+            is IdTechHardwareProvider -> {
+                object : IScannerProvider {
+                    override fun startScan(callback: IScannerProvider.ScanCallback) {}
+                    override fun stopScan() {}
+                    override fun setScannerLed(enabled: Boolean) {}
+                }
+            }
+            is PaxHardwareProvider -> PaxScannerProvider(context)
+            else -> throw IllegalArgumentException("Unknown hardware vendor: $vendor")
         }
     }
 }

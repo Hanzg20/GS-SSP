@@ -1,5 +1,12 @@
 # GS-SSP 系统架构设计规格书 (System Architecture Specification)
 
+### v2.14 (2026-08-06) — 引入多厂商硬件抽象层 (Multi-Vendor HAL)
+针对集成 ID TECH 和 PAX 两套 SDK 的需求，对硬件交互逻辑进行了深度解耦。确立了以 `HardwareFactory` 为中心的驱动分发机制。
+*   **统一接口**: 定义了 `IHardwareProvider`、`IPaymentProvider`、`IScannerProvider` 标准接口，屏蔽厂商 SDK 差异。
+*   **PAX 集成路线**: 确立了基于 `POSLink` (AIDL 模式) 与 `NeptuneLite` 的生产级驱动模型。
+*   **ID TECH 集成路线**: 确立了基于 `Universal SDK` (USB/Serial 模式) 的驱动模型。
+*   **动态切换**: 支持通过配置动态路由支付请求至对应的底层硬件，实现了逻辑层与厂商 SDK 的 100% 隔离。
+
 ### v2.13 (2026-08-01) — 补充参考架构四段式合规性核查
 新增 §3.4，用行业通用的"①终端发起支付请求 → ②支付网关清算与鉴权 → ③硬件控制与出货确认 → ④云端对账与设备状态"四段式参考架构，逐段核对 §3.3 列出的现状 API，标注 ✅/🟡/🔴。结论：①③④基本遵循（③④各有一处局部缺口：ID TECH 的 void/refund 未接、每日批结算未做），②（网关清算）是唯一真正的空白——ID TECH 的 `GO_ONLINE` 目前故意拒绝而非转发给网关，卡在收单行（Worldpay/Elavon/PayFacto）尚未选定。
 
