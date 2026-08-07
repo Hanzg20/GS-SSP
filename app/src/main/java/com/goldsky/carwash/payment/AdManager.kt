@@ -32,7 +32,7 @@ object AdManager {
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             AD_SYNC_WORK,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.REPLACE, // Change to REPLACE to apply new constraints
             syncRequest
         )
 

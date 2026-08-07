@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.goldsky.carwash.payment.hardware.IHardwareProvider
+import com.goldsky.carwash.payment.hardware.IScannerProvider
 import com.idtechproducts.device.*
 import com.idtechproducts.device.ReaderInfo.DEVICE_TYPE
 
@@ -22,11 +23,19 @@ class IdTechHardwareProvider : IHardwareProvider, DefaultLifecycleObserver {
     private val TAG = "IdTechHardware"
     private var reader: IDT_NEO2? = null
     private val paymentProvider = IdTechPaymentProvider()
+    private var serialProvider: IdTechSerialProvider? = null
 
     private val dummyPinListener = OnReceiverListenerPIN { _ -> }
 
     fun getReader(): IDT_NEO2? = reader
     fun getPaymentProvider(): IdTechPaymentProvider = paymentProvider
+    override fun getSerialProvider(): IdTechSerialProvider = serialProvider ?: IdTechSerialProvider().also { serialProvider = it }
+
+    override fun getScannerProvider(): IScannerProvider = object : IScannerProvider {
+        override fun startScan(callback: IScannerProvider.ScanCallback) {}
+        override fun stopScan() {}
+        override fun setScannerLed(enabled: Boolean) {}
+    }
 
     override fun init(context: Context) {
         if (reader == null) {
@@ -72,11 +81,23 @@ class IdTechHardwareProvider : IHardwareProvider, DefaultLifecycleObserver {
         }
     }
 
+    override fun setScreenBrightness(percent: Int) {
+        // No-op for ID TECH peripheral
+    }
+
+    override fun getScreenBrightness(): Int = 100
+
+    override fun feedWatchdog() {
+        // No-op for ID TECH peripheral
+    }
+
     override fun release() {
         reader?.unregisterListen()
         reader?.release()
         reader = null
         paymentProvider.detachReader()
+        serialProvider?.close()
+        serialProvider = null
     }
 
     override fun onDestroy(owner: LifecycleOwner) {

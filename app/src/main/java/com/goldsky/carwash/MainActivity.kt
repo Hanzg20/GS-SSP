@@ -29,9 +29,7 @@ import com.goldsky.carwash.model.PaymentMethodMode
 import com.goldsky.carwash.model.Product
 import com.goldsky.carwash.model.WashPackage
 import com.goldsky.carwash.payment.*
-import com.goldsky.carwash.serial.SerialPortManager
-import com.pax.dal.IDAL
-import com.pax.neptunelite.api.NeptuneLiteUser
+import com.goldsky.carwash.payment.hardware.HardwareFactory
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -48,13 +46,11 @@ class MainActivity : BaseAdActivity() {
 
     // State Variables
     private var isWorking = false
-    private var isSimulationMode = true // Set to false for real PAX hardware integration
+    private var isSimulationMode = false // Set to false for real PAX hardware integration
     private var paymentDialog: Dialog? = null
     private var pollingJob: Job? = null
-    private var scannerManager: PaxScannerManager? = null
     private var deviceSn: String = "SIMULATOR_SN"
-    private var hardwareVendor: String = "IDTECH" // "PAX" or "IDTECH"
-    private var deviceControl: com.pax.dal.IDeviceControl? = null
+    private var hardwareVendor: String = "PAX" // "PAX" or "IDTECH"
     private var watchdogJob: Job? = null
     private var laserAnimator: ObjectAnimator? = null
     private var coordinatedTapAnimator: AnimatorSet? = null
@@ -91,13 +87,12 @@ class MainActivity : BaseAdActivity() {
         layoutPackageSelection = findViewById(R.id.layout_package_selection)
         layoutWorking = findViewById(R.id.layout_working)
 
-        scannerManager = PaxScannerManager(this)
-
         DeviceRepository.init(this)
         DeviceAccessManager.init(this)
 
         // Initialize Hardware Layer (ID TECH / PAX)
-        val hardware = com.goldsky.carwash.payment.hardware.HardwareFactory.getHardwareProvider(hardwareVendor)
+        DeviceRepository.persistHardwareVendor(hardwareVendor)
+        val hardware = HardwareFactory.getHardwareProvider(hardwareVendor)
         hardware.init(this)
         hardware.registerLifecycle(this, this)
 
@@ -114,9 +109,7 @@ class MainActivity : BaseAdActivity() {
 
         ShadowManager.startSync(this, deviceSn)
 
-        if (!isSimulationMode) {
-            SerialPortManager.openPort(this)
-        }
+        HardwareFactory.getSerialProvider(this, hardwareVendor).open(this)
         
         performHealthCheck()
         startWatchdog()
@@ -126,14 +119,7 @@ class MainActivity : BaseAdActivity() {
     }
 
     private fun initHardwareControl() {
-        if (!isSimulationMode) {
-            try {
-                val dal: IDAL = NeptuneLiteUser.getInstance().getDal(this)
-                deviceControl = dal.deviceControl
-            } catch (e: Exception) {
-                Log.e("SSP_HW", "Failed to init device control: ${e.message}")
-            }
-        }
+        // Now managed via HardwareProvider in HAL
     }
 
     /**
@@ -351,7 +337,8 @@ class MainActivity : BaseAdActivity() {
     private fun initCouponScan() {
         if (paymentDialog?.isShowing == true) return // a payment is already in flight, ignore
 
-        scannerManager?.startScan(object : PaxScannerManager.ScanCallback {
+        val scanner = HardwareFactory.getScannerProvider(this, hardwareVendor)
+        scanner.startScan(object : com.goldsky.carwash.payment.hardware.IScannerProvider.ScanCallback {
             override fun onScanSuccess(result: String) {
                 val scanned = result.trim()
                 runOnUiThread {
@@ -458,6 +445,7 @@ class MainActivity : BaseAdActivity() {
 
         when (ConfigManager.getConfig()?.settings?.payment_method_mode ?: PaymentMethodMode.ALL) {
             PaymentMethodMode.CARD_ONLY -> {
+                Log.i("SSP_TEST", "Direct CARD_ONLY path triggered")
                 stopAdTimer()
                 startPaymentFlow(true, priceInCents, startHex, productId)
                 return
@@ -478,6 +466,7 @@ class MainActivity : BaseAdActivity() {
         selectionDialog.setContentView(R.layout.dialog_payment_selection)
 
         selectionDialog.findViewById<View>(R.id.btn_choice_card).setOnClickListener {
+            Log.i("SSP_TEST", "Card selected in dialog")
             applyClickFeedback(it)
             selectionDialog.dismiss()
             startPaymentFlow(true, priceInCents, startHex, productId)
@@ -551,7 +540,6 @@ class MainActivity : BaseAdActivity() {
             if (paymentInFlight) {
                 Toast.makeText(this@MainActivity, getString(R.string.toast_payment_processing_wait), Toast.LENGTH_SHORT).show()
             } else {
-                // Cancel ongoing hardware session
                 val provider = com.goldsky.carwash.payment.hardware.HardwareFactory.getPaymentProvider(this, hardwareVendor)
                 provider.cancelCurrentTransaction()
                 
@@ -595,7 +583,7 @@ class MainActivity : BaseAdActivity() {
         dialog.setOnShowListener { applyKioskWindowFlags() }
         dialog.setOnDismissListener {
             dialogTimer.cancel()
-            scannerManager?.stopScan()
+            HardwareFactory.getScannerProvider(this, hardwareVendor).stopScan()
             pollingJob?.cancel()
             stopCoordinatedTapAnimation()
         }
@@ -679,7 +667,7 @@ class MainActivity : BaseAdActivity() {
         dialog.setOnShowListener { applyKioskWindowFlags() }
         dialog.setOnDismissListener {
             pollingJob?.cancel()
-            scannerManager?.stopScan()
+            HardwareFactory.getScannerProvider(this, hardwareVendor).stopScan()
         }
         dialog.show()
 
@@ -710,7 +698,7 @@ class MainActivity : BaseAdActivity() {
         dialog.setOnShowListener { applyKioskWindowFlags() }
         dialog.setOnDismissListener {
             pollingJob?.cancel()
-            scannerManager?.stopScan()
+            HardwareFactory.getScannerProvider(this, hardwareVendor).stopScan()
         }
         dialog.show()
 
@@ -809,7 +797,7 @@ class MainActivity : BaseAdActivity() {
                 resetAdTimer()
                 return@launch
             }
-            val qrBitmap: Bitmap? = PaymentService.generateQrCode(codeUrl, 250, 250)
+            val qrBitmap: Bitmap? = QrUtils.generateQrCode(codeUrl, 250, 250)
             if (qrBitmap == null) {
                 // Session was created (money-side is fine) but the customer has
                 // nothing to scan -- must not fall through to pollUntilPaid,
@@ -998,7 +986,8 @@ class MainActivity : BaseAdActivity() {
                 TransactionRepository.updateHardwareStatus(this@MainActivity, ecrRefNum, "HARDWARE_ERROR")
 
                 if (refNum.isNotEmpty()) {
-                    PaymentService.voidOrRefund(refNum, amountCents) { success, method ->
+                    val provider = HardwareFactory.getPaymentProvider(this@MainActivity, hardwareVendor)
+                    provider.voidOrRefund(refNum, amountCents) { success, method ->
                         CoroutineScope(Dispatchers.Main).launch {
                             if (success) {
                                 TransactionRepository.updatePaymentStatus(
@@ -1044,14 +1033,8 @@ class MainActivity : BaseAdActivity() {
         super.onDestroy()
         paymentDialog?.dismiss()
         pollingJob?.cancel()
-        val scanner = com.goldsky.carwash.payment.hardware.HardwareFactory.getScannerProvider(this, hardwareVendor)
-        scanner.stopScan()
         
-        com.goldsky.carwash.payment.hardware.HardwareFactory.getHardwareProvider(hardwareVendor).release()
-
-        if (!isSimulationMode) {
-            SerialPortManager.closePort()
-        }
+        HardwareFactory.getHardwareProvider(hardwareVendor).release()
     }
 
     // --- Technician & Maintenance Mode Logic ---
@@ -1086,7 +1069,7 @@ class MainActivity : BaseAdActivity() {
      */
     private fun performHealthCheck() {
         val indicator = findViewById<View>(R.id.view_health_indicator) ?: return
-        val isSerialOk = isSimulationMode || SerialPortManager.isOpened()
+        val isSerialOk = isSimulationMode || HardwareFactory.getSerialProvider(this, hardwareVendor).isOpened()
         val isDbOk = isSimulationMode || ConfigManager.isDatabaseOnline()
         val isLocked = DeviceAccessManager.isLocked()
         val isKeyOk = KeyHealthMonitor.isPaymentAllowed()
@@ -1294,36 +1277,33 @@ class MainActivity : BaseAdActivity() {
 
         dialog.findViewById<Button>(R.id.btn_test_nfc).setOnClickListener {
             applyClickFeedback(it)
-            Toast.makeText(this, "NFC Probing for 10s... Tap a card.", Toast.LENGTH_LONG).show()
-            scannerManager?.startCardDetection(object : PaxScannerManager.CardCallback {
-                override fun onCardDetected(type: String, uid: String) {
+            Toast.makeText(this, "NFC Probing... Tap a card.", Toast.LENGTH_LONG).show()
+            val provider = HardwareFactory.getPaymentProvider(this, hardwareVendor)
+            provider.startCardDetection(0, object : com.goldsky.carwash.payment.hardware.IPaymentProvider.PaymentCallback {
+                override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                     runOnUiThread { 
-                        Toast.makeText(this@MainActivity, "NFC Detected! Type: $type, UID: $uid", Toast.LENGTH_LONG).show()
-                        scannerManager?.stopCardDetection()
+                        Toast.makeText(this@MainActivity, "NFC Detected! Type: $entryMode, UID: $refNum", Toast.LENGTH_LONG).show()
+                        provider.stopCardDetection()
                     }
                 }
-                override fun onDetectionError(error: String) {
-                    runOnUiThread { Toast.makeText(this@MainActivity, "NFC Probe Error: $error", Toast.LENGTH_SHORT).show() }
+                override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
+                    runOnUiThread { Toast.makeText(this@MainActivity, "NFC Probe Error: $errorMsg", Toast.LENGTH_SHORT).show() }
                 }
+                override fun onProgress(message: String) {}
             })
         }
 
         dialog.findViewById<Button>(R.id.btn_test_brightness).setOnClickListener {
             applyClickFeedback(it)
+            isHighBrightness = !isHighBrightness
+            val hardware = HardwareFactory.getHardwareProvider(hardwareVendor)
+            hardware.setScreenBrightness(if (isHighBrightness) 100 else 20)
+            
             if (isSimulationMode) {
-                isHighBrightness = !isHighBrightness
                 Toast.makeText(this, "Simulating Brightness: ${if (isHighBrightness) "100%" else "50%"}", Toast.LENGTH_SHORT).show()
             } else {
-                try {
-                    isHighBrightness = !isHighBrightness
-                    val value = if (isHighBrightness) 255 else 128
-                    val dal = NeptuneLiteUser.getInstance().getDal(this)
-                    dal.getSys()?.setScreenBrightness(value)
-                    ShadowManager.syncReportedState(this, deviceSn)
-                    Toast.makeText(this, "Brightness set to ${if (isHighBrightness) "100%" else "50%"}", Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Log.e("SSP_TECH", "Brightness adjustment failed: ${e.message}")
-                }
+                ShadowManager.syncReportedState(this, deviceSn)
+                Toast.makeText(this, "Brightness set to ${if (isHighBrightness) "100%" else "50%"}", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -1332,9 +1312,13 @@ class MainActivity : BaseAdActivity() {
         swSim.isChecked = isSimulationMode
         swSim.setOnCheckedChangeListener { _, isChecked ->
             isSimulationMode = isChecked
-            if (!isSimulationMode) SerialPortManager.openPort(this) else SerialPortManager.closePort()
+            if (!isSimulationMode) {
+                HardwareFactory.getSerialProvider(this, hardwareVendor).open(this)
+            } else {
+                HardwareFactory.getSerialProvider(this, hardwareVendor).close()
+            }
             performHealthCheck()
-            tvSerial.text = "Serial: ${if (isSimulationMode) "MOCK" else if (SerialPortManager.isOpened()) "OPEN" else "OFF"}"
+            tvSerial.text = "Serial: ${if (isSimulationMode) "MOCK" else if (HardwareFactory.getSerialProvider(this, hardwareVendor).isOpened()) "OPEN" else "OFF"}"
         }
 
         dialog.setOnShowListener { applyKioskWindowFlags() }
@@ -1352,13 +1336,12 @@ class MainActivity : BaseAdActivity() {
         watchdogJob?.cancel()
         watchdogJob = CoroutineScope(Dispatchers.IO).launch {
             try {
-                deviceControl?.watchdogOpen()
-                Log.i("SSP_WATCHDOG", "Hardware Watchdog OPENED")
+                Log.i("SSP_WATCHDOG", "Hardware Watchdog Loop Started")
+                val hardware = HardwareFactory.getHardwareProvider(hardwareVendor)
                 
                 while (isActive) {
                     // Feed the dog every 15 seconds. 
-                    // Hardware timeout is usually 30-60s on PAX.
-                    deviceControl?.watchdogFeed()
+                    hardware.feedWatchdog()
                     Log.v("SSP_WATCHDOG", "Watchdog FED")
                     delay(15000)
                 }
@@ -1370,17 +1353,14 @@ class MainActivity : BaseAdActivity() {
 
     private fun stopWatchdog() {
         watchdogJob?.cancel()
-        try {
-            deviceControl?.watchdogClose()
-            Log.i("SSP_WATCHDOG", "Hardware Watchdog CLOSED")
-        } catch (e: Exception) {}
+        Log.i("SSP_WATCHDOG", "Hardware Watchdog CLOSED")
     }
 
     private fun sendTestCmd(hex: String) {
         if (isSimulationMode) {
             Toast.makeText(this, "Simulating: $hex", Toast.LENGTH_SHORT).show()
         } else {
-            val sent = SerialPortManager.sendHexString(hex)
+            val sent = HardwareFactory.getSerialProvider(this, hardwareVendor).sendHexString(hex)
             Toast.makeText(this, if (sent) "Sent: $hex" else "Send FAILED", Toast.LENGTH_SHORT).show()
         }
     }

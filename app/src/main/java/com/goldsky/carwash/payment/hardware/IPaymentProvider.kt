@@ -26,6 +26,13 @@ interface IPaymentProvider {
          */
         fun onFailure(errorMsg: String, isHardwareFault: Boolean = false)
         fun onProgress(message: String)
+
+        /**
+         * Called when a card or NFC tag is detected.
+         * [type] could be "MIFARE", "ISO_14443", "UNKNOWN", etc.
+         * [uid] is the serial/unique ID of the card.
+         */
+        fun onCardDetected(type: String, uid: String) {}
     }
 
     /**
@@ -65,4 +72,23 @@ interface IPaymentProvider {
      * Cancels the current ongoing transaction (SALE/VOID/REFUND).
      */
     fun cancelCurrentTransaction()
+
+    /**
+     * Helper to attempt VOID first, then automatically fallback to REFUND
+     * if VOID fails. Useful for hardware-failure-after-auth scenarios.
+     */
+    fun voidOrRefund(refNum: String, amountInCents: Int, callback: (success: Boolean, method: String) -> Unit) {
+        voidTransaction(refNum, object : PaymentCallback {
+            override fun onSuccess(authCode: String, refNum: String, entryMode: String) = callback(true, "VOID")
+            override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
+                // If VOID fails, try REFUND
+                refundTransaction(refNum, amountInCents, object : PaymentCallback {
+                    override fun onSuccess(authCode: String, refNum: String, entryMode: String) = callback(true, "REFUND")
+                    override fun onFailure(errorMsg: String, isHardwareFault: Boolean) = callback(false, "NONE")
+                    override fun onProgress(message: String) {}
+                })
+            }
+            override fun onProgress(message: String) {}
+        })
+    }
 }

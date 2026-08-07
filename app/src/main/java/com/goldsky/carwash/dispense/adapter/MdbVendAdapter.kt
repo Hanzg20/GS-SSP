@@ -1,10 +1,8 @@
 package com.goldsky.carwash.dispense.adapter
 
 import android.util.Log
-import com.goldsky.carwash.dispense.DispenseJob
-import com.goldsky.carwash.dispense.DispenseOutcome
-import com.goldsky.carwash.dispense.IAckStrategy
-import com.goldsky.carwash.dispense.IDispenseAdapter
+import com.goldsky.carwash.dispense.*
+import com.goldsky.carwash.payment.hardware.ISerialProvider
 
 /**
  * Placeholder for real vending machines (MDB bus). Deliberately not
@@ -19,6 +17,7 @@ class MdbVendAdapter : IDispenseAdapter {
     override suspend fun dispense(
         job: DispenseJob,
         ackStrategy: IAckStrategy,
+        serialProvider: ISerialProvider,
         onProgress: (Int, Int) -> Unit
     ): DispenseOutcome {
         Log.e(TAG, "MDB vending protocol requested but not implemented -- needs a real MDB transport driver")

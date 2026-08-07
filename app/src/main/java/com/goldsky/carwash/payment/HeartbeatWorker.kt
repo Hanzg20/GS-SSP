@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.goldsky.carwash.serial.SerialPortManager
+import com.goldsky.carwash.payment.hardware.HardwareFactory
 import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,9 +24,11 @@ class HeartbeatWorker(appContext: Context, params: WorkerParameters) : Coroutine
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
             val sn = getSn()
+            val vendor = DeviceRepository.getPersistedHardwareVendor()
+
             val heartbeat = Heartbeat(
                 device_sn = sn,
-                is_serial_ok = SerialPortManager.isOpened(),
+                is_serial_ok = HardwareFactory.getSerialProvider(applicationContext, vendor).isOpened(),
                 storage_free_mb = getFreeSpace(),
                 network_type = "WIFI" // Simplified
             )

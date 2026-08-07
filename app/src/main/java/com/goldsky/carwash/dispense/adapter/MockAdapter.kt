@@ -1,9 +1,7 @@
 package com.goldsky.carwash.dispense.adapter
 
-import com.goldsky.carwash.dispense.DispenseJob
-import com.goldsky.carwash.dispense.DispenseOutcome
-import com.goldsky.carwash.dispense.IAckStrategy
-import com.goldsky.carwash.dispense.IDispenseAdapter
+import com.goldsky.carwash.dispense.*
+import com.goldsky.carwash.payment.hardware.ISerialProvider
 import kotlinx.coroutines.delay
 
 /**
@@ -16,6 +14,7 @@ class MockAdapter : IDispenseAdapter {
     override suspend fun dispense(
         job: DispenseJob,
         ackStrategy: IAckStrategy,
+        serialProvider: ISerialProvider,
         onProgress: (Int, Int) -> Unit
     ): DispenseOutcome {
         // Reports progress in 4 even steps over the same total delay as

@@ -14,7 +14,7 @@ import java.util.Locale
  * config) -- not hardcoded, since some deployments run without paper loaded
  * or deliberately skip receipts. Falls back to a logged mock print when the
  * NeptuneLite SDK / real printer hardware isn't present (emulator, dev),
- * same pattern as PaxScannerManager.
+ * Same pattern as other hardware providers.
  */
 object ReceiptPrinterManager {
     private const val TAG = "ReceiptPrinterManager"

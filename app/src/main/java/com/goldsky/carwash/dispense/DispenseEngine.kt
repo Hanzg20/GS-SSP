@@ -1,12 +1,11 @@
 package com.goldsky.carwash.dispense
 
-import com.goldsky.carwash.dispense.adapter.MdbVendAdapter
-import com.goldsky.carwash.dispense.adapter.MockAdapter
-import com.goldsky.carwash.dispense.adapter.PulseCreditAdapter
-import com.goldsky.carwash.dispense.adapter.SingleCommandAdapter
+import com.goldsky.carwash.dispense.adapter.*
 import com.goldsky.carwash.dispense.ack.AssumedSuccessAckStrategy
 import com.goldsky.carwash.dispense.ack.FramedAckStrategy
 import com.goldsky.carwash.payment.ConfigManager
+import com.goldsky.carwash.payment.hardware.HardwareFactory
+import com.goldsky.carwash.payment.hardware.ISerialProvider
 
 /**
  * Single entry point MainActivity calls instead of talking to
@@ -24,9 +23,12 @@ object DispenseEngine {
     suspend fun dispense(
         job: DispenseJob,
         isSimulationMode: Boolean,
+        hardwareVendor: String = "IDTECH",
         onProgress: (unitsSent: Int, totalUnits: Int) -> Unit = { _, _ -> }
     ): DispenseOutcome {
-        if (isSimulationMode) return MockAdapter().dispense(job, FramedAckStrategy, onProgress)
+        val serialProvider = HardwareFactory.getSerialProvider(null as? android.content.Context ?: job.contextReference, hardwareVendor)
+        
+        if (isSimulationMode) return MockAdapter().dispense(job, FramedAckStrategy, serialProvider, onProgress)
 
         val settings = ConfigManager.getConfig()?.settings
         val adapter = when (settings?.dispense_protocol) {
@@ -38,6 +40,9 @@ object DispenseEngine {
             "assumed_success" -> AssumedSuccessAckStrategy()
             else -> FramedAckStrategy
         }
-        return adapter.dispense(job, ackStrategy, onProgress)
+        return adapter.dispense(job, ackStrategy, serialProvider, onProgress)
     }
 }
+
+// Extension to pass context if needed from the job
+private val DispenseJob.contextReference: android.content.Context get() = error("DispenseEngine requires serial provider access")

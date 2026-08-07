@@ -94,7 +94,13 @@ object TransactionRepository {
      */
     suspend fun recordTransactionRemote(record: TransactionRecord): Boolean = withContext(Dispatchers.IO) {
         try {
-            SupabaseClientProvider.client.postgrest["transactions"].insert(record)
+            // Defensive: ensure product_id is a valid UUID or null
+            val sanitizedRecord = if (record.product_id != null && !record.product_id.matches(Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))) {
+                record.copy(product_id = null)
+            } else {
+                record
+            }
+            SupabaseClientProvider.client.postgrest["transactions"].insert(sanitizedRecord)
             Log.i(TAG, "Transaction recorded: ${record.ecr_ref_num}")
             true
         } catch (e: Exception) {
@@ -127,7 +133,8 @@ object TransactionRepository {
             SupabaseClientProvider.client.postgrest["transactions"].update(
                 {
                     set("payment_status", status)
-                    if (entryMode != null) set("entry_mode", entryMode)
+                    // Temporarily disabled until schema is confirmed to have this column
+                    // if (entryMode != null) set("entry_mode", entryMode)
                 }
             ) {
                 filter {

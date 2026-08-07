@@ -1,5 +1,7 @@
 package com.goldsky.carwash.dispense
 
+import com.goldsky.carwash.payment.hardware.ISerialProvider
+
 /**
  * How confident we are that a single command was executed by the hardware,
  * independent of which protocol adapter sent it. [FAILED] means the serial
@@ -15,5 +17,5 @@ enum class AckConfidence { CONFIRMED, UNCONFIRMED, FAILED }
  * board that ACKs or one that doesn't, without duplicating the adapter.
  */
 interface IAckStrategy {
-    suspend fun confirm(hexStr: String): AckConfidence
+    suspend fun confirm(hexStr: String, serialProvider: ISerialProvider): AckConfidence
 }

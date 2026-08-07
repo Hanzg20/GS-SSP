@@ -33,6 +33,32 @@ interface IHardwareProvider {
     fun isOperational(): Boolean
 
     /**
+     * Sets the screen brightness.
+     * @param percent 0-100
+     */
+    fun setScreenBrightness(percent: Int)
+
+    /**
+     * Gets the current screen brightness.
+     */
+    fun getScreenBrightness(): Int
+
+    /**
+     * Gets the scanner provider for the current hardware.
+     */
+    fun getScannerProvider(): IScannerProvider
+
+    /**
+     * Feeds the hardware watchdog to prevent system reboot.
+     */
+    fun feedWatchdog()
+
+    /**
+     * Gets the serial communication provider for external peripherals.
+     */
+    fun getSerialProvider(): ISerialProvider
+
+    /**
      * Releases hardware resources.
      */
     fun release()

@@ -24,6 +24,17 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
+    <!-- Required for POSLink AIDL to bind BroadPOS on targetSdkVersion >= 30
+         (this app targets 34); see PAX POSLink_Android_AIDL_Guide.pdf,
+         "targetSdkVersion requirements". Without this, PaxPaymentProvider's
+         AIDL CommSetting can't resolve the com.pax.us.std.poslink.aidl
+         service on Android 11+. -->
+    <queries>
+        <intent>
+            <action android:name="com.pax.us.std.poslink.aidl" />
+        </intent>
+    </queries>
+
     <!-- ID TECH NEO2 connects as a USB host peripheral (DEVICE_NEO2_USB). Not
          required=true: devices without a NEO2 attached (PAX-only deployments)
          must still install/run. -->

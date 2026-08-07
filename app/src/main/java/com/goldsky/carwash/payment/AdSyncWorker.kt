@@ -85,9 +85,7 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
                 }
                 .decodeList<PlaylistEntry>()
 
-            val remoteAds: List<AdMedia> = if (entries.isEmpty()) {
-                emptyList()
-            } else {
+            val remoteAds: List<AdMedia> = if (entries.isNotEmpty()) {
                 val adIds = entries.map { it.ad_id }
                 val adsById = SupabaseClientProvider.client.postgrest["advertisements"]
                     .select {
@@ -98,6 +96,14 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
                 // Re-sort by this device's play_order -- the advertisements
                 // fetch above has no ordering guarantee of its own.
                 entries.mapNotNull { adsById[it.ad_id] }
+            } else {
+                // GLOBAL FALLBACK: Fetch all active advertisements if no specific
+                // playlist exists for this device's SN. Ensures new/unprovisioned
+                // machines don't stay on a static placeholder.
+                Log.i("AdSyncWorker", "No specific playlist found for $deviceSn, falling back to all available ads")
+                SupabaseClientProvider.client.postgrest["advertisements"]
+                    .select()
+                    .decodeList<AdMedia>()
             }
 
             val adsDir = AdManager.getAdsDir(applicationContext)
@@ -143,6 +149,15 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
 
             // 4. Update local playlist JSON
             AdManager.savePlaylist(applicationContext, remoteAds)
+
+            // Ensure all ad files are readable by external MediaPlayer process
+            adsDir.listFiles()?.forEach { file ->
+                try {
+                    file.setReadable(true, false)
+                } catch (e: Exception) {
+                    Log.w("AdSyncWorker", "Failed to set readable: ${file.name}")
+                }
+            }
 
             Result.success()
         } catch (e: Exception) {

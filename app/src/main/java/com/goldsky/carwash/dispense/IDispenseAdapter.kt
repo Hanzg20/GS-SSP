@@ -1,5 +1,7 @@
 package com.goldsky.carwash.dispense
 
+import com.goldsky.carwash.payment.hardware.ISerialProvider
+
 /**
  * Speaks one device's dispense protocol (how many commands, with what
  * payload, in what shape). Delegates the "did it actually run" question to
@@ -16,6 +18,7 @@ interface IDispenseAdapter {
     suspend fun dispense(
         job: DispenseJob,
         ackStrategy: IAckStrategy,
+        serialProvider: ISerialProvider,
         onProgress: (unitsSent: Int, totalUnits: Int) -> Unit = { _, _ -> }
     ): DispenseOutcome
 }

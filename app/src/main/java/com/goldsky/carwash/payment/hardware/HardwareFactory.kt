@@ -11,32 +11,38 @@ import com.goldsky.carwash.payment.hardware.pax.PaxScannerProvider
  */
 object HardwareFactory {
 
-    private var hardwareProvider: IHardwareProvider? = null
+    // Keyed by vendor -- a single unkeyed nullable var previously meant
+    // requesting a second vendor after the first silently returned the
+    // first vendor's cached instance instead of the one actually asked for.
+    private val hardwareProviders = mutableMapOf<String, IHardwareProvider>()
 
     /**
      * returns the hardware provider for the current configuration.
      * Currently toggled via a hardcoded flag or BuildConfig.
      */
     fun getHardwareProvider(vendor: String = "IDTECH"): IHardwareProvider {
-        if (hardwareProvider == null) {
-            hardwareProvider = when (vendor.uppercase()) {
+        val key = vendor.uppercase()
+        return hardwareProviders.getOrPut(key) {
+            when (key) {
                 "IDTECH" -> IdTechHardwareProvider()
                 "PAX" -> PaxHardwareProvider()
                 else -> throw IllegalArgumentException("Unknown hardware vendor: $vendor")
             }
         }
-        return hardwareProvider!!
     }
 
     /**
-     * returns the payment provider for the current configuration.
+     * returns the payment provider for the current configuration. Always the
+     * same instance per vendor for the app's lifetime (both hardware
+     * providers own and cache theirs) so provider-level state -- e.g.
+     * PaxPaymentProvider.updateConfig() -- survives across calls.
      */
     fun getPaymentProvider(context: Context, vendor: String = "IDTECH"): IPaymentProvider {
         val hardware = getHardwareProvider(vendor)
         hardware.init(context)
         return when (hardware) {
             is IdTechHardwareProvider -> hardware.getPaymentProvider()
-            is PaxHardwareProvider -> PaxPaymentProvider(context)
+            is PaxHardwareProvider -> hardware.getPaymentProvider()
             else -> throw IllegalArgumentException("Unknown hardware vendor: $vendor")
         }
     }
@@ -46,16 +52,15 @@ object HardwareFactory {
      */
     fun getScannerProvider(context: Context, vendor: String = "IDTECH"): IScannerProvider {
         val hardware = getHardwareProvider(vendor)
-        return when (hardware) {
-            is IdTechHardwareProvider -> {
-                object : IScannerProvider {
-                    override fun startScan(callback: IScannerProvider.ScanCallback) {}
-                    override fun stopScan() {}
-                    override fun setScannerLed(enabled: Boolean) {}
-                }
-            }
-            is PaxHardwareProvider -> PaxScannerProvider(context)
-            else -> throw IllegalArgumentException("Unknown hardware vendor: $vendor")
-        }
+        return hardware.getScannerProvider()
+    }
+
+    /**
+     * returns the serial communication provider for the current configuration.
+     */
+    fun getSerialProvider(context: Context, vendor: String = "IDTECH"): ISerialProvider {
+        val hardware = getHardwareProvider(vendor)
+        hardware.init(context)
+        return hardware.getSerialProvider()
     }
 }

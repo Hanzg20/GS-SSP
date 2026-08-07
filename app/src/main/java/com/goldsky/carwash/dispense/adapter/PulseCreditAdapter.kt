@@ -1,11 +1,8 @@
 package com.goldsky.carwash.dispense.adapter
 
-import com.goldsky.carwash.dispense.AckConfidence
-import com.goldsky.carwash.dispense.DispenseJob
-import com.goldsky.carwash.dispense.DispenseOutcome
-import com.goldsky.carwash.dispense.IAckStrategy
-import com.goldsky.carwash.dispense.IDispenseAdapter
+import com.goldsky.carwash.dispense.*
 import com.goldsky.carwash.payment.ConfigManager
+import com.goldsky.carwash.payment.hardware.ISerialProvider
 import kotlinx.coroutines.delay
 
 /**
@@ -18,6 +15,7 @@ class PulseCreditAdapter : IDispenseAdapter {
     override suspend fun dispense(
         job: DispenseJob,
         ackStrategy: IAckStrategy,
+        serialProvider: ISerialProvider,
         onProgress: (Int, Int) -> Unit
     ): DispenseOutcome {
         val settings = ConfigManager.getConfig()?.settings
@@ -30,7 +28,7 @@ class PulseCreditAdapter : IDispenseAdapter {
         var sawUnconfirmed = false
         onProgress(0, pulseCount)
         for (i in 1..pulseCount) {
-            when (ackStrategy.confirm(pulseHex)) {
+            when (ackStrategy.confirm(pulseHex, serialProvider)) {
                 AckConfidence.CONFIRMED -> { /* keep going */ }
                 AckConfidence.UNCONFIRMED -> sawUnconfirmed = true
                 AckConfidence.FAILED -> return DispenseOutcome.Failed("pulse $i/$pulseCount not delivered")

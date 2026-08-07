@@ -34,6 +34,7 @@ object DeviceRepository {
     private const val KEY_TOKEN = "auth_token"
     private const val KEY_DEVICE_SN = "device_sn"
     private const val KEY_ORG_ID = "org_id"
+    private const val KEY_HARDWARE_VENDOR = "hardware_vendor"
 
     private var appContext: Context? = null
     private var cachedToken: String? = null
@@ -69,6 +70,12 @@ object DeviceRepository {
     }
 
     fun getPersistedDeviceSn(): String? = prefs()?.getString(KEY_DEVICE_SN, null)
+
+    fun persistHardwareVendor(vendor: String) {
+        prefs()?.edit()?.putString(KEY_HARDWARE_VENDOR, vendor)?.apply()
+    }
+
+    fun getPersistedHardwareVendor(): String = prefs()?.getString(KEY_HARDWARE_VENDOR, "IDTECH") ?: "IDTECH"
 
     private fun persistOrgId(orgId: String?) {
         if (orgId == null) return

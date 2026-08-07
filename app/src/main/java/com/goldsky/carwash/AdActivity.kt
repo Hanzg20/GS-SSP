@@ -5,13 +5,14 @@ import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.VideoView
 import com.goldsky.carwash.model.AdMedia
 import com.goldsky.carwash.payment.AdManager
-import com.goldsky.carwash.payment.PaxScannerManager
+import com.goldsky.carwash.payment.hardware.HardwareFactory
 import java.io.File
 
 /**
@@ -27,7 +28,6 @@ class AdActivity : BaseAdActivity() {
     private lateinit var tvTextAd: TextView
     private lateinit var tvPrompt: TextView
     private lateinit var btnPause: ImageView
-    private var scannerManager: PaxScannerManager? = null
 
     private var playlist: List<AdMedia> = emptyList()
     private var currentIndex = 0
@@ -51,19 +51,20 @@ class AdActivity : BaseAdActivity() {
         tvTextAd = findViewById(R.id.tv_text_ad)
         tvPrompt = findViewById(R.id.tv_ad_prompt)
         btnPause = findViewById(R.id.btn_pause_ad)
-        scannerManager = PaxScannerManager(this)
 
         setupPromptAnimation()
         loadPlaylist()
         startPlayback()
 
-        // Pause/resume is a small corner control, handled on its own view so
-        // it consumes the tap before it reaches the full-screen exit listener
-        // below (a child view's click listener always wins over an ancestor's).
-        btnPause.setOnClickListener { togglePauseResume() }
+        // Decoupled Background Tap (TAP TO PAY logic)
+        findViewById<View>(R.id.ad_bg_tap_handler).setOnClickListener {
+            Log.i("AdActivity", "Background tap detected: triggering TAP TO PAY")
+            finish()
+        }
 
-        // Exit on touch
-        findViewById<View>(android.R.id.content).setOnClickListener { finish() }
+        // Pause/resume is a small corner control, handled on its own view so
+        // it consumes the tap before it reaches the background catcher.
+        btnPause.setOnClickListener { togglePauseResume() }
     }
 
     private fun loadPlaylist() {
@@ -119,15 +120,19 @@ class AdActivity : BaseAdActivity() {
 
     private fun playVideo(file: File) {
         resetPauseState()
+        // Ensure file is readable by system MediaPlayer process
+        try { file.setReadable(true, false) } catch (e: Exception) {}
+
         imgAd.visibility = View.GONE
         announcementCard.visibility = View.GONE
         textAdCard.visibility = View.GONE
         videoAd.visibility = View.VISIBLE
         btnPause.visibility = View.VISIBLE
 
-        videoAd.setVideoPath(file.absolutePath)
+        videoAd.setVideoURI(Uri.fromFile(file))
         videoAd.setOnCompletionListener { playNext() }
         videoAd.setOnErrorListener { _, _, _ ->
+            Log.e("AdActivity", "Video playback failed for: ${file.name}")
             playNext()
             true
         }
@@ -186,6 +191,7 @@ class AdActivity : BaseAdActivity() {
 
     private fun togglePauseResume() {
         isPaused = !isPaused
+        Log.i("AdActivity", "Toggle requested. New state: isPaused=$isPaused")
         if (isPaused) {
             if (videoAd.visibility == View.VISIBLE && videoAd.isPlaying) {
                 videoAd.pause()
@@ -243,7 +249,8 @@ class AdActivity : BaseAdActivity() {
         stopAdTimer()
 
         // HARDWARE LOCK: Ensure scanner LEDs are OFF during advertising
-        scannerManager?.setScannerLed(false)
+        HardwareFactory.getScannerProvider(this, "IDTECH").setScannerLed(false)
+        HardwareFactory.getScannerProvider(this, "PAX").setScannerLed(false)
         
         // Resume video if visible -- but not if the customer had manually
         // paused it (togglePauseResume), or coming back from background would

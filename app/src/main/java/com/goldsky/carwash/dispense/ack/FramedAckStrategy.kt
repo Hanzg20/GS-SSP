@@ -2,7 +2,7 @@ package com.goldsky.carwash.dispense.ack
 
 import com.goldsky.carwash.dispense.AckConfidence
 import com.goldsky.carwash.dispense.IAckStrategy
-import com.goldsky.carwash.serial.SerialPortManager
+import com.goldsky.carwash.payment.hardware.ISerialProvider
 
 /**
  * For boards that reply with the [0xBB][Status][Checksum][0xEE] frame --
@@ -11,6 +11,6 @@ import com.goldsky.carwash.serial.SerialPortManager
  * (CONFIRMED) or exhausts its retries (FAILED), there's no in-between state.
  */
 object FramedAckStrategy : IAckStrategy {
-    override suspend fun confirm(hexStr: String): AckConfidence =
-        if (SerialPortManager.sendCommandWithAck(hexStr)) AckConfidence.CONFIRMED else AckConfidence.FAILED
+    override suspend fun confirm(hexStr: String, serialProvider: ISerialProvider): AckConfidence =
+        if (serialProvider.sendCommandWithAck(hexStr)) AckConfidence.CONFIRMED else AckConfidence.FAILED
 }
