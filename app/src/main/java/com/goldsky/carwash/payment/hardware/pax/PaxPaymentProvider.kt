@@ -52,42 +52,42 @@ class PaxPaymentProvider(
     }
 
     private fun getCommSetting(): CommSetting {
-        return CommSetting().apply {
-            setCommType(activeConfig.commType)
-            setDestIP(activeConfig.destIP)
-            setDestPort(activeConfig.destPort)
-            setTimeOut(activeConfig.timeout)
-        }
+        val setting = CommSetting()
+        setting.setType(activeConfig.commType)
+        setting.setDestIP(activeConfig.destIP)
+        setting.setDestPort(activeConfig.destPort)
+        setting.setTimeOut(activeConfig.timeout)
+        return setting
     }
 
     override fun startSale(amountInCents: Int, ecrRefNum: String, callback: IPaymentProvider.PaymentCallback) {
         Log.i(TAG, "Initiating PAX SALE: $amountInCents cents, Ref: $ecrRefNum")
 
         val posLink = PosLink()
-        posLink.commSetting = getCommSetting()
+        posLink.SetCommSetting(getCommSetting())
         activePosLink = posLink
 
-        val request = PaymentRequest().apply {
-            setTransType(2) // SALE
-            setTenderType(1) // CREDIT
-            setAmount(amountInCents.toString())
-            setECRRefNum(ecrRefNum)
-        }
-        posLink.paymentRequest = request
+        val request = PaymentRequest()
+        request.TransType = 2 // SALE
+        request.TenderType = 1 // CREDIT
+        request.Amount = amountInCents.toString()
+        request.ECRRefNum = ecrRefNum
+        
+        posLink.PaymentRequest = request
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val result = posLink.ProcessTrans()
                 withContext(Dispatchers.Main) {
-                    val response = posLink.paymentResponse
-                    if (result != null && result.code == ProcessTransResult.ProcessTransExitCode.OK) {
-                        if (response != null && response.getResultCode() == "000000") {
-                            callback.onSuccess(response.getAuthCode() ?: "", response.getRefNum() ?: "")
+                    val response = posLink.PaymentResponse
+                    if (result != null && result.Code == ProcessTransResult.ProcessTransResultCode.OK) {
+                        if (response != null && response.ResultCode == "000000") {
+                            callback.onSuccess(response.AuthCode ?: "", response.RetrievalReferenceNumber ?: "")
                         } else {
-                            callback.onFailure(response?.getResultMsg() ?: "Declined")
+                            callback.onFailure(response?.ResultTxt ?: "Declined")
                         }
                     } else {
-                        callback.onFailure(result?.msg ?: "SDK Error")
+                        callback.onFailure(result?.Msg ?: "SDK Error")
                     }
                 }
             } catch (e: Exception) {
@@ -103,24 +103,25 @@ class PaxPaymentProvider(
     override fun voidTransaction(refNum: String, callback: IPaymentProvider.PaymentCallback) {
         Log.w(TAG, "Initiating PAX VOID: $refNum")
         val posLink = PosLink()
-        posLink.commSetting = getCommSetting()
+        posLink.SetCommSetting(getCommSetting())
         activePosLink = posLink
 
-        val request = PaymentRequest().apply {
-            setTransType(4) // VOID
-            setOrigRefNum(refNum)
-            setECRRefNum("V" + System.currentTimeMillis())
-        }
-        posLink.paymentRequest = request
+        val request = PaymentRequest()
+        request.TransType = 4 // VOID
+        request.OrigRefNum = refNum
+        request.ECRRefNum = "V" + System.currentTimeMillis()
+        
+        posLink.PaymentRequest = request
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val result = posLink.ProcessTrans()
                 withContext(Dispatchers.Main) {
-                    if (result != null && result.code == ProcessTransResult.ProcessTransExitCode.OK && posLink.paymentResponse?.getResultCode() == "000000") {
-                        callback.onSuccess("VOID_OK", posLink.paymentResponse.getRefNum() ?: "")
+                    val response = posLink.PaymentResponse
+                    if (result != null && result.Code == ProcessTransResult.ProcessTransResultCode.OK && response?.ResultCode == "000000") {
+                        callback.onSuccess("VOID_OK", response.RetrievalReferenceNumber ?: "")
                     } else {
-                        callback.onFailure(posLink.paymentResponse?.getResultMsg() ?: "VOID Failed")
+                        callback.onFailure(response?.ResultTxt ?: "VOID Failed")
                     }
                 }
             } catch (e: Exception) {
@@ -134,30 +135,31 @@ class PaxPaymentProvider(
     override fun refundTransaction(refNum: String, amountInCents: Int, callback: IPaymentProvider.PaymentCallback) {
         Log.w(TAG, "Initiating PAX REFUND: $refNum, Amount: $amountInCents")
         val posLink = PosLink()
-        posLink.commSetting = getCommSetting()
+        posLink.SetCommSetting(getCommSetting())
         activePosLink = posLink
 
-        val request = PaymentRequest().apply {
-            // POSLink PaymentTransType has no REFUND value; RETURN=3 is what
-            // returns funds to the card ("Returns payment amount to the card
-            // open to buy" per the API Guide's PaymentTransType appendix).
-            // 5 is POSTAUTH ("Completes an Authorization Only transaction"),
-            // a different operation entirely -- do not restore that value.
-            setTransType(3) // RETURN (refund)
-            setOrigRefNum(refNum)
-            setAmount(amountInCents.toString())
-            setECRRefNum("R" + System.currentTimeMillis())
-        }
-        posLink.paymentRequest = request
+        val request = PaymentRequest()
+        // POSLink PaymentTransType has no REFUND value; RETURN=3 is what
+        // returns funds to the card ("Returns payment amount to the card
+        // open to buy" per the API Guide's PaymentTransType appendix).
+        // 5 is POSTAUTH ("Completes an Authorization Only transaction"),
+        // a different operation entirely -- do not restore that value.
+        request.TransType = 3 // RETURN (refund)
+        request.OrigRefNum = refNum
+        request.Amount = amountInCents.toString()
+        request.ECRRefNum = "R" + System.currentTimeMillis()
+        
+        posLink.PaymentRequest = request
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val result = posLink.ProcessTrans()
                 withContext(Dispatchers.Main) {
-                    if (result != null && result.code == ProcessTransResult.ProcessTransExitCode.OK && posLink.paymentResponse?.getResultCode() == "000000") {
-                        callback.onSuccess("REFUND_OK", posLink.paymentResponse.getRefNum() ?: "")
+                    val response = posLink.PaymentResponse
+                    if (result != null && result.Code == ProcessTransResult.ProcessTransResultCode.OK && response?.ResultCode == "000000") {
+                        callback.onSuccess("REFUND_OK", response.RetrievalReferenceNumber ?: "")
                     } else {
-                        callback.onFailure(posLink.paymentResponse?.getResultMsg() ?: "REFUND Failed")
+                        callback.onFailure(response?.ResultTxt ?: "REFUND Failed")
                     }
                 }
             } catch (e: Exception) {
@@ -233,6 +235,42 @@ class PaxPaymentProvider(
             activePosLink?.CancelTrans()
         } catch (e: Exception) {
             Log.e(TAG, "CancelTrans failed: ${e.message}")
+        }
+    }
+
+    override fun closeBatch(callback: IPaymentProvider.PaymentCallback) {
+        Log.w(TAG, "Initiating PAX BATCH CLOSE (Settle)")
+        val posLink = PosLink()
+        posLink.SetCommSetting(getCommSetting())
+        activePosLink = posLink
+
+        val request = BatchRequest()
+        request.TransType = 1 // BATCH CLOSE
+        request.EDCType = 0 // ALL
+        posLink.BatchRequest = request
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val result = posLink.ProcessTrans()
+                withContext(Dispatchers.Main) {
+                    val response = posLink.BatchResponse
+                    if (result != null && result.Code == ProcessTransResult.ProcessTransResultCode.OK) {
+                        if (response != null && response.ResultCode == "000000") {
+                            callback.onSuccess("BATCH_OK", "")
+                        } else {
+                            callback.onFailure(response?.ResultTxt ?: "Batch Failed")
+                        }
+                    } else {
+                        callback.onFailure(result?.Msg ?: "Batch SDK Error")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    callback.onFailure(e.message ?: "Batch Unknown Error")
+                }
+            } finally {
+                if (activePosLink === posLink) activePosLink = null
+            }
         }
     }
 }

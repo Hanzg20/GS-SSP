@@ -2,10 +2,8 @@ package com.goldsky.carwash.payment
 
 import android.util.Log
 import io.github.jan.supabase.postgrest.postgrest
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
+import io.github.jan.supabase.storage.storage
+import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
@@ -60,6 +58,29 @@ object DiagnosticManager {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to record maintenance: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * Captures and uploads recent logcat entries to Supabase Storage.
+     */
+    suspend fun uploadLogs(sn: String, lineCount: Int = 2000): Boolean = withContext(Dispatchers.IO) {
+        return@withContext try {
+            Log.i(TAG, "Capturing $lineCount lines of logcat for $sn...")
+            val process = Runtime.getRuntime().exec("logcat -d -t $lineCount")
+            val logText = process.inputStream.bufferedReader().use { it.readText() }
+            val fileName = "logs/${sn}_${System.currentTimeMillis()}.txt"
+            
+            SupabaseClientProvider.client.storage["device-logs"].upload(
+                path = fileName,
+                data = logText.toByteArray(),
+                upsert = true
+            )
+            Log.i(TAG, "Logcat successfully uploaded: $fileName")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Logcat upload failed: ${e.message}")
+            false
         }
     }
 }

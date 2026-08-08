@@ -1,0 +1,460 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/tech_deep_bg"
+    android:padding="20dp">
+
+    <!-- Header Section -->
+    <View
+        android:id="@+id/view_header_accent"
+        android:layout_width="4dp"
+        android:layout_height="32dp"
+        android:background="@color/tech_cyan"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/tv_header_main"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:text="@string/tech_core_command"
+        android:textColor="@color/text_light"
+        android:textSize="24sp"
+        android:fontFamily="sans-serif-condensed-light"
+        app:layout_constraintStart_toEndOf="@id/view_header_accent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/tech_industrial_dash"
+        android:textColor="@color/tech_cyan"
+        android:textSize="11sp"
+        app:layout_constraintStart_toStartOf="@id/tv_header_main"
+        app:layout_constraintTop_toBottomOf="@id/tv_header_main" />
+
+    <ImageButton
+        android:id="@+id/btn_close_dash"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@android:drawable/ic_menu_close_clear_cancel"
+        android:contentDescription="@string/btn_cancel"
+        app:tint="@color/tech_cyan"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Indicator Grid -->
+    <GridLayout
+        android:id="@+id/layout_status_grid"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:columnCount="2"
+        app:layout_constraintTop_toBottomOf="@id/tv_header_main">
+
+        <!-- Network Card -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="fill_horizontal"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:background="@drawable/bg_maintenance_card"
+            android:orientation="vertical"
+            android:padding="12dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/tech_connectivity"
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:layout_marginTop="4dp">
+                <View
+                    android:id="@+id/dot_net_status"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:background="@drawable/status_dot"
+                    android:backgroundTint="@color/tech_neon_green" />
+                <TextView
+                    android:id="@+id/tv_net_val"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="ONLINE"
+                    android:textColor="@color/text_light"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Database Card -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="fill_horizontal"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:background="@drawable/bg_maintenance_card"
+            android:orientation="vertical"
+            android:padding="12dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/tech_supabase_link"
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:layout_marginTop="4dp">
+                <View
+                    android:id="@+id/dot_db_status"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:background="@drawable/status_dot"
+                    android:backgroundTint="@color/tech_neon_green" />
+                <TextView
+                    android:id="@+id/tv_db_val"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="CONNECTED"
+                    android:textColor="@color/text_light"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Serial Card -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="fill_horizontal"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:background="@drawable/bg_maintenance_card"
+            android:orientation="vertical"
+            android:padding="12dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/tech_controller"
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:layout_marginTop="4dp">
+                <View
+                    android:id="@+id/dot_serial_status"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:background="@drawable/status_dot"
+                    android:backgroundTint="@color/tech_cyan" />
+                <TextView
+                    android:id="@+id/tv_serial_val"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="STANDBY"
+                    android:textColor="@color/text_light"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Identity Card -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="fill_horizontal"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:background="@drawable/bg_maintenance_card"
+            android:orientation="vertical"
+            android:padding="12dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/tech_identity"
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
+            <TextView
+                android:id="@+id/tv_id_val"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="SN: 12345678"
+                android:textColor="@color/tech_cyan"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Security Card -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="fill_horizontal"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:background="@drawable/bg_maintenance_card"
+            android:orientation="vertical"
+            android:padding="12dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/tech_security"
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:layout_marginTop="4dp">
+                <View
+                    android:id="@+id/dot_security_status"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:background="@drawable/status_dot"
+                    android:backgroundTint="@color/tech_neon_green" />
+                <TextView
+                    android:id="@+id/tv_security_val"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="SECURE"
+                    android:textColor="@color/text_light"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </GridLayout>
+
+    <!-- Test Operations Section -->
+    <TextView
+        android:id="@+id/tv_ops_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="@string/tech_system_probing"
+        android:textColor="@color/text_muted"
+        android:textSize="11sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layout_status_grid" />
+
+    <GridLayout
+        android:id="@+id/grid_ops"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:columnCount="3"
+        app:layout_constraintTop_toBottomOf="@id/tv_ops_label">
+
+        <!-- Large grid buttons for gloved operation -->
+        <Button
+            android:id="@+id/btn_op_relay_4"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="@string/tech_pulse_4"
+            android:textColor="@color/text_light"
+            android:textSize="12sp"
+            app:strokeColor="@color/tech_card_border" />
+
+        <Button
+            android:id="@+id/btn_op_relay_8"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="@string/tech_pulse_8"
+            android:textColor="@color/text_light"
+            android:textSize="12sp"
+            app:strokeColor="@color/tech_card_border" />
+
+        <Button
+            android:id="@+id/btn_op_stop"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="@string/tech_halt"
+            android:backgroundTint="@color/alert_red_bg"
+            android:textColor="@color/text_light"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btn_op_scan"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="@string/tech_scan"
+            android:textColor="@color/tech_cyan"
+            app:strokeColor="@color/tech_cyan" />
+
+        <Button
+            android:id="@+id/btn_op_nfc"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="@string/tech_nfc"
+            android:textColor="@color/tech_cyan"
+            app:strokeColor="@color/tech_cyan" />
+
+        <Button
+            android:id="@+id/btn_op_sync"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="@string/tech_sync"
+            android:backgroundTint="@color/tech_cyan"
+            android:textColor="@color/tech_deep_bg"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btn_op_logs"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="EXPORT LOGS"
+            android:backgroundTint="@color/diag_teal"
+            android:textColor="@color/text_light"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btn_op_batch"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="CLOSE BATCH"
+            android:backgroundTint="@color/diag_deep_purple"
+            android:textColor="@color/text_light"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btn_op_check"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:layout_columnSpan="3"
+            android:text="FULL SYSTEM SELF-DIAGNOSTIC"
+            android:backgroundTint="@color/tech_pill_bg"
+            android:textColor="@color/tech_cyan"
+            app:strokeColor="@color/tech_cyan"
+            app:strokeWidth="1dp" />
+    </GridLayout>
+
+    <!-- Detailed Hardware Info Card -->
+    <LinearLayout
+        android:id="@+id/card_details"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:background="@drawable/bg_maintenance_card"
+        android:orientation="vertical"
+        android:padding="16dp"
+        app:layout_constraintTop_toBottomOf="@id/grid_ops">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/tech_telemetry"
+            android:textColor="@color/text_muted"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/tv_fw_val"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="FIRMWARE: UNKNOWN"
+            android:textColor="@color/text_light"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/tv_uptime_val"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="HAL STATUS: OPERATIONAL"
+            android:textColor="@color/text_light"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+
+        <ProgressBar
+            android:id="@+id/pb_watchdog"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="12dp"
+            android:progress="75"
+            android:progressTint="@color/tech_cyan" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/tech_watchdog"
+            android:textColor="@color/text_faint"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <!-- Simulation Toggle -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp"
+        app:layout_constraintBottom_toTopOf="@id/tv_footer_version">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/tech_sim_mode"
+            android:textColor="@color/text_muted"
+            android:textSize="12sp" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switch_sim_v2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+    </LinearLayout>
+
+    <!-- Version Footer -->
+    <TextView
+        android:id="@+id/tv_footer_version"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/tech_version_footer"
+        android:textColor="@color/text_faint"
+        android:textSize="10sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

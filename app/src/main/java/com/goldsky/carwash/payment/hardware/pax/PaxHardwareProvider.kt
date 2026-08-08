@@ -126,6 +126,24 @@ class PaxHardwareProvider : IHardwareProvider, DefaultLifecycleObserver {
         return serialProvider ?: PaxSerialProvider { dal }.also { serialProvider = it }
     }
 
+    override fun reboot() {
+        try {
+            Log.w(TAG, "Hardware REBOOT triggered via DAL")
+            dal?.sys?.reboot()
+        } catch (e: Exception) {
+            Log.e(TAG, "Reboot failed: ${e.message}")
+        }
+    }
+
+    override fun getTamperStatus(): Boolean {
+        return try {
+            // PCI 7 / Android 14 security sensing
+            dal?.ped?.getTamperStatus() ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private fun requireContext(): Context =
         appContext ?: error("PaxHardwareProvider.init() must be called before requesting its payment/scanner provider")
 

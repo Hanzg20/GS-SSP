@@ -1,6 +1,7 @@
 package com.goldsky.carwash.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class WashPackage(
@@ -75,5 +76,15 @@ data class AdMedia(
 @Serializable
 data class PlaylistEntry(
     val ad_id: String,
-    val play_order: Int = 0
+    val play_order: Int = 0,
+    val targeting_rules: JsonElement? = null
+)
+
+/**
+ * Pairs an advertisement with its targeting rules for local execution.
+ */
+@Serializable
+data class TargetedAd(
+    val media: AdMedia,
+    val entry: PlaylistEntry
 )

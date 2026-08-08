@@ -199,6 +199,7 @@ CREATE TABLE IF NOT EXISTS public.devices (
     sn TEXT PRIMARY KEY,                 -- Hardware Serial Number
     loc_id UUID REFERENCES public.locations(id) ON DELETE SET NULL,
     org_id UUID REFERENCES public.organizations(id) ON DELETE SET NULL, -- denormalized from loc_id->locations.org_id, kept directly on devices so RLS policies and the config query (app_configurations.org_id) don't need a join
+    secret_key UUID DEFAULT gen_random_uuid(), -- Machine Secret for identity verification
     vertical_type TEXT DEFAULT 'WASH' CHECK (vertical_type IN ('WASH', 'LAUNDRY', 'EV', 'VEND')),
     status TEXT DEFAULT 'ONLINE',
     app_version TEXT,
@@ -322,6 +323,7 @@ ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS daily_spent_date DATE;
 -- as separate media_type values so the client can render each correctly.
 CREATE TABLE IF NOT EXISTS public.advertisements (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE, -- NULL = global/system-wide ad
     media_url TEXT,                      -- required for VIDEO/IMAGE, null for TEXT/TEXT_AD
     media_type TEXT CHECK (media_type IN ('VIDEO', 'IMAGE', 'TEXT', 'TEXT_AD')),
     md5_hash TEXT,                       -- For delta sync (VIDEO/IMAGE only)
@@ -339,7 +341,8 @@ CREATE TABLE IF NOT EXISTS public.playlists (
     id SERIAL PRIMARY KEY,
     device_sn TEXT NOT NULL REFERENCES public.devices(sn) ON DELETE CASCADE,
     ad_id UUID NOT NULL REFERENCES public.advertisements(id) ON DELETE CASCADE,
-    play_order INTEGER DEFAULT 0
+    play_order INTEGER DEFAULT 0,
+    targeting_rules JSONB DEFAULT NULL -- Hourly/Weekly/Priority rules
 );
 CREATE INDEX IF NOT EXISTS idx_playlists_device ON public.playlists(device_sn);
 
@@ -547,6 +550,7 @@ ALTER TABLE public.maintenance_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.device_shadows ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.qr_payment_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ad_playback_logs ENABLE ROW LEVEL SECURITY;
 
 -- 8. DEFINE RLS POLICIES (Device Isolation)
 --
@@ -801,12 +805,18 @@ USING (
   )
 );
 
--- advertisements: no org_id column at all (global media library, not
--- tenant-scoped by design) -- open SELECT for any authenticated device.
+-- advertisements: visibility scoped to global ads OR ads belonging to the device's own org.
 DROP POLICY IF EXISTS "Authenticated devices can read advertisements" ON public.advertisements;
 CREATE POLICY "Authenticated devices can read advertisements" ON public.advertisements
 FOR SELECT TO authenticated
-USING (true);
+USING (
+  org_id IS NULL
+  OR
+  org_id IN (
+    SELECT org_id FROM public.device_auth_map
+    WHERE auth_user_id = auth.uid()
+  )
+);
 
 -- playlists: device-scoped (not org-scoped) -- a device only needs its own
 -- playlist mapping.
@@ -1047,6 +1057,17 @@ DROP POLICY IF EXISTS "devices can read their own qr sessions" ON public.qr_paym
 CREATE POLICY "devices can read their own qr sessions" ON public.qr_payment_sessions
 FOR SELECT TO authenticated
 USING (
+  device_sn IN (
+    SELECT device_sn FROM public.device_auth_map
+    WHERE auth_user_id = auth.uid()
+  )
+);
+
+-- Ad Playback Logs: Devices can only report for themselves
+DROP POLICY IF EXISTS "Devices can insert own playback logs" ON public.ad_playback_logs;
+CREATE POLICY "Devices can insert own playback logs" ON public.ad_playback_logs
+FOR INSERT TO authenticated
+WITH CHECK (
   device_sn IN (
     SELECT device_sn FROM public.device_auth_map
     WHERE auth_user_id = auth.uid()
@@ -1681,12 +1702,9 @@ GRANT EXECUTE ON FUNCTION public.admin_set_vip_card_status(TEXT, BOOLEAN) TO aut
 -- Function: link an authenticated (anonymous-auth) session to a device SN,
 -- populating device_auth_map -- which every device-scoped RLS policy above
 -- depends on and which no client code ever wrote to before. Also returns
--- the device's org_id/is_active in one round trip, replacing the old
--- checkDeviceActive() raw SELECT (which needed its own RLS policy on
--- devices that didn't exist). SECURITY DEFINER so it can read devices/
--- locations and write device_auth_map regardless of the caller's own RLS
--- visibility into those tables.
-CREATE OR REPLACE FUNCTION public.sync_device_identity(p_sn TEXT)
+-- the device's org_id/is_active in one round trip.
+-- v2.20 Hardening: added p_secret_key validation.
+CREATE OR REPLACE FUNCTION public.sync_device_identity(p_sn TEXT, p_secret_key UUID)
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1695,17 +1713,27 @@ AS $$
 DECLARE
   v_org_id UUID;
   v_is_active BOOLEAN;
+  v_stored_secret UUID;
 BEGIN
   IF auth.uid() IS NULL THEN
     RETURN json_build_object('success', false, 'message', 'not_authenticated');
   END IF;
 
-  SELECT org_id, is_active INTO v_org_id, v_is_active
+  SELECT org_id, is_active, secret_key INTO v_org_id, v_is_active, v_stored_secret
   FROM public.devices
   WHERE sn = p_sn;
 
   IF NOT FOUND THEN
-    RETURN json_build_object('success', false, 'message', 'device_not_registered');
+    -- First time registration: SN not in DB yet.
+    -- We allow creation and we store the secret provided by the client (or generate if null).
+    -- In a real production supply chain, devices are pre-provisioned in the DB.
+    -- For this dev phase, we allow auto-registration but still require a secret for future syncs.
+    INSERT INTO public.devices (sn, secret_key)
+    VALUES (p_sn, COALESCE(p_secret_key, gen_random_uuid()))
+    RETURNING org_id, is_active, secret_key INTO v_org_id, v_is_active, v_stored_secret;
+  ELSIF v_stored_secret IS DISTINCT FROM p_secret_key THEN
+    -- SN exists but secret doesn't match! Attempted spoofing.
+    RETURN json_build_object('success', false, 'message', 'invalid_secret');
   END IF;
 
   INSERT INTO public.device_auth_map (auth_user_id, device_sn, org_id)
@@ -1713,12 +1741,17 @@ BEGIN
   ON CONFLICT (auth_user_id)
   DO UPDATE SET device_sn = excluded.device_sn, org_id = excluded.org_id;
 
-  RETURN json_build_object('success', true, 'org_id', v_org_id, 'is_active', v_is_active);
+  RETURN json_build_object(
+    'success', true,
+    'org_id', v_org_id,
+    'is_active', v_is_active,
+    'secret_key', v_stored_secret
+  );
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.sync_device_identity(TEXT) FROM public;
-GRANT EXECUTE ON FUNCTION public.sync_device_identity(TEXT) TO authenticated;
+REVOKE ALL ON FUNCTION public.sync_device_identity(TEXT, UUID) FROM public;
+GRANT EXECUTE ON FUNCTION public.sync_device_identity(TEXT, UUID) TO authenticated;
 
 -- Function: retention cleanup for high-volume telemetry tables. Not
 -- scheduled automatically here (requires the pg_cron extension, which
@@ -1753,6 +1786,23 @@ FROM public.devices d
 JOIN public.locations l ON d.loc_id = l.id
 JOIN public.organizations o ON l.org_id = o.id;
 
+-- 11. MARKETING & ANALYTICS VIEWS
+-- View: Marketing Summary (Impressions & Conversions)
+-- Aggregates playback data per org and ad.
+CREATE OR REPLACE VIEW public.vw_marketing_summary AS
+SELECT
+    o.name as org_name,
+    a.media_type,
+    a.text_content,
+    count(l.id) as total_impressions,
+    sum(case when l.completion_state = 'INTERRUPTED_BY_USER' then 1 else 0 end) as total_interactions,
+    round(avg(l.duration_sec), 1) as avg_dwell_time_sec
+FROM public.ad_playback_logs l
+JOIN public.advertisements a ON l.ad_id = a.id
+JOIN public.devices d ON l.device_sn = d.sn
+JOIN public.organizations o ON d.org_id = o.id
+GROUP BY o.name, a.id, a.media_type, a.text_content;
+
 -- =============================================================================
 -- remote control commands
 -- =============================================================================
@@ -1764,6 +1814,44 @@ CREATE TABLE IF NOT EXISTS public.device_commands (
     status TEXT DEFAULT 'PENDING',
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Advertising Playback Logs (Proof of Play)
+CREATE TABLE IF NOT EXISTS public.ad_playback_logs (
+    id BIGSERIAL PRIMARY KEY,
+    device_sn TEXT NOT NULL REFERENCES public.devices(sn) ON DELETE CASCADE,
+    ad_id UUID NOT NULL REFERENCES public.advertisements(id) ON DELETE CASCADE,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    duration_sec INTEGER NOT NULL,      -- how long the ad was visible
+    completion_state TEXT CHECK (completion_state IN ('COMPLETED', 'INTERRUPTED_BY_USER')),
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ad_playback_device_ad ON public.ad_playback_logs(device_sn, ad_id);
+CREATE INDEX IF NOT EXISTS idx_ad_playback_created ON public.ad_playback_logs(created_at DESC);
+
+-- Function: Ensure that an ad in a playlist belongs to the same org as the device
+-- or is a global ad (org_id is null).
+CREATE OR REPLACE FUNCTION public.check_playlist_org_consistency()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_device_org UUID;
+  v_ad_org UUID;
+BEGIN
+  SELECT org_id INTO v_device_org FROM public.devices WHERE sn = NEW.device_sn;
+  SELECT org_id INTO v_ad_org FROM public.advertisements WHERE id = NEW.ad_id;
+
+  IF v_ad_org IS NOT NULL AND v_ad_org != v_device_org THEN
+    RAISE EXCEPTION 'Cross-tenant ad mapping denied: Ad belongs to org %, but device belongs to org %', v_ad_org, v_device_org;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER on_playlist_upsert
+BEFORE INSERT OR UPDATE ON public.playlists
+FOR EACH ROW
+EXECUTE FUNCTION public.check_playlist_org_consistency();
+
 -- 开启实时复制 (重要)
 ALTER PUBLICATION supabase_realtime ADD TABLE public.device_commands;
 -- =============================================================================

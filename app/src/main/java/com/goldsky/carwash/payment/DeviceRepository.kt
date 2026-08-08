@@ -18,11 +18,18 @@ data class DeviceRegistration(
 )
 
 @Serializable
+private data class SyncDeviceIdentityParams(
+    val p_sn: String,
+    val p_secret_key: String? = null
+)
+
+@Serializable
 data class SyncDeviceIdentityResult(
     val success: Boolean,
     val message: String? = null,
     val org_id: String? = null,
-    val is_active: Boolean? = null
+    val is_active: Boolean? = null,
+    val secret_key: String? = null
 )
 
 /**
@@ -33,6 +40,7 @@ object DeviceRepository {
     private const val PREFS_NAME = "device_repo_prefs"
     private const val KEY_TOKEN = "auth_token"
     private const val KEY_DEVICE_SN = "device_sn"
+    private const val KEY_DEVICE_SECRET = "device_secret"
     private const val KEY_ORG_ID = "org_id"
     private const val KEY_HARDWARE_VENDOR = "hardware_vendor"
 
@@ -70,6 +78,12 @@ object DeviceRepository {
     }
 
     fun getPersistedDeviceSn(): String? = prefs()?.getString(KEY_DEVICE_SN, null)
+
+    fun persistDeviceSecret(secret: String) {
+        prefs()?.edit()?.putString(KEY_DEVICE_SECRET, secret)?.apply()
+    }
+
+    fun getPersistedDeviceSecret(): String? = prefs()?.getString(KEY_DEVICE_SECRET, null)
 
     fun persistHardwareVendor(vendor: String) {
         prefs()?.edit()?.putString(KEY_HARDWARE_VENDOR, vendor)?.apply()
@@ -157,12 +171,20 @@ object DeviceRepository {
     suspend fun syncDeviceIdentity(sn: String): SyncDeviceIdentityResult? = withContext(Dispatchers.IO) {
         try {
             authenticateDevice()
-            val response = SupabaseClientProvider.client.postgrest.rpc("sync_device_identity", mapOf("p_sn" to sn))
+            val storedSecret = getPersistedDeviceSecret()
+            val response = SupabaseClientProvider.client.postgrest.rpc(
+                "sync_device_identity",
+                SyncDeviceIdentityParams(p_sn = sn, p_secret_key = storedSecret)
+            )
             val result: SyncDeviceIdentityResult = response.decodeAs()
             if (!result.success) {
                 Log.w(TAG, "sync_device_identity rejected: ${result.message}")
                 return@withContext null
             }
+            
+            // If the server returned a secret (always does on success), store it
+            result.secret_key?.let { persistDeviceSecret(it) }
+            
             persistOrgId(result.org_id)
             result
         } catch (e: Exception) {

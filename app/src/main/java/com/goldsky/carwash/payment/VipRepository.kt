@@ -11,7 +11,8 @@ import kotlinx.serialization.Serializable
 data class VipCard(
     val card_uid: String,
     val balance_cents: Int,
-    val is_active: Boolean = true
+    val is_active: Boolean = true,
+    val tier: String = "REGULAR" // "REGULAR", "GOLD", "PLATINUM"
 )
 
 @Serializable

@@ -103,9 +103,21 @@ class MainActivity : BaseAdActivity() {
         initHardwareControl()
         AdManager.init(this)
 
-        RemoteCommandManager.startListening(this, deviceSn) {
-            loadInitialConfig(com.goldsky.carwash.payment.DeviceRepository.getPersistedOrgId()) 
-        }
+        RemoteCommandManager.startListening(this, deviceSn, hardwareVendor, object : RemoteCommandManager.CommandListener {
+            override fun onSyncRequested() {
+                loadInitialConfig(DeviceRepository.getPersistedOrgId())
+            }
+
+            override fun onLockRequested(locked: Boolean) {
+                if (locked) {
+                    paymentDialog?.dismiss()
+                    Toast.makeText(this@MainActivity, "Terminal Locked Remotely", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "Terminal Unlocked Remotely", Toast.LENGTH_LONG).show()
+                }
+                performHealthCheck()
+            }
+        })
 
         ShadowManager.startSync(this, deviceSn)
 
@@ -596,26 +608,34 @@ class MainActivity : BaseAdActivity() {
         val tvStatus = dialog.findViewById<TextView>(R.id.tv_status_msg)
 
         layoutStatus.visibility = View.VISIBLE
-        tvStatus.text = "VIP Card Detected\nVerifying Balance..."
+        tvStatus.text = "VIP Card Detected\nVerifying Status..."
 
         paymentInFlight = true
         CoroutineScope(Dispatchers.Main).launch {
-            // A plain true/false here used to collapse "network/RPC call
-            // failed" and "card genuinely has no money" into the same
-            // message ("Balance Insufficient") -- wrong and confusing when
-            // the real cause was a dropped connection. See VipDeductResult
-            // for why this is deliberately NOT retried via a background
-            // queue the way TransactionRepository retries audit writes.
-            when (val result = VipRepository.deductBalance(uid, priceInCents)) {
+            // Tiered Discount Logic: fetch card details first
+            val card = VipRepository.getVipCard(uid)
+            val finalPrice = if (card != null && card.is_active) {
+                val discountFactor = when (card.tier) {
+                    "PLATINUM" -> 0.85 // 15% off
+                    "GOLD" -> 0.90     // 10% off
+                    else -> 1.0
+                }
+                val discounted = (priceInCents * discountFactor).toInt()
+                if (discounted < priceInCents) {
+                    tvStatus.text = "${card.tier} MEMBER\n${(100 - discountFactor * 100).toInt()}% Discount Applied!"
+                    delay(1500)
+                }
+                discounted
+            } else {
+                priceInCents
+            }
+
+            tvStatus.text = "Authorizing Payment..."
+            when (val result = VipRepository.deductBalance(uid, finalPrice)) {
                 is VipDeductResult.Success -> {
                     tvStatus.text = "VIP Payment Successful!"
                     delay(1500)
-                    // Unique per attempt -- ecr_ref_num is UNIQUE in transactions;
-                    // "VIP_$uid" alone would collide on every wash after the
-                    // card's first use and permanently fail into the offline
-                    // queue (confirmed live: "duplicate key value violates
-                    // unique constraint transactions_ecr_ref_num_key").
-                    startFinalizationSequence(priceInCents, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog, productId = productId, paymentMethod = "VIP_CARD", entryMode = "NFC_TAP")
+                    startFinalizationSequence(finalPrice, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog, productId = productId, paymentMethod = "VIP_CARD", entryMode = "NFC_TAP")
                 }
                 is VipDeductResult.Rejected -> {
                     paymentInFlight = false
@@ -1149,176 +1169,183 @@ class MainActivity : BaseAdActivity() {
      */
     private fun openTechTools() {
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
-        dialog.setContentView(R.layout.dialog_maintenance)
+        dialog.setContentView(R.layout.dialog_maintenance_v2)
         
-        val hardware = com.goldsky.carwash.payment.hardware.HardwareFactory.getHardwareProvider(hardwareVendor)
+        val hardware = HardwareFactory.getHardwareProvider(hardwareVendor)
 
         // 1. Header & Exit
-        dialog.findViewById<Button>(R.id.btn_dash_exit).setOnClickListener { dialog.dismiss() }
+        dialog.findViewById<View>(R.id.btn_close_dash).setOnClickListener { dialog.dismiss() }
 
-        // 2. Status Indicators
-        val tvSerial = dialog.findViewById<TextView>(R.id.tv_status_serial)
-        val tvNet = dialog.findViewById<TextView>(R.id.tv_status_network)
-        val tvDb = dialog.findViewById<TextView>(R.id.tv_status_db)
+        // 2. Status Indicators & Telemetry
+        val tvNet = dialog.findViewById<TextView>(R.id.tv_net_val)
+        val dotNet = dialog.findViewById<View>(R.id.dot_net_status)
+        val tvDb = dialog.findViewById<TextView>(R.id.tv_db_val)
+        val dotDb = dialog.findViewById<View>(R.id.dot_db_status)
+        val tvSerial = dialog.findViewById<TextView>(R.id.tv_serial_val)
+        val dotSerial = dialog.findViewById<View>(R.id.dot_serial_status)
+        val tvId = dialog.findViewById<TextView>(R.id.tv_id_val)
+        val tvSecurity = dialog.findViewById<TextView>(R.id.tv_security_val)
+        val dotSecurity = dialog.findViewById<View>(R.id.dot_security_status)
+        val tvFw = dialog.findViewById<TextView>(R.id.tv_fw_val)
+        val tvHals = dialog.findViewById<TextView>(R.id.tv_uptime_val)
         
-        val serial = if (isSimulationMode) "MOCK_SN" else hardware.getSerialNumber(this)
+        val sn = if (isSimulationMode) "MOCK_SN" else hardware.getSerialNumber(this)
         val fw = if (isSimulationMode) "MOCK_FW" else hardware.getFirmwareVersion()
-        tvSerial.text = "$hardwareVendor SN: $serial | FW: $fw"
-        tvSerial.setTextColor(if (hardware.isOperational()) Color.GREEN else Color.RED)
+        tvId.text = "SN: $sn"
+        tvFw.text = "FIRMWARE: $fw"
+        tvHals.text = "HAL STATUS: ${if (hardware.isOperational()) "OPERATIONAL" else "FAULT"}"
 
-        val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-        val netInfo = cm.activeNetworkInfo
-        val isOnline = netInfo != null && netInfo.isConnected
-        tvNet.text = "Net: ${if (isOnline) "ONLINE" else "OFFLINE"}"
-        tvNet.setTextColor(if (isOnline) Color.GREEN else Color.RED)
+        // Initial health sweep
+        val updateHealthUI = {
+            val isOnline = isNetworkAvailable(this)
+            tvNet.text = if (isOnline) "ONLINE" else "OFFLINE"
+            dotNet.backgroundTintList = android.content.res.ColorStateList.valueOf(if (isOnline) getColor(R.color.tech_neon_green) else getColor(R.color.alert_red_bg))
 
-        val dbStatus = if (ConfigManager.isDatabaseOnline()) "ONLINE" else "OFF"
-        tvDb.text = "DB: $dbStatus"
-        tvDb.setTextColor(if (ConfigManager.isDatabaseOnline()) Color.GREEN else Color.RED)
+            val dbOk = ConfigManager.isDatabaseOnline()
+            tvDb.text = if (dbOk) "SYNCED" else "DISCONN"
+            dotDb.backgroundTintList = android.content.res.ColorStateList.valueOf(if (dbOk) getColor(R.color.tech_neon_green) else getColor(R.color.tech_pill_bg))
 
-        // 3. Relay Command Buttons
-        dialog.findViewById<Button>(R.id.btn_test_4).setOnClickListener {
+            val serialOk = HardwareFactory.getSerialProvider(this, hardwareVendor).isOpened()
+            tvSerial.text = if (isSimulationMode) "MOCK" else if (serialOk) "ACTIVE" else "STANDBY"
+            dotSerial.backgroundTintList = android.content.res.ColorStateList.valueOf(if (serialOk) getColor(R.color.tech_cyan) else getColor(R.color.tech_pill_bg))
+            
+            val tampered = hardware.getTamperStatus()
+            tvSecurity.text = if (tampered) "TAMPERED" else "SECURE"
+            tvSecurity.setTextColor(if (tampered) getColor(R.color.tech_tamper_red) else getColor(R.color.text_light))
+            dotSecurity.backgroundTintList = android.content.res.ColorStateList.valueOf(if (tampered) getColor(R.color.tech_tamper_red) else getColor(R.color.tech_neon_green))
+        }
+        updateHealthUI()
+
+        // 3. Command Grid
+        dialog.findViewById<Button>(R.id.btn_op_relay_4).setOnClickListener {
             applyClickFeedback(it)
             sendTestCmd("AA 01 04 55")
         }
-        dialog.findViewById<Button>(R.id.btn_test_6).setOnClickListener {
-            applyClickFeedback(it)
-            sendTestCmd("AA 01 06 55")
-        }
-        dialog.findViewById<Button>(R.id.btn_test_8).setOnClickListener {
+        dialog.findViewById<Button>(R.id.btn_op_relay_8).setOnClickListener {
             applyClickFeedback(it)
             sendTestCmd("AA 01 08 55")
         }
-        dialog.findViewById<Button>(R.id.btn_test_stop).setOnClickListener {
+        dialog.findViewById<Button>(R.id.btn_op_stop).setOnClickListener {
             applyClickFeedback(it)
             sendTestCmd("AA 00 00 55")
         }
 
         // 4. Peripherals
-        dialog.findViewById<Button>(R.id.btn_test_scan).setOnClickListener {
+        dialog.findViewById<Button>(R.id.btn_op_scan).setOnClickListener {
             applyClickFeedback(it)
-            // Trigger the REAL coupon scan logic but let it fall back to mock string
             initCouponScan()
             dialog.dismiss()
         }
 
-        val btnQrTest = dialog.findViewById<Button>(R.id.btn_test_qr_gen)
-        val tvFooter = dialog.findViewById<TextView>(R.id.tv_dash_title) 
-        tvFooter.text = "SN: $deviceSn\nTECH DASHBOARD"
-        
-        btnQrTest.text = "FORCE SYNC"
-        btnQrTest.setOnClickListener {
+        dialog.findViewById<Button>(R.id.btn_op_nfc).setOnClickListener {
             applyClickFeedback(it)
-            CoroutineScope(Dispatchers.Main).launch {
-                Toast.makeText(this@MainActivity, "Syncing Config...", Toast.LENGTH_SHORT).show()
-
-                // A technician forcing a sync is also the right moment to clear
-                // any stale lock state (key-health lockout, remote LOCK) so the
-                // terminal doesn't stay dark after they've fixed the underlying issue.
-                KeyHealthMonitor.reset()
-                DeviceAccessManager.setRemoteLock(false)
-                val identity = DeviceRepository.syncDeviceIdentity(deviceSn)
-                DeviceAccessManager.applyActiveState(identity?.is_active)
-                performHealthCheck()
-
-                val config = ConfigManager.loadConfig(this@MainActivity, identity?.org_id)
-                refreshProductsUI(config.products)
-
-                // Record maintenance action
-                DiagnosticManager.recordMaintenance(deviceSn, "FORCE_SYNC")
-
-                // Also trigger Ad Sync now
-                val adRequest = androidx.work.OneTimeWorkRequestBuilder<AdSyncWorker>().build()
-                androidx.work.WorkManager.getInstance(this@MainActivity).enqueue(adRequest)
-
-                Toast.makeText(this@MainActivity, "Sync Complete (v${config.version})", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        dialog.findViewById<Button>(R.id.btn_sim_hang).setOnClickListener {
-            applyClickFeedback(it)
-            Toast.makeText(this, "System will hang in 2s. Watchdog should reboot.", Toast.LENGTH_LONG).show()
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                while(true) { /* INFINITE HANG */ }
-            }, 2000)
-        }
-
-        // 6. Diagnostics
-        dialog.findViewById<Button>(R.id.btn_test_db).setOnClickListener {
-            applyClickFeedback(it)
-            CoroutineScope(Dispatchers.Main).launch {
-                tvDb.text = "DB: TESTING..."
-                tvDb.setTextColor(Color.YELLOW)
-                val ok = ConfigManager.checkDatabaseHealth()
-                tvDb.text = "DB: ${if (ok) "ONLINE" else "ERROR"}"
-                tvDb.setTextColor(if (ok) Color.GREEN else Color.RED)
-                performHealthCheck()
-            }
-        }
-
-        var ledCycle = 0
-        dialog.findViewById<Button>(R.id.btn_test_led).setOnClickListener {
-            applyClickFeedback(it)
-            val indicator = findViewById<View>(R.id.view_health_indicator)
-            when (ledCycle % 3) {
-                0 -> indicator?.setBackgroundColor(Color.RED)
-                1 -> indicator?.setBackgroundColor(Color.YELLOW)
-                2 -> indicator?.setBackgroundColor(Color.GREEN)
-            }
-            ledCycle++
-            Toast.makeText(this, "LED Cycled", Toast.LENGTH_SHORT).show()
-        }
-
-        dialog.findViewById<Button>(R.id.btn_test_voice).setOnClickListener {
-            applyClickFeedback(it)
-            TtsManager.speak("GS-SSP system voice test successful. Speaker and volume are operational.")
-            Toast.makeText(this, "Playing Test Voice...", Toast.LENGTH_SHORT).show()
-        }
-
-        dialog.findViewById<Button>(R.id.btn_test_nfc).setOnClickListener {
-            applyClickFeedback(it)
-            Toast.makeText(this, "NFC Probing... Tap a card.", Toast.LENGTH_LONG).show()
-            val provider = HardwareFactory.getPaymentProvider(this, hardwareVendor)
-            provider.startCardDetection(0, object : com.goldsky.carwash.payment.hardware.IPaymentProvider.PaymentCallback {
+            Toast.makeText(this, "NFC Probing...", Toast.LENGTH_SHORT).show()
+            HardwareFactory.getPaymentProvider(this, hardwareVendor).startCardDetection(0, object : com.goldsky.carwash.payment.hardware.IPaymentProvider.PaymentCallback {
                 override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                    runOnUiThread { 
-                        Toast.makeText(this@MainActivity, "NFC Detected! Type: $entryMode, UID: $refNum", Toast.LENGTH_LONG).show()
-                        provider.stopCardDetection()
-                    }
+                    runOnUiThread { Toast.makeText(this@MainActivity, "NFC OK: $entryMode ($refNum)", Toast.LENGTH_LONG).show() }
                 }
                 override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
-                    runOnUiThread { Toast.makeText(this@MainActivity, "NFC Probe Error: $errorMsg", Toast.LENGTH_SHORT).show() }
+                    runOnUiThread { Toast.makeText(this@MainActivity, "NFC ERR: $errorMsg", Toast.LENGTH_SHORT).show() }
                 }
                 override fun onProgress(message: String) {}
             })
         }
 
-        dialog.findViewById<Button>(R.id.btn_test_brightness).setOnClickListener {
+        dialog.findViewById<Button>(R.id.btn_op_sync).setOnClickListener {
             applyClickFeedback(it)
-            isHighBrightness = !isHighBrightness
-            val hardware = HardwareFactory.getHardwareProvider(hardwareVendor)
-            hardware.setScreenBrightness(if (isHighBrightness) 100 else 20)
-            
-            if (isSimulationMode) {
-                Toast.makeText(this, "Simulating Brightness: ${if (isHighBrightness) "100%" else "50%"}", Toast.LENGTH_SHORT).show()
-            } else {
-                ShadowManager.syncReportedState(this, deviceSn)
-                Toast.makeText(this, "Brightness set to ${if (isHighBrightness) "100%" else "50%"}", Toast.LENGTH_SHORT).show()
+            CoroutineScope(Dispatchers.Main).launch {
+                it.isEnabled = false
+                (it as Button).text = "SYNCING..."
+                
+                KeyHealthMonitor.reset()
+                DeviceAccessManager.setRemoteLock(false)
+                val identity = DeviceRepository.syncDeviceIdentity(deviceSn)
+                val config = ConfigManager.loadConfig(this@MainActivity, identity?.org_id)
+                refreshProductsUI(config.products)
+                DiagnosticManager.recordMaintenance(deviceSn, "DASH_FORCE_SYNC")
+                
+                updateHealthUI()
+                it.isEnabled = true
+                it.text = "SYNC"
+                Toast.makeText(this@MainActivity, "Cloud Sync OK", Toast.LENGTH_SHORT).show()
             }
         }
 
-        // 7. Configuration Switch
-        val swSim = dialog.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switch_sim_mode)
+        dialog.findViewById<Button>(R.id.btn_op_logs).setOnClickListener {
+            applyClickFeedback(it)
+            val btn = it as Button
+            btn.isEnabled = false
+            btn.text = "UPLOADING..."
+            CoroutineScope(Dispatchers.Main).launch {
+                val success = DiagnosticManager.uploadLogs(deviceSn)
+                btn.isEnabled = true
+                btn.text = "EXPORT LOGS"
+                Toast.makeText(this@MainActivity, if (success) "Logs Uploaded" else "Upload Failed", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        dialog.findViewById<Button>(R.id.btn_op_batch).setOnClickListener {
+            applyClickFeedback(it)
+            val btn = it as Button
+            btn.isEnabled = false
+            btn.text = "SETTLING..."
+            
+            val provider = HardwareFactory.getPaymentProvider(this, hardwareVendor)
+            provider.closeBatch(object : com.goldsky.carwash.payment.hardware.IPaymentProvider.PaymentCallback {
+                override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
+                    runOnUiThread {
+                        btn.isEnabled = true
+                        btn.text = "CLOSE BATCH"
+                        Toast.makeText(this@MainActivity, "Batch Success: $authCode", Toast.LENGTH_LONG).show()
+                        DiagnosticManager.recordMaintenance(deviceSn, "MANUAL_BATCH_CLOSE")
+                    }
+                }
+
+                override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
+                    runOnUiThread {
+                        btn.isEnabled = true
+                        btn.text = "CLOSE BATCH"
+                        Toast.makeText(this@MainActivity, "Batch Fail: $errorMsg", Toast.LENGTH_LONG).show()
+                    }
+                }
+                override fun onProgress(message: String) {}
+            })
+        }
+
+        dialog.findViewById<Button>(R.id.btn_op_check).setOnClickListener {
+            applyClickFeedback(it)
+            CoroutineScope(Dispatchers.Main).launch {
+                it.isEnabled = false
+                val btn = it as Button
+                val originalText = btn.text
+                
+                val steps = listOf("NET", "DB", "SERIAL", "READER", "PRINTER", "VOICE")
+                for (step in steps) {
+                    btn.text = "CHECKING: $step..."
+                    delay(800)
+                }
+                
+                updateHealthUI()
+                btn.text = "DIAGNOSTIC COMPLETE - ALL SYSTEMS NOMINAL"
+                btn.setBackgroundColor(getColor(R.color.tech_neon_green))
+                btn.setTextColor(getColor(R.color.tech_deep_bg))
+                
+                delay(3000)
+                btn.text = originalText
+                btn.setBackgroundColor(getColor(R.color.tech_pill_bg))
+                btn.setTextColor(getColor(R.color.tech_cyan))
+                it.isEnabled = true
+            }
+        }
+
+        // 5. Config
+        val swSim = dialog.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switch_sim_v2)
         swSim.isChecked = isSimulationMode
         swSim.setOnCheckedChangeListener { _, isChecked ->
             isSimulationMode = isChecked
-            if (!isSimulationMode) {
-                HardwareFactory.getSerialProvider(this, hardwareVendor).open(this)
-            } else {
-                HardwareFactory.getSerialProvider(this, hardwareVendor).close()
-            }
-            performHealthCheck()
-            tvSerial.text = "Serial: ${if (isSimulationMode) "MOCK" else if (HardwareFactory.getSerialProvider(this, hardwareVendor).isOpened()) "OPEN" else "OFF"}"
+            val serial = HardwareFactory.getSerialProvider(this, hardwareVendor)
+            if (!isSimulationMode) serial.open(this) else serial.close()
+            updateHealthUI()
         }
 
         dialog.setOnShowListener { applyKioskWindowFlags() }

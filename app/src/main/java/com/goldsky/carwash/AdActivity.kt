@@ -10,9 +10,18 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.VideoView
+import androidx.core.content.FileProvider
 import com.goldsky.carwash.model.AdMedia
+import com.goldsky.carwash.model.TargetedAd
 import com.goldsky.carwash.payment.AdManager
+import com.goldsky.carwash.payment.AdTargetingEvaluator
+import com.goldsky.carwash.payment.AnalyticsManager
+import com.goldsky.carwash.payment.DeviceRepository
 import com.goldsky.carwash.payment.hardware.HardwareFactory
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import java.io.File
 
 /**
@@ -29,8 +38,17 @@ class AdActivity : BaseAdActivity() {
     private lateinit var tvPrompt: TextView
     private lateinit var btnPause: ImageView
 
-    private var playlist: List<AdMedia> = emptyList()
+    private var fullPlaylist: List<TargetedAd> = emptyList()
     private var currentIndex = 0
+
+    // Analytics state
+    private var currentAdId: String? = null
+    private var adStartTime: Long = 0
+    private var wasInterrupted = false
+
+    // Warm-up cache for next ad's URI to reduce switching latency
+    private var preloadedUri: Uri? = null
+    private var preloadedType: String? = null
 
     // Backs playImage/playText's auto-advance so togglePauseResume() can
     // cancel/reschedule it -- a plain fire-and-forget postDelayed (as before)
@@ -59,20 +77,28 @@ class AdActivity : BaseAdActivity() {
         // Decoupled Background Tap (TAP TO PAY logic)
         findViewById<View>(R.id.ad_bg_tap_handler).setOnClickListener {
             Log.i("AdActivity", "Background tap detected: triggering TAP TO PAY")
+            wasInterrupted = true
+            reportAdCompletion()
             finish()
         }
 
-        // Pause/resume is a small corner control, handled on its own view so
-        // it consumes the tap before it reaches the background catcher.
+        // Pause/resume is a small corner control
         btnPause.setOnClickListener { togglePauseResume() }
+
+        // Hot Reload: Listen for playlist updates from sync worker
+        AdManager.playlistUpdateFlow.onEach { newAds ->
+            Log.i("AdActivity", "Live playlist update detected! Refreshing...")
+            fullPlaylist = newAds
+            // No need to interrupt current ad, it will pick up new rules on next cycle
+        }.launchIn(CoroutineScope(Dispatchers.Main))
     }
 
     private fun loadPlaylist() {
-        playlist = AdManager.getCachedPlaylist(this)
+        fullPlaylist = AdManager.getCachedPlaylist(this)
     }
 
     private fun startPlayback() {
-        if (playlist.isEmpty()) {
+        if (fullPlaylist.isEmpty()) {
             showImageFallback()
             return
         }
@@ -81,10 +107,39 @@ class AdActivity : BaseAdActivity() {
     }
 
     private fun playNext() {
-        if (playlist.isEmpty()) return
+        if (fullPlaylist.isEmpty()) return
 
-        val ad = playlist[currentIndex]
-        currentIndex = (currentIndex + 1) % playlist.size
+        // Finalize analytics for the ad that just ended
+        reportAdCompletion()
+
+        // 1. Filter active ads based on targeting rules
+        val activeAds = fullPlaylist.filter { AdTargetingEvaluator.isAdActive(it.entry) }
+        
+        if (activeAds.isEmpty()) {
+            showImageFallback()
+            // Try again in 30s in case time-based rules change
+            advanceHandler.postDelayed({ if (!isFinishing) playNext() }, 30000)
+            return
+        }
+
+        // 2. Sort by priority and then original play_order
+        val sortedAds = activeAds.sortedWith(
+            compareByDescending<TargetedAd> { AdTargetingEvaluator.getPriority(it.entry) }
+            .thenBy { it.entry.play_order }
+        )
+
+        // Adjust index to stay within active list bounds
+        val adIndex = if (currentIndex >= sortedAds.size) 0 else currentIndex
+        val targeted = sortedAds[adIndex]
+        val ad = targeted.media
+        
+        // Advance global counter for next round
+        currentIndex = (adIndex + 1) % sortedAds.size
+
+        // Init analytics for new ad
+        currentAdId = ad.id
+        adStartTime = System.currentTimeMillis()
+        wasInterrupted = false
 
         if (ad.media_type == "TEXT" || ad.media_type == "TEXT_AD") {
             val text = ad.text_content
@@ -116,20 +171,54 @@ class AdActivity : BaseAdActivity() {
         } else {
             playImage(file)
         }
+        
+        // Performance: pre-calculate URI for the next ad in the cycle
+        preloadNext(sortedAds, (adIndex + 1) % sortedAds.size)
+    }
+
+    /**
+     * Resolves the next ad's URI in the background to minimize "black frame" 
+     * switching latency on low-performance industrial hardware.
+     */
+    private fun preloadNext(playlist: List<TargetedAd>, nextIndex: Int) {
+        if (playlist.isEmpty()) return
+        val nextAd = playlist[nextIndex]
+        val media = nextAd.media
+        if (media.media_type == "TEXT" || media.media_type == "TEXT_AD") {
+            preloadedUri = null
+            preloadedType = media.media_type
+            return
+        }
+        
+        val mediaUrl = media.media_url ?: return
+        val adsDir = AdManager.getAdsDir(this)
+        val fileName = media.id + getExtension(mediaUrl)
+        val file = File(adsDir, fileName)
+        
+        if (file.exists()) {
+            preloadedUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            preloadedType = media.media_type
+            Log.d("AdActivity", "Pre-loaded next URI: ${file.name}")
+        }
     }
 
     private fun playVideo(file: File) {
         resetPauseState()
-        // Ensure file is readable by system MediaPlayer process
-        try { file.setReadable(true, false) } catch (e: Exception) {}
-
+        
         imgAd.visibility = View.GONE
         announcementCard.visibility = View.GONE
         textAdCard.visibility = View.GONE
         videoAd.visibility = View.VISIBLE
         btnPause.visibility = View.VISIBLE
 
-        videoAd.setVideoURI(Uri.fromFile(file))
+        // Performance: Use pre-loaded URI if available and matching
+        val contentUri = if (preloadedType == "VIDEO" && preloadedUri != null) {
+            preloadedUri!!
+        } else {
+            FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+        }
+        videoAd.setVideoURI(contentUri)
+        
         videoAd.setOnCompletionListener { playNext() }
         videoAd.setOnErrorListener { _, _, _ ->
             Log.e("AdActivity", "Video playback failed for: ${file.name}")
@@ -147,7 +236,12 @@ class AdActivity : BaseAdActivity() {
         imgAd.visibility = View.VISIBLE
         btnPause.visibility = View.VISIBLE
 
-        imgAd.setImageURI(Uri.fromFile(file))
+        val contentUri = if (preloadedType != "VIDEO" && preloadedUri != null) {
+            preloadedUri!!
+        } else {
+            FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+        }
+        imgAd.setImageURI(contentUri)
         scheduleAdvance(IMAGE_DURATION_MS)
     }
 
@@ -181,6 +275,17 @@ class AdActivity : BaseAdActivity() {
         val runnable = Runnable { if (!isFinishing) playNext() }
         pendingAdvance = runnable
         advanceHandler.postDelayed(runnable, delayMs)
+    }
+
+    private fun reportAdCompletion() {
+        val adId = currentAdId ?: return
+        val duration = System.currentTimeMillis() - adStartTime
+        if (duration < 500) return // Skip glitchy/instant skips
+
+        val sn = DeviceRepository.getPersistedDeviceSn() ?: "UNKNOWN"
+        AnalyticsManager.recordPlayback(sn, adId, adStartTime, duration, wasInterrupted)
+        
+        currentAdId = null
     }
 
     private fun resetPauseState() {
@@ -262,6 +367,7 @@ class AdActivity : BaseAdActivity() {
 
     override fun onPause() {
         super.onPause()
+        reportAdCompletion()
         if (videoAd.isPlaying) {
             videoAd.pause()
         }

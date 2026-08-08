@@ -1,5 +1,36 @@
 # GS-SSP 系统架构设计规格书 (System Architecture Specification)
 
+### v2.19 (2026-08-08) — 全链路进化 (P0-P2 Evolution)
+系统已进化至生产级状态，涵盖了安全加固、分级营销与自动化运维。
+*   **物理安全**: 引入 PCI 7 防篡改监控，实装 HAL 层级 `getTamperStatus()`。
+*   **分级营销**: 实装 VIP 会员阶梯折扣（白金/黄金卡），增强用户忠诚度。
+*   **热更新**: 广告引擎支持“秒级”策略热重载，无需重启 App。
+*   **自愈运维**: 新增存储自动治理 Worker (Weekly) 与工业级 CRC16 串口校验。
+
+### v2.18 (2026-08-08) — 营销报表实时看板 (Proof of Play)
+构建了全链路营销数据采集体系，支持广告曝光与点击率的实时监控。
+*   **曝光采集**: 新增 `ad_playback_logs` 表，精准记录每条广告的播放时长与完成状态（播完或被用户点击中断）。
+*   **埋点引擎**: 引入 `AnalyticsManager` 异步上报引擎，实现广告播放动作的云端留痕。
+*   **实时看板**: 新增 `vw_marketing_summary` 数据库视图，为商户提供 Impressions、Interactions 及平均驻留时长等核心指标。
+
+### v2.17 (2026-08-07) — 资金结算自动化 (Batch Close)
+实装了每日自动批次结算逻辑，确保商户交易资金及时清算。
+*   **自动化调度**: 使用 `WorkManager` 注册每日周期性任务 `BatchCloseWorker`，调用 PAX `BatchRequest` 进行结算。
+*   **手动清算**: 在 **Technician Dashboard 2.0** 新增 “CLOSE BATCH” 拨测按钮，支持人工干预。
+*   **审计闭环**: 结算操作同步记录至 `maintenance_records` 与 `audit_logs`（由 RPC 触发）。
+
+### v2.16 (2026-08-07) — 多租户权限深度加固 (Security Hardening)
+引入设备私钥与严密的 RLS 策略，确保商户数据物理级隔离。
+*   **身份防伪**: `devices` 表引入 `secret_key`。`sync_device_identity` RPC 现在强制校验密钥，防止 SN 冒用攻击。
+*   **素材私有化**: `advertisements` 增加 `org_id`。RLS 策略确保终端只能拉取全局或所属商户的素材。
+*   **原子联锁**: 增加 `check_playlist_org_consistency` 触发器，防止云端误指派跨租户广告资源。
+
+### v2.15 (2026-08-07) — 云端广告精准投放 (Targeted Delivery)
+引入基于规则的动态广告投放引擎，支持时段、日期及优先级控制。
+*   **规则模型**: 在 `playlists` 表引入 `targeting_rules` JSONB，支持 `start_hour`, `end_hour`, `days`, `priority` 等。
+*   **本地评估**: 新增 `AdTargetingEvaluator`，在终端本地实时过滤并排序有效广告列表，确保离线一致性。
+*   **架构升级**: `AdSyncWorker` 现在同步完整的规则元数据，`AdActivity` 根据当前时间动态切换内容。
+
 ### v2.14 (2026-08-06) — 引入多厂商硬件抽象层 (Multi-Vendor HAL)
 针对集成 ID TECH 和 PAX 两套 SDK 的需求，对硬件交互逻辑进行了深度解耦。确立了以 `HardwareFactory` 为中心的驱动分发机制。
 *   **统一接口**: 定义了 `IHardwareProvider`、`IPaymentProvider`、`IScannerProvider` 标准接口，屏蔽厂商 SDK 差异。

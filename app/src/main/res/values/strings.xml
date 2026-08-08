@@ -94,4 +94,24 @@
     <string name="ad_promo_label">PROMOTION</string>
     <string name="ad_pause_content_description">Pause</string>
     <string name="ad_resume_content_description">Resume</string>
+
+    <!-- Tech Dashboard 2.0 -->
+    <string name="tech_core_command">CORE COMMAND</string>
+    <string name="tech_industrial_dash">GS-SSP INDUSTRIAL DASHBOARD</string>
+    <string name="tech_connectivity">CONNECTIVITY</string>
+    <string name="tech_supabase_link">SUPABASE LINK</string>
+    <string name="tech_controller">CONTROLLER (UART1)</string>
+    <string name="tech_security">PHYSICAL SECURITY</string>
+    <string name="tech_identity">IDENTITY</string>
+    <string name="tech_system_probing">SYSTEM PROBING</string>
+    <string name="tech_pulse_4">PULSE $4</string>
+    <string name="tech_pulse_8">PULSE $8</string>
+    <string name="tech_halt">HALT</string>
+    <string name="tech_scan">SCAN</string>
+    <string name="tech_nfc">NFC</string>
+    <string name="tech_sync">SYNC</string>
+    <string name="tech_telemetry">TERMINAL TELEMETRY</string>
+    <string name="tech_watchdog">WATCHDOG HEARTBEAT</string>
+    <string name="tech_sim_mode">HARDWARE SIMULATION MODE</string>
+    <string name="tech_version_footer">Industrial Core GS-SSP v2.2.0 • PCI-7 Compliant</string>
 </resources>

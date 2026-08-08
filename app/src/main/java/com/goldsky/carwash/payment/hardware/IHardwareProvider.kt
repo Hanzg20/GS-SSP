@@ -59,6 +59,17 @@ interface IHardwareProvider {
     fun getSerialProvider(): ISerialProvider
 
     /**
+     * Reboots the physical terminal.
+     */
+    fun reboot()
+
+    /**
+     * Checks the physical security status (Tamper).
+     * @return true if tampered, false if secure.
+     */
+    fun getTamperStatus(): Boolean
+
+    /**
      * Releases hardware resources.
      */
     fun release()

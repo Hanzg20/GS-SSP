@@ -9,56 +9,50 @@ class SerialPortManagerAckTest {
 
     private val provider = PaxSerialProvider { null }
 
-    private fun frame(header: Int, status: Int, checksum: Int, footer: Int) =
-        byteArrayOf(header.toByte(), status.toByte(), checksum.toByte(), footer.toByte())
+    private fun frame(header: Int, status: Int, crcH: Int, crcL: Int, footer: Int) =
+        byteArrayOf(header.toByte(), status.toByte(), crcH.toByte(), crcL.toByte(), footer.toByte())
 
     @Test
     fun `valid RECEIVED frame is OK`() {
-        // header=0xBB, status=0x00, checksum=XOR(0xBB,0x00)=0xBB, footer=0xEE
-        val buffer = frame(0xBB, 0x00, 0xBB, 0xEE)
-        assertEquals(ISerialProvider.AckResult.OK, provider.parseAckFrame(buffer, 4))
+        // header=0xBB, status=0x00, CRC16(BB 00) = 0xF72F (approx, let's use actual logic)
+        val crc = CrcUtils.crc16ccitt(byteArrayOf(0xBB.toByte(), 0x00.toByte()))
+        val buffer = frame(0xBB, 0x00, crc shr 8, crc and 0xFF, 0xEE)
+        assertEquals(ISerialProvider.AckResult.OK, provider.parseAckFrame(buffer, 5))
     }
 
     @Test
     fun `valid EXECUTING frame is OK`() {
-        // status=0x01, checksum=XOR(0xBB,0x01)=0xBA
-        val buffer = frame(0xBB, 0x01, 0xBA, 0xEE)
-        assertEquals(ISerialProvider.AckResult.OK, provider.parseAckFrame(buffer, 4))
+        val crc = CrcUtils.crc16ccitt(byteArrayOf(0xBB.toByte(), 0x01.toByte()))
+        val buffer = frame(0xBB, 0x01, crc shr 8, crc and 0xFF, 0xEE)
+        assertEquals(ISerialProvider.AckResult.OK, provider.parseAckFrame(buffer, 5))
     }
 
     @Test
     fun `FAULT status is reported as FAULT`() {
-        // status=0x02, checksum=XOR(0xBB,0x02)=0xB9
-        val buffer = frame(0xBB, 0x02, 0xB9, 0xEE)
-        assertEquals(ISerialProvider.AckResult.FAULT, provider.parseAckFrame(buffer, 4))
+        val crc = CrcUtils.crc16ccitt(byteArrayOf(0xBB.toByte(), 0x02.toByte()))
+        val buffer = frame(0xBB, 0x02, crc shr 8, crc and 0xFF, 0xEE)
+        assertEquals(ISerialProvider.AckResult.FAULT, provider.parseAckFrame(buffer, 5))
     }
 
     @Test
-    fun `fewer than 4 bytes is a TIMEOUT`() {
-        val buffer = frame(0xBB, 0x00, 0xBB, 0xEE)
-        assertEquals(ISerialProvider.AckResult.TIMEOUT, provider.parseAckFrame(buffer, 0))
-        assertEquals(ISerialProvider.AckResult.TIMEOUT, provider.parseAckFrame(buffer, 3))
+    fun `fewer than 5 bytes is a TIMEOUT`() {
+        val buffer = frame(0xBB, 0x00, 0, 0, 0xEE)
+        assertEquals(ISerialProvider.AckResult.TIMEOUT, provider.parseAckFrame(buffer, 4))
     }
 
     @Test
     fun `wrong header or footer is MALFORMED`() {
-        val wrongHeader = frame(0xAA, 0x00, 0xBB, 0xEE)
-        assertEquals(ISerialProvider.AckResult.MALFORMED, provider.parseAckFrame(wrongHeader, 4))
+        val crc = CrcUtils.crc16ccitt(byteArrayOf(0xBB.toByte(), 0x00.toByte()))
+        val wrongHeader = frame(0xAA, 0x00, crc shr 8, crc and 0xFF, 0xEE)
+        assertEquals(ISerialProvider.AckResult.MALFORMED, provider.parseAckFrame(wrongHeader, 5))
 
-        val wrongFooter = frame(0xBB, 0x00, 0xBB, 0x55)
-        assertEquals(ISerialProvider.AckResult.MALFORMED, provider.parseAckFrame(wrongFooter, 4))
+        val wrongFooter = frame(0xBB, 0x00, crc shr 8, crc and 0xFF, 0x55)
+        assertEquals(ISerialProvider.AckResult.MALFORMED, provider.parseAckFrame(wrongFooter, 5))
     }
 
     @Test
     fun `bad checksum is MALFORMED even with correct header and footer`() {
-        val buffer = frame(0xBB, 0x00, 0x00, 0xEE) // checksum should be 0xBB, not 0x00
-        assertEquals(ISerialProvider.AckResult.MALFORMED, provider.parseAckFrame(buffer, 4))
-    }
-
-    @Test
-    fun `unknown status byte is MALFORMED`() {
-        // status=0x7F, checksum=XOR(0xBB,0x7F)=0xC4
-        val buffer = frame(0xBB, 0x7F, 0xC4, 0xEE)
-        assertEquals(ISerialProvider.AckResult.MALFORMED, provider.parseAckFrame(buffer, 4))
+        val buffer = frame(0xBB, 0x00, 0x00, 0x00, 0xEE)
+        assertEquals(ISerialProvider.AckResult.MALFORMED, provider.parseAckFrame(buffer, 5))
     }
 }

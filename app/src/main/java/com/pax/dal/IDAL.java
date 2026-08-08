@@ -9,4 +9,5 @@ public interface IDAL {
     ISys getSys();
     IDeviceControl getDeviceControl();
     IPrinter getPrinter();
+    IPed getPed();
 }

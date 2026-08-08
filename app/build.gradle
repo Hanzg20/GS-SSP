@@ -24,6 +24,17 @@ android {
         // Inject Supabase credentials from local.properties
         buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
         buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
+
+        // Enable installation on x86_64 emulators even though we only have ARM libs
+        ndk {
+            abiFilters "x86_64", "armeabi-v7a", "arm64-v8a"
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 
     buildTypes {
@@ -31,6 +42,15 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            
+            // Industrial performance: ensure no debug symbol leak
+            debuggable false
+            jniDebuggable false
+        }
+        
+        debug {
+            minifyEnabled false
+            shrinkResources false
         }
     }
     compileOptions {

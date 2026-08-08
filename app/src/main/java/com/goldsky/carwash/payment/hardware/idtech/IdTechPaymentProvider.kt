@@ -138,6 +138,11 @@ class IdTechPaymentProvider : IPaymentProvider, OnReceiverListener {
         currentCallback = null
     }
 
+    override fun closeBatch(callback: IPaymentProvider.PaymentCallback) {
+        Log.i(TAG, "MOCK ID TECH BATCH CLOSE: Settle Successful")
+        callback.onSuccess("MOCK_BATCH_OK", "")
+    }
+
     // --- ID TECH OnReceiverListener Implementation ---
 
     /**

@@ -6,6 +6,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.goldsky.carwash.model.AdMedia
 import com.goldsky.carwash.model.PlaylistEntry
+import com.goldsky.carwash.model.TargetedAd
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
 import io.ktor.client.*
@@ -85,7 +86,7 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
                 }
                 .decodeList<PlaylistEntry>()
 
-            val remoteAds: List<AdMedia> = if (entries.isNotEmpty()) {
+            val targetedPlaylist: List<TargetedAd> = if (entries.isNotEmpty()) {
                 val adIds = entries.map { it.ad_id }
                 val adsById = SupabaseClientProvider.client.postgrest["advertisements"]
                     .select {
@@ -93,31 +94,28 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
                     }
                     .decodeList<AdMedia>()
                     .associateBy { it.id }
-                // Re-sort by this device's play_order -- the advertisements
-                // fetch above has no ordering guarantee of its own.
-                entries.mapNotNull { adsById[it.ad_id] }
+                
+                // Construct TargetedAd list, preserving play_order and rules
+                entries.mapNotNull { entry ->
+                    adsById[entry.ad_id]?.let { media -> TargetedAd(media, entry) }
+                }
             } else {
-                // GLOBAL FALLBACK: Fetch all active advertisements if no specific
-                // playlist exists for this device's SN. Ensures new/unprovisioned
-                // machines don't stay on a static placeholder.
+                // GLOBAL FALLBACK: Fetch all active advertisements
                 Log.i("AdSyncWorker", "No specific playlist found for $deviceSn, falling back to all available ads")
-                SupabaseClientProvider.client.postgrest["advertisements"]
+                val globalAds = SupabaseClientProvider.client.postgrest["advertisements"]
                     .select()
                     .decodeList<AdMedia>()
+                
+                // Create dummy entries for global ads (no rules)
+                globalAds.map { media -> TargetedAd(media, PlaylistEntry(media.id)) }
             }
 
             val adsDir = AdManager.getAdsDir(applicationContext)
             val localFiles = adsDir.listFiles()?.toList() ?: emptyList()
 
-            // 2. Download missing/changed files, using md5_hash to detect
-            // content changes on files that already exist locally (previously
-            // this only checked existence, so a changed asset with the same
-            // id/filename would never be re-downloaded).
-            remoteAds.forEach { ad ->
-                // TEXT (announcement) and TEXT_AD (promotional copy) both
-                // carry their content inline via text_content -- no media
-                // file to fetch, just the DB row synced via
-                // AdManager.savePlaylist below.
+            // 2. Download missing/changed files
+            targetedPlaylist.forEach { targeted ->
+                val ad = targeted.media
                 if (ad.media_type == "TEXT" || ad.media_type == "TEXT_AD") return@forEach
                 val mediaUrl = ad.media_url ?: return@forEach
 
@@ -128,8 +126,7 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
                 if (needsDownload) {
                     downloadFile(mediaUrl, targetFile)
 
-                    // Verify integrity post-download; a corrupted/truncated
-                    // download must not be left in place for the player to choke on.
+                    // Verify integrity post-download
                     if (!ad.md5_hash.isNullOrBlank() && !md5Matches(targetFile, ad.md5_hash)) {
                         Log.e("AdSyncWorker", "MD5 mismatch after download for ${ad.id}, discarding")
                         targetFile.delete()
@@ -138,7 +135,7 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
             }
 
             // 3. Cleanup old files
-            val remoteIds = remoteAds.map { it.id }
+            val remoteIds = targetedPlaylist.map { it.media.id }
             localFiles.forEach { file ->
                 val idInFile = file.name.substringBefore(".")
                 if (idInFile !in remoteIds) {
@@ -148,16 +145,7 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
             }
 
             // 4. Update local playlist JSON
-            AdManager.savePlaylist(applicationContext, remoteAds)
-
-            // Ensure all ad files are readable by external MediaPlayer process
-            adsDir.listFiles()?.forEach { file ->
-                try {
-                    file.setReadable(true, false)
-                } catch (e: Exception) {
-                    Log.w("AdSyncWorker", "Failed to set readable: ${file.name}")
-                }
-            }
+            AdManager.savePlaylist(applicationContext, targetedPlaylist)
 
             Result.success()
         } catch (e: Exception) {

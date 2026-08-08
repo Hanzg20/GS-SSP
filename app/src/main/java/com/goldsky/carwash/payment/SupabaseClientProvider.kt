@@ -8,14 +8,14 @@ import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.storage.Storage
 import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.engine.android.*
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
+import okhttp3.ConnectionPool
+import java.util.concurrent.TimeUnit
 
 /**
  * Singleton provider for the Supabase client.
@@ -23,31 +23,33 @@ import kotlinx.serialization.json.Json
 object SupabaseClientProvider {
     private const val TAG = "SupabaseClientProvider"
 
+    // Industrial Connection Pool: limit concurrent connections to conserve 
+    // memory on 2GB RAM terminals.
+    private val industrialPool = ConnectionPool(5, 5, TimeUnit.MINUTES)
+
     val client = createSupabaseClient(
         supabaseUrl = SupabaseConfig.URL,
         supabaseKey = SupabaseConfig.KEY
     ) {
-        // ktor-client-android (used elsewhere in this file for
-        // functionsHttpClient) has no WebSocket support, so Realtime must be
-        // pinned to OkHttp explicitly -- leaving httpEngine unset lets Ktor's
-        // engine auto-detection pick either one non-deterministically since
-        // both are on the classpath, and picking Android silently breaks
-        // RemoteCommandManager's realtime subscription.
-        httpEngine = OkHttp.create()
+        httpEngine = OkHttp.create {
+            config {
+                connectionPool(industrialPool)
+                connectTimeout(15, TimeUnit.SECONDS)
+                readTimeout(30, TimeUnit.SECONDS)
+            }
+        }
         install(Postgrest)
         install(Auth)
         install(Realtime)
         install(Storage)
     }
 
-    // supabase-kt 2.6.1 (this project's locked version) has no Functions
-    // plugin, so Edge Function calls (supabase/functions/create-qr-session)
-    // go through a small dedicated Ktor client instead of Postgrest/RPC.
-    // Still derives its auth from client.auth -- the one shared session --
-    // so this does NOT reintroduce the dual-identity bug fixed in v2.7;
-    // it's a different transport for a capability the installed plugins
-    // don't cover, not a second independent sign-in.
-    private val functionsHttpClient = HttpClient(Android) {
+    private val functionsHttpClient = HttpClient(OkHttp) {
+        engine {
+            config {
+                connectionPool(industrialPool)
+            }
+        }
         install(ContentNegotiation) {
             json(Json { ignoreUnknownKeys = true })
         }

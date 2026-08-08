@@ -74,6 +74,11 @@ interface IPaymentProvider {
     fun cancelCurrentTransaction()
 
     /**
+     * Closes the current transaction batch (Settle).
+     */
+    fun closeBatch(callback: PaymentCallback)
+
+    /**
      * Helper to attempt VOID first, then automatically fallback to REFUND
      * if VOID fails. Useful for hardware-failure-after-auth scenarios.
      */
