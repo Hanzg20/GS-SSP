@@ -1,5 +1,11 @@
 # GS-SSP 系统架构设计规格书 (System Architecture Specification)
 
+### v2.23 (2026-08-08) — RLS 权限深度修复 (Security Policy Fix)
+解决了商户管理模块在生产环境下的写操作冲突。
+*   **函数加固**: 将 `is_sys_admin()` 升级为 `SECURITY DEFINER` 并显式授权，解决了 RLS 递归校验导致的拒绝错误。
+*   **策略优化**: 优化了 `organizations` 表的 `INSERT` 策略，确保管理员权限判定具有物理隔离的确定性。
+*   **反馈清理**: 移除了前端调试用的 Alert，统一使用 `sonner` 消息系统提供高质量交互。
+
 ### v2.22 (2026-08-08) — 商户管理详情与资产划拨 (Asset Management)
 深化了 CMP 平台的组织管理能力，支持多门店维度及未归属设备的灵活划拨。
 *   **权限闭环**: 为 `locations` 补齐 RLS 策略；增加 `SYS_ADMIN` 对全量设备的管理权限（用于划拨）。

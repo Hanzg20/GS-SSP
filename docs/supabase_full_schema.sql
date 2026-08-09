@@ -621,6 +621,8 @@ BEGIN
 END;
 $$;
 
+GRANT EXECUTE ON FUNCTION public.is_sys_admin() TO authenticated, anon;
+
 -- True if the caller has an org_members row (any org, or the global
 -- SYS_ADMIN row) with the given capability -- used to gate writes
 -- (device commands, product/config edits, marketing coupons) separately
@@ -652,6 +654,7 @@ FOR SELECT TO authenticated
 USING (public.is_sys_admin() OR id IN (SELECT public.member_org_ids()));
 
 -- v2.21: Add write policies for SYS_ADMIN to enable manual onboarding via Portal
+-- v2.23: Use direct public.is_sys_admin() call and ensure permissions.
 DROP POLICY IF EXISTS "Sys admins can create organizations" ON public.organizations;
 CREATE POLICY "Sys admins can create organizations" ON public.organizations
 FOR INSERT TO authenticated
