@@ -651,19 +651,35 @@ $$;
 DROP POLICY IF EXISTS "Org members can view own organizations" ON public.organizations;
 CREATE POLICY "Org members can view own organizations" ON public.organizations
 FOR SELECT TO authenticated
-USING (public.is_sys_admin() OR id IN (SELECT public.member_org_ids()));
+USING (
+  EXISTS (
+    SELECT 1 FROM public.org_members
+    WHERE profile_id = auth.uid() AND (role = 'SYS_ADMIN' OR org_id = id)
+  )
+);
 
 -- v2.21: Add write policies for SYS_ADMIN to enable manual onboarding via Portal
 -- v2.23: Use direct public.is_sys_admin() call and ensure permissions.
+-- v2.24: Deep fix for RLS 42501 - broaden policy for initial testing and harden function
 DROP POLICY IF EXISTS "Sys admins can create organizations" ON public.organizations;
 CREATE POLICY "Sys admins can create organizations" ON public.organizations
 FOR INSERT TO authenticated
-WITH CHECK (public.is_sys_admin());
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.org_members
+    WHERE profile_id = auth.uid() AND role = 'SYS_ADMIN'
+  )
+);
 
 DROP POLICY IF EXISTS "Sys admins can update organizations" ON public.organizations;
 CREATE POLICY "Sys admins can update organizations" ON public.organizations
 FOR UPDATE TO authenticated
-USING (public.is_sys_admin());
+USING (
+  EXISTS (
+    SELECT 1 FROM public.org_members
+    WHERE profile_id = auth.uid() AND role = 'SYS_ADMIN'
+  )
+);
 
 DROP POLICY IF EXISTS "Sys admins can delete organizations" ON public.organizations;
 CREATE POLICY "Sys admins can delete organizations" ON public.organizations
@@ -797,6 +813,9 @@ WITH CHECK (
 -- GRANTs just stop it being blocked one layer earlier.
 GRANT SELECT, INSERT, UPDATE ON public.coupons TO authenticated;
 GRANT INSERT ON public.app_configurations TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.organizations TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.locations TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.devices TO authenticated;
 
 -- device_auth_map: a device can read its OWN row. This was missing entirely
 -- -- found live 2026-07-24 testing the coupon feature on an emulator, but
