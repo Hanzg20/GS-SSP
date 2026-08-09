@@ -611,9 +611,14 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.is_sys_admin()
 RETURNS BOOLEAN
-LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
-  SELECT EXISTS (SELECT 1 FROM public.org_members WHERE profile_id = auth.uid() AND role = 'SYS_ADMIN');
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.org_members
+    WHERE profile_id = auth.uid() AND role = 'SYS_ADMIN'
+  );
+END;
 $$;
 
 -- True if the caller has an org_members row (any org, or the global
