@@ -1,5 +1,11 @@
 # GS-SSP 系统架构设计规格书 (System Architecture Specification)
 
+### v2.20 (2026-08-08) — IoT 远程应急启动 (Remote Activation)
+实现了从云端控制台直接触发终端继电器的“救火”逻辑。
+*   **指令增强**: `device_commands` 表新增 `payload` (JSONB) 字段，支持携带 HEX 指令代码。
+*   **终端执行**: `RemoteCommandManager` 实装 `START_SERVICE` 分流，通过 HAL 层 `sendHexString()` 直接驱动物理继电器。
+*   **UI/UX**: CMP 控制台新增“Remote Start”交互区，支持按套餐选择远程启动服务，并伴随 TTS 语音提醒。
+
 ### v2.19 (2026-08-08) — 全链路进化 (P0-P2 Evolution)
 系统已进化至生产级状态，涵盖了安全加固、分级营销与自动化运维。
 *   **物理安全**: 引入 PCI 7 防篡改监控，实装 HAL 层级 `getTamperStatus()`。

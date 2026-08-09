@@ -1810,7 +1810,8 @@ GROUP BY o.name, a.id, a.media_type, a.text_content;
 CREATE TABLE IF NOT EXISTS public.device_commands (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     device_sn TEXT REFERENCES public.devices(sn) ON DELETE CASCADE,
-    command TEXT NOT NULL, -- 'REBOOT', 'SYNC_CONFIG', 'LOCK'
+    command TEXT NOT NULL, -- 'REBOOT', 'SYNC_CONFIG', 'LOCK', 'START_SERVICE'
+    payload JSONB DEFAULT '{}',
     status TEXT DEFAULT 'PENDING',
     created_at TIMESTAMPTZ DEFAULT now()
 );
