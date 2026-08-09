@@ -662,6 +662,22 @@ CREATE POLICY "Sys admins can delete organizations" ON public.organizations
 FOR DELETE TO authenticated
 USING (public.is_sys_admin());
 
+-- v2.22: Add policies for locations and global device management
+DROP POLICY IF EXISTS "Org members can view own locations" ON public.locations;
+CREATE POLICY "Org members can view own locations" ON public.locations
+FOR SELECT TO authenticated
+USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
+
+DROP POLICY IF EXISTS "Sys admins can manage locations" ON public.locations;
+CREATE POLICY "Sys admins can manage locations" ON public.locations
+FOR ALL TO authenticated
+USING (public.is_sys_admin());
+
+DROP POLICY IF EXISTS "Sys admins can manage all devices" ON public.devices;
+CREATE POLICY "Sys admins can manage all devices" ON public.devices
+FOR ALL TO authenticated
+USING (public.is_sys_admin());
+
 DROP POLICY IF EXISTS "Org members can view org devices" ON public.devices;
 CREATE POLICY "Org members can view org devices" ON public.devices
 FOR SELECT TO authenticated

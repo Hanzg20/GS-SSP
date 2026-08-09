@@ -1,5 +1,11 @@
 # GS-SSP 系统架构设计规格书 (System Architecture Specification)
 
+### v2.22 (2026-08-08) — 商户管理详情与资产划拨 (Asset Management)
+深化了 CMP 平台的组织管理能力，支持多门店维度及未归属设备的灵活划拨。
+*   **权限闭环**: 为 `locations` 补齐 RLS 策略；增加 `SYS_ADMIN` 对全量设备的管理权限（用于划拨）。
+*   **服务扩展**: `orgService` 新增门店 CRUD；`deviceService` 新增未分配设备查询及一键划拨逻辑。
+*   **UI 升级**: `OrganizationManagement` 引入侧边详情抽屉（Sheet），集成门店清单与资产划拨工作流。
+
 ### v2.21 (2026-08-08) — 权限补丁与交互加固 (Auth & UI Hotfix)
 修复了商户管理模块的写权限漏洞并优化了提交反馈。
 *   **权限修复**: 为 `organizations` 表补齐了 `INSERT`, `UPDATE`, `DELETE` 的 RLS 策略，解锁 `SYS_ADMIN` 的管理权限。
