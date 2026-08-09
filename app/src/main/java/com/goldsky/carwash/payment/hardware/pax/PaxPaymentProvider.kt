@@ -64,7 +64,8 @@ class PaxPaymentProvider(
         Log.i(TAG, "Initiating PAX SALE: $amountInCents cents, Ref: $ecrRefNum")
 
         val posLink = PosLink()
-        posLink.SetCommSetting(getCommSetting())
+        posLink.
+        SetCommSetting(getCommSetting())
         activePosLink = posLink
 
         val request = PaymentRequest()

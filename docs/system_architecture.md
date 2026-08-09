@@ -1,5 +1,10 @@
 # GS-SSP 系统架构设计规格书 (System Architecture Specification)
 
+### v2.21 (2026-08-08) — 权限补丁与交互加固 (Auth & UI Hotfix)
+修复了商户管理模块的写权限漏洞并优化了提交反馈。
+*   **权限修复**: 为 `organizations` 表补齐了 `INSERT`, `UPDATE`, `DELETE` 的 RLS 策略，解锁 `SYS_ADMIN` 的管理权限。
+*   **交互优化**: 为定价管理模块的推流操作增加了失败状态提示（Toast），提升了异常场景下的确定性。
+
 ### v2.20 (2026-08-08) — IoT 远程应急启动 (Remote Activation)
 实现了从云端控制台直接触发终端继电器的“救火”逻辑。
 *   **指令增强**: `device_commands` 表新增 `payload` (JSONB) 字段，支持携带 HEX 指令代码。

@@ -646,6 +646,22 @@ CREATE POLICY "Org members can view own organizations" ON public.organizations
 FOR SELECT TO authenticated
 USING (public.is_sys_admin() OR id IN (SELECT public.member_org_ids()));
 
+-- v2.21: Add write policies for SYS_ADMIN to enable manual onboarding via Portal
+DROP POLICY IF EXISTS "Sys admins can create organizations" ON public.organizations;
+CREATE POLICY "Sys admins can create organizations" ON public.organizations
+FOR INSERT TO authenticated
+WITH CHECK (public.is_sys_admin());
+
+DROP POLICY IF EXISTS "Sys admins can update organizations" ON public.organizations;
+CREATE POLICY "Sys admins can update organizations" ON public.organizations
+FOR UPDATE TO authenticated
+USING (public.is_sys_admin());
+
+DROP POLICY IF EXISTS "Sys admins can delete organizations" ON public.organizations;
+CREATE POLICY "Sys admins can delete organizations" ON public.organizations
+FOR DELETE TO authenticated
+USING (public.is_sys_admin());
+
 DROP POLICY IF EXISTS "Org members can view org devices" ON public.devices;
 CREATE POLICY "Org members can view org devices" ON public.devices
 FOR SELECT TO authenticated
