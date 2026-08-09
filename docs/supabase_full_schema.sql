@@ -648,19 +648,18 @@ $$;
 -- returning an empty list for every user including SYS_ADMIN, silently
 -- blocking every org-scoped create/publish flow in the CMP (the org
 -- <select> always rendered "暂无可选商户" with nothing to pick).
+-- v2.25: Final RLS Fix - Remove all custom function calls from policies to avoid recursion/scoping issues.
+-- Directly query org_members table for highest reliability.
 DROP POLICY IF EXISTS "Org members can view own organizations" ON public.organizations;
 CREATE POLICY "Org members can view own organizations" ON public.organizations
 FOR SELECT TO authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.org_members
-    WHERE profile_id = auth.uid() AND (role = 'SYS_ADMIN' OR org_id = id)
+    WHERE profile_id = auth.uid() AND (role = 'SYS_ADMIN' OR org_id = organizations.id)
   )
 );
 
--- v2.21: Add write policies for SYS_ADMIN to enable manual onboarding via Portal
--- v2.23: Use direct public.is_sys_admin() call and ensure permissions.
--- v2.24: Deep fix for RLS 42501 - broaden policy for initial testing and harden function
 DROP POLICY IF EXISTS "Sys admins can create organizations" ON public.organizations;
 CREATE POLICY "Sys admins can create organizations" ON public.organizations
 FOR INSERT TO authenticated
@@ -684,7 +683,12 @@ USING (
 DROP POLICY IF EXISTS "Sys admins can delete organizations" ON public.organizations;
 CREATE POLICY "Sys admins can delete organizations" ON public.organizations
 FOR DELETE TO authenticated
-USING (public.is_sys_admin());
+USING (
+  EXISTS (
+    SELECT 1 FROM public.org_members
+    WHERE profile_id = auth.uid() AND role = 'SYS_ADMIN'
+  )
+);
 
 -- v2.22: Add policies for locations and global device management
 DROP POLICY IF EXISTS "Org members can view own locations" ON public.locations;

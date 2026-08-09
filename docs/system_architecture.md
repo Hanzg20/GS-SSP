@@ -1,5 +1,10 @@
 # GS-SSP 系统架构设计规格书 (System Architecture Specification)
 
+### v2.24 (2026-08-08) — RLS 策略终极穿透 (Final RLS Pass)
+解决了由于函数递归与 Returning 子句导致的 42501 权限错误。
+*   **透传式策略**: 弃用 `is_sys_admin()` 函数判权，将校验逻辑直接内联至 RLS `WITH CHECK` 中，确保 100% 执行成功。
+*   **可见性对齐**: 强化了管理员的 `SELECT` 权限，支持 `insert().select()` 的原子操作反馈。
+
 ### v2.23 (2026-08-08) — RLS 权限深度修复 (Security Policy Fix)
 解决了商户管理模块在生产环境下的写操作冲突。
 *   **函数加固**: 将 `is_sys_admin()` 升级为 `SECURITY DEFINER` 并显式授权，解决了 RLS 递归校验导致的拒绝错误。
