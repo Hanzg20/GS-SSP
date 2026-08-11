@@ -835,7 +835,12 @@ class MainActivity : BaseAdActivity() {
             val paid = QrPaymentRepository.pollUntilPaid(txId)
             if (paid) {
                 // paymentInFlight is cleared by startFinalizationSequence itself once it's done.
-                startFinalizationSequence(priceInCents, startHex, "", dialog, productId = productId, paymentMethod = "QR_CODE")
+                // qrTxId = txId so the DispenseJob threaded to DispenseEngine carries the
+                // SAME id the payment-webhook used for this session (see qrTxId param doc
+                // comment below) -- needed so EdgeNexusRemoteAdapter can find the matching
+                // device_commands row. refNum stays "" as before (it gates the card
+                // void/refund path on hardware failure, which doesn't apply to QR).
+                startFinalizationSequence(priceInCents, startHex, "", dialog, productId = productId, paymentMethod = "QR_CODE", qrTxId = txId)
             } else {
                 // Polling gave up (customer never completed payment, or it's
                 // still processing beyond our 2-minute budget) -- previously
@@ -878,7 +883,16 @@ class MainActivity : BaseAdActivity() {
         // PENDING->PAID transition here is an UPDATE that doesn't touch them.
         productId: String? = null,
         paymentMethod: String = "UNKNOWN",
-        entryMode: String? = null
+        entryMode: String? = null,
+        // Real tx_id from QrPaymentRepository.createSession/pollUntilPaid, set only
+        // by the QR call site. Deliberately kept separate from refNum (rather than
+        // passing it as refNum directly) because refNum.isEmpty() also gates the
+        // card auto-void/refund branch below on hardware failure -- that branch
+        // assumes refNum is a card ecr_ref_num a payment provider can void, which a
+        // Stripe/QR tx_id is not. When set, this becomes ecrRefNum so DispenseJob.txRef
+        // carries the payment-webhook's own tx_id, letting EdgeNexusRemoteAdapter
+        // correlate the device_commands row the webhook inserted for this payment.
+        qrTxId: String? = null
     ) {
         val layoutStatus = dialog?.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
         val tvStatus = dialog?.findViewById<TextView>(R.id.tv_status_msg)
@@ -887,7 +901,7 @@ class MainActivity : BaseAdActivity() {
         val pbWashStages = dialog?.findViewById<ProgressBar>(R.id.pb_wash_stages)
         val tvStageLabel = dialog?.findViewById<TextView>(R.id.tv_stage_label)
         val stageLabels = resources.getStringArray(R.array.wash_stage_labels)
-        val ecrRefNum = pendingEcrRefNum ?: (if (refNum.isEmpty()) "QR_${System.currentTimeMillis()}" else refNum)
+        val ecrRefNum = pendingEcrRefNum ?: qrTxId ?: (if (refNum.isEmpty()) "QR_${System.currentTimeMillis()}" else refNum)
         var washIconAnimator: ObjectAnimator? = null
 
         CoroutineScope(Dispatchers.Main).launch {

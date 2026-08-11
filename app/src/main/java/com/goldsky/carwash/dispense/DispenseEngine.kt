@@ -34,6 +34,10 @@ object DispenseEngine {
         val adapter = when (settings?.dispense_protocol) {
             "single_command" -> SingleCommandAdapter()
             "mdb_vend" -> MdbVendAdapter()
+            // Opt-in only -- no existing device's cloud config has this set,
+            // so this is fully inert everywhere except a device explicitly
+            // configured for the App+EdgeNexus+CMP integration test.
+            "edgenexus_remote" -> EdgeNexusRemoteAdapter()
             else -> PulseCreditAdapter()
         }
         val ackStrategy = when (settings?.dispense_ack_mode) {
