@@ -25,6 +25,13 @@
 *   **策略优化**: 优化了 `organizations` 表的 `INSERT` 策略，确保管理员权限判定具有物理隔离的确定性。
 *   **反馈清理**: 移除了前端调试用的 Alert，统一使用 `sonner` 消息系统提供高质量交互。
 
+### v2.24 (2026-08-14) — Vending 业态 Compose UI 实装 (Vending Compose UI)
+针对 IM25 小屏终端，实装了基于现代 Compose 框架的 Vending 专用 UI。
+*   **状态机架构**: 引入 MVI (Model-View-Intent) 模式，由 `VendingViewModel` 驱动 UI 状态流转。
+*   **UI 适配**: 针对 2.8 寸竖屏优化了高对比度布局，包含欢迎页、支付引导页、出货等待页。
+*   **动画引导**: 引入了 NFC 支付热区（Hotzone）提示动画，提升无人值守下的支付成功率。
+*   **编译链路**: 升级了 Kotlin 2.0 与 Compose Compiler Plugin，支持多产品线编译变体。
+
 ### v2.23 (2026-08-14) — 平台全业态架构重构 (Full Product Line Refactoring)
 正式建立了 GS-SSP 的多业态分支架构，支持不同机型（IM25/IM30）与不同业务场景。
 *   **包名统一**: 全量从 `com.goldsky.carwash` 迁移至 `com.goldsky.ssp`。
