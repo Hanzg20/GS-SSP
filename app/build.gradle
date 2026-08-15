@@ -9,15 +9,15 @@ if (localPropertiesFile.exists()) {
 }
 
 android {
-    namespace 'com.goldsky.carwash'
+    namespace 'com.goldsky.ssp'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.goldsky.carwash"
-        minSdk 25 // Android 7.1 (PAX IM30 target)
+        applicationId "com.goldsky.ssp"
+        minSdk 25 // Android 7.1 (PAX IM30/IM25 target)
         targetSdk 34
         versionCode 1
-        versionName "0.1"
+        versionName "1.0.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -28,6 +28,34 @@ android {
         // Enable installation on x86_64 emulators even though we only have ARM libs
         ndk {
             abiFilters "x86_64", "armeabi-v7a", "arm64-v8a"
+        }
+    }
+
+    flavorDimensions "product"
+    productFlavors {
+        wash {
+            dimension "product"
+            applicationIdSuffix ".wash"
+            versionNameSuffix "-wash"
+            manifestPlaceholders = [appName: "GS-SSP Wash"]
+        }
+        vending {
+            dimension "product"
+            applicationIdSuffix ".vending"
+            versionNameSuffix "-vending"
+            manifestPlaceholders = [appName: "GS-SSP Vending"]
+        }
+        parking {
+            dimension "product"
+            applicationIdSuffix ".parking"
+            versionNameSuffix "-parking"
+            manifestPlaceholders = [appName: "GS-SSP Parking"]
+        }
+        ev {
+            dimension "product"
+            applicationIdSuffix ".ev"
+            versionNameSuffix "-ev"
+            manifestPlaceholders = [appName: "GS-SSP EV Charging"]
         }
     }
 

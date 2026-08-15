@@ -648,49 +648,37 @@ $$;
 -- returning an empty list for every user including SYS_ADMIN, silently
 -- blocking every org-scoped create/publish flow in the CMP (the org
 -- <select> always rendered "暂无可选商户" with nothing to pick).
--- v2.25: Final RLS Fix - Remove all custom function calls from policies to avoid recursion/scoping issues.
--- Directly query org_members table for highest reliability.
-DROP POLICY IF EXISTS "Org members can view own organizations" ON public.organizations;
-CREATE POLICY "Org members can view own organizations" ON public.organizations
-FOR SELECT TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.org_members
-    WHERE profile_id = auth.uid() AND (role = 'SYS_ADMIN' OR org_id = organizations.id)
-  )
-);
-
+-- v2.26 ("Nuclear RLS Fix", a single master_admin_policy FOR ALL) was drafted
+-- here but never actually applied -- what ended up live instead was a lone
+-- SELECT policy (added directly via the SQL console, bypassing this file),
+-- with no INSERT/UPDATE/DELETE policy at all. Default-deny again: creating
+-- an organization from the CMP kept failing with 42501 even for SYS_ADMIN,
+-- because RLS-enabled + zero matching policy = deny regardless of GRANTs.
+-- Found live 2026-08-08 verifying the CMP's OrganizationManagement flow
+-- against the actual database (pg_policies), not just reading this doc.
+-- v2.27: Restore the missing write policies, using the same is_sys_admin()/
+-- member_org_ids() helper convention already used for locations/devices
+-- below, matching what the live SELECT policy actually uses.
 DROP POLICY IF EXISTS "Sys admins can create organizations" ON public.organizations;
 CREATE POLICY "Sys admins can create organizations" ON public.organizations
 FOR INSERT TO authenticated
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM public.org_members
-    WHERE profile_id = auth.uid() AND role = 'SYS_ADMIN'
-  )
-);
+WITH CHECK (is_sys_admin());
 
 DROP POLICY IF EXISTS "Sys admins can update organizations" ON public.organizations;
 CREATE POLICY "Sys admins can update organizations" ON public.organizations
 FOR UPDATE TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.org_members
-    WHERE profile_id = auth.uid() AND role = 'SYS_ADMIN'
-  )
-);
+USING (is_sys_admin())
+WITH CHECK (is_sys_admin());
 
 DROP POLICY IF EXISTS "Sys admins can delete organizations" ON public.organizations;
 CREATE POLICY "Sys admins can delete organizations" ON public.organizations
 FOR DELETE TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.org_members
-    WHERE profile_id = auth.uid() AND role = 'SYS_ADMIN'
-  )
-);
+USING (is_sys_admin());
 
 -- v2.22: Add policies for locations and global device management
+-- (also found missing live on 2026-08-08 alongside the organizations gap
+-- above -- same root cause, this file drifting from what was actually run
+-- in the SQL console. Re-applied and confirmed via pg_policies.)
 DROP POLICY IF EXISTS "Org members can view own locations" ON public.locations;
 CREATE POLICY "Org members can view own locations" ON public.locations
 FOR SELECT TO authenticated

@@ -1,5 +1,19 @@
 # GS-SSP 系统架构设计规格书 (System Architecture Specification)
 
+### v2.28 (2026-08-09) — MVP 功能实测：远程设备控制完全不可用 (Found via Live Browser Testing)
+按 CMP.GOLDSKY.CA 规划建议书的 MVP 验收标准（登录权限、设备绑定、对账大盘、远程触发继电器）逐项在浏览器里实测，而不是只看代码。前三项通过；**第四项——后台远程触发继电器功能，是 MVP 的核心卖点——完全不可用**。
+*   **现象**：Device Diagnostics 页面点击 One-Click Remote Restart / Start Service 均返回 "Command failed to send"，网络面板显示 `POST device_commands` 返回 400。
+*   **根因**：线上 `device_commands` 表缺少 `payload JSONB` 列，但 `deviceService.sendDeviceCommand()` 每次插入都会带 `payload` 字段——PostgREST 因未知列拒绝请求。本文档的表定义（下方 `CREATE TABLE public.device_commands`）本来就包含这一列，同样是"文档/代码已经是对的，线上从未同步"这一类问题，与 v2.27 的 RLS 缺口同源。
+*   **修复**：`ALTER TABLE public.device_commands ADD COLUMN IF NOT EXISTS payload JSONB DEFAULT '{}';`，已在生产库执行并重新在浏览器里验证 REBOOT 与 START_SERVICE 均写入正确的 `payload`。
+*   **顺带发现（未修复，需要产品决策）**：Transaction Monitor 的一键补偿（Compensate）功能，遇到设备尚未分配商户（`devices.org_id IS NULL`）的交易时会直接报错"Couldn't resolve this transaction's merchant"且无法处理——线上至少 14 条真实交易记录处于这个状态。这类交易通常正是"ACK Missing"最需要补偿的场景，但目前卡死。
+
+### v2.27 (2026-08-08) — RLS 策略核对与补齐 (Verified Against Live DB)
+此前 v2.23–v2.25 记录的多轮"终极修复"从未真正在生产数据库执行成功——直接用 `supabase db query --linked` 核对 `pg_policies` 后发现，`organizations` 表实际只剩一条 `SELECT` 策略，`INSERT`/`UPDATE`/`DELETE` 完全没有策略（RLS 已开启 + 无匹配策略 = 默认拒绝），`locations` 表甚至一条策略都没有。这才是 42501 反复出现、以及门店管理功能完全不可用的真正原因。
+*   **organizations**: 按 `is_sys_admin()` 惯例补齐 `INSERT`/`UPDATE`/`DELETE` 三条策略（详见下方 SQL），与已存在的 `SELECT` 策略保持同一套约定，不再使用未落地的 `master_admin_policy`。
+*   **locations**: 补齐 v2.22 中记录但从未实际执行的 `SELECT` 与管理员 `ALL` 策略。
+*   **已在生产库核实**: 修复后重新查询 `pg_policies` 确认四条策略均已生效；`npm run build`/`tsc --noEmit` 通过。
+*   **遗留问题**: 本地 `gs-ssp-cmp/supabase/migrations` 与远程库存在系统性漂移（`supabase migration list --linked` 显示所有本地文件时间戳都对不上远程记录），说明近期的 schema 变更都是通过 SQL 控制台手工执行、从未走迁移文件——这也是本次修复丢失的根本原因，值得后续专项处理。
+
 ### v2.24 (2026-08-08) — RLS 策略终极穿透 (Final RLS Pass)
 解决了由于函数递归与 Returning 子句导致的 42501 权限错误。
 *   **透传式策略**: 弃用 `is_sys_admin()` 函数判权，将校验逻辑直接内联至 RLS `WITH CHECK` 中，确保 100% 执行成功。
@@ -10,6 +24,13 @@
 *   **函数加固**: 将 `is_sys_admin()` 升级为 `SECURITY DEFINER` 并显式授权，解决了 RLS 递归校验导致的拒绝错误。
 *   **策略优化**: 优化了 `organizations` 表的 `INSERT` 策略，确保管理员权限判定具有物理隔离的确定性。
 *   **反馈清理**: 移除了前端调试用的 Alert，统一使用 `sonner` 消息系统提供高质量交互。
+
+### v2.23 (2026-08-14) — 平台全业态架构重构 (Full Product Line Refactoring)
+正式建立了 GS-SSP 的多业态分支架构，支持不同机型（IM25/IM30）与不同业务场景。
+*   **包名统一**: 全量从 `com.goldsky.carwash` 迁移至 `com.goldsky.ssp`。
+*   **编译变体 (Flavors)**: 引入 Gradle Product Flavors，定义了 `wash` (洗车), `vending` (售货), `parking` (停车), `ev` (充电) 四条产品线。
+*   **机型自适应**: 引入 `DeviceAdapter` 自动识别 IM25 (紧凑型) 与 IM30 (大屏型)，支持 UI 分流加载。
+*   **Manifest 动态化**: 应用名称与 Application ID 根据 Flavor 动态生成，支持同一台开发机安装多个版本。
 
 ### v2.22 (2026-08-08) — 商户管理详情与资产划拨 (Asset Management)
 深化了 CMP 平台的组织管理能力，支持多门店维度及未归属设备的灵活划拨。

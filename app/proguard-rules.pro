@@ -28,10 +28,10 @@
 -keepclasseswithmembers class kotlinx.serialization.json.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
--keep,includedescriptorclasses class com.goldsky.carwash.model.** { *; }
--keep,includedescriptorclasses class com.goldsky.carwash.payment.** { *; }
--keep class com.goldsky.carwash.**$$serializer { *; }
--keepclassmembers class com.goldsky.carwash.** { *** Companion; }
+-keep,includedescriptorclasses class com.goldsky.ssp.model.** { *; }
+-keep,includedescriptorclasses class com.goldsky.ssp.payment.** { *; }
+-keep class com.goldsky.ssp.**$$serializer { *; }
+-keepclassmembers class com.goldsky.ssp.** { *** Companion; }
 
 # --- Ktor / Supabase-kt ---
 -dontwarn io.ktor.**

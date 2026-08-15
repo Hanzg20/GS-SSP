@@ -54,13 +54,13 @@
                 android:textStyle="bold"
                 android:layout_marginEnd="6dp"/>
 
-            <com.goldsky.carwash.view.FlipDigitView
+            <com.goldsky.ssp.view.FlipDigitView
                 android:id="@+id/flip_tens"
                 android:layout_width="55dp"
                 android:layout_height="match_parent"
                 android:layout_marginEnd="4dp" />
 
-            <com.goldsky.carwash.view.FlipDigitView
+            <com.goldsky.ssp.view.FlipDigitView
                 android:id="@+id/flip_ones"
                 android:layout_width="55dp"
                 android:layout_height="match_parent" />
