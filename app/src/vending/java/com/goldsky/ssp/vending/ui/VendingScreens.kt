@@ -16,6 +16,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.goldsky.ssp.vending.VendingViewModel
+import com.goldsky.ssp.vending.logic.InventoryManager
 import com.goldsky.ssp.vending.logic.VendingState
 import com.goldsky.ssp.vending.ui.components.NfcRadar
 import com.goldsky.ssp.vending.ui.theme.*
@@ -41,6 +42,7 @@ fun VendingMainContainer(viewModel: VendingViewModel) {
                         is VendingState.VendRequestReceived -> PaymentScreen(
                             currentState.amountCents, 
                             currentState.itemSlot,
+                            stockCount = InventoryManager.getStock(currentState.itemSlot),
                             onPayClick = { viewModel.startPayment() }
                         )
                         is VendingState.PaymentAuthorizing -> LoadingScreen("AUTHORIZING...")
@@ -72,6 +74,13 @@ fun VendingMainContainer(viewModel: VendingViewModel) {
                             colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray.copy(alpha = 0.5f))
                         ) {
                             Text("DEBUG: SIMULATE SELECTION", fontSize = 10.sp)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = { viewModel.debugTriggerMachineRequest(300, "B2") },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Magenta.copy(alpha = 0.5f))
+                        ) {
+                            Text("DEBUG: SIMULATE SOLD OUT (B2)", fontSize = 10.sp)
                         }
                     }
                 }
@@ -149,14 +158,14 @@ fun IdleScreen() {
 }
 
 @Composable
-fun PaymentScreen(amountCents: Int, label: String, onPayClick: () -> Unit) {
+fun PaymentScreen(amountCents: Int, label: String, stockCount: Int, onPayClick: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(modifier = Modifier.height(32.dp))
         
-        Text(label, color = TextSecondary, fontSize = 14.sp)
+        Text("$label (Stock: $stockCount)", color = TextSecondary, fontSize = 14.sp)
         
         Text(
             text = "$${String.format("%.2f", amountCents / 100.0)}",

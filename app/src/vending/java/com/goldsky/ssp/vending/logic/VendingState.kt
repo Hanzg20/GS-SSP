@@ -19,6 +19,7 @@ sealed class VendingState {
     data class Dispensing(
         val transactionId: String,
         val amountCents: Int,
+        val itemSlot: String,
         val deadline: Long // To handle Auto-Void if timeout
     ) : VendingState()
     

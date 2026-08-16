@@ -95,14 +95,14 @@ object ShadowManager {
 
     /**
      * Gathers current hardware info and pushes to 'reported' field in Supabase.
+     * @param extraData Optional extra data to merge into the reported state (e.g. inventory).
      */
-    fun syncReportedState(context: Context, sn: String) {
+    fun syncReportedState(context: Context, sn: String, extraData: Map<String, Int>? = null) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val dal: IDAL? = try { NeptuneLiteUser.getInstance().getDal(context) } catch (e: Exception) { null }
-                
                 val currentState = ShadowState(
-                    last_sync_at = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date())
+                    last_sync_at = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date()),
+                    inventory = extraData
                 )
 
                 SupabaseClientProvider.client.postgrest["device_shadows"].update(
