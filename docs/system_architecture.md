@@ -14,6 +14,12 @@
 *   **已在生产库核实**: 修复后重新查询 `pg_policies` 确认四条策略均已生效；`npm run build`/`tsc --noEmit` 通过。
 *   **遗留问题**: 本地 `gs-ssp-cmp/supabase/migrations` 与远程库存在系统性漂移（`supabase migration list --linked` 显示所有本地文件时间戳都对不上远程记录），说明近期的 schema 变更都是通过 SQL 控制台手工执行、从未走迁移文件——这也是本次修复丢失的根本原因，值得后续专项处理。
 
+### v2.25 (2026-08-16) — 全产品线分类与业务定义 (Full Taxonomy & Specs)
+正式确立了五大核心产品线及其业务与硬件交互模型。
+*   **多业态定义**: 新增第 11 章，详细规范了 Wash, Vending, Parking, EV, Retail 的业务特征。
+*   **硬件分发矩阵**: 定义了不同业态下的通讯协议（MDB vs Modbus vs Serial）与资金流模型（预付 vs 预授权）。
+*   **零售分支实装**: 引入了 `retail` 变体，支持有人值守场景下的员工审计与购物车逻辑。
+
 ### v2.24 (2026-08-08) — RLS 策略终极穿透 (Final RLS Pass)
 解决了由于函数递归与 Returning 子句导致的 42501 权限错误。
 *   **透传式策略**: 弃用 `is_sys_admin()` 函数判权，将校验逻辑直接内联至 RLS `WITH CHECK` 中，确保 100% 执行成功。
@@ -670,3 +676,44 @@ IM30 端的 App 采用 **MVVM (Model-View-ViewModel)** 架构，结合 **Reposit
 | 控制板固件侧安全联锁 | 8.2 节要求的"心跳超时自动复位"需在继电器板固件中实现，App 侧无法验证 | 硬件固件不在本仓库范围内 |
 | 集成测试覆盖 | 已有的 18 个测试均为纯逻辑单测；`ConfigManager` 三级降级、`PaymentService` 完整流程等仍缺集成测试 | 现有 `object` 单例 + 直接实例化 Ktor Client 的写法不便注入 Mock，需要先做依赖注入重构才能低成本补齐 |
 | 仓库卫生 | `app/build/` 构建产物目录被历史提交进了 git（未被 `.gitignore` 排除），导致 `git status` 长期有大量噪音 | 需要人工确认后执行 `git rm -r --cached app/build` 并补充 `.gitignore`，本次未处理 |
+
+---
+
+## 11. 产品线分类与业务特征 (Product Line Taxonomy)
+
+为了支撑 GS-SSP 的全球化 SAAS 运营，系统架构必须兼容多种行业逻辑。以下是各产品变体 (Flavor) 的详细规格：
+
+### 11.1 业务矩阵概览 (The Matrix)
+
+| 变体 (Flavor) | 核心场景 | 目标硬件 | 物理协议 | 资金流模型 | 关键技术特征 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`wash`** | 自助洗车 | IM30 | Serial (RS232) | 预付单扣 | 2x2 大图标 UI，继电器长闭合控制 |
+| **`vending`** | 自动售货 | IM25 | **MDB** | 预付+确认 | 极简小屏 UI，货道库存本地对账 |
+| **`parking`** | 智慧停车 | IM30/IM25 | Pulse / DI | 预付单扣 | 车牌识别集成预留，闸机抬杆脉冲 |
+| **`ev`** | 新能源充电 | IM30 | **Modbus / OCPP** | **预授权 (Deposit)** | 实时电量(kWh)仪表盘，动态计费 |
+| **`retail`** | 零售收银 | A920 / Handheld | Internal API | **有人值守 (Attended)** | 购物车逻辑，员工 ID 审计，SoftPOS 整合 |
+
+### 11.2 硬件抽象层 (HAL) 泛化
+随着变体的增多，HAL 层已不再仅限于洗车串口。
+*   **MDB Driver**: 专门用于 `vending` 变体，处理 9-bit 工业总线握手。
+*   **Energy Meter Driver**: 专门用于 `ev` 变体，通过 Modbus RTU 采集电压、电流与 kWh。
+*   **Payment Gateway Bridge**: 
+    *   无人值守：采用 POSLink 非接优先逻辑。
+    *   有人值守：采用 SoftPOS 或 A920 实体刷卡逻辑。
+
+### 11.3 资金流模型演进
+*   **预授权 (Pre-Authorization)**: 主要针对 `ev` 充电。系统先扣除 $50 押金，充电结束后按实际度数执行 `Capture` 或 `Partial Refund`。
+*   **后结算 (Post-Audit)**: 针对 `retail` 模式，支持先录入商品后统一结算。
+
+---
+
+## 12. 未来演进路线 (v1.1 Roadmap)
+
+### 12.1 边缘枢纽化 (EdgeNexus Integration)
+未来版本将支持通过 **EdgeNexus (ESP32)** 网关实现“一控多”。
+*   **场景**: 一个 IM30 同时控制 4 个洗车工位，或一个收银台控制全场售货机。
+*   **协议**: 终端通过 MQTT/WebSocket 指令指挥 EdgeNexus 执行物理动作。
+
+### 12.2 全球化对账 (Global Reconciliation)
+*   **汇率引擎**: 在 `retail` 模式下引入实时汇率换算，支持加美边境的多币种结算。
+*   **统一仪表盘**: CMP 平台将支持跨业态汇总报表（如：某洗车场同时也卖水和充电）。

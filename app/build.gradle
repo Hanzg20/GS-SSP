@@ -58,6 +58,12 @@ android {
             versionNameSuffix "-ev"
             manifestPlaceholders = [appName: "GS-SSP EV Charging"]
         }
+        retail {
+            dimension "product"
+            applicationIdSuffix ".retail"
+            versionNameSuffix "-retail"
+            manifestPlaceholders = [appName: "GS-SSP Retail"]
+        }
     }
 
     packagingOptions {
@@ -150,7 +156,7 @@ dependencies {
     implementation "io.coil-kt:coil:2.6.0"
 
     // Jetpack Compose
-    def compose_bom = platform('androidx.compose:compose-bom:2023.03.00')
+    def compose_bom = platform('androidx.compose:compose-bom:2024.04.01')
     implementation compose_bom
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-tooling-preview'
