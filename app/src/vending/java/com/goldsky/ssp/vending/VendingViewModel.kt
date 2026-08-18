@@ -3,6 +3,8 @@ package com.goldsky.ssp.vending
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.payment.ShadowManager
 import com.goldsky.ssp.vending.db.VendingOrder
@@ -31,9 +33,18 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     private val DISPENSE_TIMEOUT_MS = 30000L
 
     init {
+        // Initialize local storage
+        InventoryManager.init(application)
+        OrderRepository.init(application)
+        
         setupMdbListeners()
-        // Initial sync of inventory to cloud shadow
-        ShadowManager.syncReportedState(getApplication(), deviceSn, InventoryManager.getAllStock())
+        // Initial sync
+        triggerSync()
+    }
+
+    private fun triggerSync() {
+        val syncRequest = OneTimeWorkRequestBuilder<VendingSyncWorker>().build()
+        WorkManager.getInstance(getApplication()).enqueue(syncRequest)
     }
 
     private fun setupMdbListeners() {
@@ -53,12 +64,12 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                 autoVoidJob?.cancel()
                 
                 // 1. Decrement local inventory
-                InventoryManager.decrement(currentState.itemSlot)
+                InventoryManager.decrement(getApplication(), currentState.itemSlot)
                 
-                // 2. Sync updated inventory to cloud
-                ShadowManager.syncReportedState(getApplication(), deviceSn, InventoryManager.getAllStock())
+                // 2. Sync updated inventory and orders to cloud
+                triggerSync()
                 
-                OrderRepository.updateOrder(currentState.transactionId, "SUCCESS", "PAID")
+                updateOrderStatus(currentState.transactionId, "SUCCESS", "PAID")
                 _uiState.value = VendingState.Success(currentState.transactionId)
                 
                 viewModelScope.launch {
@@ -99,7 +110,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
             val txnId = "TXN-${System.currentTimeMillis()}"
             
             // 1. Write PENDING record to local repository
-            OrderRepository.saveOrder(VendingOrder(
+            OrderRepository.saveOrder(getApplication(), VendingOrder(
                 orderId = txnId,
                 amountCents = amount,
                 slot = slot,
@@ -134,8 +145,13 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
 
     private fun performAutoVoid(txnId: String, reason: String) {
         // In real app, call POSLink.Void(txnId)
-        OrderRepository.updateOrder(txnId, "FAILED", "VOIDED")
+        updateOrderStatus(txnId, "FAILED", "VOIDED")
         _uiState.value = VendingState.Error(reason, "Dispense Failed. Refund Processed.")
+        triggerSync()
+    }
+
+    private fun updateOrderStatus(txnId: String, dispenseStatus: String, paymentStatus: String) {
+        OrderRepository.updateOrder(getApplication(), txnId, dispenseStatus, paymentStatus)
     }
 
     /**

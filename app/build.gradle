@@ -12,6 +12,7 @@ if (localPropertiesFile.exists()) {
 android {
     namespace 'com.goldsky.ssp'
     compileSdk 34
+    buildToolsVersion "35.0.0"
 
     defaultConfig {
         applicationId "com.goldsky.ssp"
@@ -167,7 +168,9 @@ dependencies {
 
     // Local library placeholder for PAX SDKs (NeptuneLite & POSLink)
     // If you have real aar files, place them in libs/ and they will be picked up
-    implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation files('libs/PAX_POSLinkAndroid_20260202.aar')
+    implementation files('libs/cloudpos_sdk.aar')
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'

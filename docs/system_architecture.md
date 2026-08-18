@@ -14,6 +14,12 @@
 *   **已在生产库核实**: 修复后重新查询 `pg_policies` 确认四条策略均已生效；`npm run build`/`tsc --noEmit` 通过。
 *   **遗留问题**: 本地 `gs-ssp-cmp/supabase/migrations` 与远程库存在系统性漂移（`supabase migration list --linked` 显示所有本地文件时间戳都对不上远程记录），说明近期的 schema 变更都是通过 SQL 控制台手工执行、从未走迁移文件——这也是本次修复丢失的根本原因，值得后续专项处理。
 
+### v2.26 (2026-08-17) — WizarPOS 平台集成方案补齐 (WizarPOS Integration)
+正式建立了 PAX 与 WizarPOS 双平台并行的架构基准。
+*   **平台对位**: 新增第 13 章，对比了 PAX (POSLink) 与 WizarPOS (CloudPOS) 的驱动与支付层级。
+*   **工业交互**: 详细规范了 WizarPOS 模式下的 MDB 总线与串口通讯实现。
+*   **安全签名**: 补齐了 WizarPOS 特有的 TMS 证书签名与远程分发工作流描述。
+
 ### v2.25 (2026-08-16) — 全产品线分类与业务定义 (Full Taxonomy & Specs)
 正式确立了五大核心产品线及其业务与硬件交互模型。
 *   **多业态定义**: 新增第 11 章，详细规范了 Wash, Vending, Parking, EV, Retail 的业务特征。
@@ -717,3 +723,79 @@ IM30 端的 App 采用 **MVVM (Model-View-ViewModel)** 架构，结合 **Reposit
 ### 12.2 全球化对账 (Global Reconciliation)
 *   **汇率引擎**: 在 `retail` 模式下引入实时汇率换算，支持加美边境的多币种结算。
 *   **统一仪表盘**: CMP 平台将支持跨业态汇总报表（如：某洗车场同时也卖水和充电）。
+
+---
+
+## 13. WizarPOS 平台集成方案 (WizarPOS Integration)
+
+如果将设备从 PAX 切换或新增 WizarPOS 平台，GS-SSP 采用镜像化的集成逻辑。WizarPOS 架构的核心是 **CloudPOS SDK**，它负责处理硬件底层与金融支付。
+
+### 13.1 软件架构分层对比 (WizarPOS vs PAX)
+
+| 架构层级 | PAX (百富) 方案 | WizarPOS (慧银) 方案 | 说明与作用 |
+| :--- | :--- | :--- | :--- |
+| **应用/业务层** | App UI / 逻辑 | App UI / 逻辑 | 充电桩/洗车/售货业务控制程序 |
+| **硬件驱动层** | NeptuneLite / IDAL | **Device Java API (CloudPOS)** | 负责 MDB 协议、RS232、打印机及 I/O |
+| **金融支付层** | POSLink SDK | **EMV Payment SDK** | 处理 Tap/IC 卡预授权与扣款逻辑 |
+| **云端管理平台** | PAXSTORE | **TMS (Terminal Mgmt System)** | 远程推送 App、更新配置与证书签名 |
+
+### 13.2 充电桩 / 售货机场景核心集成步骤
+
+#### Step 1: 引入 SDK
+*   在 `app/libs` 目录下引入 CloudPOS SDK AAR（官方下载页给出的是版本化 zip 包，如 `cloudpossdkV1.8.2.33`；`cloudpos_sdk.aar` 只是占位文件名，实施前以官方下载页当时的实际文件名为准）。
+*   在 `build.gradle` 中确保 `sourceSets` 正确指向 `jniLibs` 以支持硬件操作所需的 `.so` 库。
+
+#### Step 2: 串口与 MDB 通信控制
+官方 [MDB Communication Protocol](https://smartpossdk.gitbook.io/cloudpossdk/cloudpos-sdk/mdb-communication-protocal.md) 文档描述的是**应用与外接 MDB 接口板之间**的专有串口封包协议：起始码 `0x09`、长度、Mode、Data、LRC 校验、结束码 `0x0D`，波特率 115200，8 位数据位/1 停止位/无校验（标准 8N1 UART）。真正总线级别的 9-bit 字符时序（VMC↔外设）由接口板负责转换，**应用层不需要处理 9-bit 时序**，走的是标准 8N1 串口。
+*   **打开串口 / 指令交互**: 具体方法名（如 `terminal.getDevice(...)`、`ISerialDev` 等）未在 GitBook 公开页面中出现，很可能在打包的 Java API Specs（`javadoc_20250527.zip` 等）里，实施前需下载官方 javadoc 核对方法签名，不要假设与 PAX SDK 同名同构。
+
+#### Step 3: 预授权与支付流程 (EMV Payment)
+*   **调起刷卡**: 调用 EMV SDK 发起 **Pre-Auth**，冻结预设金额（如 $50）。
+*   **逻辑说明**: WizarPOS 的 EMV 集成比 PAX 更底层。是否需要手动处理 `onOnlineProc` 等 L2 层回调未在公开文档中确认（EMV API 细节在需下载的 PDF/demo 中），实施前以官方 EMV Process Flow 文档和 demo 代码为准。
+*   **结算扣款**: 充电结束后，获取实际能耗（kWh），调用 `Pre-Auth Completion` 完成扣款并解冻余额。
+
+#### Step 4: 应用签名与 TMS 部署
+WizarPOS 属于安全金融终端，应用上线前必须完成 App 证书申请与签名。官方流程是人工邮件往返，而非自助工具：
+1.  本地用 keytool 生成 keystore：`keytool -genkeypair -keystore demo.jks -keyalg RSA -keysize 2048 -alias androiddebugkey`
+2.  生成证书签名请求 (CSR)：`keytool -certreq -keystore demo.jks -alias androiddebugkey > demo.csr`
+3.  将 CSR 文件**邮件发送给 WizarPOS 销售人员**，附公司/合作信息
+4.  WizarPOS 回复证书文件后，用 keytool 导入证书链完成签名
+
+"签名后 APK 上传至 WizarPOS TMS 平台进行全网推送"这一步在官方证书申请页面中未找到直接依据，实施前需另行核实 TMS 相关文档（`apply-wizarview-account.md` / TMSManual.pdf）。
+
+### 13.3 开发注意事项
+*   **精细权限配置**: 需在 `AndroidManifest.xml` 中显式声明官方权限，前缀是 `android.permission.CLOUDPOS_*`（**不是** `com.cloudpos.permission.*`）。官方权限清单中**没有 MDB 专属权限**，RS232 串口访问对应的是 `android.permission.CLOUDPOS_SERIAL`；打印机对应 `android.permission.CLOUDPOS_PRINTER`。
+*   **机型感知**: `DeviceAdapter.kt` 需增加对 WizarPOS 型号（如 Q1, Q2）的识别，以自动适配 2.8 寸或 5.5 寸屏幕布局。
+
+### 13.4 所需 SDK 与下载路径
+
+#### 核心运行时 SDK（需打进 APK）
+*   **CloudPOS SDK AAR**（设备 Java API：串口/MDB接口板通信、打印机、权限体系等）
+    *   最新版：`https://ftp.wizarpos.com/device/java/cloudpossdkV1.8.2.33_Standard.aar`
+    *   对应 Javadoc：`https://ftp.wizarpos.com/device/java/cloudpossdkV1.8.2.33JavaDoc.zip`
+    *   在线可浏览的完整 API 文档（比 zip 版 javadoc 更方便核对方法签名）：`http://sdkwiki.wizarpos.com/wizarposapi/`
+*   **EMV Payment / Kernel**（刷卡预授权与扣款）
+    *   Kernel API 文档：`https://ftp.wizarpos.com/emv/EMVKernel_Android_interface_4.35(20260608).pdf`
+    *   支付流程说明：`https://ftp.wizarpos.com/emv/EmvProcessFlow_230314.pdf`
+    *   Java API 示例（最新）：`https://ftp.wizarpos.com/emv/EMVSample_20260129.zip`
+    *   ⚠️ **待确认**: EMV 相关类是否已包含在上面的 CloudPOS AAR 中，还是需要单独引入 jar/aar——公开文档未明确说明，实施前需下载 EMVSample 项目查看其 `build.gradle` 依赖以核实，避免漏引导致编译期 ClassNotFound。
+
+#### 参考代码 / Demo（不打包，仅供对照实现）
+与 gs-ssp 场景（Kotlin、售货/充电桩、EMV支付）相关的几个，其余（指纹、签名板、DUKPT 等）用不上：
+*   `https://github.com/SmartPOSSamples/APIDemoForAarBykotlin` — Kotlin 版通用 API Demo，技术栈匹配，优先参考
+*   `https://github.com/SmartPOSSamples/APIDemoForAar.git` — Java 版，覆盖面更全
+*   `https://github.com/SmartPOSSamples/SimulatePaymentDemo.git` — 支付/EMV 流程参考
+*   `https://github.com/SmartPOSSamples/PrinterDemo.git` — 如需出票再参考
+
+#### 协议 / 技术文档（非代码，但对接 MDB 必须读）
+*   **MDB 接口板串口协议**（应用↔MDB接口板私有封包协议：起始码 `0x09`/LRC校验/115200波特率/8N1）：`https://ftp.wizarpos.com/advanceSDK/MDB_interface_board_serial_protocol_20241226.pdf`
+*   打印机技术手册（如需出票）：`http://ftp.wizarpos.com/device/CloudPOSPrinter_TechnicalManual_20231222_en.pdf`
+*   权限清单：`https://smartpossdk.gitbook.io/cloudpossdk/cloudpos-sdk/permissions.md`
+*   错误码对照：`https://smartpossdk.gitbook.io/cloudpossdk/cloudpos-sdk/error-code.md`
+
+#### 部署与签名（非 SDK，但上线前置条件）
+*   App 证书申请流程：`https://smartpossdk.gitbook.io/cloudpossdk/faq/certificate/apply-app-certificates.md`
+*   签名流程细节：`https://smartpossdk.gitbook.io/cloudpossdk/faq/other-development/app-signing-process.md`
+*   TMS 账号申请：`https://smartpossdk.gitbook.io/cloudpossdk/faq/tms-wizarview/apply-wizarview-account.md`
+*   TMS 操作手册（PDF）：`https://ftp.wizarpos.com/device/TMSManual.pdf`
+*   开发机连接终端的 USB 驱动（调试用）：`https://smartpossdk.gitbook.io/cloudpossdk/faq/usb-serial-port/install-terminal-usb-drivers.md`

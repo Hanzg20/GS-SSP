@@ -24,6 +24,17 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
+    <!-- WizarPOS Hardware Access Permissions -->
+    <uses-permission android:name="android.permission.CLOUDPOS_MSR" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PRINTER" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SMARTCARD" />
+    <uses-permission android:name="android.permission.CLOUDPOS_CONTACTLESS_CARD" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SCANNER" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SERIALPORT" />
+    <uses-permission android:name="android.permission.CLOUDPOS_MDB" />
+    <uses-permission android:name="android.permission.CLOUDPOS_LED" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PIN_GET_PIN_BLOCK" />
+
     <!-- Required for POSLink AIDL to bind BroadPOS on targetSdkVersion >= 30
          (this app targets 34); see PAX POSLink_Android_AIDL_Guide.pdf,
          "targetSdkVersion requirements". Without this, PaxPaymentProvider's

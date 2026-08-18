@@ -1,8 +1,11 @@
 package com.goldsky.ssp.vending.db
 
+import kotlinx.serialization.Serializable
+
 /**
  * Audit record for Vending transactions.
  */
+@Serializable
 data class VendingOrder(
     val orderId: String,       // ECR Ref Num / Transaction ID
     val amountCents: Int,

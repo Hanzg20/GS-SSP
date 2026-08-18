@@ -3,8 +3,7 @@ package com.goldsky.ssp.payment.hardware
 import android.content.Context
 import com.goldsky.ssp.payment.hardware.idtech.IdTechHardwareProvider
 import com.goldsky.ssp.payment.hardware.pax.PaxHardwareProvider
-import com.goldsky.ssp.payment.hardware.pax.PaxPaymentProvider
-import com.goldsky.ssp.payment.hardware.pax.PaxScannerProvider
+import com.goldsky.ssp.payment.hardware.wizarpos.WizarPosHardwareProvider
 
 /**
  * Factory to instantiate the correct hardware provider based on environment/config.
@@ -26,6 +25,7 @@ object HardwareFactory {
             when (key) {
                 "IDTECH" -> IdTechHardwareProvider()
                 "PAX" -> PaxHardwareProvider()
+                "WIZARPOS" -> WizarPosHardwareProvider()
                 else -> throw IllegalArgumentException("Unknown hardware vendor: $vendor")
             }
         }
@@ -43,6 +43,7 @@ object HardwareFactory {
         return when (hardware) {
             is IdTechHardwareProvider -> hardware.getPaymentProvider()
             is PaxHardwareProvider -> hardware.getPaymentProvider()
+            is WizarPosHardwareProvider -> hardware.getPaymentProvider()
             else -> throw IllegalArgumentException("Unknown hardware vendor: $vendor")
         }
     }
