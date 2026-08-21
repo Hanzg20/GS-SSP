@@ -22,6 +22,13 @@
 -keep class com.idtechproducts.** { *; }
 -dontwarn com.idtechproducts.**
 
+# --- WizarPOS CloudPOS SDK ---
+# Essential keep rules for IPC/MDB (com.cloudpos.extboard.bean.* is passed over AIDL as Parcelable)
+-keep class com.cloudpos.extboard.bean.** { *; }
+-keep class * implements android.os.Parcelable {
+    public static final android.os.Parcelable$Creator *;
+}
+
 # --- kotlinx.serialization ---
 -keepattributes *Annotation*, InnerClasses, EnclosingMethod
 -keepclassmembers class kotlinx.serialization.json.** { *** Companion; }

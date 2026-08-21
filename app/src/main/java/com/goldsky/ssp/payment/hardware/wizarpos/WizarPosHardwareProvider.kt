@@ -19,11 +19,15 @@ class WizarPosHardwareProvider : IHardwareProvider {
     private var scannerProvider: WizarPosScannerProvider? = null
     private var serialProvider: WizarPosSerialProvider? = null
     private var paymentProvider: WizarPosPaymentProvider? = null
+    private var gpioProvider: WizarPosGpioProvider? = null
+    private var mdbProvider: WizarPosMdbProvider? = null
     private var context: Context? = null
 
     override fun init(context: Context) {
         this.context = context
         try {
+            // POSTerminal.getInstance(context) handles the binding to the background service.
+            // There is no explicit .open() method on the POSTerminal class itself.
             terminal = POSTerminal.getInstance(context)
             Log.i(TAG, "WizarPOS CloudPOS SDK instance retrieved")
         } catch (e: Exception) {
@@ -44,7 +48,8 @@ class WizarPosHardwareProvider : IHardwareProvider {
 
     override fun getFirmwareVersion(): String {
         return try {
-            terminal?.terminalSpec?.manufacturer ?: "WizarPOS"
+            // Returns the OS build number/display name which is standard for WizarPOS firmware tracking
+            android.os.Build.DISPLAY
         } catch (e: Exception) {
             "FW_UNKNOWN"
         }
@@ -73,6 +78,20 @@ class WizarPosHardwareProvider : IHardwareProvider {
         return paymentProvider!!
     }
 
+    override fun getGpioProvider(): IGpioProvider {
+        if (gpioProvider == null) {
+            gpioProvider = WizarPosGpioProvider(terminal)
+        }
+        return gpioProvider!!
+    }
+
+    override fun getMdbProvider(): IMdbProvider {
+        if (mdbProvider == null) {
+            mdbProvider = WizarPosMdbProvider(terminal)
+        }
+        return mdbProvider!!
+    }
+
     override fun feedWatchdog() {
     }
 
@@ -92,6 +111,8 @@ class WizarPosHardwareProvider : IHardwareProvider {
         try {
             scannerProvider?.stopScan()
             serialProvider?.close()
+            mdbProvider?.stopPolling()
+            gpioProvider?.release()
             terminal = null
             Log.i(TAG, "WizarPOS SDK released")
         } catch (e: Exception) {

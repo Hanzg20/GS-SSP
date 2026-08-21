@@ -47,6 +47,16 @@ class PaxPaymentProvider(
     private var activePosLink: PosLink? = null
 
     fun updateConfig(config: PaxConfig) {
+        // Defensive Hardening: Prevent switching to TCP on real hardware in production.
+        // TCP mode is strictly reserved for Windows Emulator environments.
+        val modelName = android.os.Build.MODEL.uppercase()
+        val isEmulator = modelName.contains("SDK") || modelName.contains("EMULATOR")
+        
+        if (config.commType == "TCP" && isEmulator == false) {
+            Log.e(TAG, "REJECTED: Attempted to set TCP comm mode on real PAX hardware ($modelName)")
+            return
+        }
+        
         activeConfig = config
         Log.i(TAG, "PAX Comm Config updated: ${config.commType} @ ${config.destIP}")
     }

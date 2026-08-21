@@ -4,8 +4,10 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
-import com.goldsky.ssp.payment.hardware.IHardwareProvider
+import com.goldsky.ssp.payment.hardware.IGpioProvider
+import com.goldsky.ssp.payment.hardware.IMdbProvider
 import com.goldsky.ssp.payment.hardware.IScannerProvider
+import com.goldsky.ssp.payment.hardware.IHardwareProvider
 import com.idtechproducts.device.*
 import com.idtechproducts.device.ReaderInfo.DEVICE_TYPE
 
@@ -30,6 +32,19 @@ class IdTechHardwareProvider : IHardwareProvider, DefaultLifecycleObserver {
     fun getReader(): IDT_NEO2? = reader
     fun getPaymentProvider(): IdTechPaymentProvider = paymentProvider
     override fun getSerialProvider(): IdTechSerialProvider = serialProvider ?: IdTechSerialProvider().also { serialProvider = it }
+
+    override fun getGpioProvider(): IGpioProvider = object : IGpioProvider {
+        override fun setRelay(port: Int, on: Boolean) {}
+        override fun readInput(port: Int): Int = -1
+        override fun release() {}
+    }
+
+    override fun getMdbProvider(): IMdbProvider = object : IMdbProvider {
+        override fun startPolling(listener: IMdbProvider.MdbEventListener) {}
+        override fun stopPolling() {}
+        override fun approveVend(): Boolean = false
+        override fun denyVend(): Boolean = false
+    }
 
     override fun getScannerProvider(): IScannerProvider = object : IScannerProvider {
         override fun startScan(callback: IScannerProvider.ScanCallback) {}

@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.goldsky.ssp.DeviceAdapter
 import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.payment.ShadowManager
 import com.goldsky.ssp.vending.db.VendingOrder
@@ -26,7 +27,15 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     private val _uiState = MutableStateFlow<VendingState>(VendingState.Idle)
     val uiState: StateFlow<VendingState> = _uiState.asStateFlow()
 
-    private val mdbController: IMdbController = MockMdbController()
+    // Real hardware only on Q3mini UPT (per docs/wizarpos_upt_integration_spec.md's
+    // own "机型检测" guidance); every other model/dev-off-device path keeps using
+    // the simulator, same as before this switch existed.
+    private val mdbController: IMdbController =
+        if (DeviceAdapter.getModel() == DeviceAdapter.HardwareModel.WIZARPOS_Q3MINI) {
+            WizarPosMdbController(application)
+        } else {
+            MockMdbController()
+        }
     private val deviceSn = DeviceRepository.getPersistedDeviceSn() ?: "IM25-VEND-MOCK"
 
     private var autoVoidJob: Job? = null

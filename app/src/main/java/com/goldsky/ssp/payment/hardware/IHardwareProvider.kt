@@ -59,6 +59,16 @@ interface IHardwareProvider {
     fun getSerialProvider(): ISerialProvider
 
     /**
+     * Gets the GPIO provider for direct relay/IO control.
+     */
+    fun getGpioProvider(): IGpioProvider
+
+    /**
+     * Gets the MDB provider for vending machine communication.
+     */
+    fun getMdbProvider(): IMdbProvider
+
+    /**
      * Reboots the physical terminal.
      */
     fun reboot()

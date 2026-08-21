@@ -64,4 +64,22 @@ object HardwareFactory {
         hardware.init(context)
         return hardware.getSerialProvider()
     }
+
+    /**
+     * returns the MDB provider for the current configuration.
+     */
+    fun getMdbProvider(context: Context, vendor: String = "IDTECH"): IMdbProvider {
+        val hardware = getHardwareProvider(vendor)
+        hardware.init(context)
+        return hardware.getMdbProvider()
+    }
+
+    /**
+     * returns the GPIO provider for the current configuration.
+     */
+    fun getGpioProvider(context: Context, vendor: String = "IDTECH"): IGpioProvider {
+        val hardware = getHardwareProvider(vendor)
+        hardware.init(context)
+        return hardware.getGpioProvider()
+    }
 }

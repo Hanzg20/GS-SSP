@@ -19,6 +19,7 @@
     <uses-permission android:name="com.pax.permission.PED" />
     <uses-permission android:name="com.pax.permission.PRINTER" />
     <uses-permission android:name="com.pax.permission.REBOOT" />
+    <uses-permission android:name="com.pax.permission.IO_CONTROL" />
 
     <!-- Hardwired system/serial port access permissions if needed by hardware -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
@@ -30,10 +31,15 @@
     <uses-permission android:name="android.permission.CLOUDPOS_SMARTCARD" />
     <uses-permission android:name="android.permission.CLOUDPOS_CONTACTLESS_CARD" />
     <uses-permission android:name="android.permission.CLOUDPOS_SCANNER" />
-    <uses-permission android:name="android.permission.CLOUDPOS_SERIALPORT" />
-    <uses-permission android:name="android.permission.CLOUDPOS_MDB" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SERIAL" />
     <uses-permission android:name="android.permission.CLOUDPOS_LED" />
     <uses-permission android:name="android.permission.CLOUDPOS_PIN_GET_PIN_BLOCK" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PIN_MAC" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PIN_ENCRYPT_DATA" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SAFE_MODULE" />
+    <uses-permission android:name="android.permission.CLOUDPOS_INNER_GPIO" />
+    <uses-permission android:name="android.permission.CLOUDPOS_VIRTUAL_SERIAL_PORT" />
+    <uses-permission android:name="android.permission.CLOUDPOS_MCUCTL" />
 
     <!-- Required for POSLink AIDL to bind BroadPOS on targetSdkVersion >= 30
          (this app targets 34); see PAX POSLink_Android_AIDL_Guide.pdf,

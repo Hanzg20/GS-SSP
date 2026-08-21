@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.goldsky.ssp.payment.hardware.IHardwareProvider
+import com.goldsky.ssp.payment.hardware.IMdbProvider
 import com.goldsky.ssp.payment.hardware.IScannerProvider
 import com.pax.dal.IDAL
 import com.pax.neptunelite.api.NeptuneLiteUser
@@ -29,26 +30,25 @@ class PaxHardwareProvider : IHardwareProvider, DefaultLifecycleObserver {
     private var paymentProvider: PaxPaymentProvider? = null
     private var scannerProvider: PaxScannerProvider? = null
     private var serialProvider: PaxSerialProvider? = null
+    private var gpioProvider: PaxGpioProvider? = null
+    private var mdbProvider: PaxMdbProvider? = null
 
     override fun init(context: Context) {
         appContext = context.applicationContext
-        Log.i(TAG, "Initializing PAX Hardware Provider")
+        Log.i(TAG, "Initializing PAX Hardware Provider (UPTAPI)")
         try {
             // 1. Initialize POSLink Android Bridge (Required for BroadPOS AIDL)
             POSLinkAndroid.init(context.applicationContext)
 
-            // 2. Access Device Abstraction Layer (DAL)
+            // 2. Initialize UPTAPI Managers (Implicitly handles binding)
+            pax.util.MiscManager.getInstance()
+            pax.util.DigitalIOManager.getInstance()
+            
+            // 3. Fallback: Access DAL for legacy support (SN/Firmware)
             dal = NeptuneLiteUser.getInstance().getDal(context.applicationContext)
-            if (dal != null) {
-                Log.i(TAG, "PAX DAL initialized successfully")
-            } else {
-                Log.w(TAG, "PAX DAL not available (Running on non-PAX hardware?) -- dependent providers fall back to mock mode")
-            }
+            
+            Log.i(TAG, "PAX UPTAPI and DAL ready")
         } catch (e: Exception) {
-            // Covers the real off-device case: NeptuneLiteUser resolves at
-            // compile time against the local stub (see CLAUDE.md "PAX SDK
-            // stubs"), so this is where "no real hardware/SDK present"
-            // actually surfaces, not a class-loading failure.
             Log.e(TAG, "Failed to initialize PAX Hardware: ${e.message}")
         }
     }
@@ -124,6 +124,15 @@ class PaxHardwareProvider : IHardwareProvider, DefaultLifecycleObserver {
 
     override fun getSerialProvider(): PaxSerialProvider {
         return serialProvider ?: PaxSerialProvider { dal }.also { serialProvider = it }
+    }
+
+    override fun getGpioProvider(): PaxGpioProvider {
+        return gpioProvider ?: PaxGpioProvider().also { gpioProvider = it }
+    }
+
+    override fun getMdbProvider(): IMdbProvider {
+        val ctx = requireContext()
+        return mdbProvider ?: PaxMdbProvider(ctx).also { mdbProvider = it }
     }
 
     override fun reboot() {

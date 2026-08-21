@@ -171,6 +171,7 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation files('libs/PAX_POSLinkAndroid_20260202.aar')
     implementation files('libs/cloudpos_sdk.aar')
+    implementation files('libs/UptApi_V1.02.jar')
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'

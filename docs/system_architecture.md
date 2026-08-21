@@ -1,5 +1,8 @@
 # GS-SSP 系统架构设计规格书 (System Architecture Specification)
 
+> [!NOTE]
+> **版本号说明**: 本文档实际由两条独立演进线合并而成（CMP/Supabase 后端的 RLS 修复线，与 Android HAL/产品线的架构演进线），两条线各自独立递增版本号，合并后出现了 `v2.23`/`v2.24`/`v2.27` 各被使用两次、且部分条目未按日期严格排序的情况（例如 `v2.27 (2026-08-20)` 实际是全文最新的一次修改，却排在 `v2.28 (2026-08-09)` 之后）。**版本号不是可靠的时间/依赖排序依据，请以每条目标题里的日期为准**；正文中散落的 `[v2.1]` 等内联标记同理，指的是该版本条目引入的变更，不代表这是当前最新状态。
+
 ### v2.28 (2026-08-09) — MVP 功能实测：远程设备控制完全不可用 (Found via Live Browser Testing)
 按 CMP.GOLDSKY.CA 规划建议书的 MVP 验收标准（登录权限、设备绑定、对账大盘、远程触发继电器）逐项在浏览器里实测，而不是只看代码。前三项通过；**第四项——后台远程触发继电器功能，是 MVP 的核心卖点——完全不可用**。
 *   **现象**：Device Diagnostics 页面点击 One-Click Remote Restart / Start Service 均返回 "Command failed to send"，网络面板显示 `POST device_commands` 返回 400。
@@ -14,11 +17,15 @@
 *   **已在生产库核实**: 修复后重新查询 `pg_policies` 确认四条策略均已生效；`npm run build`/`tsc --noEmit` 通过。
 *   **遗留问题**: 本地 `gs-ssp-cmp/supabase/migrations` 与远程库存在系统性漂移（`supabase migration list --linked` 显示所有本地文件时间戳都对不上远程记录），说明近期的 schema 变更都是通过 SQL 控制台手工执行、从未走迁移文件——这也是本次修复丢失的根本原因，值得后续专项处理。
 
+### v2.27 (2026-08-20) — 工业级闭环：Q3mini UPT、PAX UPTAPI 与云端对账代理 (The Industrial Pivot)
+全面确立了以无人值守终端 (UPT) 为核心的架构基准，实现了全厂商工控适配与金融级对账闭环。
+*   **硬件分发**: 确立 Q3mini UPT 为无人值守主力机型，PAX IM30 为高性能平替。
+*   **工控标准化**: 实装了 GPIO (Digit IO) 触发、MDB 事件驱动 (ExtBoard) 和串口双段读取的最佳实践。
+*   **支付 2.0**: 切换至 PAYwizard 本地 Socket 集成 (P3 协议)，建立“诚实报错”机制，杜绝虚假成功。
+*   **云端运维**: 实装 V3 Signature 签名代理与 Varsheet API，支持远程注入 Nuvei 参数。
+*   **数据韧性**: 引入基于 JSON 文件的防掉电持久化存储与 WorkManager 异步补单队列。
+
 ### v2.26 (2026-08-17) — WizarPOS 平台集成方案补齐 (WizarPOS Integration)
-正式建立了 PAX 与 WizarPOS 双平台并行的架构基准。
-*   **平台对位**: 新增第 13 章，对比了 PAX (POSLink) 与 WizarPOS (CloudPOS) 的驱动与支付层级。
-*   **工业交互**: 详细规范了 WizarPOS 模式下的 MDB 总线与串口通讯实现。
-*   **安全签名**: 补齐了 WizarPOS 特有的 TMS 证书签名与远程分发工作流描述。
 
 ### v2.25 (2026-08-16) — 全产品线分类与业务定义 (Full Taxonomy & Specs)
 正式确立了五大核心产品线及其业务与硬件交互模型。
@@ -348,6 +355,7 @@ sequenceDiagram
 | :-- | :-- | :-- |
 | PAX POSLink（刷卡，当前主线） | ✅ 半集成 | App 只发 `PaymentRequest`（金额+ECR参考号）给本机 `127.0.0.1:10009` 的 PAX 内部 AIDL 进程，卡片数据在 PAX 自己的安全模块里处理，App 只收到 `resultCode`/`authCode` |
 | ID TECH NEO2（刷卡，多厂商 HAL 备选路径） | ✅ 半集成 | App 只调 `emv_startTransaction`/`ctls_startTransaction`/`msr_startMSRSwipe` 传金额，卡片数据在读卡器自己的安全硬件里处理，App 只收到 `IDTEMVData.result` 等状态码 |
+| WizarPOS PAYWizard（刷卡，Q3mini UPT 主线，v2.27 新增） | ✅ 半集成，且比 PAX/ID TECH 更彻底 | App 完全不直连读卡器/EMV kernel，只通过本机 Socket (`127.0.0.1:6666`) 把金额/订单号交给独立的 WizarPOS 官方支付 App（PAYWizard/Nuvei），卡片数据、EMV 处理、密钥全部在对方进程里，App 进程连 SDK 级别的卡片对象都接触不到。完整 API/协议清单见第 13 章，不在本节重复列出——该路径独立于本节 3.3.1-3.3.7 的厂商 SDK 直连式 HAL 抽象 |
 | Stripe QR（扫码支付） | ❌ 不是半集成，是**网关托管收银页** | 客户在**自己手机**上打开 Stripe 托管的收银页完成支付，App 全程不经手任何支付信息，连"半集成"的直连读卡器都没有，PCI 范围比半集成更小（SAQ A） |
 | VIP 余额扣款 | ❌ 不适用 PCI 分类 | 不涉及银行卡，是纯内部储值账本操作，直接调己方 Supabase RPC |
 
@@ -687,29 +695,22 @@ IM30 端的 App 采用 **MVVM (Model-View-ViewModel)** 架构，结合 **Reposit
 
 ## 11. 产品线分类与业务特征 (Product Line Taxonomy)
 
-为了支撑 GS-SSP 的全球化 SAAS 运营，系统架构必须兼容多种行业逻辑。以下是各产品变体 (Flavor) 的详细规格：
+自 v2.27 起，系统正式确立以 **UPT (Unattended Payment Terminal)** 为核心的硬件矩阵，支持跨厂商 HAL 驱动下发。
 
 ### 11.1 业务矩阵概览 (The Matrix)
 
-| 变体 (Flavor) | 核心场景 | 目标硬件 | 物理协议 | 资金流模型 | 关键技术特征 |
+| 变体 (Flavor) | 核心场景 | **主力硬件** | 物理协议 | 资金流模型 | 关键技术特征 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`wash`** | 自助洗车 | IM30 | Serial (RS232) | 预付单扣 | 2x2 大图标 UI，继电器长闭合控制 |
-| **`vending`** | 自动售货 | IM25 | **MDB** | 预付+确认 | 极简小屏 UI，货道库存本地对账 |
-| **`parking`** | 智慧停车 | IM30/IM25 | Pulse / DI | 预付单扣 | 车牌识别集成预留，闸机抬杆脉冲 |
-| **`ev`** | 新能源充电 | IM30 | **Modbus / OCPP** | **预授权 (Deposit)** | 实时电量(kWh)仪表盘，动态计费 |
-| **`retail`** | 零售收银 | A920 / Handheld | Internal API | **有人值守 (Attended)** | 购物车逻辑，员工 ID 审计，SoftPOS 整合 |
+| **`wash`** | 自助洗车 | **Q3mini UPT** | Console (RS232) | 预付单扣 | 当前经 `WizarPosSerialProvider`（Port 6）发送 HEX 帧驱动继电器板；Digit IO 直连继电器已在 HAL 层实现但**尚未接入 `DispenseEngine` 出货流程**，见 §13.2 |
+| **`vending`** | 自动售货 | **Q3mini UPT** | **MDB** | 预付+确认 | ExtBoard 事件驱动模式（含 vend 应答），自动对账与库存同步 |
+| **`parking`** | 智慧停车 | IM30 / Q3mini | Pulse / DI | 预付单扣 | 车牌识别集成预留，闸机抬杆脉冲控制 |
+| **`ev`** | 新能源充电 | IM30 / Q3mini | **Modbus** | **预授权** | 实时电量 (kWh) 采集，支持 Nuvei 押金模式 |
+| **`retail`** | 零售收银 | **Q1 / Q2** | Internal API | **有人值守** | 购物车逻辑，员工 ID 审计，手持扫码理货 |
 
-### 11.2 硬件抽象层 (HAL) 泛化
-随着变体的增多，HAL 层已不再仅限于洗车串口。
-*   **MDB Driver**: 专门用于 `vending` 变体，处理 9-bit 工业总线握手。
-*   **Energy Meter Driver**: 专门用于 `ev` 变体，通过 Modbus RTU 采集电压、电流与 kWh。
-*   **Payment Gateway Bridge**: 
-    *   无人值守：采用 POSLink 非接优先逻辑。
-    *   有人值守：采用 SoftPOS 或 A920 实体刷卡逻辑。
-
-### 11.3 资金流模型演进
-*   **预授权 (Pre-Authorization)**: 主要针对 `ev` 充电。系统先扣除 $50 押金，充电结束后按实际度数执行 `Capture` 或 `Partial Refund`。
-*   **后结算 (Post-Audit)**: 针对 `retail` 模式，支持先录入商品后统一结算。
+### 11.2 工业控制 HAL 层标准化
+*   **Digit IO (GPIO)**: `WizarPosGpioProvider` 已实装 `triggerRelayOn/Off` 直接驱动物理继电器。**⚠️ 尚未接入业务出货流程**：`DispenseEngine` 的所有 `IDispenseAdapter` 目前都还是走 `ISerialProvider`，没有基于 `IGpioProvider` 的适配器，所以"洗车/充电一键启停"实际仍经 Console 串口 HEX 帧实现，而非本路直连继电器，见 §13.2。
+*   **MDB High-Level API**: 采用 `pollEvent` 状态机接收 VMC 事件；`approveVend()`/`denyVend()` 已实装，经 `ExtBoardDevice.respondEvent()` 应答 VMC 的 vend 请求（此前版本完全缺失这一步）。**该应答机制未经官方 MDB 协议 PDF 或真机验证**。业务层经新增的 `IMdbController`/`WizarPosMdbController` 桥接层接入 `VendingViewModel`（仅 `WIZARPOS_Q3MINI` 机型启用，其余机型沿用 `MockMdbController` 模拟器）。
+*   **Double-Stage Serial**: 串口通讯遵循 **Header-Body** 双段读取最佳实践，规避工业电磁干扰。
 
 ---
 
@@ -717,85 +718,58 @@ IM30 端的 App 采用 **MVVM (Model-View-ViewModel)** 架构，结合 **Reposit
 
 ### 12.1 边缘枢纽化 (EdgeNexus Integration)
 未来版本将支持通过 **EdgeNexus (ESP32)** 网关实现“一控多”。
-*   **场景**: 一个 IM30 同时控制 4 个洗车工位，或一个收银台控制全场售货机。
-*   **协议**: 终端通过 MQTT/WebSocket 指令指挥 EdgeNexus 执行物理动作。
 
 ### 12.2 全球化对账 (Global Reconciliation)
-*   **汇率引擎**: 在 `retail` 模式下引入实时汇率换算，支持加美边境的多币种结算。
-*   **统一仪表盘**: CMP 平台将支持跨业态汇总报表（如：某洗车场同时也卖水和充电）。
+*   **汇率引擎**: 支持跨国界多币种实时结算。
+*   **统一看板**: CMP 支持对洗车、充电、售货业务的混合营收分析。
 
 ---
 
-## 13. WizarPOS 平台集成方案 (WizarPOS Integration)
+## 13. WizarPOS Q3mini UPT 全量集成方案 (WizarPOS UPT Integration)
 
-如果将设备从 PAX 切换或新增 WizarPOS 平台，GS-SSP 采用镜像化的集成逻辑。WizarPOS 架构的核心是 **CloudPOS SDK**，它负责处理硬件底层与金融支付。
+针对无人值守机型 **Q3mini UPT**，系统采用了“支付分流、工控直连”的架构。
 
-### 13.1 软件架构分层对比 (WizarPOS vs PAX)
+### 13.1 支付集成：PAYWizard Local Socket
+GS-SSP 通过本地 Socket (`127.0.0.1:6666`) 调用预装的 **PAYWizard** 安全支付应用。
+*   **协议规范**: **P3 (PayProtocol)**。采用 4-byte 大端序长度前缀 + JSON Payload。
+*   **报文示例**: `{"transType": "SALE", "amount": "100", "orderNo": "..."}`。
+*   **生产环境**: 支持通过 **Varsheet API** 远程注入 Nuvei MID/TID/Key。
 
-| 架构层级 | PAX (百富) 方案 | WizarPOS (慧银) 方案 | 说明与作用 |
-| :--- | :--- | :--- | :--- |
-| **应用/业务层** | App UI / 逻辑 | App UI / 逻辑 | 充电桩/洗车/售货业务控制程序 |
-| **硬件驱动层** | NeptuneLite / IDAL | **Device Java API (CloudPOS)** | 负责 MDB 协议、RS232、打印机及 I/O |
-| **金融支付层** | POSLink SDK | **EMV Payment SDK** | 处理 Tap/IC 卡预授权与扣款逻辑 |
-| **云端管理平台** | PAXSTORE | **TMS (Terminal Mgmt System)** | 远程推送 App、更新配置与证书签名 |
+### 13.2 硬件控制：三路并行 HAL
+1.  **左路 (Digit IO)**: `WizarPosGpioProvider` 已实装 `triggerRelayOn/Off` 物理高低电平控制。**⚠️ 尚未接入业务出货流程**：`DispenseEngine`（洗车/售货共用的出货入口）目前所有 `IDispenseAdapter` 实现都还是走 `ISerialProvider`，没有任何适配器调用这一路——洗车水泵继电器实际仍经由右路 Console 口发送 HEX 帧驱动，而非本路直连继电器。接入前需新增一个基于 `IGpioProvider` 的出货适配器，或明确这一路当前仅用于非出货类辅助 I/O。
+2.  **中路 (MDB Slave)**: 事件驱动状态机（`WizarPosMdbProvider.pollEvent`），用于对接售货机 VMC；已实装 `approveVend()`/`denyVend()`（经 `ExtBoardDevice.respondEvent()` 应答 VMC 的 vend 请求，此前完全缺失这一步）。**⚠️ 应答机制未经官方 MDB 协议 PDF 或真机验证**。业务层通过新增的 `IMdbController`/`WizarPosMdbController` 桥接层接入 `VendingViewModel`（仅 `WIZARPOS_Q3MINI` 机型启用，其余机型仍用 `MockMdbController` 模拟器）。
+3.  **右路 (Console)**: **Port 6 (ID_SERIAL_EXT2)**。实装双段读取，用于第三方 HEX 板卡；`wash` 变体当前实际出货路径即经此路，见 §11.1 脚注。
 
-### 13.2 充电桩 / 售货机场景核心集成步骤
+---
 
-#### Step 1: 引入 SDK
-*   在 `app/libs` 目录下引入 CloudPOS SDK AAR（官方下载页给出的是版本化 zip 包，如 `cloudpossdkV1.8.2.33`；`cloudpos_sdk.aar` 只是占位文件名，实施前以官方下载页当时的实际文件名为准）。
-*   在 `build.gradle` 中确保 `sourceSets` 正确指向 `jniLibs` 以支持硬件操作所需的 `.so` 库。
+## 14. PAX UPTAPI 驱动架构 (PAX UPTAPI Driver)
 
-#### Step 2: 串口与 MDB 通信控制
-官方 [MDB Communication Protocol](https://smartpossdk.gitbook.io/cloudpossdk/cloudpos-sdk/mdb-communication-protocal.md) 文档描述的是**应用与外接 MDB 接口板之间**的专有串口封包协议：起始码 `0x09`、长度、Mode、Data、LRC 校验、结束码 `0x0D`，波特率 115200，8 位数据位/1 停止位/无校验（标准 8N1 UART）。真正总线级别的 9-bit 字符时序（VMC↔外设）由接口板负责转换，**应用层不需要处理 9-bit 时序**，走的是标准 8N1 串口。
-*   **打开串口 / 指令交互**: 具体方法名（如 `terminal.getDevice(...)`、`ISerialDev` 等）未在 GitBook 公开页面中出现，很可能在打包的 Java API Specs（`javadoc_20250527.zip` 等）里，实施前需下载官方 javadoc 核对方法签名，不要假设与 PAX SDK 同名同构。
+针对 **PAX IM30/IM25**，系统从底层 DAL 升级为业务级 **UPTAPI**。
 
-#### Step 3: 预授权与支付流程 (EMV Payment)
-*   **调起刷卡**: 调用 EMV SDK 发起 **Pre-Auth**，冻结预设金额（如 $50）。
-*   **逻辑说明**: WizarPOS 的 EMV 集成比 PAX 更底层。是否需要手动处理 `onOnlineProc` 等 L2 层回调未在公开文档中确认（EMV API 细节在需下载的 PDF/demo 中），实施前以官方 EMV Process Flow 文档和 demo 代码为准。
-*   **结算扣款**: 充电结束后，获取实际能耗（kWh），调用 `Pre-Auth Completion` 完成扣款并解冻余额。
+### 14.1 组件设计
+*   **DigitalIOManager**: 封装对 IM30 后置 6-pin 接口的继电器控制。
+*   **MDBManager**: 提供单例化的 MDB 总线访问，支持 Slave 模式。
+*   **MiscManager**: 统一管理系统 SN、固件版本及休眠策略。
 
-#### Step 4: 应用签名与 TMS 部署
-WizarPOS 属于安全金融终端，应用上线前必须完成 App 证书申请与签名。官方流程是人工邮件往返，而非自助工具：
-1.  本地用 keytool 生成 keystore：`keytool -genkeypair -keystore demo.jks -keyalg RSA -keysize 2048 -alias androiddebugkey`
-2.  生成证书签名请求 (CSR)：`keytool -certreq -keystore demo.jks -alias androiddebugkey > demo.csr`
-3.  将 CSR 文件**邮件发送给 WizarPOS 销售人员**，附公司/合作信息
-4.  WizarPOS 回复证书文件后，用 keytool 导入证书链完成签名
+---
 
-"签名后 APK 上传至 WizarPOS TMS 平台进行全网推送"这一步在官方证书申请页面中未找到直接依据，实施前需另行核实 TMS 相关文档（`apply-wizarview-account.md` / TMSManual.pdf）。
+## 15. 云端对账与安全代理 (Cloud Reconciliation & Security Proxy)
 
-### 13.3 开发注意事项
-*   **精细权限配置**: 需在 `AndroidManifest.xml` 中显式声明官方权限，前缀是 `android.permission.CLOUDPOS_*`（**不是** `com.cloudpos.permission.*`）。官方权限清单中**没有 MDB 专属权限**，RS232 串口访问对应的是 `android.permission.CLOUDPOS_SERIAL`；打印机对应 `android.permission.CLOUDPOS_PRINTER`。
-*   **机型感知**: `DeviceAdapter.kt` 需增加对 WizarPOS 型号（如 Q1, Q2）的识别，以自动适配 2.8 寸或 5.5 寸屏幕布局。
+为实现全链路财务闭环，系统在 Supabase 侧建立了 V3 安全代理。
 
-### 13.4 所需 SDK 与下载路径
+### 15.1 V3 Signature 算法
+为了保护 `AppSecret`，所有敏感请求均在 **Supabase Edge Functions** 中完成签名：
+1.  参数升序排列 -> 拼接 `appSecret` -> **HMAC-SHA256** 哈希。
+2.  CMP 前端仅通过 `wizarpos-proxy` 发起请求，不接触密钥。
 
-#### 核心运行时 SDK（需打进 APK）
-*   **CloudPOS SDK AAR**（设备 Java API：串口/MDB接口板通信、打印机、权限体系等）
-    *   最新版：`https://ftp.wizarpos.com/device/java/cloudpossdkV1.8.2.33_Standard.aar`
-    *   对应 Javadoc：`https://ftp.wizarpos.com/device/java/cloudpossdkV1.8.2.33JavaDoc.zip`
-    *   在线可浏览的完整 API 文档（比 zip 版 javadoc 更方便核对方法签名）：`http://sdkwiki.wizarpos.com/wizarposapi/`
-*   **EMV Payment / Kernel**（刷卡预授权与扣款）
-    *   Kernel API 文档：`https://ftp.wizarpos.com/emv/EMVKernel_Android_interface_4.35(20260608).pdf`
-    *   支付流程说明：`https://ftp.wizarpos.com/emv/EmvProcessFlow_230314.pdf`
-    *   Java API 示例（最新）：`https://ftp.wizarpos.com/emv/EMVSample_20260129.zip`
-    *   ⚠️ **待确认**: EMV 相关类是否已包含在上面的 CloudPOS AAR 中，还是需要单独引入 jar/aar——公开文档未明确说明，实施前需下载 EMVSample 项目查看其 `build.gradle` 依赖以核实，避免漏引导致编译期 ClassNotFound。
+### 15.2 业务闭环
+*   **QueryOrder**: 针对“硬件 ACK 缺失”的订单，主动向网关核实真实成交状态。
+*   **Varsheet API**: 管理员可在后台一键下发支付参数，实现零现场调试部署。
 
-#### 参考代码 / Demo（不打包，仅供对照实现）
-与 gs-ssp 场景（Kotlin、售货/充电桩、EMV支付）相关的几个，其余（指纹、签名板、DUKPT 等）用不上：
-*   `https://github.com/SmartPOSSamples/APIDemoForAarBykotlin` — Kotlin 版通用 API Demo，技术栈匹配，优先参考
-*   `https://github.com/SmartPOSSamples/APIDemoForAar.git` — Java 版，覆盖面更全
-*   `https://github.com/SmartPOSSamples/SimulatePaymentDemo.git` — 支付/EMV 流程参考
-*   `https://github.com/SmartPOSSamples/PrinterDemo.git` — 如需出票再参考
+---
 
-#### 协议 / 技术文档（非代码，但对接 MDB 必须读）
-*   **MDB 接口板串口协议**（应用↔MDB接口板私有封包协议：起始码 `0x09`/LRC校验/115200波特率/8N1）：`https://ftp.wizarpos.com/advanceSDK/MDB_interface_board_serial_protocol_20241226.pdf`
-*   打印机技术手册（如需出票）：`http://ftp.wizarpos.com/device/CloudPOSPrinter_TechnicalManual_20231222_en.pdf`
-*   权限清单：`https://smartpossdk.gitbook.io/cloudpossdk/cloudpos-sdk/permissions.md`
-*   错误码对照：`https://smartpossdk.gitbook.io/cloudpossdk/cloudpos-sdk/error-code.md`
+## 16. 可靠性与持久化加固 (Reliability & Persistence)
 
-#### 部署与签名（非 SDK，但上线前置条件）
-*   App 证书申请流程：`https://smartpossdk.gitbook.io/cloudpossdk/faq/certificate/apply-app-certificates.md`
-*   签名流程细节：`https://smartpossdk.gitbook.io/cloudpossdk/faq/other-development/app-signing-process.md`
-*   TMS 账号申请：`https://smartpossdk.gitbook.io/cloudpossdk/faq/tms-wizarview/apply-wizarview-account.md`
-*   TMS 操作手册（PDF）：`https://ftp.wizarpos.com/device/TMSManual.pdf`
-*   开发机连接终端的 USB 驱动（调试用）：`https://smartpossdk.gitbook.io/cloudpossdk/faq/usb-serial-port/install-terminal-usb-drivers.md`
+### 16.1 防掉电存储
+*   **JSON Persistence**: 核心库存 (`inventory_v2.json`) 与订单 (`orders_v2.json`) 实时落盘。
+*   **WorkManager**: 采用指数退避重试机制，确保断网期间的交易记录在恢复后自动重放补单。

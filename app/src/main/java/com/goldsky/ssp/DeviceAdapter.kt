@@ -12,6 +12,7 @@ object DeviceAdapter {
         IM30,
         WIZARPOS_Q1,
         WIZARPOS_Q2,
+        WIZARPOS_Q3MINI,
         UNKNOWN
     }
 
@@ -25,6 +26,7 @@ object DeviceAdapter {
             model.contains("IM30") -> HardwareModel.IM30
             model.contains("WIZARPOS") && model.contains("Q1") -> HardwareModel.WIZARPOS_Q1
             model.contains("WIZARPOS") && model.contains("Q2") -> HardwareModel.WIZARPOS_Q2
+            model.contains("WIZARPOS") && model.contains("Q3") -> HardwareModel.WIZARPOS_Q3MINI
             else -> HardwareModel.UNKNOWN
         }
     }
@@ -32,7 +34,9 @@ object DeviceAdapter {
     /**
      * Returns true if the device has a full screen suitable for rich UI.
      */
-    fun isRichUiSupported(): Boolean = getModel() == HardwareModel.IM30 || getModel() == HardwareModel.WIZARPOS_Q2
+    fun isRichUiSupported(): Boolean = getModel() == HardwareModel.IM30 
+            || getModel() == HardwareModel.WIZARPOS_Q2
+            || getModel() == HardwareModel.WIZARPOS_Q3MINI
 
     /**
      * Returns true if the device is a smaller footprint terminal.

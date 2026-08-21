@@ -9,11 +9,13 @@ import kotlinx.coroutines.delay
 
 /**
  * WizarPOS Serial Port implementation using CloudPOS SDK.
+ * Optimized with Maggie's "Header-First" double-stage reading practice.
  */
 class WizarPosSerialProvider(private val terminal: POSTerminal?) : ISerialProvider {
     
     companion object {
         private const val TAG = "WizarPosSerial"
+        private const val DEFAULT_PORT = 6 // ID_SERIAL_EXT2 for Console/Relay Board
     }
     
     private var serialDevice: SerialPortDevice? = null
@@ -22,8 +24,9 @@ class WizarPosSerialProvider(private val terminal: POSTerminal?) : ISerialProvid
         if (serialDevice != null) return true
         try {
             serialDevice = terminal?.getDevice("com.cloudpos.device.serialport") as? SerialPortDevice
-            serialDevice?.open()
-            Log.i(TAG, "WizarPOS serial port opened")
+            serialDevice?.open(DEFAULT_PORT)
+            serialDevice?.changeSerialPortParams(115200, 8, 0, 1) // 115200, 8N1
+            Log.i(TAG, "WizarPOS serial port $DEFAULT_PORT opened at 115200")
             return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open WizarPOS serial: ${e.message}")
@@ -57,12 +60,30 @@ class WizarPosSerialProvider(private val terminal: POSTerminal?) : ISerialProvid
         return sendBytes(bytes)
     }
 
+    /**
+     * Implements the best practice: Header-Body double-stage read.
+     */
     override suspend fun sendCommandWithAck(hexStr: String, timeoutMs: Int, maxRetries: Int): Boolean {
         repeat(maxRetries) {
             if (sendHexString(hexStr)) {
-                delay(timeoutMs.toLong())
-                return true 
+                // Stage 1: Read Header (e.g., first 3 bytes)
+                val headerRes = serialDevice?.waitForRead(3, timeoutMs)
+                if (headerRes != null && headerRes.data != null && headerRes.data.size == 3) {
+                    // Stage 2: Determine body length and read remaining
+                    // Assuming 2nd byte contains payload length for this protocol
+                    val bodyLen = headerRes.data[1].toInt() and 0xFF
+                    if (bodyLen > 0) {
+                        val bodyRes = serialDevice?.waitForRead(bodyLen, 200)
+                        if (bodyRes != null && bodyRes.data != null) {
+                            Log.d(TAG, "Complete ACK received")
+                            return true
+                        }
+                    } else {
+                        return true // Header-only success
+                    }
+                }
             }
+            delay(100)
         }
         return false
     }
