@@ -40,3 +40,9 @@ verify_jwt = false
 # Default (true): only a signed-in CMP admin's Supabase session may call
 # this, same trust model as submit-acquirer-onboarding.
 verify_jwt = true
+
+[functions.sync-acquirer-settlements]
+# Default (true): controls who can *trigger* a sync. Writes internally use
+# service_role (see index.ts), not the caller's JWT, since one sync pass
+# spans many orgs. Not yet scheduled anywhere -- callable manually for now.
+verify_jwt = true

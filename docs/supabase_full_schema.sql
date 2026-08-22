@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.20 (2026-08-21)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.21 (2026-08-22)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -2212,3 +2212,48 @@ ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS hardware_vendor TEXT DEFAULT
 ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS acquirer_account_id UUID
     REFERENCES public.merchant_acquirer_accounts(id);
 ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS acquirer_terminal_id TEXT; -- Nuvei TID 等,单设备级
+
+-- =============================================================================
+-- 20. Acquirer settlement/reporting records, added v2.21 (2026-08-22)
+--
+-- ADDITIVE-ONLY, DELIBERATELY OUTSIDE SECTION 0.1'S DESTRUCTIVE RESET, same
+-- reasoning as section 19. Applied via psql
+-- (.artifacts/scratch/2026-08-22_acquirer_settlement_records.sql), mirrored
+-- here. Backs a future CMP reconciliation view once a merchant is actually
+-- approved and processing -- see [[project_goldsky_gs_ssp]] memory / the
+-- Nuvei Merchant Dashboard API docs for the 6 source operations this maps
+-- to (GetCreditTransactions/GetAuthorizationTransactions/GetACHTransactions/
+-- GetDisputeTransactions/GetFundingTransactions/GetBatchTransactions).
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.acquirer_settlement_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    acquirer TEXT NOT NULL CHECK (acquirer IN ('elavon', 'nuvei')),
+    record_type TEXT NOT NULL CHECK (record_type IN
+        ('credit', 'authorization', 'ach', 'dispute', 'funding', 'batch')),
+    external_record_id TEXT NOT NULL,
+    external_mid TEXT,
+    org_id UUID REFERENCES public.organizations(id) ON DELETE SET NULL,
+    record_date DATE,
+    amount_cents INTEGER,
+    raw_data JSONB NOT NULL,
+    synced_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(acquirer, record_type, external_record_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_acquirer_settlement_records_org
+    ON public.acquirer_settlement_records(org_id) WHERE org_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_acquirer_settlement_records_mid
+    ON public.acquirer_settlement_records(external_mid) WHERE external_mid IS NOT NULL;
+
+ALTER TABLE public.acquirer_settlement_records ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Sys admins can manage settlement records" ON public.acquirer_settlement_records;
+CREATE POLICY "Sys admins can manage settlement records" ON public.acquirer_settlement_records
+FOR ALL TO authenticated
+USING (public.is_sys_admin());
+
+DROP POLICY IF EXISTS "Org members can view own org settlement records" ON public.acquirer_settlement_records;
+CREATE POLICY "Org members can view own org settlement records" ON public.acquirer_settlement_records
+FOR SELECT TO authenticated
+USING (org_id IN (SELECT public.member_org_ids()));
