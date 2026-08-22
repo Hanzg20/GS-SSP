@@ -22,3 +22,16 @@ verify_jwt = true
 # no Supabase JWT to check. Authenticity comes entirely from
 # gateway.verifyWebhook()'s signature verification inside the function.
 verify_jwt = false
+
+[functions.submit-acquirer-onboarding]
+# Default (true): only a signed-in CMP admin's Supabase session may call
+# this. RLS on merchant_acquirer_accounts (via the caller's own JWT, not a
+# service-role client) is the actual authorization boundary.
+verify_jwt = true
+
+[functions.nuvei-onboarding-webhook]
+# The caller here is Nuvei, not a signed-in user -- same trust model as
+# payment-webhook above. NOT YET FUNCTIONAL: see the TODOs in this
+# function's index.ts, signature verification is a placeholder that always
+# fails closed until Nuvei's onboarding API doc is available.
+verify_jwt = false

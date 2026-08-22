@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.19 (2026-07-27)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.20 (2026-08-21)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -2119,3 +2119,96 @@ ON CONFLICT (code) DO NOTHING;
 -- manual "sign up then hand-INSERT org_members" path still technically
 -- works under service_role for one-off bootstrapping, but isn't the normal
 -- path anymore.
+
+-- =============================================================================
+-- 19. Acquirer onboarding (Elavon/Nuvei), added v2.20 (2026-08-21)
+--
+-- ADDITIVE-ONLY, DELIBERATELY OUTSIDE SECTION 0.1'S DESTRUCTIVE RESET.
+-- merchant_acquirer_accounts holds real KYC/onboarding data once acquirer
+-- integrations go live -- do not add it (or hardware_acquirer_map, or the
+-- devices columns below) to the DROP CASCADE block above. This block was
+-- applied to the live database directly via psql
+-- (.artifacts/scratch/2026-08-21_acquirer_onboarding.sql), not by running
+-- this file -- mirrored here so the doc doesn't drift from deployed reality,
+-- same pattern used for the e_prefix/heartbeats fixes elsewhere in this
+-- project family. See docs (plan) for the full design rationale: two-layer
+-- model where hardware_acquirer_map is a capability constraint checked at
+-- assignment time, and devices.acquirer_account_id is the actual per-device
+-- routing assignment checked at transaction time (fail-closed, no implicit
+-- fallback) -- not yet wired into create-qr-session/payment-webhook, that's
+-- a later phase once an acquirer is actually approved and processing.
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.merchant_acquirer_accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    acquirer TEXT NOT NULL CHECK (acquirer IN ('elavon', 'nuvei')),
+    external_merchant_id TEXT,   -- Nuvei merchantId / Elavon 对应字段
+    merchant_site_id TEXT,       -- Nuvei merchantSiteId(Elavon 若无对应概念留空)
+    shared_secret TEXT,          -- 敏感,service_role-only,见下方视图
+    env TEXT DEFAULT 'int' CHECK (env IN ('int', 'prod')),
+    status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN
+        ('DRAFT','SUBMITTED','PENDING_REVIEW','NEEDS_INFO','APPROVED','ACTIVE','REJECTED')),
+    raw_response JSONB,          -- 收单行原始回执,排障用
+    submitted_at TIMESTAMPTZ,
+    approved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(org_id, acquirer)
+);
+
+ALTER TABLE public.merchant_acquirer_accounts ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Sys admins can manage acquirer accounts" ON public.merchant_acquirer_accounts;
+CREATE POLICY "Sys admins can manage acquirer accounts" ON public.merchant_acquirer_accounts
+FOR ALL TO authenticated
+USING (public.is_sys_admin());
+
+DROP POLICY IF EXISTS "Org members can view own org acquirer accounts" ON public.merchant_acquirer_accounts;
+CREATE POLICY "Org members can view own org acquirer accounts" ON public.merchant_acquirer_accounts
+FOR SELECT TO authenticated
+USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
+
+-- Column-level shielding for shared_secret: RLS above is row-level only, so
+-- the CMP frontend must read through this view (which omits shared_secret)
+-- rather than the base table directly. Only service_role (Edge Functions)
+-- reads the base table.
+CREATE OR REPLACE VIEW public.merchant_acquirer_accounts_safe AS
+SELECT id, org_id, acquirer, external_merchant_id, merchant_site_id, env,
+       status, raw_response, submitted_at, approved_at, created_at
+FROM public.merchant_acquirer_accounts;
+
+GRANT SELECT ON public.merchant_acquirer_accounts_safe TO authenticated;
+REVOKE SELECT ON public.merchant_acquirer_accounts FROM authenticated;
+
+-- 硬件类型 → 收单行的能力约束表(哪些硬件技术上能对接哪家),只在"指派"
+-- 动作发生时用来做校验,不参与交易时的实时路由。
+CREATE TABLE IF NOT EXISTS public.hardware_acquirer_map (
+    hardware_vendor TEXT NOT NULL,
+    acquirer TEXT NOT NULL CHECK (acquirer IN ('elavon', 'nuvei')),
+    PRIMARY KEY (hardware_vendor, acquirer)
+);
+
+ALTER TABLE public.hardware_acquirer_map ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated can view hardware acquirer map" ON public.hardware_acquirer_map;
+CREATE POLICY "Authenticated can view hardware acquirer map" ON public.hardware_acquirer_map
+FOR SELECT TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Sys admins can manage hardware acquirer map" ON public.hardware_acquirer_map;
+CREATE POLICY "Sys admins can manage hardware acquirer map" ON public.hardware_acquirer_map
+FOR ALL TO authenticated
+USING (public.is_sys_admin());
+
+-- 种子数据,依据 gs-ssp-cmp 里 TerminalConfigModal/wizarposService 已有代码
+-- (processor: 'NUVEI' 硬编码在 pushNuveiParams payload 里)坐实的事实:
+INSERT INTO public.hardware_acquirer_map (hardware_vendor, acquirer) VALUES
+    ('WIZARPOS', 'nuvei')
+ON CONFLICT DO NOTHING;
+-- PAX/IDTECH 对应哪家收单行待业务确认后再补,这里不猜。
+
+ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS hardware_vendor TEXT DEFAULT 'IDTECH'
+    CHECK (hardware_vendor IN ('IDTECH','PAX','WIZARPOS'));
+ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS acquirer_account_id UUID
+    REFERENCES public.merchant_acquirer_accounts(id);
+ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS acquirer_terminal_id TEXT; -- Nuvei TID 等,单设备级
