@@ -35,3 +35,8 @@ verify_jwt = true
 # function's index.ts, signature verification is a placeholder that always
 # fails closed until Nuvei's onboarding API doc is available.
 verify_jwt = false
+
+[functions.upload-acquirer-document]
+# Default (true): only a signed-in CMP admin's Supabase session may call
+# this, same trust model as submit-acquirer-onboarding.
+verify_jwt = true

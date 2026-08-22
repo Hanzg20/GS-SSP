@@ -1,23 +1,34 @@
 import type {
   AcquirerOnboarding,
   MerchantApplicationData,
+  CreateApplicationResult,
   SubmitApplicationResult,
   ApplicationStatusResult,
 } from "../onboarding.ts";
 
 // Placeholder adapter -- Elavon's onboarding API docs have not been obtained
-// yet (unlike Nuvei, where the doc exists but hasn't been shared into this
-// session). Nothing about Elavon's request/response shape, auth scheme, or
-// sync-vs-webhook status reporting is known, so nothing below is guessed.
-// Fill in once the doc arrives; mirror nuvei-onboarding.ts's eventual real
-// implementation for structure once that one is written.
+// yet (unlike Nuvei, where a real Postman collection + working payload
+// example is now in hand -- see nuvei-onboarding.ts). Nothing about
+// Elavon's request/response shape, auth scheme, or document-upload/status
+// mechanism is known, so nothing below is guessed. Fill in once the doc
+// arrives, mirroring nuvei-onboarding.ts's structure once it's real.
+//
+// uploadDocument is deliberately omitted (not even a throwing stub) --
+// AcquirerOnboarding.uploadDocument is optional specifically so an acquirer
+// with no confirmed document-upload mechanism doesn't need one.
 
 export const elavonOnboarding: AcquirerOnboarding = {
   acquirer: "elavon",
 
-  async submitMerchantApplication(_data: MerchantApplicationData): Promise<SubmitApplicationResult> {
+  async createApplication(_data: MerchantApplicationData): Promise<CreateApplicationResult> {
     throw new Error(
-      "elavonOnboarding.submitMerchantApplication: not implemented -- Elavon onboarding API doc not yet obtained (see plan open item #2)",
+      "elavonOnboarding.createApplication: not implemented -- Elavon onboarding API doc not yet obtained (see plan open item #2)",
+    );
+  },
+
+  async submitApplication(_externalRef: string): Promise<SubmitApplicationResult> {
+    throw new Error(
+      "elavonOnboarding.submitApplication: not implemented -- Elavon onboarding API doc not yet obtained (see plan open item #2)",
     );
   },
 

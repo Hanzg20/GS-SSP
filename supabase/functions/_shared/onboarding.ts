@@ -28,8 +28,12 @@ export type OnboardingStatus =
   | "APPROVED"
   | "REJECTED";
 
-export interface SubmitApplicationResult {
+export interface CreateApplicationResult {
   externalRef: string;
+  raw: unknown;
+}
+
+export interface SubmitApplicationResult {
   status: OnboardingStatus;
   raw: unknown;
 }
@@ -39,9 +43,25 @@ export interface ApplicationStatusResult {
   raw: unknown;
 }
 
+export interface DocumentFile {
+  bytes: Uint8Array;
+  filename: string;
+  contentType: string;
+}
+
+// Split into 3 explicit steps (create / upload document / submit) rather
+// than one combined "submitMerchantApplication" call -- Nuvei's real
+// documented flow is Create -> Document -> Submit, and Create returns the
+// ApplicationId that document uploads need to reference, so they can't be
+// collapsed into one atomic call once document upload is a real step.
+// uploadDocument is optional since it's confirmed for Nuvei but not (yet)
+// for Elavon -- an acquirer without it just doesn't support attaching
+// supporting documents through this path yet.
 export interface AcquirerOnboarding {
   readonly acquirer: Acquirer;
-  submitMerchantApplication(data: MerchantApplicationData): Promise<SubmitApplicationResult>;
+  createApplication(data: MerchantApplicationData): Promise<CreateApplicationResult>;
+  uploadDocument?(externalRef: string, file: DocumentFile, documentType: string): Promise<void>;
+  submitApplication(externalRef: string): Promise<SubmitApplicationResult>;
   getApplicationStatus(externalRef: string): Promise<ApplicationStatusResult>;
 }
 

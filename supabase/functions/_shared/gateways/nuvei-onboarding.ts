@@ -1,8 +1,10 @@
 import type {
   AcquirerOnboarding,
   MerchantApplicationData,
+  CreateApplicationResult,
   SubmitApplicationResult,
   ApplicationStatusResult,
+  DocumentFile,
   OnboardingStatus,
 } from "../onboarding.ts";
 
@@ -24,9 +26,8 @@ import type {
 //   working examples:
 //   - Create (POST /Application/CA): an `api_key` QUERY PARAM shaped
 //     `username:password` -- no Authorization header at all.
-//   - Submit (POST /Application/CA/{id}/Submit): real HTTP Basic Auth
-//     header instead. (Document upload -- POST /Application/CA/{id}/Document
-//     -- also uses Basic; not implemented here yet, see below.)
+//   - Submit (POST /Application/CA/{id}/Submit) and Document upload (POST
+//     /Application/CA/{id}/Document): both real HTTP Basic Auth header.
 //   Implemented literally as shown, not unified, since that's the only
 //   ground truth available.
 // - Real GoldSky sandbox username for the Basic-auth calls:
@@ -69,13 +70,11 @@ import type {
 //   and whether other Merchant Application "types" need a different shape
 //   (the docs say the payload "is unique to the type of Merchant
 //   Applications you can process").
-// - Document upload (POST /Application/CA/{id}/Document, multipart) is a
-//   real required step per the docs' 3-step flow (Create -> Document ->
-//   Submit) but is NOT implemented here -- submitMerchantApplication()
-//   below still only does Create + Submit. Adding it needs a CMP-side
-//   file-upload UI, which doesn't exist yet; a real submission may get
-//   rejected by underwriting without supporting documents even if Submit
-//   itself returns success.
+// - Document upload is now implemented (uploadDocument below, multipart
+//   via FormData) but completely untested against the real API -- no
+//   working credentials exist yet (see above), so the exact multipart
+//   field name/shape hasn't been confirmed to actually satisfy Nuvei,
+//   only mirrored from the Postman example's `file` field.
 // - Status query mechanism -- per the 2026-08-21 partner call, status
 //   surfaces via Nuvei's Partner Dashboard (human-facing); whether GET
 //   /Application/CA/{id} below actually reflects live status hasn't been
@@ -280,11 +279,14 @@ const PASSWORD = Deno.env.get("NUVEI_APPLINK_PASSWORD");
 
 async function nuveiRequest(
   path: string,
-  init: RequestInit & { auth: "api_key" | "basic" },
+  init: RequestInit & { auth: "api_key" | "basic"; skipJsonContentType?: boolean },
 ): Promise<unknown> {
-  const { auth, ...requestInit } = init;
+  const { auth, skipJsonContentType, ...requestInit } = init;
   let url = `${BASE_URL}${path}`;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  // Multipart bodies (document upload) need fetch to set its own
+  // Content-Type with the correct boundary -- setting it manually to
+  // application/json would break that.
+  const headers: Record<string, string> = skipJsonContentType ? {} : { "Content-Type": "application/json" };
 
   if (auth === "api_key") {
     if (!API_KEY) {
@@ -339,11 +341,11 @@ function mapNuveiStatus(raw: string | undefined): OnboardingStatus {
 export const nuveiOnboarding: AcquirerOnboarding = {
   acquirer: "nuvei",
 
-  async submitMerchantApplication(data: MerchantApplicationData): Promise<SubmitApplicationResult> {
+  async createApplication(data: MerchantApplicationData): Promise<CreateApplicationResult> {
     // orgId is our own bookkeeping field, not part of Nuvei's payload.
     // Everything else must already be NuveiCaApplicationPayload-shaped --
-    // the caller (submit-acquirer-onboarding / eventually a CMP onboarding
-    // form) is responsible for that, since the fields genuinely differ from
+    // the caller (submit-acquirer-onboarding / the CMP onboarding form) is
+    // responsible for that, since the fields genuinely differ from
     // Elavon's and there's no generic-enough shape to validate here.
     const { orgId: _orgId, ...applicationPayload } = data;
 
@@ -358,21 +360,30 @@ export const nuveiOnboarding: AcquirerOnboarding = {
       throw new Error(`Nuvei AppLink create returned no ApplicationId: ${JSON.stringify(created)}`);
     }
 
-    // NOT YET DONE: document upload (POST /Application/CA/{id}/Document)
-    // should happen here, between create and submit, per the docs' 3-step
-    // flow -- see header comment. Real underwriting may reject a
-    // submission with no supporting documents even though this call
-    // itself will report success.
-    const submitResult = await nuveiRequest(`/Application/CA/${applicationId}/Submit`, {
+    return { externalRef: applicationId, raw: created };
+  },
+
+  async uploadDocument(externalRef: string, file: DocumentFile, documentType: string): Promise<void> {
+    const formData = new FormData();
+    // Uint8Array.buffer is typed as ArrayBufferLike (includes
+    // SharedArrayBuffer), which BlobPart doesn't accept -- this data always
+    // comes from Uint8Array(await file.arrayBuffer()) (see
+    // upload-acquirer-document/index.ts), never a real SharedArrayBuffer.
+    formData.append("file", new Blob([file.bytes as BlobPart], { type: file.contentType }), file.filename);
+
+    await nuveiRequest(
+      `/Application/CA/${externalRef}/Document?documentType=${encodeURIComponent(documentType)}`,
+      { auth: "basic", method: "POST", body: formData, skipJsonContentType: true },
+    );
+  },
+
+  async submitApplication(externalRef: string): Promise<SubmitApplicationResult> {
+    const submitResult = await nuveiRequest(`/Application/CA/${externalRef}/Submit`, {
       auth: "basic",
       method: "POST",
     });
 
-    return {
-      externalRef: applicationId,
-      status: "SUBMITTED",
-      raw: { created, submitResult },
-    };
+    return { status: "SUBMITTED", raw: submitResult };
   },
 
   async getApplicationStatus(externalRef: string): Promise<ApplicationStatusResult> {
