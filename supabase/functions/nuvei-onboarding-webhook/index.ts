@@ -1,18 +1,23 @@
-// Receives Nuvei's async onboarding/KYC status updates (application moved to
-// PENDING_REVIEW / NEEDS_INFO / APPROVED / REJECTED after the initial
-// synchronous submission). Structure mirrors ../payment-webhook/index.ts:
-// raw-body read, service-role client, idempotent status-column update,
-// always 200 unless the signature itself is invalid.
+// SPECULATIVE, UNVERIFIED -- written before reading Nuvei's real onboarding
+// docs. Having now read https://docs.nuvei.com/documentation/partner-tools-docs/partner-onboarding/applink-web-api-canada-schema/
+// (2026-08-21): everything actually documented there is poll-shaped (GET
+// /Application/CA/{id}, GET /Application/CA/List with a `status` filter) --
+// there is no mention of Nuvei pushing an async webhook for application
+// status changes anywhere in the fetched pages. ../_shared/gateways/nuvei-onboarding.ts's
+// getApplicationStatus() (polling) is the confirmed mechanism and the one
+// actually wired up; this file may correspond to nothing Nuvei ever calls.
+// Kept only in case a webhook mechanism exists in a part of the docs that
+// wasn't fetched -- do not wire this into Nuvei's dashboard as a live
+// webhook URL, and don't treat its existence as evidence a webhook exists.
 //
 // verify_jwt must be OFF for this function (see supabase/config.toml) --
-// the caller is Nuvei, not a signed-in user.
+// if a caller ever does exist, it would be Nuvei, not a signed-in user.
 //
-// NOT YET FUNCTIONAL: signature verification and payload parsing below are
-// placeholders. Nuvei's actual webhook signature scheme and payload shape
-// are unknown until their onboarding API doc is shared into this session
-// (see plan open item #1) -- do not wire this into Nuvei's dashboard as a
-// live webhook URL until that's filled in, it will currently reject every
-// call.
+// Structure mirrors ../payment-webhook/index.ts: raw-body read,
+// service-role client, idempotent status-column update, always 200 unless
+// the signature itself is invalid. Signature verification and payload
+// parsing below are still placeholders (fail closed) since nothing above
+// confirms what either would actually look like.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 function verifyNuveiSignature(_rawBody: string, _headers: Headers): boolean {
