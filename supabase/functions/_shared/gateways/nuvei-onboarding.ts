@@ -6,105 +6,309 @@ import type {
   OnboardingStatus,
 } from "../onboarding.ts";
 
-// Real implementation against Nuvei's "AppLink Web API" (Canada schema), per
-// https://docs.nuvei.com/documentation/partner-tools-docs/partner-onboarding/applink-web-api-canada-schema/
-// read 2026-08-21. Country is hardcoded to "CA" throughout (GS-SSP is a
-// Canadian company) -- Nuvei's USA schema is a parallel, differently-shaped
-// API (/Application/US/...) not implemented here.
+// Real implementation against Nuvei's "AppLink Web API" (Canada schema).
+// Ground truth is now the real Postman collection Danny Meeker (Nuvei
+// Partner Solutions Engineer) sent 2026-08-21 --
+// `C:\goldsky\合作伙伴资料\NUVEI\Reconciliation and Data Access\AppLink_GoldSky Technologies_CA Copy.postman_collection.json`
+// (cross-checked against the sibling US collection in the same folder) --
+// which supersedes the doc-site-scrape guesses from earlier the same day.
 //
-// CONFIRMED from the docs:
-// - JSON over plain HTTP REST, HTTP status codes signal errors.
-// - Auth: HTTP Basic. Sandbox has a documented shared test credential,
-//   "test" / "Testing123$" -- used below ONLY as the default when
-//   NUVEI_APPLINK_USERNAME/PASSWORD secrets are unset, same "safe default
-//   until configured" pattern as PAYMENT_GATEWAY defaulting to the stub
-//   gateway in ../gateway.ts. Production credentials must come from Nuvei's
-//   Relationship Manager -- never hardcode real ones here.
+// CONFIRMED, from the actual collection:
+// - Base URL: https://api.nuvei.com/applink -- this IS the `api.nuvei.com`
+//   host that manual DNS probing earlier flagged as the more plausible
+//   candidate over the fabricated `api.sandbox.nuvei.com` from the
+//   doc-site summarization pass. There is no separate sandbox subdomain;
+//   matches the partner call's "test environment uses marked production
+//   accounts" detail.
+// - Auth is genuinely DIFFERENT per call, not uniform, in Danny's own
+//   working examples:
+//   - Create (POST /Application/CA): an `api_key` QUERY PARAM shaped
+//     `username:password` -- no Authorization header at all.
+//   - Submit (POST /Application/CA/{id}/Submit): real HTTP Basic Auth
+//     header instead. (Document upload -- POST /Application/CA/{id}/Document
+//     -- also uses Basic; not implemented here yet, see below.)
+//   Implemented literally as shown, not unified, since that's the only
+//   ground truth available.
+// - Real GoldSky sandbox username for the Basic-auth calls:
+//   "goldskytechnologiessandboxca". Its password is a Postman "secret"
+//   variable (`{{auth_password_06dz}}`) -- collection exports never
+//   include secret variable values, so it did NOT come through and is
+//   still unknown. NUVEI_APPLINK_PASSWORD has no default for this reason;
+//   get the real value from Postman's environment/variables pane (not the
+//   collection file) or from Danny directly.
+// - The `api_key` value literally embedded in the Create example,
+//   `poprocketsandboxca:q47DC1wk2!`, is almost certainly NOT GoldSky's --
+//   the same request body's `Agent`/`Office` fields are hardcoded to
+//   `"PopRocket Sandbox CA"`, a different sandbox entity name than
+//   GoldSky's own `goldskytechnologiessandboxca`. Confirmed as a
+//   copy/paste-from-template leftover by cross-checking the sibling US
+//   collection, which has the exact same `poprocketsandbox*` pattern.
+//   NUVEI_APPLINK_API_KEY has no default for exactly this reason -- do not
+//   reuse this value for a real GoldSky submission.
+// - The CA collection's Submit example URL is ALSO a leftover artifact:
+//   `.../Application/CA/poprocketsandboxca:{{auth_password_0qjd}}/Submit`
+//   is not a valid ApplicationId shape. Confirmed broken by cross-checking
+//   the sibling US collection, whose Submit example correctly uses a
+//   GUID-shaped ApplicationId (matching its own Document example and the
+//   publicly documented `{id}` pattern) -- implemented here using the real
+//   ApplicationId returned from Create, not copying the CA example's
+//   broken URL.
+// - Real, complete example request body for Create captured below as
+//   `NuveiCaApplicationPayload` -- the first actually-confirmed
+//   field-level payload shape, replacing the earlier "pass anything
+//   through" placeholder. Top-level `Agent`/`Office` identify which
+//   sandbox account/office the application is filed under -- the example
+//   uses "PopRocket Sandbox CA" (not GoldSky's), so callers MUST supply
+//   GoldSky's real Agent/Office name explicitly; nothing here defaults it.
 //
-// BASE URL IS NOT ACTUALLY CONFIRMED -- IMPORTANT CORRECTION (2026-08-21):
-// the docs page's tool-summarized text said "https://api.sandbox.nuvei.com/applink",
-// but that hostname does not exist -- `nslookup api.sandbox.nuvei.com`
-// returns NXDOMAIN. This was very likely a fabrication introduced by the
-// page-summarization pass (a plausible-sounding blend of real fragments),
-// not something actually printed on the page -- a caution worth remembering
-// generally: don't trust a fetched-and-summarized doc's exact
-// URLs/hostnames as verbatim without a second check when they're about to
-// go into real integration code. Manual DNS probing found `api.nuvei.com`
-// and `applink.nuvei.com` DO resolve and both return real (non-generic-404)
-// responses for /Application/CA -- api.nuvei.com/Application/CA gives 401
-// (endpoint exists, these sandbox creds rejected there), applink.nuvei.com/Application/CA
-// gives 405 with an `Allow: POST` header (route exists) but the same POST
-// still came back 405 -- inconsistent enough that neither should be trusted
-// as *the* real sandbox endpoint without going through Nuvei's actual
-// "Innovation Center Sandbox Tools" portal (referenced in the Quick Start
-// Guide) to get the real base URL. NUVEI_APPLINK_BASE_URL has NO default
-// below on purpose -- unset it fails loudly (see nuveiRequest below) rather
-// than silently calling a guessed, possibly-wrong host.
-// - Flow: POST /Application/CA (create, body = the full application
-//   payload) -> returns { ApplicationId }, then POST
-//   /Application/CA/{id}/Submit (synchronous -- docs explicitly say to use
-//   this, NOT /SubmitAsync, which is marked "DO NOT USE").
-// - Status values seen in the docs' GET /Application/CA/List `status` filter:
-//   New, OutstandingElecSign, CompleteElecSign, Submitted, Canceled,
-//   PendingMerchantReviewLink, MerchantCompletedReviewLink,
-//   OutstandingUnderwriting. Notably NO literal "Approved"/"Rejected" value
-//   appeared in what was fetched -- mapNuveiStatus()'s guess at where
-//   approval/rejection actually land is UNVERIFIED, flag before trusting it
-//   in production.
-//
-// NOT CONFIRMED / genuinely unknown, do not guess further without the real
-// doc pages or a Relationship Manager conversation:
-// - The actual JSON payload field schema for the Merchant Application itself
-//   (legal name, address, banking, owners, etc). Nuvei's own docs say this
-//   "is unique to the type of Merchant Applications you can process" and is
-//   provided by "your Integration Specialist or Relationship Manager", not
-//   published generically -- submitMerchantApplication() below deliberately
-//   passes `data` through close to as-is (minus our own bookkeeping fields)
-//   rather than inventing field names that would silently 400 or silently
-//   submit wrong data.
-// - Whether Nuvei pushes an async webhook on approval at all, or whether
-//   polling (GET /Application/CA/{id} or /Application/CA/List) is the only
-//   mechanism -- everything actually documented here is poll-shaped, so
-//   getApplicationStatus() below is the primary path.
-//   ../../nuvei-onboarding-webhook/index.ts was written speculatively before
-//   this doc pass and may not correspond to anything Nuvei actually sends;
-//   treat it as unverified, not as confirmation a webhook exists.
-// - Whether GET /Application/CA/{id}'s response actually includes a `Status`
-//   field (assumed below) -- the fetched docs only confirmed this endpoint
-//   "returns the Merchant Application data payload", not its exact shape.
+// STILL UNKNOWN / not yet done:
+// - Real Basic Auth password for goldskytechnologiessandboxca (redacted
+//   Postman secret) and GoldSky's real Agent/Office name -- both required
+//   before a real sandbox call can succeed.
+// - Whether every field in the example payload is required vs optional,
+//   and whether other Merchant Application "types" need a different shape
+//   (the docs say the payload "is unique to the type of Merchant
+//   Applications you can process").
+// - Document upload (POST /Application/CA/{id}/Document, multipart) is a
+//   real required step per the docs' 3-step flow (Create -> Document ->
+//   Submit) but is NOT implemented here -- submitMerchantApplication()
+//   below still only does Create + Submit. Adding it needs a CMP-side
+//   file-upload UI, which doesn't exist yet; a real submission may get
+//   rejected by underwriting without supporting documents even if Submit
+//   itself returns success.
+// - Status query mechanism -- per the 2026-08-21 partner call, status
+//   surfaces via Nuvei's Partner Dashboard (human-facing); whether GET
+//   /Application/CA/{id} below actually reflects live status hasn't been
+//   confirmed against a real call.
 
-// No hardcoded default -- see the base-URL correction above. Get the real
-// value from Nuvei's Innovation Center Sandbox Tools portal (or Relationship
-// Manager for production) and `supabase secrets set NUVEI_APPLINK_BASE_URL=...`.
-const BASE_URL = Deno.env.get("NUVEI_APPLINK_BASE_URL");
-const USERNAME = Deno.env.get("NUVEI_APPLINK_USERNAME") ?? "test";
-const PASSWORD = Deno.env.get("NUVEI_APPLINK_PASSWORD") ?? "Testing123$";
-
-function authHeader(): string {
-  return `Basic ${btoa(`${USERNAME}:${PASSWORD}`)}`;
+interface NuveiCaOwner {
+  AddressSameAs: string;
+  Title: string;
+  Guarantor: boolean;
+  Email: string;
+  PercentOwnership: number;
+  FirstName: string;
+  LastName: string;
+  Birthday: string;
+  ResidenceAddressCivicNum: string;
+  ResidenceAddressStreet: string;
+  City: string;
+  State: string;
+  Zip: string;
+  Telephone: string;
+  SocialSecurity: string;
+  DriverLicense: string;
+  DriverState: string;
 }
 
-async function nuveiRequest(path: string, init: RequestInit = {}): Promise<unknown> {
-  if (!BASE_URL) {
-    throw new Error(
-      "NUVEI_APPLINK_BASE_URL is not set -- the real AppLink base URL was never confirmed (see header comment), fails loudly rather than guessing a host",
-    );
+// Real field shape from Danny's CreateApplication example -- see header
+// comment. Optional-ness per field is NOT confirmed (only that this exact
+// combination is accepted); treat every field as required until Nuvei's
+// validation errors (surfaced via nuveiRequest's error path) prove
+// otherwise.
+export interface NuveiCaApplicationPayload {
+  Agent: string;
+  Office: string;
+  Language: { Language: string };
+  ContractVersionEtf: {
+    ContractTerm: string;
+    ContractVersion: string;
+    MerchantSignDate: string;
+  };
+  MerchantBusinessInformation: {
+    OwnershipType: string;
+    LegalName: string;
+    CorporateAddressCivicNum: string;
+    CorporateAddressStreet: string;
+    CorporateAddressUnitDesignator?: string;
+    CorporateAddressUnit?: string;
+    CorporateCity: string;
+    CorporateState: string;
+    CorporateZip: string;
+    CorporateTelephone: string;
+    FederalTaxId: string;
+    BusinessEmail: string;
+    GoodsType: string;
+    BusinessDescription: string;
+    BusinessPresence: string;
+    BusinessPresenceMonths: string;
+    PrefContactSame: boolean;
+    PrefContactEmail: string;
+    PrefContactPhone: string;
+    MailingAttention: string;
+    MailingAddress?: string;
+    WebAddress: string;
+  };
+  DbaInformation: {
+    SameAsLegal: boolean;
+    DbaName: string;
+    LocationAddressCivicNum: string;
+    LocationAddressStreet: string;
+    LocationAddressUnitDesignator?: string;
+    LocationAddressUnit?: string;
+    LocationCity: string;
+    LocationState: string;
+    LocationZip: string;
+    LocationTelephone: string;
+    TimeZone: string;
+    GoodsType: string;
+    BusinessPresence: string;
+    BusinessPresenceMonths: string;
+    MailingAttention: string;
+    StatementEmail: string;
+    MerchantCustomerServiceNumber: string;
+    SubjectOfRiskProgram: boolean;
+    McRiskProgramDescription?: string | null;
+    McRiskProgramDate?: string | null;
+    HasPreviousProcessor: string;
+    MailingAddress: string;
+    FederalRegistryNumber: string;
+  };
+  OwnersOrOfficers: {
+    DbaContactTitle: string;
+    OwnerCitizenship: string;
+    OwnerCountry: string;
+    BusinessStartupDate: string;
+    PreviousProcessingIndicator: boolean;
+    OwnerList: NuveiCaOwner[];
+  };
+  PreferredContact: {
+    PrefContactSame: boolean;
+    MailingAttention: string;
+    PrefContactEmail: string;
+    PrefContactPhone: string;
+  };
+  ElectronicDebitCreditAuthorization: {
+    SupportSplitBanking: boolean;
+    BankAccountHolderName: string;
+    BankInstitutionNumber: string;
+    BankTransitNumber: string;
+    BankAccountNumber: string;
+    BankZip: string;
+    BankCity: string;
+    BankProvince: string;
+    OperatingBankAccountHolderName?: string | null;
+    OperatingBankInstitutionNumber?: string | null;
+    OperatingBankTransitNumber?: string | null;
+    OperatingBankAccountNumber?: string | null;
+    OperatingBankZip?: string | null;
+  };
+  ControlPanel: {
+    ControlPanelAccess: boolean;
+    AdminFirstName: string;
+    AdminLastName: string;
+    AdminTitle: string;
+    AdminEmail: string;
+    AdminTelephone: string;
+  };
+  EquipmentInformationSection: {
+    Terminal: boolean;
+    Mobile: boolean;
+    GatewaySoftware: boolean;
+    TerminalList?: unknown;
+    MobileEquipmentList?: unknown;
+    GatewaySoftwareList?: {
+      GatewayName: string;
+      ServiceOption: string;
+      EndToEndEncryption: boolean;
+      Authentication: boolean;
+      Tokenization: boolean;
+      PeripheralEquipment: string;
+      EquipmentType: string;
+      MakeModel: string;
+      UnitPrice: string;
+      NumberOfEquipmentUnits: string;
+    };
+  };
+  SiteSurveyInformation: {
+    MerchantsLocaleZoning: string;
+    MerchantLocale: string;
+    MerchantSquareFootage: string;
+    RefundPolicyExists: boolean;
+    RefundPolicy: string;
+    TimeToCcRefund: number;
+    CombinedDeliveryAndAuthorization: boolean;
+    AgentSignature: string;
+  };
+  ScheduleA: {
+    BillingOption: string;
+    BillingType: string;
+    SchedAMerchantType: string;
+    OnlineDebit: boolean;
+  };
+  OtherServiceFees: {
+    MonthlyMinimumFee: number;
+    ChargebackFee: number;
+    RetrievalFee: number;
+    OptOutPivotal360Access: boolean;
+  };
+  PciAndPaymentsApplicationCompliance: {
+    CcNumbersStored: boolean;
+    ThirdPartyPaymentApplication: boolean;
+  };
+  CreditCardSalesProfile: {
+    VisaMcSalesPercentCardSwipe: number;
+    VisaMcSalesPercentMailOrTelephoneOrder: number;
+    VisaMcSalesPercentInternet: number;
+    VisaAverageMonthlyVolume: number;
+    VisaAverageTicketSize: number;
+    VisaHighTicketSize: number;
+    McAverageMonthlyVolume: number;
+    McAverageTicketSize: number;
+    McHighTicketSize: number;
+    DebitAverageMonthlyVolume: number;
+    DebitAverageTicketSize: number;
+    DebitHighTicketSize: number;
+  };
+  CreditCardProcessing: {
+    Category: string;
+    BillingPlan: string;
+  };
+  Miscellaneous: {
+    ServiceType: string;
+  };
+}
+
+const BASE_URL = "https://api.nuvei.com/applink";
+// No default -- see header comment, the embedded example value is a
+// different (non-GoldSky) sandbox entity's credential.
+const API_KEY = Deno.env.get("NUVEI_APPLINK_API_KEY");
+// Real username, safe to default (not secret, just an account name).
+const USERNAME = Deno.env.get("NUVEI_APPLINK_USERNAME") ?? "goldskytechnologiessandboxca";
+// No default -- redacted Postman secret, real value not yet known.
+const PASSWORD = Deno.env.get("NUVEI_APPLINK_PASSWORD");
+
+async function nuveiRequest(
+  path: string,
+  init: RequestInit & { auth: "api_key" | "basic" },
+): Promise<unknown> {
+  const { auth, ...requestInit } = init;
+  let url = `${BASE_URL}${path}`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+
+  if (auth === "api_key") {
+    if (!API_KEY) {
+      throw new Error(
+        "NUVEI_APPLINK_API_KEY is not set -- the example value in Danny's collection belongs to a different sandbox entity (PopRocket, not GoldSky), fails loudly rather than using it",
+      );
+    }
+    url += `${path.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(API_KEY)}`;
+  } else {
+    if (!PASSWORD) {
+      throw new Error(
+        "NUVEI_APPLINK_PASSWORD is not set -- Postman redacts secret variable values on export, so the real password was never available; get it from Danny/the Postman environment directly",
+      );
+    }
+    headers.Authorization = `Basic ${btoa(`${USERNAME}:${PASSWORD}`)}`;
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: authHeader(),
-      ...init.headers,
-    },
-  });
+  const res = await fetch(url, { ...requestInit, headers: { ...headers, ...requestInit.headers } });
 
   if (!res.ok) {
     // Nuvei uses HTTP status codes for errors, per the docs -- surface the
     // body (usually validation error detail) rather than just the status.
     const body = await res.text();
-    throw new Error(`Nuvei AppLink ${init.method ?? "GET"} ${path} failed: ${res.status} ${body}`);
+    throw new Error(`Nuvei AppLink ${requestInit.method ?? "GET"} ${path} failed: ${res.status} ${body}`);
   }
   if (res.status === 204) return null;
   return res.json();
@@ -136,12 +340,15 @@ export const nuveiOnboarding: AcquirerOnboarding = {
   acquirer: "nuvei",
 
   async submitMerchantApplication(data: MerchantApplicationData): Promise<SubmitApplicationResult> {
-    // Strip our own bookkeeping fields before sending -- orgId/acquirer are
-    // ours, not part of Nuvei's payload schema (whatever that turns out to
-    // be exactly).
+    // orgId is our own bookkeeping field, not part of Nuvei's payload.
+    // Everything else must already be NuveiCaApplicationPayload-shaped --
+    // the caller (submit-acquirer-onboarding / eventually a CMP onboarding
+    // form) is responsible for that, since the fields genuinely differ from
+    // Elavon's and there's no generic-enough shape to validate here.
     const { orgId: _orgId, ...applicationPayload } = data;
 
     const created = await nuveiRequest("/Application/CA", {
+      auth: "api_key",
       method: "POST",
       body: JSON.stringify(applicationPayload),
     }) as { ApplicationId?: string };
@@ -151,8 +358,13 @@ export const nuveiOnboarding: AcquirerOnboarding = {
       throw new Error(`Nuvei AppLink create returned no ApplicationId: ${JSON.stringify(created)}`);
     }
 
-    // Synchronous submit, per docs -- NOT /SubmitAsync (marked "DO NOT USE").
+    // NOT YET DONE: document upload (POST /Application/CA/{id}/Document)
+    // should happen here, between create and submit, per the docs' 3-step
+    // flow -- see header comment. Real underwriting may reject a
+    // submission with no supporting documents even though this call
+    // itself will report success.
     const submitResult = await nuveiRequest(`/Application/CA/${applicationId}/Submit`, {
+      auth: "basic",
       method: "POST",
     });
 
@@ -164,7 +376,7 @@ export const nuveiOnboarding: AcquirerOnboarding = {
   },
 
   async getApplicationStatus(externalRef: string): Promise<ApplicationStatusResult> {
-    const result = await nuveiRequest(`/Application/CA/${externalRef}`) as { Status?: string } | null;
+    const result = await nuveiRequest(`/Application/CA/${externalRef}`, { auth: "basic" }) as { Status?: string } | null;
     return {
       status: mapNuveiStatus(result?.Status),
       raw: result,
