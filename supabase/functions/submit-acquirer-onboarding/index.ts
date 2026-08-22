@@ -18,8 +18,12 @@
 // via the Authorization header, not a service-role client -- an org member
 // without sys-admin/org-admin rights gets rejected by "Sys admins can
 // manage acquirer accounts" the same way a direct table write would be.
+//
+// CORS: this function is called from a browser (gs-ssp-cmp), unlike this
+// repo's other functions -- see ../_shared/cors.ts for why that matters.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getOnboardingAdapter, type Acquirer, type MerchantApplicationData } from "../_shared/onboarding.ts";
+import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
 
 interface CreateRequestBody {
   action: "create";
@@ -37,26 +41,29 @@ interface SubmitRequestBody {
 type RequestBody = CreateRequestBody | SubmitRequestBody;
 
 Deno.serve(async (req: Request) => {
+  const preflight = handleCorsPreflight(req);
+  if (preflight) return preflight;
+
   if (req.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
+    return jsonResponse({ error: "method_not_allowed" }, 405);
   }
 
   let body: RequestBody;
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: "invalid_json" }), { status: 400 });
+    return jsonResponse({ error: "invalid_json" }, 400);
   }
 
   const { action, org_id, acquirer } = body;
   if (!org_id || !acquirer) {
-    return new Response(JSON.stringify({ error: "missing_fields" }), { status: 400 });
+    return jsonResponse({ error: "missing_fields" }, 400);
   }
   if (acquirer !== "elavon" && acquirer !== "nuvei") {
-    return new Response(JSON.stringify({ error: "unknown_acquirer" }), { status: 400 });
+    return jsonResponse({ error: "unknown_acquirer" }, 400);
   }
   if (action !== "create" && action !== "submit") {
-    return new Response(JSON.stringify({ error: "unknown_action" }), { status: 400 });
+    return jsonResponse({ error: "unknown_action" }, 400);
   }
 
   const authHeader = req.headers.get("Authorization");
@@ -70,7 +77,7 @@ Deno.serve(async (req: Request) => {
 
   if (action === "create") {
     if (!body.applicationData) {
-      return new Response(JSON.stringify({ error: "missing_fields" }), { status: 400 });
+      return jsonResponse({ error: "missing_fields" }, 400);
     }
     const applicationPayload: MerchantApplicationData = { orgId: org_id, ...body.applicationData } as MerchantApplicationData;
 
@@ -95,16 +102,13 @@ Deno.serve(async (req: Request) => {
         );
       if (error) {
         console.error("[submit-acquirer-onboarding] create upsert failed:", error);
-        return new Response(JSON.stringify({ error: "db_error", detail: error.message }), { status: 500 });
+        return jsonResponse({ error: "db_error", detail: error.message }, 500);
       }
 
-      return new Response(JSON.stringify({ externalRef: result.externalRef }), { status: 200 });
+      return jsonResponse({ externalRef: result.externalRef }, 200);
     } catch (e) {
       console.error(`[submit-acquirer-onboarding] ${acquirer} createApplication threw:`, e);
-      return new Response(
-        JSON.stringify({ error: "adapter_error", detail: e instanceof Error ? e.message : String(e) }),
-        { status: 502 },
-      );
+      return jsonResponse({ error: "adapter_error", detail: e instanceof Error ? e.message : String(e) }, 502);
     }
   }
 
@@ -122,11 +126,11 @@ Deno.serve(async (req: Request) => {
 
   if (fetchError) {
     console.error("[submit-acquirer-onboarding] account lookup failed:", fetchError);
-    return new Response(JSON.stringify({ error: "db_error", detail: fetchError.message }), { status: 500 });
+    return jsonResponse({ error: "db_error", detail: fetchError.message }, 500);
   }
   const externalRef = account?.external_merchant_id;
   if (!externalRef) {
-    return new Response(JSON.stringify({ error: "not_created_yet" }), { status: 409 });
+    return jsonResponse({ error: "not_created_yet" }, 409);
   }
 
   try {
@@ -140,15 +144,12 @@ Deno.serve(async (req: Request) => {
 
     if (error) {
       console.error("[submit-acquirer-onboarding] submit update failed:", error);
-      return new Response(JSON.stringify({ error: "db_error", detail: error.message }), { status: 500 });
+      return jsonResponse({ error: "db_error", detail: error.message }, 500);
     }
 
-    return new Response(JSON.stringify({ status: result.status }), { status: 200 });
+    return jsonResponse({ status: result.status }, 200);
   } catch (e) {
     console.error(`[submit-acquirer-onboarding] ${acquirer} submitApplication threw:`, e);
-    return new Response(
-      JSON.stringify({ error: "adapter_error", detail: e instanceof Error ? e.message : String(e) }),
-      { status: 502 },
-    );
+    return jsonResponse({ error: "adapter_error", detail: e instanceof Error ? e.message : String(e) }, 502);
   }
 });
