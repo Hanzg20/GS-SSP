@@ -8,7 +8,9 @@ data class Product(
     val id: String,
     val name: String,
     val price_cents: Int,
-    val vertical_type: String, // WASH, LAUNDRY, etc.
+    val vertical_type: String, // WASH, VENDING, RETAIL, etc.
+    val barcode: String? = null, // For retail scanning
+    val image_url: String? = null,
     val attributes: JsonObject? = null, // Stores { "serial_hex": "AA...", "pulse": 12 }
     val is_active: Boolean = true
 )

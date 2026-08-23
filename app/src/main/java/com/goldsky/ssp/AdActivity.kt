@@ -107,15 +107,21 @@ class AdActivity : BaseAdActivity() {
     }
 
     private fun playNext() {
-        if (fullPlaylist.isEmpty()) return
+        if (fullPlaylist.isEmpty()) {
+            Log.w("AdActivity", "Playlist is empty, showing fallback")
+            showImageFallback()
+            return
+        }
 
         // Finalize analytics for the ad that just ended
         reportAdCompletion()
 
         // 1. Filter active ads based on targeting rules
         val activeAds = fullPlaylist.filter { AdTargetingEvaluator.isAdActive(it.entry) }
+        Log.d("AdActivity", "Active ads filtered: ${activeAds.size}/${fullPlaylist.size}")
         
         if (activeAds.isEmpty()) {
+            Log.w("AdActivity", "No ads matching targeting rules, showing fallback")
             showImageFallback()
             // Try again in 30s in case time-based rules change
             advanceHandler.postDelayed({ if (!isFinishing) playNext() }, 30000)
@@ -133,6 +139,8 @@ class AdActivity : BaseAdActivity() {
         val targeted = sortedAds[adIndex]
         val ad = targeted.media
         
+        Log.d("AdActivity", "Playing ad at index $adIndex: ${ad.id} (${ad.media_type})")
+        
         // Advance global counter for next round
         currentIndex = (adIndex + 1) % sortedAds.size
 
@@ -144,6 +152,7 @@ class AdActivity : BaseAdActivity() {
         if (ad.media_type == "TEXT" || ad.media_type == "TEXT_AD") {
             val text = ad.text_content
             if (text.isNullOrBlank()) {
+                Log.w("AdActivity", "Text content is null/blank, skipping to next")
                 playNext() // Skip malformed announcement/promo
                 return
             }
@@ -153,6 +162,7 @@ class AdActivity : BaseAdActivity() {
 
         val mediaUrl = ad.media_url
         if (mediaUrl == null) {
+            Log.w("AdActivity", "Media URL is null, skipping to next")
             playNext() // Skip malformed row (VIDEO/IMAGE with no file url)
             return
         }
@@ -162,7 +172,17 @@ class AdActivity : BaseAdActivity() {
         val file = File(adsDir, fileName)
 
         if (!file.exists()) {
-            playNext() // Skip missing file
+            Log.w("AdActivity", "Local file not found: ${file.absolutePath}, skipping to next")
+            
+            // Safety: if we have tried all active ads and none exist, fallback to static image
+            if (currentIndex == 0) {
+                Log.e("AdActivity", "All active ads missing local files. Showing fallback.")
+                showImageFallback()
+                advanceHandler.postDelayed({ if (!isFinishing) playNext() }, 30000)
+                return
+            }
+            
+            playNext() 
             return
         }
 

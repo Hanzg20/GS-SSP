@@ -1,5 +1,6 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
+apply plugin: 'com.google.devtools.ksp'
 apply plugin: 'kotlinx-serialization'
 apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
@@ -23,53 +24,49 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        // Inject Supabase credentials from local.properties
         buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
         buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
-
-        // Enable installation on x86_64 emulators even though we only have ARM libs
-        ndk {
-            abiFilters "x86_64", "armeabi-v7a", "arm64-v8a"
-        }
     }
 
-    flavorDimensions "product"
+    flavorDimensions "product", "environment"
+    
     productFlavors {
-        wash {
-            dimension "product"
-            applicationIdSuffix ".wash"
-            versionNameSuffix "-wash"
-            manifestPlaceholders = [appName: "GS-SSP Wash"]
+        // Vertical Product Flavors
+        wash { dimension "product"; manifestPlaceholders = [appName: "GS-SSP Wash"] }
+        vending { dimension "product"; manifestPlaceholders = [appName: "GS-SSP Vending"] }
+        parking { dimension "product"; manifestPlaceholders = [appName: "GS-SSP Parking"] }
+        ev { dimension "product"; manifestPlaceholders = [appName: "GS-SSP EV Charging"] }
+        retail { dimension "product"; manifestPlaceholders = [appName: "GS-SSP Retail"] }
+
+        // Environment Flavors
+        real {
+            dimension "environment"
+            // Standard ARM binaries for production hardware
+            ndk { abiFilters "armeabi-v7a", "arm64-v8a" }
+            buildConfigField "boolean", "IS_MOCK", "false"
         }
-        vending {
-            dimension "product"
-            applicationIdSuffix ".vending"
-            versionNameSuffix "-vending"
-            manifestPlaceholders = [appName: "GS-SSP Vending"]
-        }
-        parking {
-            dimension "product"
-            applicationIdSuffix ".parking"
-            versionNameSuffix "-parking"
-            manifestPlaceholders = [appName: "GS-SSP Parking"]
-        }
-        ev {
-            dimension "product"
-            applicationIdSuffix ".ev"
-            versionNameSuffix "-ev"
-            manifestPlaceholders = [appName: "GS-SSP EV Charging"]
-        }
-        retail {
-            dimension "product"
-            applicationIdSuffix ".retail"
-            versionNameSuffix "-retail"
-            manifestPlaceholders = [appName: "GS-SSP Retail"]
+        
+        mock {
+            dimension "environment"
+            buildConfigField "boolean", "IS_MOCK", "true"
+            // Strip ALL native libs to bypass ABI check on emulators
+            packagingOptions {
+                jniLibs {
+                    excludes += ["lib/armeabi-v7a/*", "lib/arm64-v8a/*", "lib/x86/*", "lib/x86_64/*", "lib/armeabi/*"]
+                }
+            }
         }
     }
 
-    packagingOptions {
-        jniLibs {
-            useLegacyPackaging = true
+    // Per-variant applicationId suffixes
+    applicationVariants.all { variant ->
+        def flavorProduct = variant.productFlavors[0].name
+        def flavorEnv = variant.productFlavors[1].name
+        
+        variant.mergedFlavor.applicationIdSuffix = ".${flavorProduct}"
+        if (flavorEnv == "mock") {
+            variant.mergedFlavor.applicationIdSuffix += ".mock"
+            variant.mergedFlavor.versionNameSuffix = "-mock"
         }
     }
 
@@ -78,24 +75,22 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            
-            // Industrial performance: ensure no debug symbol leak
             debuggable false
             jniDebuggable false
         }
-        
         debug {
             minifyEnabled false
             shrinkResources false
         }
     }
+    
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
         coreLibraryDesugaringEnabled true
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '11'
     }
     buildFeatures {
         viewBinding true
@@ -107,12 +102,7 @@ android {
     }
 
     testOptions {
-        unitTests {
-            // android.util.Log etc. throw "not mocked" by default under plain
-            // JUnit; returning defaults instead avoids pulling in Robolectric
-            // just to unit-test non-UI logic like OfflineQueueManager.
-            returnDefaultValues = true
-        }
+        unitTests.returnDefaultValues = true
     }
 }
 
@@ -123,24 +113,15 @@ dependencies {
     implementation 'com.google.android.material:material:1.8.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
-    // Kotlin Coroutines for async tasks and polling
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4'
-
-    // ZXing for local payment QR code generation
     implementation 'com.google.zxing:core:3.5.2'
-
-    // Lottie for modern high-end hardware animations
     implementation 'com.airbnb.android:lottie:6.0.0'
 
-    // Supabase SDK (Downgraded to Stable 2.6.1)
-    // NOTE: the Auth module was renamed gotrue-kt -> auth-kt starting in Supabase-kt 3.0.0.
-    // At 2.6.1 it must be declared as gotrue-kt, or resolution fails / drags in 3.x transitively.
     implementation "io.github.jan-tennert.supabase:postgrest-kt:2.6.1"
     implementation "io.github.jan-tennert.supabase:gotrue-kt:2.6.1"
     implementation "io.github.jan-tennert.supabase:realtime-kt:2.6.1"
     implementation "io.github.jan-tennert.supabase:storage-kt:2.6.1"
 
-    // Ktor 2.3.12 (Stable for Supabase 2.x)
     def ktor_version = "2.3.12"
     implementation "io.ktor:ktor-client-core:$ktor_version"
     implementation "io.ktor:ktor-client-android:$ktor_version"
@@ -150,24 +131,26 @@ dependencies {
     implementation "io.ktor:ktor-client-logging:$ktor_version"
     implementation "io.ktor:ktor-client-auth:$ktor_version"
 
-    // WorkManager
     implementation "androidx.work:work-runtime-ktx:2.9.0"
-
-    // Coil
     implementation "io.coil-kt:coil:2.6.0"
 
-    // Jetpack Compose
+    // Room Persistence
+    def room_version = "2.6.1"
+    implementation "androidx.room:room-runtime:$room_version"
+    implementation "androidx.room:room-ktx:$room_version"
+    ksp "androidx.room:room-compiler:$room_version"
+
     def compose_bom = platform('androidx.compose:compose-bom:2024.04.01')
     implementation compose_bom
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-tooling-preview'
     implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-extended'
     implementation 'androidx.activity:activity-compose:1.7.0'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1'
     debugImplementation 'androidx.compose.ui:ui-tooling'
 
-    // Local library placeholder for PAX SDKs (NeptuneLite & POSLink)
-    // If you have real aar files, place them in libs/ and they will be picked up
+    // Multi-Vendor SDKs
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation files('libs/PAX_POSLinkAndroid_20260202.aar')
     implementation files('libs/cloudpos_sdk.aar')
@@ -178,15 +161,10 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }
 
-// Force every io.github.jan-tennert.supabase artifact (including the transitive
-// 'supabase-kt' core module) onto the 2.6.1 line declared above. Guards against
-// any future transitive dependency resolving a newer 3.x release, which would
-// put binary-incompatible classes on the runtime classpath (NoClassDefFoundError).
 configurations.all {
     resolutionStrategy.eachDependency { details ->
         if (details.requested.group == 'io.github.jan-tennert.supabase') {
             details.useVersion '2.6.1'
-            details.because 'pin all Supabase-kt submodules to 2.6.1 to prevent 2.x/3.x version skew'
         }
     }
 }

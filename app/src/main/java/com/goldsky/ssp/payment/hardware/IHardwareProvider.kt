@@ -49,6 +49,11 @@ interface IHardwareProvider {
     fun getScannerProvider(): IScannerProvider
 
     /**
+     * Gets the printer provider for the current hardware.
+     */
+    fun getPrinterProvider(): IPrinterProvider
+
+    /**
      * Feeds the hardware watchdog to prevent system reboot.
      */
     fun feedWatchdog()

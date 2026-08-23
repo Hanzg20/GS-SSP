@@ -17,6 +17,7 @@ class WizarPosHardwareProvider : IHardwareProvider {
     
     private var terminal: POSTerminal? = null
     private var scannerProvider: WizarPosScannerProvider? = null
+    private var printerProvider: WizarPosPrinterProvider? = null
     private var serialProvider: WizarPosSerialProvider? = null
     private var paymentProvider: WizarPosPaymentProvider? = null
     private var gpioProvider: WizarPosGpioProvider? = null
@@ -25,6 +26,13 @@ class WizarPosHardwareProvider : IHardwareProvider {
 
     override fun init(context: Context) {
         this.context = context
+        Log.i(TAG, "Initializing WizarPOS Hardware Provider")
+
+        if (com.goldsky.ssp.BuildConfig.IS_MOCK) {
+            Log.w(TAG, "MOCK MODE ENABLED: Skipping real WizarPOS SDK initialization")
+            return
+        }
+
         try {
             // POSTerminal.getInstance(context) handles the binding to the background service.
             // There is no explicit .open() method on the POSTerminal class itself.
@@ -69,6 +77,13 @@ class WizarPosHardwareProvider : IHardwareProvider {
             scannerProvider = WizarPosScannerProvider(context!!)
         }
         return scannerProvider!!
+    }
+
+    override fun getPrinterProvider(): IPrinterProvider {
+        if (printerProvider == null) {
+            printerProvider = WizarPosPrinterProvider(terminal)
+        }
+        return printerProvider!!
     }
 
     fun getPaymentProvider(): IPaymentProvider {

@@ -32,10 +32,17 @@ class PaxHardwareProvider : IHardwareProvider, DefaultLifecycleObserver {
     private var serialProvider: PaxSerialProvider? = null
     private var gpioProvider: PaxGpioProvider? = null
     private var mdbProvider: PaxMdbProvider? = null
+    private var printerProvider: PaxPrinterProvider? = null
 
     override fun init(context: Context) {
         appContext = context.applicationContext
         Log.i(TAG, "Initializing PAX Hardware Provider (UPTAPI)")
+        
+        if (com.goldsky.ssp.BuildConfig.IS_MOCK) {
+            Log.w(TAG, "MOCK MODE ENABLED: Skipping real PAX SDK initialization")
+            return
+        }
+
         try {
             // 1. Initialize POSLink Android Bridge (Required for BroadPOS AIDL)
             POSLinkAndroid.init(context.applicationContext)
@@ -120,6 +127,10 @@ class PaxHardwareProvider : IHardwareProvider, DefaultLifecycleObserver {
     override fun getScannerProvider(): PaxScannerProvider {
         val ctx = requireContext()
         return scannerProvider ?: PaxScannerProvider(ctx) { dal }.also { scannerProvider = it }
+    }
+
+    override fun getPrinterProvider(): PaxPrinterProvider {
+        return printerProvider ?: PaxPrinterProvider { dal }.also { printerProvider = it }
     }
 
     override fun getSerialProvider(): PaxSerialProvider {

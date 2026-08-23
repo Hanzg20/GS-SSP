@@ -93,6 +93,10 @@ object TransactionRepository {
      * above and by TransactionReplayWorker when draining the queue.
      */
     suspend fun recordTransactionRemote(record: TransactionRecord): Boolean = withContext(Dispatchers.IO) {
+        if (com.goldsky.ssp.BuildConfig.IS_MOCK) {
+            Log.i(TAG, "MOCK: Transaction recorded (skipped remote)")
+            return@withContext true
+        }
         try {
             // Defensive: ensure product_id is a valid UUID or null
             val sanitizedRecord = if (record.product_id != null && !record.product_id.matches(Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))) {

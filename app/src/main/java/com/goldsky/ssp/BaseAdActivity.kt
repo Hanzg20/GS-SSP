@@ -16,11 +16,12 @@ abstract class BaseAdActivity : AppCompatActivity() {
 
     private val adHandler = Handler(Looper.getMainLooper())
     private val adRunnable = Runnable {
+        android.util.Log.d("AdTimer", "Inactivity timeout reached. Launching ad screen...")
         launchAdScreen()
     }
 
-    // Inactivity timeout in milliseconds (60 seconds)
-    private val inactivityTimeoutMs: Long = 60000 
+    // Inactivity timeout in milliseconds (30 seconds for testing)
+    private val inactivityTimeoutMs: Long = 30000 
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

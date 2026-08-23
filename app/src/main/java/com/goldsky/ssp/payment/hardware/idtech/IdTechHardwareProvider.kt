@@ -4,10 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
-import com.goldsky.ssp.payment.hardware.IGpioProvider
-import com.goldsky.ssp.payment.hardware.IMdbProvider
-import com.goldsky.ssp.payment.hardware.IScannerProvider
-import com.goldsky.ssp.payment.hardware.IHardwareProvider
+import com.goldsky.ssp.payment.hardware.*
 import com.idtechproducts.device.*
 import com.idtechproducts.device.ReaderInfo.DEVICE_TYPE
 
@@ -50,6 +47,14 @@ class IdTechHardwareProvider : IHardwareProvider, DefaultLifecycleObserver {
         override fun startScan(callback: IScannerProvider.ScanCallback) {}
         override fun stopScan() {}
         override fun setScannerLed(enabled: Boolean) {}
+    }
+
+    override fun getPrinterProvider(): IPrinterProvider = object : IPrinterProvider {
+        override fun init(): Boolean = false
+        override fun addText(text: String): Boolean = false
+        override fun startPrint(): Boolean = false
+        override fun feedPaper(lines: Int): Boolean = false
+        override fun hasPaper(): Boolean = false
     }
 
     override fun init(context: Context) {
