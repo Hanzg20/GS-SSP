@@ -1,16 +1,11 @@
 package com.goldsky.ssp
 
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DeliveryDining
-import androidx.compose.material.icons.filled.PointOfSale
-import androidx.compose.material.icons.filled.Restaurant
-import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,24 +13,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.payment.RetailRepository
 import com.goldsky.ssp.payment.TtsManager
 import com.goldsky.ssp.payment.hardware.HardwareFactory
 import com.goldsky.ssp.payment.hardware.IPaymentProvider
-import com.goldsky.ssp.ui.components.NumericKeypad
 import com.goldsky.ssp.ui.components.TipSelectionDialog
-import com.goldsky.ssp.ui.screens.DeliveryScreen
-import com.goldsky.ssp.ui.screens.DineInScreen
-import com.goldsky.ssp.ui.screens.RetailStoreScreen
+import com.goldsky.ssp.ui.screens.*
 import com.goldsky.ssp.ui.theme.RetailTheme
 
-/**
- * Entry point for Retail / Attended POS product flavor.
- * Full Compose-based UI for WizarPOS Q2.
- */
 class MainActivity : ComponentActivity() {
 
     private val paymentProvider by lazy { 
@@ -51,9 +43,9 @@ class MainActivity : ComponentActivity() {
         
         setContent {
             RetailTheme {
-                var currentMode by remember { mutableStateOf(RetailMode.STORE) }
+                val navController = rememberNavController()
                 var paymentStatus by remember { mutableStateOf<PaymentUiState>(PaymentUiState.Idle) }
-                var showTipDialog by remember { mutableStateOf<Int?>(null) } // subtotal
+                var showTipDialog by remember { mutableStateOf<Int?>(null) }
 
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -61,72 +53,25 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Scaffold(
                         bottomBar = {
-                            NavigationBar {
-                                NavigationBarItem(
-                                    selected = currentMode == RetailMode.STORE,
-                                    onClick = { currentMode = RetailMode.STORE },
-                                    icon = { Icon(Icons.Default.Storefront, null) },
-                                    label = { Text("Retail") }
-                                )
-                                NavigationBarItem(
-                                    selected = currentMode == RetailMode.RESTAURANT,
-                                    onClick = { currentMode = RetailMode.RESTAURANT },
-                                    icon = { Icon(Icons.Default.Restaurant, null) },
-                                    label = { Text("Dining") }
-                                )
-                                NavigationBarItem(
-                                    selected = currentMode == RetailMode.DELIVERY,
-                                    onClick = { currentMode = RetailMode.DELIVERY },
-                                    icon = { Icon(Icons.Default.DeliveryDining, null) },
-                                    label = { Text("Delivery") }
-                                )
-                                NavigationBarItem(
-                                    selected = currentMode == RetailMode.QUICK_PAY,
-                                    onClick = { currentMode = RetailMode.QUICK_PAY },
-                                    icon = { Icon(Icons.Default.PointOfSale, null) },
-                                    label = { Text("Quick") }
-                                )
-                            }
+                            MainBottomNavigation(navController)
                         }
                     ) { padding ->
-                        Box(modifier = Modifier.padding(padding)) {
-                            when (currentMode) {
-                                RetailMode.STORE -> {
-                                    RetailStoreScreen(
-                                        onCheckout = { total ->
-                                            triggerPaymentFlow(total) { paymentStatus = it }
-                                        }
-                                    )
-                                }
-                                RetailMode.RESTAURANT -> {
-                                    DineInScreen(
-                                        onTableSelected = { table ->
-                                            if (table.isOccupied) {
-                                                // Assume fixed charge for prototype
-                                                showTipDialog = 5000 
-                                            } else {
-                                                Toast.makeText(this@MainActivity, "Table is empty", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    )
-                                }
-                                RetailMode.DELIVERY -> {
-                                    DeliveryScreen(
-                                        onCollect = { amount ->
-                                            showTipDialog = amount
-                                        }
-                                    )
-                                }
-                                RetailMode.QUICK_PAY -> {
-                                    ManualAmountScreen(
-                                        onInitiatePayment = { amountStr ->
-                                            val cents = amountStr.replace(".", "").toIntOrNull() ?: 0
-                                            if (cents > 0) {
-                                                triggerPaymentFlow(cents) { paymentStatus = it }
-                                            }
-                                        }
-                                    )
-                                }
+                        NavHost(
+                            navController = navController,
+                            startDestination = "checkout",
+                            modifier = Modifier.padding(padding)
+                        ) {
+                            composable("checkout") {
+                                CheckoutScreen(onCheckout = { amount -> showTipDialog = amount })
+                            }
+                            composable("transactions") {
+                                TransactionHistoryScreen()
+                            }
+                            composable("management") {
+                                ManagementScreen()
+                            }
+                            composable("settings") {
+                                SettingsScreen()
                             }
                         }
                     }
@@ -172,15 +117,61 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-enum class RetailMode {
-    STORE, RESTAURANT, DELIVERY, QUICK_PAY
+@Composable
+fun MainBottomNavigation(navController: NavHostController) {
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    NavigationBar {
+        NavigationBarItem(
+            selected = currentRoute == "checkout",
+            onClick = { 
+                navController.navigate("checkout") {
+                    popUpTo(navController.graph.startDestinationId)
+                    launchSingleTop = true
+                }
+            },
+            icon = { Icon(Icons.Default.PointOfSale, null) },
+            label = { Text("Quick Pay") }
+        )
+        NavigationBarItem(
+            selected = currentRoute == "transactions",
+            onClick = { 
+                navController.navigate("transactions") {
+                    launchSingleTop = true
+                }
+            },
+            icon = { Icon(Icons.Default.ReceiptLong, null) },
+            label = { Text("Records") }
+        )
+        NavigationBarItem(
+            selected = currentRoute == "management",
+            onClick = { 
+                navController.navigate("management") {
+                    launchSingleTop = true
+                }
+            },
+            icon = { Icon(Icons.Default.Inventory, null) },
+            label = { Text("Manage") }
+        )
+        NavigationBarItem(
+            selected = currentRoute == "settings",
+            onClick = { 
+                navController.navigate("settings") {
+                    launchSingleTop = true
+                }
+            },
+            icon = { Icon(Icons.Default.Settings, null) },
+            label = { Text("Settings") }
+        )
+    }
 }
 
 sealed class PaymentUiState {
     object Idle : PaymentUiState()
-    data class Processing(val message: String) : PaymentUiState()
     data class Success(val authCode: String) : PaymentUiState()
     data class Error(val message: String) : PaymentUiState()
+    data class Processing(val message: String) : PaymentUiState()
 }
 
 @Composable
@@ -216,50 +207,4 @@ fun PaymentResultDialog(isSuccess: Boolean, message: String, onDismiss: () -> Un
         titleContentColor = Color.White,
         textContentColor = Color.White
     )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ManualAmountScreen(onInitiatePayment: (String) -> Unit) {
-    var amount by remember { mutableStateOf("0.00") }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        // Amount Display
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "ENTER AMOUNT",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.secondary
-            )
-            Text(
-                text = "$$amount",
-                fontSize = 64.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-        }
-
-        // Numeric Keypad
-        NumericKeypad(
-            onNumberClick = { num ->
-                val raw = amount.replace(".", "").replace(Regex("^0+"), "") + num
-                val padded = raw.padStart(3, '0')
-                amount = "${padded.dropLast(2)}.${padded.takeLast(2)}"
-            },
-            onBackSpace = {
-                val raw = amount.replace(".", "").dropLast(1)
-                val padded = raw.padStart(3, '0')
-                amount = "${padded.dropLast(2)}.${padded.takeLast(2)}"
-            },
-            onConfirm = {
-                onInitiatePayment(amount)
-            }
-        )
-    }
 }

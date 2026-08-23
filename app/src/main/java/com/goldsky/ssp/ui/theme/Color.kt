@@ -2,18 +2,20 @@ package com.goldsky.ssp.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val Purple80 = Color(0xFFD0BCFF)
-val PurpleGrey80 = Color(0xFFCCC2DC)
-val Pink80 = Color(0xFFEFB8C8)
+// Premium Obsidian & Gold Palette
+val ObsidianBlack = Color(0xFF0A0A0A)
+val DeepCharcoal = Color(0xFF161616)
+val MetallicGrey = Color(0xFF242424)
+val ChampagneGold = Color(0xFFD4AF37) // Matte Gold
+val SoftGold = Color(0xFFFFD700)
+val PlatinumWhite = Color(0xFFE0E0E0)
+val PremiumCrimson = Color(0xFFB71C1C)
 
-val Purple40 = Color(0xFF6650a4)
-val PurpleGrey40 = Color(0xFF625b71)
-val Pink40 = Color(0xFF7D5260)
-
-// GS-SSP Industrial Palette
-val GoldSkyPrimary = Color(0xFFFFA000) // Deep Gold
-val GoldSkySecondary = Color(0xFF263238) // Blue Grey
-val GoldSkyBackground = Color(0xFF121212) // Deep Dark
-val GoldSkySurface = Color(0xFF1E1E1E)
-val GoldSkyOnSurface = Color(0xFFECEFF1)
-val GoldSkyError = Color(0xFFCF6679)
+// GS-SSP Industrial Mapping
+val GoldSkyPrimary = ChampagneGold
+val GoldSkySecondary = MetallicGrey
+val GoldSkyBackground = ObsidianBlack
+val GoldSkySurface = DeepCharcoal
+val GoldSkyOnSurface = PlatinumWhite
+val GoldSkyError = PremiumCrimson
+val GoldSkyGlassStroke = Color(0xFFFFFFFF).copy(alpha = 0.12f)

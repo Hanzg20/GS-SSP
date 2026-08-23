@@ -25,25 +25,25 @@ data class OrderEntity(
 @Dao
 interface ProductDao {
     @Query("SELECT * FROM local_products WHERE isActive = 1")
-    suspend fun getAll(): List<ProductEntity>
+    fun getAll(): List<ProductEntity>
 
     @Query("SELECT * FROM local_products WHERE barcode = :barcode LIMIT 1")
-    suspend fun getByBarcode(barcode: String): ProductEntity?
+    fun getByBarcode(barcode: String): ProductEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(products: List<ProductEntity>): List<Long>
+    fun insertAll(products: List<ProductEntity>)
 }
 
 @Dao
 interface OrderDao {
     @Query("SELECT * FROM local_orders ORDER BY createdAt DESC")
-    suspend fun getAll(): List<OrderEntity>
+    fun getAll(): List<OrderEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(order: OrderEntity): Long
+    fun insert(order: OrderEntity)
 
     @Update
-    suspend fun update(order: OrderEntity): Int
+    fun update(order: OrderEntity)
 }
 
 @Database(entities = [ProductEntity::class, OrderEntity::class], version = 1, exportSchema = false)

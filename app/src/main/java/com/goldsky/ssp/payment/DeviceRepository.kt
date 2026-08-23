@@ -43,6 +43,7 @@ object DeviceRepository {
     private const val KEY_DEVICE_SECRET = "device_secret"
     private const val KEY_ORG_ID = "org_id"
     private const val KEY_HARDWARE_VENDOR = "hardware_vendor"
+    private const val KEY_RETAIL_MODE = "retail_mode"
 
     private var appContext: Context? = null
     private var cachedToken: String? = null
@@ -90,6 +91,19 @@ object DeviceRepository {
     }
 
     fun getPersistedHardwareVendor(): String = prefs()?.getString(KEY_HARDWARE_VENDOR, "IDTECH") ?: "IDTECH"
+
+    fun persistRetailMode(mode: com.goldsky.ssp.model.RetailMode) {
+        prefs()?.edit()?.putString(KEY_RETAIL_MODE, mode.name)?.apply()
+    }
+
+    fun getPersistedRetailMode(): com.goldsky.ssp.model.RetailMode {
+        val name = prefs()?.getString(KEY_RETAIL_MODE, com.goldsky.ssp.model.RetailMode.QUICK_PAY.name)
+        return try {
+            com.goldsky.ssp.model.RetailMode.valueOf(name ?: com.goldsky.ssp.model.RetailMode.QUICK_PAY.name)
+        } catch (e: Exception) {
+            com.goldsky.ssp.model.RetailMode.QUICK_PAY
+        }
+    }
 
     private fun persistOrgId(orgId: String?) {
         if (orgId == null) return

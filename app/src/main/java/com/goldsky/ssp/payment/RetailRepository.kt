@@ -23,7 +23,7 @@ object RetailRepository {
         // Hydrate catalog from Room DB
         val db = LocalDatabase.getInstance(context)
         CoroutineScope(Dispatchers.IO).launch {
-            val entities = db.productDao().getAll()
+            val entities = db.productDao().getAll() // Now non-suspend, but called in Dispatchers.IO
             if (entities.isEmpty()) {
                 // Seed mock data if empty
                 seedMockData(db)
@@ -33,7 +33,7 @@ object RetailRepository {
         }
     }
 
-    private suspend fun seedMockData(db: LocalDatabase) {
+    private fun seedMockData(db: LocalDatabase) {
         val mocks = listOf(
             ProductEntity("1", "Coca Cola 500ml", 250, "6901234567890", "DRINK"),
             ProductEntity("2", "Lays Classic", 150, "6901111111111", "SNACK"),
