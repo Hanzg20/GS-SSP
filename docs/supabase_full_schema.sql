@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.21 (2026-08-22)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.22 (2026-08-23)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -2257,3 +2257,13 @@ DROP POLICY IF EXISTS "Org members can view own org settlement records" ON publi
 CREATE POLICY "Org members can view own org settlement records" ON public.acquirer_settlement_records
 FOR SELECT TO authenticated
 USING (org_id IN (SELECT public.member_org_ids()));
+
+-- =============================================================================
+-- 21. Per-organization logo, added v2.22 (2026-08-23)
+-- Lets gs-ssp-cmp's sidebar show which merchant an org-scoped
+-- (MERCHANT_ADMIN) user is logged into, instead of always showing GoldSky's
+-- own brand. Uploaded via the CMP into the existing public `ad-media`
+-- storage bucket, path-prefixed 'org-logos/...' -- no new bucket/policy
+-- needed since that bucket's INSERT/DELETE policies only check bucket_id.
+-- =============================================================================
+ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS logo_url TEXT;
