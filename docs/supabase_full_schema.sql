@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.22 (2026-08-23)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.28 (2026-08-23)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -946,6 +946,16 @@ USING (
   )
 );
 
+-- v2.28 (2026-08-23): a policy named "lab_test_app_can_read_own_device_commands"
+-- (USING (true), SELECT, role authenticated) existed on the live database but
+-- was never defined in this file -- created out-of-band at some point, and
+-- the same unscoped-read antipattern as the devices fix above: it let any
+-- authenticated CMP user read every org's device commands, duplicating (and
+-- bypassing the scoping of) "Org members can view org device commands"
+-- above. Dropped directly on the live DB; this line just documents the
+-- removal so the doc doesn't drift from what's actually live.
+DROP POLICY IF EXISTS "lab_test_app_can_read_own_device_commands" ON public.device_commands;
+
 -- Devices: self-registration/heartbeat-style upsert. Any authenticated
 -- (anonymous-auth) caller can create/update a device row for a self-declared
 -- SN. This trusts the claimed SN -- there is no hardware attestation in this
@@ -953,9 +963,24 @@ USING (
 -- rest of the app already relies on (the same is true of the anon api key
 -- itself). Tightening this further would require real device attestation,
 -- out of scope for a schema fix.
+--
+-- v2.28 (2026-08-23): this used to be a single `FOR ALL USING (true)` policy.
+-- Postgres OR's together every permissive policy on a table, so that grant
+-- didn't just cover the self-registration INSERT/UPDATE it was written for
+-- -- it also silently gave every authenticated CMP user (any MERCHANT_ADMIN,
+-- for any org) unrestricted SELECT and DELETE across every tenant's devices,
+-- completely bypassing "Org members can view org devices" below. Caught via
+-- the CMP's SYS_ADMIN "view as merchant" feature: a merchant with 0 real
+-- devices was showing the full 51-device fleet. Split into INSERT/UPDATE
+-- only so SELECT/DELETE fall through to the properly org-scoped policy.
 DROP POLICY IF EXISTS "devices can upsert own row" ON public.devices;
-CREATE POLICY "devices can upsert own row" ON public.devices
-FOR ALL TO authenticated
+DROP POLICY IF EXISTS "devices can insert own row" ON public.devices;
+CREATE POLICY "devices can insert own row" ON public.devices
+FOR INSERT TO authenticated
+WITH CHECK (true);
+DROP POLICY IF EXISTS "devices can update own row" ON public.devices;
+CREATE POLICY "devices can update own row" ON public.devices
+FOR UPDATE TO authenticated
 USING (true)
 WITH CHECK (true);
 
