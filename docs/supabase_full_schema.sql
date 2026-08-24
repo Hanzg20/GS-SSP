@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.28 (2026-08-23)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.29 (2026-08-23)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -627,12 +627,104 @@ GRANT EXECUTE ON FUNCTION public.is_sys_admin() TO authenticated, anon;
 -- SYS_ADMIN row) with the given capability -- used to gate writes
 -- (device commands, product/config edits, marketing coupons) separately
 -- from the read-scoping the other two helpers provide.
+--
+-- v2.28 (2026-08-23): superseded by has_permission()/has_permission_for_org()
+-- below -- every call site that used to check has_capability('admin') now
+-- checks a real permission key through the capability_permissions matrix
+-- instead, so 'admin' isn't hardcoded as the only capability that can ever
+-- do anything. Left defined (nothing calls it anymore) rather than dropped,
+-- in case something outside this file still references it.
 CREATE OR REPLACE FUNCTION public.has_capability(target_capability TEXT)
 RETURNS BOOLEAN
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public
 AS $$
   SELECT EXISTS (SELECT 1 FROM public.org_members WHERE profile_id = auth.uid() AND capability = target_capability);
 $$;
+
+-- Permission matrix: org_members.role/capability are UNCHANGED (capability
+-- is still what an invite assigns a member) -- this is a second layer that
+-- defines what each capability actually GRANTS, as data instead of a
+-- hardcoded 'admin' string comparison. Editable from the CMP's Permissions
+-- page without a redeploy. Seeded below to reproduce pre-v2.28 behavior
+-- exactly (every gated action required capability='admin'), so nothing
+-- regresses on migration day -- loosen employee/decision_maker afterward
+-- from the CMP as needed.
+CREATE TABLE IF NOT EXISTS public.permissions (
+    key TEXT PRIMARY KEY,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'general'
+);
+
+INSERT INTO public.permissions (key, description, category) VALUES
+    ('team.manage', 'Invite/revoke team members', 'team'),
+    ('catalog.manage', 'Create/edit products in the pricing catalog', 'catalog'),
+    ('config.publish', 'Publish app configuration to devices', 'catalog'),
+    ('coupons.manage', 'Create/edit marketing coupons', 'wallet'),
+    ('devices.command', 'Send remote commands to devices', 'devices'),
+    ('vip.manage', 'Create/edit VIP cards, change card status', 'wallet'),
+    ('vip.topup', 'Top up a VIP card balance', 'wallet'),
+    ('vip.compensate', 'Issue compensation coupons', 'wallet')
+ON CONFLICT (key) DO NOTHING;
+
+ALTER TABLE public.permissions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Anyone authenticated can read permission keys" ON public.permissions;
+CREATE POLICY "Anyone authenticated can read permission keys" ON public.permissions
+FOR SELECT TO authenticated USING (true);
+
+CREATE TABLE IF NOT EXISTS public.capability_permissions (
+    capability TEXT NOT NULL CHECK (capability IN ('admin','employee','decision_maker')),
+    permission TEXT NOT NULL REFERENCES public.permissions(key) ON DELETE CASCADE,
+    PRIMARY KEY (capability, permission)
+);
+
+INSERT INTO public.capability_permissions (capability, permission)
+SELECT 'admin', key FROM public.permissions
+ON CONFLICT DO NOTHING;
+
+ALTER TABLE public.capability_permissions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Anyone authenticated can read the permission matrix" ON public.capability_permissions;
+CREATE POLICY "Anyone authenticated can read the permission matrix" ON public.capability_permissions
+FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Sys admins can edit the permission matrix" ON public.capability_permissions;
+CREATE POLICY "Sys admins can edit the permission matrix" ON public.capability_permissions
+FOR ALL TO authenticated USING (public.is_sys_admin()) WITH CHECK (public.is_sys_admin());
+
+-- Replacement for has_capability('admin') at RLS-policy call sites where the
+-- org-scope check is already ANDed in separately by the policy itself.
+-- SYS_ADMIN unconditionally passes (previously it did NOT if that sys
+-- admin's own org_members row happened to have a non-'admin' capability --
+-- an existing inconsistency this migration also fixes, since is_sys_admin()
+-- is treated as "in scope everywhere" by every other policy in this file).
+CREATE OR REPLACE FUNCTION public.has_permission(target_permission TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT public.is_sys_admin() OR EXISTS (
+    SELECT 1 FROM public.org_members om
+    JOIN public.capability_permissions cp ON cp.capability = om.capability
+    WHERE om.profile_id = auth.uid() AND cp.permission = target_permission
+  );
+$$;
+GRANT EXECUTE ON FUNCTION public.has_permission(TEXT) TO authenticated;
+
+-- Replacement for the identical inline block repeated in all 5 VIP/coupon
+-- SECURITY DEFINER functions further below (capability='admin' AND
+-- (role=SYS_ADMIN OR (role=MERCHANT_ADMIN AND org_id=target))) -- same fix,
+-- packaged as one helper so each function becomes a single call instead of
+-- a 6-line block.
+CREATE OR REPLACE FUNCTION public.has_permission_for_org(target_permission TEXT, target_org_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT public.is_sys_admin() OR EXISTS (
+    SELECT 1 FROM public.org_members om
+    JOIN public.capability_permissions cp ON cp.capability = om.capability
+    WHERE om.profile_id = auth.uid()
+      AND cp.permission = target_permission
+      AND om.role = 'MERCHANT_ADMIN' AND om.org_id = target_org_id
+  );
+$$;
+GRANT EXECUTE ON FUNCTION public.has_permission_for_org(TEXT, UUID) TO authenticated;
 
 -- CMP portal (human) read/write access to fleet data, scoped by
 -- org_members. Additive to the device-side policies elsewhere in this
@@ -707,12 +799,12 @@ USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
 DROP POLICY IF EXISTS "Org admins can edit org products" ON public.products;
 CREATE POLICY "Org admins can edit org products" ON public.products
 FOR INSERT TO authenticated
-WITH CHECK (public.has_capability('admin') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
+WITH CHECK (public.has_permission('catalog.manage') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
 
 DROP POLICY IF EXISTS "Org admins can update org products" ON public.products;
 CREATE POLICY "Org admins can update org products" ON public.products
 FOR UPDATE TO authenticated
-USING (public.has_capability('admin') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
+USING (public.has_permission('catalog.manage') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
 
 -- invited_emails: gates who may join at all (§1/§9) -- readable/writable by
 -- SYS_ADMIN globally, or by an org's own admin-capability member for their
@@ -725,12 +817,12 @@ USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
 DROP POLICY IF EXISTS "Admins can create invites" ON public.invited_emails;
 CREATE POLICY "Admins can create invites" ON public.invited_emails
 FOR INSERT TO authenticated
-WITH CHECK (public.is_sys_admin() OR (org_id IN (SELECT public.member_org_ids()) AND public.has_capability('admin')));
+WITH CHECK (public.is_sys_admin() OR (org_id IN (SELECT public.member_org_ids()) AND public.has_permission('team.manage')));
 
 DROP POLICY IF EXISTS "Admins can revoke invites" ON public.invited_emails;
 CREATE POLICY "Admins can revoke invites" ON public.invited_emails
 FOR DELETE TO authenticated
-USING (public.is_sys_admin() OR (org_id IN (SELECT public.member_org_ids()) AND public.has_capability('admin')));
+USING (public.is_sys_admin() OR (org_id IN (SELECT public.member_org_ids()) AND public.has_permission('team.manage')));
 
 DROP POLICY IF EXISTS "Org members can view org app configurations" ON public.app_configurations;
 CREATE POLICY "Org members can view org app configurations" ON public.app_configurations
@@ -740,7 +832,7 @@ USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
 DROP POLICY IF EXISTS "Org admins can publish app configurations" ON public.app_configurations;
 CREATE POLICY "Org admins can publish app configurations" ON public.app_configurations
 FOR INSERT TO authenticated
-WITH CHECK (public.has_capability('admin') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
+WITH CHECK (public.has_permission('config.publish') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
 
 DROP POLICY IF EXISTS "Org members can view org coupons" ON public.coupons;
 CREATE POLICY "Org members can view org coupons" ON public.coupons
@@ -750,12 +842,12 @@ USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
 DROP POLICY IF EXISTS "Org admins can create org coupons" ON public.coupons;
 CREATE POLICY "Org admins can create org coupons" ON public.coupons
 FOR INSERT TO authenticated
-WITH CHECK (public.has_capability('admin') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
+WITH CHECK (public.has_permission('coupons.manage') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
 
 DROP POLICY IF EXISTS "Org admins can update org coupons" ON public.coupons;
 CREATE POLICY "Org admins can update org coupons" ON public.coupons
 FOR UPDATE TO authenticated
-USING (public.has_capability('admin') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
+USING (public.has_permission('coupons.manage') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
 
 -- vip_cards: additive to "Devices can see own org vip cards" above (that one
 -- scopes a device's own anonymous session via device_auth_map; this scopes a
@@ -792,7 +884,7 @@ DROP POLICY IF EXISTS "Org admins can send device commands" ON public.device_com
 CREATE POLICY "Org admins can send device commands" ON public.device_commands
 FOR INSERT TO authenticated
 WITH CHECK (
-  public.has_capability('admin') AND (
+  public.has_permission('devices.command') AND (
     public.is_sys_admin() OR
     device_sn IN (SELECT sn FROM public.devices WHERE org_id IN (SELECT public.member_org_ids()))
   )
@@ -1476,12 +1568,7 @@ BEGIN
     RETURN json_build_object('success', false, 'message', 'invalid_amount');
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM public.org_members
-    WHERE profile_id = auth.uid() AND capability = 'admin' AND (
-      role = 'SYS_ADMIN' OR (role = 'MERCHANT_ADMIN' AND org_id = p_org_id)
-    )
-  ) THEN
+  IF NOT public.has_permission_for_org('vip.compensate', p_org_id) THEN
     RETURN json_build_object('success', false, 'message', 'not_authorized');
   END IF;
 
@@ -1566,12 +1653,7 @@ BEGIN
     RETURN json_build_object('success', false, 'message', 'invalid_max_daily');
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM public.org_members
-    WHERE profile_id = auth.uid() AND capability = 'admin' AND (
-      role = 'SYS_ADMIN' OR (role = 'MERCHANT_ADMIN' AND org_id = p_org_id)
-    )
-  ) THEN
+  IF NOT public.has_permission_for_org('vip.manage', p_org_id) THEN
     RETURN json_build_object('success', false, 'message', 'not_authorized');
   END IF;
 
@@ -1643,12 +1725,7 @@ BEGIN
     RETURN json_build_object('success', false, 'message', 'card_not_found');
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM public.org_members
-    WHERE profile_id = auth.uid() AND capability = 'admin' AND (
-      role = 'SYS_ADMIN' OR (role = 'MERCHANT_ADMIN' AND org_id = v_org_id)
-    )
-  ) THEN
+  IF NOT public.has_permission_for_org('vip.manage', v_org_id) THEN
     RETURN json_build_object('success', false, 'message', 'not_authorized');
   END IF;
 
@@ -1705,12 +1782,7 @@ BEGIN
     RETURN json_build_object('success', false, 'message', 'card_not_found');
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM public.org_members
-    WHERE profile_id = auth.uid() AND capability = 'admin' AND (
-      role = 'SYS_ADMIN' OR (role = 'MERCHANT_ADMIN' AND org_id = v_org_id)
-    )
-  ) THEN
+  IF NOT public.has_permission_for_org('vip.topup', v_org_id) THEN
     RETURN json_build_object('success', false, 'message', 'not_authorized');
   END IF;
 
@@ -1753,12 +1825,7 @@ BEGIN
     RETURN json_build_object('success', false, 'message', 'card_not_found');
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM public.org_members
-    WHERE profile_id = auth.uid() AND capability = 'admin' AND (
-      role = 'SYS_ADMIN' OR (role = 'MERCHANT_ADMIN' AND org_id = v_org_id)
-    )
-  ) THEN
+  IF NOT public.has_permission_for_org('vip.manage', v_org_id) THEN
     RETURN json_build_object('success', false, 'message', 'not_authorized');
   END IF;
 
