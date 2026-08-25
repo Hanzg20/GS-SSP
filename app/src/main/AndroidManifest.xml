@@ -26,6 +26,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
     <!-- WizarPOS Hardware Access Permissions -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.CLOUDPOS_MSR" />
     <uses-permission android:name="android.permission.CLOUDPOS_PRINTER" />
     <uses-permission android:name="android.permission.CLOUDPOS_SMARTCARD" />

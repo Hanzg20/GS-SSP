@@ -35,8 +35,8 @@ fun NumericKeypad(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         val rows = listOf(
             listOf("1", "2", "3"),
@@ -48,7 +48,7 @@ fun NumericKeypad(
         rows.forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 row.forEach { item ->
                     KeypadButton(
@@ -87,15 +87,15 @@ private fun KeypadButton(
 ) {
     Surface(
         onClick = onClick,
-        modifier = modifier.height(72.dp),
-        shape = RoundedCornerShape(16.dp),
+        modifier = modifier.height(60.dp), // Reduced from 72dp
+        shape = RoundedCornerShape(12.dp), // Sharper corners for industrial feel
         color = when {
             isConfirm -> MaterialTheme.colorScheme.primary
             isSpecial -> MaterialTheme.colorScheme.secondary
             else -> MaterialTheme.colorScheme.surface
         },
-        border = if (!isConfirm) BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline) else null,
-        tonalElevation = if (isSpecial) 8.dp else 2.dp
+        border = if (!isConfirm) BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline) else BorderStroke(2.dp, Color.White.copy(alpha = 0.3f)),
+        tonalElevation = if (isConfirm) 12.dp else if (isSpecial) 6.dp else 1.dp
     ) {
         Box(contentAlignment = Alignment.Center) {
             if (icon != null) {

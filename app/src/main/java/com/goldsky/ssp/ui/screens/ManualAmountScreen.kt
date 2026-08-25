@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.ui.components.NumericKeypad
 
 /**
@@ -16,18 +17,22 @@ import com.goldsky.ssp.ui.components.NumericKeypad
 @Composable
 fun ManualAmountScreen(onInitiatePayment: (String) -> Unit) {
     var amount by remember { mutableStateOf("0.00") }
+    val currency = remember { DeviceRepository.getCurrencySymbol() }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp), // Reduced from 16.dp
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         // Amount Display
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(top = 16.dp)
+        ) {
             Text(
-                text = "ENTER AMOUNT",
+                text = "ENTER AMOUNT ($currency)",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.secondary
             )

@@ -28,10 +28,11 @@ object WizarPosSocketClient {
     suspend fun sendRequest(jsonPayload: String, ctrlPath: Byte = WizarPosP3Protocol.CTRL_FROM_CASHIER): String? = withContext(Dispatchers.IO) {
         var socket: Socket? = null
         try {
-            Log.d(TAG, "Connecting to local PAYWizard at $HOST:$PORT")
+            Log.d(TAG, "Connecting to Localhost PAYWizard Service ($HOST:$PORT)...")
             socket = Socket()
             socket.connect(InetSocketAddress(HOST, PORT), CONNECT_TIMEOUT_MS)
             socket.soTimeout = READ_TIMEOUT_MS
+            Log.d(TAG, "Socket Connected. Preparing P3 Frame.")
 
             val outputStream = socket.getOutputStream()
             val inputStream = socket.getInputStream()
@@ -40,21 +41,30 @@ object WizarPosSocketClient {
             val frame = WizarPosP3Protocol.pack(ctrlPath, sequenceNumber++, jsonPayload)
             outputStream.write(frame)
             outputStream.flush()
-            Log.i(TAG, "Sent P3 Request (${frame.size} bytes): $jsonPayload")
+            Log.i(TAG, ">> [SENT] P3 Frame (${frame.size} bytes). Payload: $jsonPayload")
 
             // 2. Read Response with STX alignment
-            val responseFrame = readP3Frame(inputStream) ?: return@withContext null
+            val responseFrame = readP3Frame(inputStream) ?: run {
+                Log.e(TAG, "<< [ERROR] Failed to read valid P3 frame from service.")
+                return@withContext null
+            }
             
             // 3. Unpack JSON
             val responseJson = WizarPosP3Protocol.unpack(responseFrame)
-            Log.i(TAG, "Received P3 Response: $responseJson")
+            Log.i(TAG, "<< [RECV] P3 Response: $responseJson")
 
             responseJson
+        } catch (e: java.net.ConnectException) {
+            Log.e(TAG, "Connection Refused. Is PAYWizard running on port $PORT?")
+            null
         } catch (e: Exception) {
-            Log.e(TAG, "Local P3 Socket communication failed: ${e.message}")
+            Log.e(TAG, "P3 Socket Communication Failure: ${e.message}")
             null
         } finally {
-            try { socket?.close() } catch (e: Exception) {}
+            try { 
+                socket?.close() 
+                Log.d(TAG, "Socket Closed.")
+            } catch (e: Exception) {}
         }
     }
 

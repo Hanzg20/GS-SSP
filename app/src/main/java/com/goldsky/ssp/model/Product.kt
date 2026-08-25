@@ -8,9 +8,24 @@ data class Product(
     val id: String,
     val name: String,
     val price_cents: Int,
-    val vertical_type: String, // WASH, VENDING, RETAIL, etc.
-    val barcode: String? = null, // For retail scanning
+    val vertical_type: String,
+    val barcode: String? = null,
     val image_url: String? = null,
-    val attributes: JsonObject? = null, // Stores { "serial_hex": "AA...", "pulse": 12 }
+    val modifier_groups: List<ModifierGroup>? = null,
+    val attributes: JsonObject? = null,
     val is_active: Boolean = true
+)
+
+@Serializable
+data class ModifierGroup(
+    val id: String,
+    val name: String,
+    val options: List<ProductModifier>
+)
+
+@Serializable
+data class ProductModifier(
+    val id: String,
+    val name: String,
+    val price_cents: Int = 0
 )

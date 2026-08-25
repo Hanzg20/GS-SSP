@@ -39,6 +39,11 @@ fun TipSelectionDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text("ADD A TIP?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    "Amount Due: $${"%.2f".format(subtotalCents / 100.0)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 // Tip Options

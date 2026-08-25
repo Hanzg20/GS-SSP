@@ -40,6 +40,7 @@ object HardwareFactory {
     fun getPaymentProvider(context: Context, vendor: String = "IDTECH"): IPaymentProvider {
         val hardware = getHardwareProvider(vendor)
         hardware.init(context)
+        
         return when (hardware) {
             is IdTechHardwareProvider -> hardware.getPaymentProvider()
             is PaxHardwareProvider -> hardware.getPaymentProvider()

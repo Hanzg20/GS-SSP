@@ -44,6 +44,12 @@ object DeviceRepository {
     private const val KEY_ORG_ID = "org_id"
     private const val KEY_HARDWARE_VENDOR = "hardware_vendor"
     private const val KEY_RETAIL_MODE = "retail_mode"
+    private const val KEY_STORE_NAME = "store_name"
+    private const val KEY_STORE_ADDR = "store_addr"
+    private const val KEY_STORE_PHONE = "store_phone"
+    private const val KEY_TAX_RATE = "tax_rate"
+    private const val KEY_NUVEI_APP_ID = "nuvei_app_id"
+    private const val KEY_REGION = "region"
 
     private var appContext: Context? = null
     private var cachedToken: String? = null
@@ -104,6 +110,44 @@ object DeviceRepository {
             com.goldsky.ssp.model.RetailMode.QUICK_PAY
         }
     }
+
+    fun persistStoreName(name: String) {
+        prefs()?.edit()?.putString(KEY_STORE_NAME, name)?.apply()
+    }
+
+    fun getStoreName(): String = prefs()?.getString(KEY_STORE_NAME, "GOLDSKY SSP") ?: "GOLDSKY SSP"
+
+    fun persistStoreAddress(addr: String) {
+        prefs()?.edit()?.putString(KEY_STORE_ADDR, addr)?.apply()
+    }
+
+    fun getStoreAddress(): String = prefs()?.getString(KEY_STORE_ADDR, "123 Business St, Ottawa") ?: "123 Business St, Ottawa"
+
+    fun persistStorePhone(phone: String) {
+        prefs()?.edit()?.putString(KEY_STORE_PHONE, phone)?.apply()
+    }
+
+    fun getStorePhone(): String = prefs()?.getString(KEY_STORE_PHONE, "+1 613-000-0000") ?: "+1 613-000-0000"
+
+    fun persistTaxRate(rate: Float) {
+        prefs()?.edit()?.putFloat(KEY_TAX_RATE, rate)?.apply()
+    }
+
+    fun getTaxRate(): Float = prefs()?.getFloat(KEY_TAX_RATE, 0.0f) ?: 0.0f
+
+    fun persistNuveiAppId(id: String) {
+        prefs()?.edit()?.putString(KEY_NUVEI_APP_ID, id)?.apply()
+    }
+
+    fun getNuveiAppId(): String = prefs()?.getString(KEY_NUVEI_APP_ID, "") ?: ""
+
+    fun persistRegion(region: String) {
+        prefs()?.edit()?.putString(KEY_REGION, region)?.apply()
+    }
+
+    fun getRegion(): String = prefs()?.getString(KEY_REGION, "CA") ?: "CA"
+
+    fun getCurrencySymbol(): String = if (getRegion() == "CA") "$ CAD" else "$ USD"
 
     private fun persistOrgId(orgId: String?) {
         if (orgId == null) return
