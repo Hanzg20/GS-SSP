@@ -16,6 +16,13 @@
 //     to be polled on demand) and writes it back. Added 2026-08-26 once a
 //     live test confirmed which endpoint actually carries status; nothing
 //     called getApplicationStatus() before this.
+//   - "get_details": fetches what was actually submitted, for the CMP's
+//     "View Application" flow to show real data instead of a blank form.
+//     We never store the submitted fields ourselves (merchant_acquirer_accounts
+//     only keeps the acquirer's create/submit acknowledgment), so this is
+//     the only source for them once the modal's local form state is gone.
+//     Read-only, no DB write -- unlike check_status this doesn't touch
+//     `status`, just returns the acquirer's raw application data.
 //
 // verify_jwt stays ON for this function (default) -- unlike payment-webhook,
 // the caller here is an authenticated CMP admin, not an external gateway, so
@@ -50,7 +57,13 @@ interface CheckStatusRequestBody {
   acquirer: Acquirer;
 }
 
-type RequestBody = CreateRequestBody | SubmitRequestBody | CheckStatusRequestBody;
+interface GetDetailsRequestBody {
+  action: "get_details";
+  org_id: string;
+  acquirer: Acquirer;
+}
+
+type RequestBody = CreateRequestBody | SubmitRequestBody | CheckStatusRequestBody | GetDetailsRequestBody;
 
 Deno.serve(async (req: Request) => {
   const preflight = handleCorsPreflight(req);
@@ -74,7 +87,7 @@ Deno.serve(async (req: Request) => {
   if (acquirer !== "elavon" && acquirer !== "nuvei") {
     return jsonResponse({ error: "unknown_acquirer" }, 400);
   }
-  if (action !== "create" && action !== "submit" && action !== "check_status") {
+  if (action !== "create" && action !== "submit" && action !== "check_status" && action !== "get_details") {
     return jsonResponse({ error: "unknown_action" }, 400);
   }
 
@@ -124,8 +137,9 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // action === "submit" or "check_status" -- both need the already-created
-  // application's externalRef first. Reads through the _safe view, not the
+  // action === "submit", "check_status", or "get_details" -- all three need
+  // the already-created application's externalRef first. Reads through the
+  // _safe view, not the
   // base table: SELECT on merchant_acquirer_accounts itself is REVOKEd from
   // `authenticated` entirely (see docs/supabase_full_schema.sql's
   // shared_secret shielding), and this function runs as the caller's own
@@ -144,6 +158,19 @@ Deno.serve(async (req: Request) => {
   const externalRef = account?.external_merchant_id;
   if (!externalRef) {
     return jsonResponse({ error: "not_created_yet" }, 409);
+  }
+
+  if (action === "get_details") {
+    if (!adapter.getApplicationDetails) {
+      return jsonResponse({ error: "unsupported_by_acquirer" }, 400);
+    }
+    try {
+      const result = await adapter.getApplicationDetails(externalRef);
+      return jsonResponse({ raw: result.raw }, 200);
+    } catch (e) {
+      console.error(`[submit-acquirer-onboarding] ${acquirer} getApplicationDetails threw:`, e);
+      return jsonResponse({ error: "adapter_error", detail: e instanceof Error ? e.message : String(e) }, 502);
+    }
   }
 
   if (action === "check_status") {

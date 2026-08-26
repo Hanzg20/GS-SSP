@@ -43,6 +43,17 @@ export interface ApplicationStatusResult {
   raw: unknown;
 }
 
+export interface ApplicationDetailsResult {
+  // Whatever shape the acquirer's own "get me back what was submitted"
+  // endpoint returns -- deliberately untyped here (see nuvei-onboarding.ts
+  // for the real, confirmed shape for Nuvei). We never store the submitted
+  // application data ourselves, only the acquirer's create/submit
+  // acknowledgment -- this is the only way to show a user what's actually
+  // on file once the form's local React state is gone (modal closed, page
+  // reloaded, different session).
+  raw: unknown;
+}
+
 export interface DocumentFile {
   bytes: Uint8Array;
   filename: string;
@@ -63,6 +74,10 @@ export interface AcquirerOnboarding {
   uploadDocument?(externalRef: string, file: DocumentFile, documentType: string): Promise<void>;
   submitApplication(externalRef: string): Promise<SubmitApplicationResult>;
   getApplicationStatus(externalRef: string): Promise<ApplicationStatusResult>;
+  // Optional -- not every acquirer's docs are known well enough yet to
+  // implement this (Elavon doesn't have it). Callers must check for its
+  // presence rather than assume every adapter has it.
+  getApplicationDetails?(externalRef: string): Promise<ApplicationDetailsResult>;
 }
 
 export function getOnboardingAdapter(acquirer: Acquirer): AcquirerOnboarding {

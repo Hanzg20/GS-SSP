@@ -4,6 +4,7 @@ import type {
   CreateApplicationResult,
   SubmitApplicationResult,
   ApplicationStatusResult,
+  ApplicationDetailsResult,
   DocumentFile,
   OnboardingStatus,
 } from "../onboarding.ts";
@@ -439,5 +440,28 @@ export const nuveiOnboarding: AcquirerOnboarding = {
       status: mapNuveiStatus(match?.Status),
       raw: match ?? null,
     };
+  },
+
+  // The single-item GET's payload IS what this is for -- it has no Status
+  // field (see getApplicationStatus above), but it's a genuine echo of the
+  // submitted application: MerchantBusinessInformation, DbaInformation,
+  // OwnersOrOfficers, ControlPanel, ContractVersionEtf, and
+  // CreditCardSalesProfile all round-trip under the SAME key names and
+  // nesting we submit under, confirmed against a real response 2026-08-26.
+  // Two things do NOT round-trip cleanly, callers should know this:
+  // - SIN/SSN, DriverLicense, and BankAccountNumber come back
+  //   masked/normalized (e.g. "123456789" submitted, "000006789" echoed) --
+  //   never treat this response as authoritative for those three fields.
+  // - "Site Survey" and "Schedule A / Fees" do NOT round-trip at all --
+  //   Nuvei restructures/renames those into different top-level sections
+  //   (SiteSurvey has a completely different field set than what we submit
+  //   under SiteSurveyInformation; ScheduleA/OtherServiceFees's data ends
+  //   up under CreditCardProcessing/Miscellaneous with different key
+  //   names). A path-for-path merge against our own FieldDef list will
+  //   naturally just leave those fields at their defaults, not show wrong
+  //   data -- that's acceptable, not a bug to chase further right now.
+  async getApplicationDetails(externalRef: string): Promise<ApplicationDetailsResult> {
+    const raw = await nuveiRequest(`/Application/CA/${externalRef}`, { auth: "basic" });
+    return { raw };
   },
 };
