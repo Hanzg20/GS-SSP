@@ -87,17 +87,33 @@ import type {
 //   and whether other Merchant Application "types" need a different shape
 //   (the docs say the payload "is unique to the type of Merchant
 //   Applications you can process").
-// - Document upload (uploadDocument below, multipart via FormData) is
-//   still completely untested against the real API -- credentials are now
-//   confirmed working for Create/status, but the Document step hasn't
-//   been exercised, so the multipart field name/shape is only mirrored
-//   from the Postman example, not verified.
-// - Status query mechanism -- per the 2026-08-21 partner call, status
-//   surfaces via Nuvei's Partner Dashboard (human-facing); GET
-//   /Application/CA/{id} is confirmed to return real data (verified
-//   2026-08-25), but whether its fields map cleanly onto this file's
-//   `OnboardingStatus` union hasn't been checked against a non-DRAFT
-//   status yet.
+// - CONFIRMED 2026-08-25: a full live Create -> Document -> Submit run
+//   against the CA sandbox succeeded end to end (through this file's own
+//   code, via submit-acquirer-onboarding/upload-acquirer-document, not
+//   just a raw API poke) and the application reached Nuvei's "SUBMITTED"
+//   state. Also confirmed live: Submit requires a document to already be
+//   attached -- calling Submit before Document returns a 400 ("No
+//   Supporting Documents attached"), and ContractVersionEtf.
+//   MerchantSignDate must be MM/DD/YYYY -- Create silently accepts
+//   DD/MM/YYYY but Submit 400s on it (fixed in gs-ssp-cmp's
+//   defaultNuveiCaApplication()).
+// - mapNuveiStatus()'s `result?.Status` read is LIKELY WRONG: a real GET
+//   /Application/CA/{id} response (captured live 2026-08-25) has no
+//   top-level `Status` field at all -- its keys are the application's own
+//   data (MerchantBusinessInformation, ContractVersionEtf, Agent/Office/
+//   User, etc.), not a status envelope. So `getApplicationStatus()`
+//   currently always falls through mapNuveiStatus's default case and
+//   silently reports PENDING_REVIEW regardless of the application's real
+//   state. Confirms the 2026-08-21 partner call's claim that status
+//   actually surfaces via Nuvei's Partner Dashboard (human-facing), not
+//   this REST endpoint -- getApplicationStatus() needs a different
+//   mechanism (a real status field elsewhere in this same response that
+//   wasn't recognized, a different endpoint, or a webhook) before
+//   sync-acquirer-settlements can trust it. Not guessing at a fix here
+//   without seeing a non-DRAFT application's actual response shape.
+// - Document upload (uploadDocument below) is now confirmed working
+//   end-to-end against the real API (see above) -- the multipart shape
+//   mirrored from the Postman example was correct as written.
 
 interface NuveiCaOwner {
   AddressSameAs: string;
