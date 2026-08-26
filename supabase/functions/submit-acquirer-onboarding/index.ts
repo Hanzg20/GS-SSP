@@ -166,6 +166,21 @@ Deno.serve(async (req: Request) => {
     }
     try {
       const result = await adapter.getApplicationDetails(externalRef);
+
+      // Availability fallback only, not the source of truth -- refreshed
+      // opportunistically on every successful live fetch, no separate sync
+      // job. If this write fails, still return the live data the caller
+      // actually asked for rather than failing the whole request over a
+      // cache-refresh problem.
+      const { error: cacheError } = await supabase
+        .from("merchant_acquirer_accounts")
+        .update({ application_details_cache: result.raw, application_details_cached_at: new Date().toISOString() })
+        .eq("org_id", org_id)
+        .eq("acquirer", acquirer);
+      if (cacheError) {
+        console.error("[submit-acquirer-onboarding] get_details cache write failed (non-fatal):", cacheError);
+      }
+
       return jsonResponse({ raw: result.raw }, 200);
     } catch (e) {
       console.error(`[submit-acquirer-onboarding] ${acquirer} getApplicationDetails threw:`, e);

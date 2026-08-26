@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.29 (2026-08-23)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.30 (2026-08-26)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -2245,6 +2245,16 @@ CREATE TABLE IF NOT EXISTS public.merchant_acquirer_accounts (
     submitted_at TIMESTAMPTZ,
     approved_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT now(),
+    -- v2.29 (2026-08-26): 可用性兜底缓存,不是权威数据源。CMP 的"查看申请"
+    -- 优先永远现查收单行(get_details action);只有在现查失败(收单行接口
+    -- 挂了/限流/凭证过期)时才回退读这份缓存,并且前端要明确提示这是缓存、
+    -- 不是实时数据。缓存的是收单行"回显"给我们的那份(get_details 的响应),
+    -- 不是我们自己收集的原始表单——SIN/驾照号/银行账号这类最敏感字段,收单
+    -- 行回显时本来就是打码过的,所以这份缓存里也从未出现过明文,不构成额外
+    -- 的敏感数据托管责任。每次 get_details 成功都会顺手刷新这份缓存,没有
+    -- 主动同步机制(不会因为商户在收单行自己的后台改了资料就自动更新)。
+    application_details_cache JSONB,
+    application_details_cached_at TIMESTAMPTZ,
     UNIQUE(org_id, acquirer)
 );
 
@@ -2264,9 +2274,14 @@ USING (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids()));
 -- the CMP frontend must read through this view (which omits shared_secret)
 -- rather than the base table directly. Only service_role (Edge Functions)
 -- reads the base table.
+-- Column order matters for CREATE OR REPLACE VIEW (Postgres won't let a
+-- replace insert a column ahead of existing ones, only append) -- the two
+-- v2.29 cache columns are appended at the end for exactly that reason, not
+-- grouped next to raw_response where they'd conceptually belong.
 CREATE OR REPLACE VIEW public.merchant_acquirer_accounts_safe AS
 SELECT id, org_id, acquirer, external_merchant_id, merchant_site_id, env,
-       status, raw_response, submitted_at, approved_at, created_at
+       status, raw_response, submitted_at, approved_at, created_at,
+       application_details_cache, application_details_cached_at
 FROM public.merchant_acquirer_accounts;
 
 GRANT SELECT ON public.merchant_acquirer_accounts_safe TO authenticated;
