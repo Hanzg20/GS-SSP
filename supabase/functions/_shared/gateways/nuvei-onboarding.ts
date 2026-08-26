@@ -31,54 +31,73 @@ import type {
 //   Implemented literally as shown, not unified, since that's the only
 //   ground truth available.
 // - Real GoldSky sandbox username for the Basic-auth calls:
-//   "goldskytechnologiessandboxca". Its password is a Postman "secret"
-//   variable (`{{auth_password_06dz}}`) -- collection exports never
-//   include secret variable values, so it did NOT come through and is
-//   still unknown. NUVEI_APPLINK_PASSWORD has no default for this reason;
-//   get the real value from Postman's environment/variables pane (not the
-//   collection file) or from Danny directly.
+//   "goldskytechnologiessandboxca".
 // - The `api_key` value literally embedded in the Create example,
-//   `poprocketsandboxca:q47DC1wk2!`, is almost certainly NOT GoldSky's --
-//   the same request body's `Agent`/`Office` fields are hardcoded to
-//   `"PopRocket Sandbox CA"`, a different sandbox entity name than
-//   GoldSky's own `goldskytechnologiessandboxca`. Confirmed as a
-//   copy/paste-from-template leftover by cross-checking the sibling US
-//   collection, which has the exact same `poprocketsandbox*` pattern.
-//   NUVEI_APPLINK_API_KEY has no default for exactly this reason -- do not
-//   reuse this value for a real GoldSky submission.
-// - The CA collection's Submit example URL is ALSO a leftover artifact:
-//   `.../Application/CA/poprocketsandboxca:{{auth_password_0qjd}}/Submit`
-//   is not a valid ApplicationId shape. Confirmed broken by cross-checking
-//   the sibling US collection, whose Submit example correctly uses a
-//   GUID-shaped ApplicationId (matching its own Document example and the
-//   publicly documented `{id}` pattern) -- implemented here using the real
-//   ApplicationId returned from Create, not copying the CA example's
-//   broken URL.
-// - Real, complete example request body for Create captured below as
-//   `NuveiCaApplicationPayload` -- the first actually-confirmed
-//   field-level payload shape, replacing the earlier "pass anything
-//   through" placeholder. Top-level `Agent`/`Office` identify which
-//   sandbox account/office the application is filed under -- the example
-//   uses "PopRocket Sandbox CA" (not GoldSky's), so callers MUST supply
-//   GoldSky's real Agent/Office name explicitly; nothing here defaults it.
+//   `poprocketsandboxca:q47DC1wk2!`, is NOT GoldSky's -- the same request
+//   body's `Agent`/`Office` fields are hardcoded to `"PopRocket Sandbox
+//   CA"`, a different sandbox entity's copy/paste-from-template leftover
+//   in Danny's exported collection (same pattern repeats in the sibling US
+//   collection, and again in a `vavastonesandboxUS` credential on its
+//   Submit example -- none of these are GoldSky's).
+// - CONFIRMED WORKING 2026-08-25: Danny provided GoldSky's real,
+//   unredacted CA credentials directly (API Key
+//   `goldskytechnologiessandboxca:h69WQ3wj7!`, same string doubles as the
+//   Basic Auth username:password for Submit/Document/status calls).
+//   Verified with a live test call against this exact code path's request
+//   shape: POST /Application/CA returned 200 with a real ApplicationId,
+//   and a follow-up GET on that id (Basic Auth) returned
+//   `"Agent":"GoldSky Technologies Sandbox CA","Office":"GoldSky
+//   Technologies Sandbox CA","User":"goldskytechnologiessandboxca"` --
+//   proof this routes to GoldSky's own sandbox account, not PopRocket's.
+//   NUVEI_APPLINK_API_KEY/USERNAME/PASSWORD are now set as real Edge
+//   Function secrets. Real Agent/Office name is
+//   "GoldSky Technologies Sandbox CA" (see NUVEI_GOLDSKY_AGENT/OFFICE in
+//   gs-ssp-cmp's nuveiTypes.ts, now filled in to match).
+// - A parallel US credential also exists (`goldskytechnologiessandboxus`,
+//   API Key `goldskytechnologiessandboxus:p28DP9hf8!`, Agent/Office
+//   "GoldSky Technologies Sandbox US") and is stored as
+//   NUVEI_APPLINK_API_KEY_US/USERNAME_US/PASSWORD_US, but this file is
+//   still CA-only -- nothing here branches on country yet. The US
+//   AppLink payload shape is meaningfully different from CA's (simpler
+//   BankInformation/SalesProfile, no ElectronicDebitCreditAuthorization/
+//   ControlPanel/EquipmentInformationSection/split-by-brand
+//   CreditCardSalesProfile), so adding US support means a second payload
+//   type + a country-branching path parameter, not just swapping the key.
+// - IMPORTANT for any caller building the request URL manually (curl,
+//   Postman, etc.): the `api_key` value contains `:` and `!` and MUST be
+//   URL-encoded in the query string -- an unencoded `!` got rejected at
+//   Akamai's edge with a 500 *before* reaching Nuvei's app (not a Nuvei
+//   error). This file's own nuveiRequest() already does
+//   `encodeURIComponent(API_KEY)` correctly; this note is for anyone
+//   testing outside this code path.
+// - Danny also flagged: these credentials run in Nuvei's live
+//   infrastructure but are NOT tied to a real merchant account -- test
+//   submissions do not trigger their Underwriting Team's review. Treat
+//   test data accordingly (obviously-fake legal names etc.), same as the
+//   example payload below does.
+// - Full AppLink certification needs more than a working submission: a
+//   signed PDF contract (matching the submitted application data, signed
+//   via one of Nuvei's approved e-sign vendors) and their Integration
+//   Team's review. Danny is chasing the blank contract template + the
+//   approved e-sign vendor list from Nuvei's own Cdn PartnerRM team as of
+//   2026-08-25 -- still outstanding on Nuvei's side, not actionable here.
 //
 // STILL UNKNOWN / not yet done:
-// - Real Basic Auth password for goldskytechnologiessandboxca (redacted
-//   Postman secret) and GoldSky's real Agent/Office name -- both required
-//   before a real sandbox call can succeed.
 // - Whether every field in the example payload is required vs optional,
 //   and whether other Merchant Application "types" need a different shape
 //   (the docs say the payload "is unique to the type of Merchant
 //   Applications you can process").
-// - Document upload is now implemented (uploadDocument below, multipart
-//   via FormData) but completely untested against the real API -- no
-//   working credentials exist yet (see above), so the exact multipart
-//   field name/shape hasn't been confirmed to actually satisfy Nuvei,
-//   only mirrored from the Postman example's `file` field.
+// - Document upload (uploadDocument below, multipart via FormData) is
+//   still completely untested against the real API -- credentials are now
+//   confirmed working for Create/status, but the Document step hasn't
+//   been exercised, so the multipart field name/shape is only mirrored
+//   from the Postman example, not verified.
 // - Status query mechanism -- per the 2026-08-21 partner call, status
-//   surfaces via Nuvei's Partner Dashboard (human-facing); whether GET
-//   /Application/CA/{id} below actually reflects live status hasn't been
-//   confirmed against a real call.
+//   surfaces via Nuvei's Partner Dashboard (human-facing); GET
+//   /Application/CA/{id} is confirmed to return real data (verified
+//   2026-08-25), but whether its fields map cleanly onto this file's
+//   `OnboardingStatus` union hasn't been checked against a non-DRAFT
+//   status yet.
 
 interface NuveiCaOwner {
   AddressSameAs: string;
@@ -269,12 +288,14 @@ export interface NuveiCaApplicationPayload {
 }
 
 const BASE_URL = "https://api.nuvei.com/applink";
-// No default -- see header comment, the embedded example value is a
-// different (non-GoldSky) sandbox entity's credential.
+// Real value confirmed 2026-08-25 (see header comment) and set as an Edge
+// Function secret -- no default in source, on purpose: this is a real
+// credential, not something to commit even as a fallback.
 const API_KEY = Deno.env.get("NUVEI_APPLINK_API_KEY");
 // Real username, safe to default (not secret, just an account name).
 const USERNAME = Deno.env.get("NUVEI_APPLINK_USERNAME") ?? "goldskytechnologiessandboxca";
-// No default -- redacted Postman secret, real value not yet known.
+// Real value confirmed 2026-08-25, set as an Edge Function secret -- see
+// API_KEY comment above for why there's still no source default.
 const PASSWORD = Deno.env.get("NUVEI_APPLINK_PASSWORD");
 
 async function nuveiRequest(
