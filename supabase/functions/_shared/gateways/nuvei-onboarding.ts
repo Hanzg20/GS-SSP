@@ -423,11 +423,21 @@ export const nuveiOnboarding: AcquirerOnboarding = {
     return { status: "SUBMITTED", raw: submitResult };
   },
 
+  // CONFIRMED live 2026-08-26: GET /Application/CA/{id} (what this used to
+  // call) has NO top-level Status field at all -- it's an echo of the
+  // application's own submitted data, not a status envelope. Status only
+  // shows up in the List endpoint's response, one row per application for
+  // this account. Real values observed: "New" (Created, not yet Submitted)
+  // and "Submitted" (post-Submit, awaiting underwriting) -- both match
+  // what mapNuveiStatus() below already expected, so that mapping itself
+  // was right all along; only the endpoint being queried was wrong.
   async getApplicationStatus(externalRef: string): Promise<ApplicationStatusResult> {
-    const result = await nuveiRequest(`/Application/CA/${externalRef}`, { auth: "basic" }) as { Status?: string } | null;
+    const list = await nuveiRequest(`/Application/CA/List`, { auth: "basic" }) as
+      { ApplicationId?: string; Status?: string }[] | null;
+    const match = list?.find((a) => a.ApplicationId === externalRef);
     return {
-      status: mapNuveiStatus(result?.Status),
-      raw: result,
+      status: mapNuveiStatus(match?.Status),
+      raw: match ?? null,
     };
   },
 };

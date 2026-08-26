@@ -1,7 +1,7 @@
 // Dispatches merchant onboarding/KYC actions to the acquirer adapter for
 // the requested acquirer, and keeps merchant_acquirer_accounts in sync.
 // Called from gs-ssp-cmp's acquirerService.ts (Organization Management ->
-// Acquirers tab). Two actions, matching the real Create -> Document ->
+// Acquirers tab). Three actions, matching the real Create -> Document ->
 // Submit flow (document upload is a separate function, see
 // ../upload-acquirer-document/index.ts, since it needs multipart handling):
 //   - "create": first step, creates the application at the acquirer and
@@ -10,6 +10,12 @@
 //   - "submit": final step, sends the already-created application (plus
 //     whatever documents were uploaded in between) to underwriting.
 //     Requires a prior "create" to have populated external_merchant_id.
+//   - "check_status": re-fetches the real status from the acquirer
+//     (Nuvei: GET /Application/CA/List, see nuvei-onboarding.ts's
+//     getApplicationStatus -- there is no push/webhook mechanism, this has
+//     to be polled on demand) and writes it back. Added 2026-08-26 once a
+//     live test confirmed which endpoint actually carries status; nothing
+//     called getApplicationStatus() before this.
 //
 // verify_jwt stays ON for this function (default) -- unlike payment-webhook,
 // the caller here is an authenticated CMP admin, not an external gateway, so
@@ -38,7 +44,13 @@ interface SubmitRequestBody {
   acquirer: Acquirer;
 }
 
-type RequestBody = CreateRequestBody | SubmitRequestBody;
+interface CheckStatusRequestBody {
+  action: "check_status";
+  org_id: string;
+  acquirer: Acquirer;
+}
+
+type RequestBody = CreateRequestBody | SubmitRequestBody | CheckStatusRequestBody;
 
 Deno.serve(async (req: Request) => {
   const preflight = handleCorsPreflight(req);
@@ -62,7 +74,7 @@ Deno.serve(async (req: Request) => {
   if (acquirer !== "elavon" && acquirer !== "nuvei") {
     return jsonResponse({ error: "unknown_acquirer" }, 400);
   }
-  if (action !== "create" && action !== "submit") {
+  if (action !== "create" && action !== "submit" && action !== "check_status") {
     return jsonResponse({ error: "unknown_action" }, 400);
   }
 
@@ -112,8 +124,9 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // action === "submit" -- reads through the _safe view, not the base
-  // table: SELECT on merchant_acquirer_accounts itself is REVOKEd from
+  // action === "submit" or "check_status" -- both need the already-created
+  // application's externalRef first. Reads through the _safe view, not the
+  // base table: SELECT on merchant_acquirer_accounts itself is REVOKEd from
   // `authenticated` entirely (see docs/supabase_full_schema.sql's
   // shared_secret shielding), and this function runs as the caller's own
   // JWT, not service_role, so it's subject to that same restriction.
@@ -131,6 +144,32 @@ Deno.serve(async (req: Request) => {
   const externalRef = account?.external_merchant_id;
   if (!externalRef) {
     return jsonResponse({ error: "not_created_yet" }, 409);
+  }
+
+  if (action === "check_status") {
+    try {
+      const result = await adapter.getApplicationStatus(externalRef);
+
+      const { error } = await supabase
+        .from("merchant_acquirer_accounts")
+        .update({
+          status: result.status,
+          raw_response: result.raw,
+          ...(result.status === "APPROVED" ? { approved_at: new Date().toISOString() } : {}),
+        })
+        .eq("org_id", org_id)
+        .eq("acquirer", acquirer);
+
+      if (error) {
+        console.error("[submit-acquirer-onboarding] check_status update failed:", error);
+        return jsonResponse({ error: "db_error", detail: error.message }, 500);
+      }
+
+      return jsonResponse({ status: result.status }, 200);
+    } catch (e) {
+      console.error(`[submit-acquirer-onboarding] ${acquirer} getApplicationStatus threw:`, e);
+      return jsonResponse({ error: "adapter_error", detail: e instanceof Error ? e.message : String(e) }, 502);
+    }
   }
 
   try {
