@@ -3,6 +3,266 @@
 > [!NOTE]
 > **版本号说明**: 本文档实际由两条独立演进线合并而成（CMP/Supabase 后端的 RLS 修复线，与 Android HAL/产品线的架构演进线），两条线各自独立递增版本号，合并后出现了 `v2.23`/`v2.24`/`v2.27` 各被使用两次、且部分条目未按日期严格排序的情况（例如 `v2.27 (2026-08-20)` 实际是全文最新的一次修改，却排在 `v2.28 (2026-08-09)` 之后）。**版本号不是可靠的时间/依赖排序依据，请以每条目标题里的日期为准**；正文中散落的 `[v2.1]` 等内联标记同理，指的是该版本条目引入的变更，不代表这是当前最新状态。
 
+### v2.49 (2026-08-29) — 补上 vip_cards 缺失的 tier 列：PLATINUM/GOLD 折扣逻辑第一次真正有数据可用 (vip_cards.tier Column Added — Discount Logic Finally Has Data)
+
+紧接 v2.48。上一条目顺手发现的缺口——`vip_cards` 表根本没有 `tier` 列，`feature/wash`/`app/ourea` 里的 PLATINUM/GOLD 阶梯折扣分支永远拿到 Kotlin 侧的默认值 "REGULAR"，折扣从来没真正生效过——这次正式修。
+
+*   **`docs/supabase_full_schema.sql`**：`vip_cards` 加了 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'REGULAR' CHECK (tier IN ('REGULAR', 'GOLD', 'PLATINUM'))`——约束值和 `feature/wash`/`app/ourea` 里 `when(card.tier)` 分支已经在判断的三个值完全对应，不是新编的。
+*   **v2.48 刚加的 `get_vip_card_by_uid` RPC 同步更新**：`SELECT` 语句加了 `tier`，返回的 JSON 里也加了 `tier` 字段——单纯加表字段不会让 API 自动返回它，两边必须一起改，不然列加了但读不到，等于白加。
+*   **`VipRepository.kt`**：`GetVipCardResult` 加 `tier: String? = null`，`getVipCard()` 的映射把 `decoded.tier ?: "REGULAR"` 传进 `VipCard` 构造函数——之前这个字段完全没被传，永远吃 `VipCard.tier` 自己的默认值，就算数据库真的返回了 tier 也会被忽略。
+*   **验证**：全仓库 `assembleDebug`+`testDebugUnitTest` 保持绿色。**没有真实 VIP 卡数据可以端到端验证折扣是否真的生效**——RPC 改动依赖用户执行下面这段 SQL，之后需要一张真实的 `tier='PLATINUM'` 或 `'GOLD'` 卡才能看到折扣分支第一次被走到。
+
+### v2.48 (2026-08-29) — aegis-wash 综合排查 + vip_cards 的 RLS 缺口用 RPC（不是照抄 products/devices 那条 anon 策略）修复 (VIP Card RLS Gap Fixed via RPC, Not a Blanket Policy)
+
+紧接 v2.47。用户要求综合分析 `aegis-wash` 还有什么需要完善，排查发现三个问题（`vip_cards` 的 org-scoped RLS 缺口、`hardwareVendor` 硬编码死在 "PAX" 导致 WizarPOS/IDTECH 注册形同虚设、`feature/wash` 零单元测试覆盖），用户确认先修第一个。
+
+*   **一开始的判断需要自我纠正**：最初类比 v2.32/v2.34 给 `products`/`devices` 加的"匿名设备可读"策略，以为 `vip_cards` 能照抄同样的修法。**动手前发现这个类比不成立**：`vip_cards` 存的是具体客户的余额，不是公开商品目录；RLS 是行级别的，没法表达"只有按 card_uid/qr_code 查询时才可见"——只要某个策略让一行"可见"，一个不带过滤条件、直接查全表的客户端一样能读到，等于给任何持有内置匿名 key 的设备开了读取**全平台所有商户 VIP 客户余额**的口子，比 products 目录暴露的风险级别高得多。
+*   **改用了仓库里 `deductBalance` 早就在用的同一套模式**：`VipRepository.getVipCard()`/`resolveCardUidByQrCode()` 从直接查表（`postgrest["vip_cards"].select{...}`）改成调用两个新的 `SECURITY DEFINER` RPC——`get_vip_card_by_uid(p_card_uid)`/`resolve_vip_card_uid_by_qr(p_qr_code)`，只接受具体的 uid/二维码参数、只返回那一条匹配记录，不需要在表级开放任何 SELECT 权限。`GRANT EXECUTE ... TO authenticated`（不给 `anon`）——照抄的是 `redeem_coupon` 那条更新、更精确的约定（注释原文："由于走到这里之前 App 早就完成匿名登录了"），不是 `deduct_vip_balance` 当初可能过度防御性地同时给了 `anon` 的旧约定。
+*   **顺手发现一个相关但没有在本次修的问题**：`deduct_vip_balance` 本身其实完全没检查调用方设备的 org 是否匹配卡片的 org——任何认证过的设备理论上只要猜到/拿到别的商户的 `card_uid` 就能扣别人的余额。这是这个 RPC 一直就有的缺口，不是这次改动引入的，也不在"给 VIP 查询补 RLS"这个任务范围内，先记下来，不在这次顺手改，避免在同一个改动里引入没被要求的行为变化。
+*   **另一个顺手发现、同样没动**：`vip_cards` 表 schema 里根本没有 `tier` 列（`card_uid`/`org_id`/`balance_cents`/`is_active`/`created_at` + 后来加的 `qr_code`/`display_card_number`/`cardholder_name`/`mobile_phone`/`card_expiration_date`），但 Kotlin 的 `VipCard.tier` 有默认值 `"REGULAR"`。这意味着 `feature/wash`/`app/ourea` 里那套 PLATINUM/GOLD 阶梯折扣逻辑（`when(card.tier) { "PLATINUM" -> 0.85; "GOLD" -> 0.90 }`）**实际上永远走不到折扣分支**，因为服务端根本不返回 tier，Kotlin 侧永远拿到默认值 "REGULAR"。这是一个真实的功能缺口，但和这次的 RLS 修复是两件事，没有顺手改。
+*   **`docs/supabase_full_schema.sql` 同步更新**（该文件自己声明是"唯一真相来源"）：把两个新 RPC 加进了 `deduct_vip_balance` 后面。**该文件顶部原本就有 DESTRUCTIVE FULL RESET 的警告——完整重新执行这个文件会清空所有表**，所以只把两段新增的 `CREATE FUNCTION`/`REVOKE`/`GRANT` 单独摘出来交给用户执行，不是让用户重新跑整个 schema 文件。
+*   **验证**：全仓库 `assembleDebug`+`testDebugUnitTest` 保持绿色，现有的 `VipRepositoryTest`（只测 `classifyDeductResult` 纯函数）不受影响。**没有真实 VIP 卡数据可以端到端验证**——RPC 本身没在真实 Supabase 项目里跑过，需要用户执行 SQL 后再验证。
+
+### v2.47 (2026-08-29) — WizarPOS VIP 拍卡从"永久挂起的空实现"补成真实 Mifare 读卡 (WizarPOS VIP Card Detection Implemented, Was a Silent Hang)
+
+紧接 v2.46 同一天。用户问"WizarPOS 对 VIP card tap 是怎么实现的"，查代码发现 `WizarPosPaymentProvider.startCardDetection()` 原来是：
+
+```kotlin
+override fun startCardDetection(amountInCents: Int, callback: IPaymentProvider.PaymentCallback) {
+    callback.onProgress("READY")
+}
+```
+
+只回调一次 `onProgress("READY")`，之后永远不会调 `onCardDetected`/`onSuccess`/`onFailure`——界面会**永久卡住**，没有超时也没有报错，比 PAX 当时的 NeptuneLite stub（好歹有 3 秒 mock fallback）和 ID TECH 的立即成功空实现（有文档注释说明"这个 reader 不做 NFC 识别"）都差。用户随即确认"WizarPOS 已经明确支持 Mifare 刷卡"，于是当场实现：
+
+*   **真实 API 来源**：在本次会话早些时候为了查 D3 Accessory Agent 协议下载的 `D22_Q3_PaymentDemo_20241231.zip`（WizarPOS 官方 EMV Demo）里，`cloudposInterface/ContactlessCardImpl.java` 就是官方自己对接非接触式读卡的示例：
+    ```java
+    device = (RFCardReaderDevice) POSTerminal.getInstance(ct).getDevice("cloudpos.device.rfcardreader");
+    device.open();
+    ```
+    用 `javap` 反编译 `libs/wizarpos/cloudpos_sdk.aar` 确认了 `com.cloudpos.rfcardreader.RFCardReaderDevice`/`RFCardReaderOperationResult`/`com.cloudpos.card.Card` 的真实方法签名——`RFCardReaderDevice` 声明了 `MODE_MIFARE` 常量、`waitForCardPresent(timeout): RFCardReaderOperationResult`（自带超时的阻塞调用，不需要像 PAX 那样手写轮询循环）、`Card.getID(): ByteArray`（UID）、`Device.cancelRequest()`（真正可以中断阻塞调用，不是 fire-and-forget 的 `Job.cancel()`）。
+*   **实现**：`startCardDetection` 走 `POSTerminal.getDevice(POSTerminal.DEVICE_NAME_RF_CARD_READER)` 拿到设备（复用官方 Demo 确认过的基础无参 `open()`，没有用 `RFCardReaderDevice` 自己声明的 `open(mode, param)` 重载——后者的参数含义在拿到的资料里没有实际用例佐证，不猜），`waitForCardPresent(30000)` 拿结果，`resultCode == OperationResult.SUCCESS` 时读 `getCard().getID()` 转成十六进制 UID 字符串；`stopCardDetection` 改成真的调 `device.cancelRequest()`，不再是空函数。Mock 判断统一成 `HardwareConfig.isMock`，和刚改完的 PAX 那条一致。
+*   **验证**：全仓库 `assembleDebug`+`testDebugUnitTest` 保持绿色。**同样没有真实 WizarPOS 硬件可以在这个环境里验证**——依据是反编译确认的真实方法签名 + WizarPOS 官方 Demo 的对照用法，`open(mode, param)` 重载的两个参数具体该传什么值目前没有实例可查，所以选择了官方 Demo 里实际用过的、更简单的无参 `open()`，没有编造参数含义。等拿到真机后，PAX 和 WizarPOS 这两条 VIP 拍卡实现应该一起优先验证。
+
+### v2.46 (2026-08-29) — PAX VIP 拍卡从 NeptuneLite stub 切换到 POSLink 自带的真实 PiccManager (VIP Card Detection Now Uses Real POSLink API, Not a Stub)
+
+紧接 v2.45 同一天。v2.45 分析确认"NeptuneLite 唯一剩余真实用途是 VIP 拍卡识别"之后，进一步在项目里已有的 PAX 官方资料（`temp_pax_demo/POSLinkDemo` 的 `MifareActivity.java` 示例 + `temp_pax_semi` 文档）里找到了不需要 NeptuneLite 的真实替代方案，用户确认后直接实现：
+
+*   **改动**：`PaxPaymentProvider.startCardDetection()`/`stopCardDetection()` 从 `dalProvider: () -> IDAL?`（NeptuneLite DAL，本仓库没有真实 AAR，纯 stub）切换成 `com.pax.poslink.peripheries.PiccManager`——**这个类真实存在于项目已经在用的 `libs/pax/PAX_POSLinkAndroid_20260202.aar` 里**，用 `javap` 反编译确认过方法签名（`PiccManager.getInstance(context).open()/detect(DetectMode)/close()`，`CardInfo.getSerialInfo(): byte[]` 就是卡 UID），和 PAX 官方 POSLink Demo App 里 `MifareActivity.java` 的用法完全一致。零新增依赖，不需要再等 PAX 给 NeptuneLite AAR。
+*   **Mock 判断从"`dal == null`"改成直接查 `HardwareConfig.isMock`**——更准确地反映真实的 mock/真机开关（之前 `dal` 是否为 null 取决于 `PaxHardwareProvider.init()` 里一堆初始化逻辑，现在直接对齐仓库里其他地方都在用的同一个标志位）。`PaxPaymentProvider` 构造函数因此不再需要 `dalProvider` 参数，`PaxHardwareProvider.getPaymentProvider()` 调用点同步简化。
+*   **唯一的能力限制**：这个 AAR 版本的 `PiccManager.DetectMode` 只有 `ONLY_M`（Mifare），没有 NeptuneLite 那种覆盖 ISO14443 A/B 全类型的 `ALL` 模式——对 VIP 会员卡场景足够（银行卡走 `startSale` 的 `PaymentRequest` 路径，不受影响），如果以后要支持非 Mifare 的会员卡介质需要重新评估。
+*   **一个真实的踩坑记录，供以后参考**：改动过程中遇到一次编译失败（"Unclosed comment"/"Missing '}'"/"Class not abstract"三个报错同时出现，看起来毫不相关）——根因是 **Kotlin 的块注释 `/* */` 支持嵌套**（和 Java/C 不一样），KDoc 注释正文里写了"`com/pax/**`"这样的说明文字，其中"`pax/**`"字面上包含"`/*`"，被解析成嵌套注释的开始，导致后面唯一的"`*/`"提前闭合了内层注释、外层注释一路开到文件末尾，把整个 `startCardDetection` 方法都吞进了注释里。以后在 Kotlin doc 注释里提到路径/通配符（`foo/**`、`bar/*.kt` 这类）要避免连续出现"`/*`"。
+*   **验证**：全仓库 `assembleDebug`+`testDebugUnitTest` 保持绿色。**没有真实 PAX IM30/IM25 硬件可以在这个环境里做真机验证**——这条改动的正确性依据是反编译确认的真实方法签名 + PAX 官方 Demo 的对照用法，不是真机拍卡测试过；后续拿到真机后应该优先验证这一条。
+
+### v2.45 (2026-08-29) — PAX 官方工单回复确认 IM30/IM25 支付走 POSLink 是正确路径；NeptuneLite 唯一剩余真实用途是 VIP 拍卡识别 (PAX Support Confirms POSLink Path, Narrows NeptuneLite Gap)
+
+用户转发了 PAX Technology 支持工单（`[3822-1] Request for NeptuneLite/IDAL SDK & MDB Extension Library for PAX IM25 & IM30`）里 Ming-Hung Yu 的官方回复：IM30/IM25 上做卡支付**不需要 NeptuneLite SDK**，官方支持的路径是"PAX semi-integration"——终端上跑 BroadPOS（PCI 认证的支付 App，商户凭证走 PAXSTORE 配置），应用侧用 POSLink 库发 SALE/AUTH/VOID/结算等请求给 BroadPOS，NeptuneLite 用不上。
+
+*   **对照代码确认**：`PaxPaymentProvider.kt` 的 `startSale`/`voidTransaction`/`refundTransaction`/`closeBatch` 已经全部走 `com.pax.poslink.PosLink`（`libs/pax/PAX_POSLinkAndroid_20260202.aar`，真实 AAR，不是 stub），和 PAX 官方描述的路径完全一致——**这次回复确认的是现有实现方式本来就是对的，不需要改代码**。
+*   **顺手核对了原工单里同时问到的 MDB Extension Library**：`PaxMdbProvider.kt`/`PaxGpioProvider.kt` 走的是另一个已经是真实库的 SDK——`libs/pax/UptApi_V1.02.jar`（`pax.util.MDBManager`/`DigitalIOManager`，2022 年编译，`jar tf` 确认真实 class 文件，不是 stub）——不是 NeptuneLite，这部分请求早就有真实库覆盖了，PAX 这次回复没提到但不代表没解决。
+*   **缩小后的真实缺口**：`core/hardware/src/main/java/com/pax/**` 那批 NeptuneLite/IDAL 手写 stub（`com.pax.dal.*`），全仓库唯一的真实用途是 `PaxPaymentProvider.startCardDetection()` 里的 `dal.picc`——**读取拍卡 UID 用于 VIP 会员识别，不是走支付的那条路径**。核对了 `UptApi_V1.02.jar` 的 class 列表，里面没有任何 PICC/NFC/card 相关类，无法替代 NeptuneLite 覆盖这个功能。也就是说：真机上 PAX 终端的 VIP 拍卡识别目前还是假的（`dal == null` 时的 mock fallback 在跑），这是唯一还没解决、且这次工单回复没有涉及的缺口——但和支付本身无关，不涉及资金安全，优先级明显低于支付路径。
+
+### v2.44 (2026-08-28) — 准生产加固第一轮：QR/会员卡支付真机验证 + 全面代码复盘，5 个真实 bug 修复 (Pre-Production Hardening Round 1)
+
+紧接 v2.43。用户要求"继续完善，达到准生产的状态"。先查了 build.gradle/AndroidManifest，确认"没有 release 签名/ProGuard 配置、`IS_MOCK` 硬编码 true"是 `app/iris` 也一样的仓库级约定，不是 Ourea 单独的事，没有擅自改——这类决策留给用户定。范围收窄到用户确认的四项：真机跑通 QR/会员卡支付、补代码复盘、支付中断状态加固、补单元测试；用户全选，本轮先做了前两项。
+
+*   **QR/会员卡真机验证**：QR 支付走了真实 Supabase Edge Function（`QrPaymentRepository` 不受 `IS_MOCK` 影响），二维码真实生成、取消流程测过。会员卡输入未知码走了真实网络请求，正确返回"Member code not recognized"、购物车不受影响、无崩溃。
+*   **`/code-review high --fix` 复盘了本次会话新增/改动的全部文件**（`app/ourea` 的 MainActivity.kt/OureaScreens.kt，`feature/retail` 的 RetailViewModel.kt/RetailRepository.kt，`core/data` 的 Product.kt/LocalDatabase.kt），发现并自动修复 5 个真实 bug，1 个明确跳过：
+    1.  **QR 取消后交易记录永久卡在 PENDING**——测试时我自己手动发现的同一个问题，复盘也独立找到了。修复：取消时先把 `TransactionRepository` 状态更新成 `CANCELLED` 再杀掉轮询协程。真机验证：logcat 确认 `Payment status updated to CANCELLED for OUR-QR-...`。
+    2.  **挂单用 `Map<productId, qty>` 编码购物车，同商品不同 modifier 的两行会互相覆盖、modifier 本身也丢失**——比 v2.40 自己以为的"只是没解码"更深一层的问题。修复为 `List<ParkedCartLine>`（含 modifierIds），resume 时按 id 查回真实 `ProductModifier` 对象。
+    3.  **Cash 键盘的上限检查判断的是乘法之前的值**——`receivedCents < 100_000_00` 这个判断在旧值上做，下一位数字敲进去之后新值可能一口气冲到近 10 倍上限。真机验证：连点 12 次"9"，修复后金额精确停在 `$99,999.99`，不再失控。
+    4.  **会员折扣支付：小票/记录里的 subtotal/tax/tip 是折扣前原价，但 amount 是折扣后总价，三者加起来对不上实收金额**——影响对账和小票可信度。修复为 subtotal/tax 都乘上同一个 `discountFactor`，tip 取余数，保证三项之和精确等于 `finalTotal`。
+    5.  **`RetailRepository.syncWithCloud` 只会 upsert，云端下架/删除的商品永远不会从本地缓存清掉**——发现于复盘，不是本次新写的代码，但直接影响刚上线的 Products 页面是否可信。修复：`ProductDao` 加 `deleteAll()`，同步改成同一事务内先清空再插入，真正做到"以云端为准"，顺手去掉了旧代码里一个多余的 `runBlocking`（DAO 方法本来就不是 suspend）。
+    *   **明确跳过、没有动**：员工 PIN 硬编码 `"1234"`——`app/iris/MainActivity.kt:133` 一模一样的写法，修复需要一套真实的"设备/员工配置的 PIN"来源，目前整个仓库都没有，属于功能新增而不是这次复盘该顺手改的 bug，只做了记录。
+*   **验证**：全仓库 `assembleDebug`+`testDebugUnitTest` 保持绿色（`app/iris` 一并确认没被连累）；Cash 上限修复和 QR 取消修复都在真机上专门复测过，其余三处改动确认编译通过、逻辑走查合理，未逐一在真机上单独复现原始 bug 场景（会员折扣需要真实 VIP 卡数据，挂单 modifier 场景需要商品带 modifier_groups，产品清理需要真的在 CMP 侧改一次商品——目前仓库里都还没有这些条件）。
+*   **仍未做（用户选了但本轮没轮到）**：给今晚新写的纯函数补单元测试；支付进行中界面状态从 `remember{}` 提升到可存活配置变更/进程回收的存储方式。
+
+### v2.43 (2026-08-28) — Ourea 新增只读的商品/库存浏览界面（不碰权限模型）(Read-Only Products/Inventory Screen)
+
+紧接 v2.42，次日。用户要求"继续完善界面的产品和库存管理"。动手前先查了 `docs/supabase_full_schema.sql` 里 `products` 表的 RLS：INSERT/UPDATE 只对带 `catalog.manage` 权限的 `authenticated`（真人 CMP 登录）开放，Ourea 设备是匿名认证，完全没有写权限——而且顺手查了 `gs-ssp-cmp` 全仓库，发现虽然 `catalog.manage` 这个权限键早就定义好了，**CMP 那边至今也没有任何产品管理页面**，是真正的空白。把这个发现摆出来，问用户新增/编辑/删除到底该建在 Ourea 还是 CMP，用户选择：**Ourea 这边先做只读的分类浏览 + 库存展示，不碰权限模型**，新建/编辑留给 CMP 以后再做。
+
+*   **`Product.stockQty`**：和 v2.40 的 `category` 走同一套模式——`public.products` 没有专门的库存列，`stock_qty` 挂在 `attributes` JSONB 里，只读派生属性。`null` 表示"这个商品没有跟踪库存"，和真实的 `0`（真的没货了）严格区分，不能把两者混为一谈。
+*   **`ProductEntity` 同步补了 `stockQty: Int?` 列，`@Database` 版本号 5→6**（`fallbackToDestructiveMigration()` 已经配置好，纯本地缓存表，版本跳变只是清空重建，不是真正的迁移，风险可忽略）——`RetailRepository.toModel()`/`toEntity()` 双向把 `category` 和 `stock_qty` 一起从/向 `attributes` 打包，冷启动先读本地缓存时库存显示不会跟云端同步之间出现闪烁式的短暂丢失。
+*   **UI**：
+    *   `OureaStockBadge`——0 件红色"Out of Stock"，≤5 件金色"Low: N left"（阈值 5 是随手定的合理默认值，不是 WizarPOS/CMP 给的规范），其余灰色"N in stock"；`stockQty == null` 时完全不显示徽章（不编造库存数字）。
+    *   现有结账页 `ProductCard` 加了库存徽章，库存为 0 时整卡半透明、加入购物车按钮禁用。
+    *   `ProductCard.onAdd` 从必填参数改成可空（默认 `null`）——新的只读场景传 `null` 时完全不渲染"+"按钮，而不是渲染一个点了没反应的假按钮。
+    *   新增 `OureaProductsScreen`（侧边栏新图标，`Icons.Default.Inventory2`，位置在购物车和交易记录之间）：标题栏统计"N products · N low stock · N out of stock"，复用已有的搜索框和 `OureaCategoryRail`（v2.40 已建），网格用只读版 `ProductCard`（`onAdd=null`）。
+*   **验证**：全仓库 `assembleDebug`+`testDebugUnitTest` 保持绿色（`core/data`/`feature/retail` 都改了，确认没连累 `app/iris`）；模拟器真机截图确认 Products 页正确显示全部 7 个商品（含之前被遮挡看不清名字的第 7 个——`GoldSky Tote Bag $18.00`，现在确认了），无分类/无库存数据时优雅降级（不显示分类栏、不显示库存徽章），和结账页表现一致。库存徽章的三种状态（缺货/低库存/正常）尚未用真实数据真机验证——给了用户一段 SQL（合并写入 `attributes.stock_qty`，不改表结构）用于测试，跑完后需要重启 app 才会同步显示。
+
+### v2.42 (2026-08-27) — Master 端不需要 WizarPOS 自家硬件：客户现有 Android 双屏一体机走标准 USB Host 模式即可外接 Q3 mini (Master Role Not Vendor-Locked — Unconfirmed Source)
+
+紧接 v2.41，同一晚。用户表示"如果用客户现有的 Android 双屏一体机做 Master（走标准 USB Host 模式），外接 Q3 mini 作为 Slave，这样也支持"——回应的正是 v2.41 提出的追问清单里最关键的第 1 条（Master 端是否必须是 WizarPOS 自家的 D22/D3）。
+
+**这条结论的信息来源尚未确认（是 WizarPOS 官方回复，还是用户自己的判断/计划，已经追问用户，待补充）**——记录在这里，但先按"未最终确认"处理，不要在此基础上直接写死采购决策或代码实现，等来源确认后再补充这条记录的置信度。
+
+*   **如果属实，采购/硬件策略层面的意义**：不需要专门采购 WizarPOS 的 D3——可以用客户现有的、或者任意第三方 OEM 的 Android 双屏一体机作为 Master（Ourea 跑在上面），只需要单独采购 WizarPOS 的 Q3 mini 作为外接的 Slave 读卡终端，通过标准 Android USB Host 模式对接，不必依赖 v2.41 提到的、疑似 WizarPOS 自家固件专属的 `persist.wp.usbchannel` 系统属性设置流程。这与用户最早的猜测（"随便 OEM 一个双屏机，外接一个 Q3 就可以称为自己的产品"）方向一致。
+*   **v2.41 清单里其余三条仍然完全未确认**，不因这一条而放松：真实生产支付 App 包名/组件、VOID/REFUND 的 `TransType` 编号、AuthCode 字段位置——这些仍然需要 WizarPOS 直接确认，`D3UsbPaymentProvider.kt` 仍然保持原样（显式失败，不猜协议）。
+
+### v2.41 (2026-08-27) — D3 集成协议找到真实一手来源，架构结论被推翻：D3/D22 是 Master，Q3(mini) 是 Slave (Real Protocol Found — Master/Slave Roles Reversed)
+
+紧接 v2.40，同一晚。用户提供了 WizarPOS CloudPOS SDK gitbook 的一个具体页面链接（`faq/usb-serial-port/accessory-agent-service-d22-q3`），顺着这个页面找到了三份一手资料：gitbook 页面本身、`AccessoryConnectAgentusermanual.pdf`（官方用户手册，PDF 用 `pdftotext -layout` 成功提取全文，不再是 v2.36 记录的"WebFetch 解析不了"）、以及最关键的 `D22_Q3_PaymentDemo_20241231.zip`（官方支付 Demo 源码，含 `EMVSample`——跑在 Q3 上的完整 EMV 支付 App，和 `PaymentReouterClinet_D22_EMVSample`——跑在 D22 上的支付路由客户端）。此外还核对了 `datasheet-D3.pdf`（用户提供于 `C:\goldsky\合作伙伴资料\wizarPOS`）与 `datasheet-Q3 UPT.pdf`，发现两份资料页上"Integration options: Semi-integration.../All-in-one..."那段文案完全相同——这是 WizarPOS 全系产品线的通用营销文案，不能反推 D3 具体走哪种模式，之前误以为是 D3 专属特性。
+
+*   **推翻此前假设（v2.37/v2.36）：不是"Ourea 主机 USB 外接 D3 读卡器"，而是 D3/D22 = Master（默认），Q3(mini) = Slave（默认）**——gitbook 页面和官方 Demo 的 README 都明确写了角色定义。D3 自带 15.6 寸大屏 + 内置打印机（`datasheet-D3.pdf` 已确认），这个硬件形态本来就更适合当"主机"而不是"外接读卡配件"，现在协议角色定义也印证了这一点。用户之前转述的"计算机主机和 D3 读卡机"这个说法，正确的映射应该是：**D3 本身就是那台"计算机主机"，Q3mini 才是外接的"读卡机"**。
+*   **真实协议（来自官方 Demo 源码，不是转述）**：
+    *   桥接服务：两台设备都装 `AccessoryConnectionAgent.apk`，包名 `com.smartpos.accessoryagent`，Service 类 `com.smartpos.accessoryagent.service.RemoteAccessoryApiService`，AIDL 接口 `IRemoteAccessoryApi`，有 `remoteIntent(json)` 和 `remoteIntentType(type, json)` 两个方法（官方支付 Demo 实际用的是后者，`type="broadcast"`）。
+    *   Master→Slave（发起 Sale）：`remoteIntentType("broadcast", json)`，`json` 里 `packageName="com.smartpos.emvsample"`、`className="com.smartpos.emvsample.receiver.Receiver"`、`action="PAY_REQUEST"`、`putExtra.AidlData={"TransType":1,"TransAmount":"000000012300"}`（12 位补零字符串，单位分，`"000000012300"`=$123.00，代码原注释确认）。
+    *   Slave→Master（交易结果）：同样走 `remoteIntentType("broadcast",...)`，`action="PAY_RESPONSE"`，Master 侧注册一个 `BroadcastReceiver` 接收，`putExtra.AidlData` 这次是**已经 `toString()` 过的 JSON 字符串**（请求方向传的是嵌套 JSON 对象，响应方向传的是字符串——两个方向不对称，照抄官方 Demo 各自的写法，不要假设两边格式一致），内容为 `{"RespCode":"00|FF","RespMsg":"Approved|Failed","TransResult":true|false,"TransAmount":<分>,"TransDate":...,"TransTime":...,"Trace":...}`。
+    *   开机配置：两台设备都装 `SetUsb.apk`，设置系统属性 `persist.wp.usbchannel=1`，重启；USB 连接后，只接一台 Q3 时自动配对，接多台时开机弹窗选择。
+*   **仍然没有搞清楚、明确不去猜的三件事**：
+    1.  `com.smartpos.emvsample` 是官方 Demo 自己的包名，**不能假设真机上实际部署的支付 App 就是这个包名/组件**——这一点必须问 WizarPOS 确认，Demo 仅供参考实现模式。
+    2.  **VOID/REFUND 在官方 Demo 里根本没实现**——`Receiver.java` 原文注释就写着"Need to unpack the Json and call different transactions with different transType(sale/Void/Refund/....) Now this sample always call Sale transaction"，连 WizarPOS 自己的示例代码都留了空白。`TransType` 目前只确认 `1`=Sale，VOID/REFUND 的编号未知，**不编造**。
+    3.  响应报文里没有看到 AuthCode 字段（只有 `Trace`，大概率对应现有代码里的 `refNum`），小票打印需不需要授权码要另外问。
+*   **不影响本次不改代码**：`D3UsbPaymentProvider.kt` 保持原样（显式失败），本条目只是记录找到的真实一手协议来源，供下一步实现前先向 WizarPOS 核实上述三点。资料存档在 `%TEMP%\claude\...\scratchpad\wizarpos_accessory\`（本机临时目录，非仓库内，未提交）。
+
+### v2.40 (2026-08-27) — 客户演示前紧急功能补强：Dashboard 重做 + 挂单/取单真机跑通（修复取单的真实 bug）+ 购物车加减按钮 + 商品分类筛选 (Pre-Demo Feature Push)
+
+紧接 v2.39，同一天晚上。用户次日要给客户演示 Ourea，反馈"功能还是比较单一"，参考小红书 Posly 截图（`C:\goldsky\Requirment\Ourea`）按优先级补了四项，全部在模拟器（1920x1200，比之前验证用的 1280x720 大得多）上真机走通：
+
+*   **Dashboard 重做**（最高优先级）：新增 `OureaDashboardScreen`（`app/ourea` 自己的，不是改共享的 `feature/apex` `InsightsScreen`——那个 app/iris 还在用，不动）。今日收入/今日订单/客单价三张统计卡 + 最近订单列表，数据全部来自 `TransactionRepository.getAllLocal()`（`TransactionHistoryScreen` 用的同一份真实本地订单历史），没有任何写死的示例数据——全新设备显示全 0 和空列表。真机验证：跑一笔 Cash 支付后，Dashboard 正确显示 `$4.13`/`1`/`$4.13` 和一条状态为绿色"Paid"的最近订单行。
+*   **挂单/取单**：`RetailViewModel.parkCurrentOrder`/`resumeOrder` 后端逻辑其实早就写好了（`ParkedOrderEntity`/`ParkedOrderDao` 都在），但从来没人接到 UI 上。接入过程中**发现一个真 bug**：`resumeOrder()` 只会删除挂单记录、清空购物车，从来没有把 `cartJson` 解码回购物车——"取单"实际上等于把挂起的商品永久丢弃。已修复（解码 `Map<String, Int>`，按 `RetailRepository.catalog` 查回 `Product` 后逐个 `addItem`；引用了目录里已不存在商品时跳过并记警告，不崩溃）。真机验证：挂起"Croissant x2 ($7.50)"→购物车清空、Cart 标题旁出现"Held (1)"→点开弹窗显示"Quick Order $7.50"→点击后购物车正确恢复出 Croissant x2。
+*   **购物车 +/- 数量按钮**：原来每行只有一个删除(X)按钮，点一下减1（不直观）。改成 `-`/数量/`+` 三段式（复用已有的 `RetailViewModel.addItem`/`removeItem`，没有新后端逻辑），数量为1时"-"退化成删除图标。
+*   **商品分类筛选（右侧分类栏）**：`public.products` 表本身没有 `category` 列（见 `docs/supabase_full_schema.sql`），比照该表已有的"`attributes` JSONB 放硬件专属字段"的既有模式，把 `category` 也放进 `attributes` 而不是加迁移。`Product.category` 是从 `attributes["category"]` 派生的只读属性；`RetailRepository`/`ProductEntity` 两边的 `toModel()`/`toEntity()` 都做了双向映射，保证冷启动先读本地缓存时分类也不丢。**写生产库这一步被 auto-mode 权限分类器拦下了（连只读 SELECT 都拦了）——没有绕过，把现成的 SQL（对 6 个已知演示商品的 `attributes` 做 JSONB 合并更新，不改表结构）交给用户自己在 Supabase SQL Editor 里跑**。UI 侧已验证：没有任何商品带 `category` 时分类栏完全不渲染（不会出现只有"All"一个选项的空壳栏），行为和之前一致，不影响还没跑 SQL 的当下；用户跑完 SQL 并重启 app 后应该就能看到真实分类。
+*   **全仓库验证**：每一项改完都单独 `assembleDebug`+`testDebugUnitTest` 保持绿色（`resumeOrder`/`Product.category` 都改在共享模块 `feature/retail`/`core/data`，专门确认了 `app/iris` 没被影响）。四项功能里前三项已经在模拟器上完整走通截图确认；分类筛选的 UI 逻辑走查+空态验证过，真实分类数据渲染效果要等用户跑完 SQL 后再一起确认。
+
+### v2.39 (2026-08-27) — Ourea 支付确认页三个"非功能性"按钮（Cash/QR/Member Card）接入真实后端逻辑 + 两个真机验证发现的布局溢出 bug 修复 (Payment Buttons Wired + Layout Overflow Fixes)
+
+紧接 v2.38，同一天完善。v2.33 记录过"参考截图里的 cash/QR/member-card 支付按钮，本仓库没有对应后端逻辑，故意不做成假按钮"——本次把这三个方法接上已经存在、别处验证过的真实后端，不再是占位：
+
+*   **Cash**：新增 `OureaCashDialog`（数字键盘输入实收现金，实时算找零/差额，Confirm 在实收 < 应收时禁用）+ `MainActivity.triggerCashPayment`。现金没有网关/硬件往返，staff 是在确认"钱已经收到"，所以直接落 `payment_status=PAID`（不同于卡/QR 那种先 PENDING 再翻 PAID 的模式），`payment_method="CASH"`。
+*   **QR**：新增 `OureaQrPaymentDialog`（展示 `QrUtils.generateQrCode` 生成的二维码，等待中可取消）+ `MainActivity.startQrPayment`，复用 `QrPaymentRepository`（`feature/wash` 的 kiosk 扫码支付已经在用的同一个 Supabase-backed session/poll 实现，不是客户端假计时器）。取消会 `Job.cancel()` 真正中断轮询。
+*   **Member Card**：新增 `OureaMemberDialog`（人工输入/条码枪当键盘输入 12 位会员码，格式校验通过 `VipRepository.resolveCardUidByQrCode` 期望的同一个正则才允许提交）+ `MainActivity.triggerVipPayment`，PLATINUM/GOLD 阶梯折扣逻辑照抄 `feature/wash` 的 `initVipPayment`（应用在购物车总额上，wash 那边是应用在单一价格上）。用手动输入码而不是 NFC 感应，是因为 Ourea 现有硬件 provider 都是刷卡支付终端、不是会员卡 NFC 读卡器，也没有接扫码枪硬件。
+*   `OureaPaymentUiState.Success` 从 `authCode: String` 改成通用 `message: String`（cash/QR/member 的成功提示不是一个授权码），四条支付路径在各自的最终提示文案里说明各自结果（找零金额/折扣是否命中等）。
+*   **真机验证过程中发现两个真实布局 bug，均已修复**（不是猜的，是模拟器截图直接看到的）：
+    1.  支付确认页四个按钮原来用 `.width(280.dp)`/`.width(133.dp)` 固定宽度：在这个 app 实际的横屏分辨率下，左侧 `weight(1f)` 那一栏实际测得的宽度远小于 320dp（侧边栏 + 340dp 的 Bill Details 面板吃掉了大部分宽度），固定宽度按钮溢出到列外，被后画的 Bill Details 面板整个挡住、完全不可见/不可点（QR Code 按钮、Member Card 文字、Back to Order 按钮当时都是这样）。改为 `fillMaxWidth()` + 外层 `widthIn(max = 320.dp)` 解决；两个按钮一行并排也放不下文字（"QR Code"/"Cash" 换行后被固定高度裁切），最终改成四个按钮全部纵向堆叠、`verticalScroll` 兜底。
+    2.  `OureaCashDialog`/`OureaQrPaymentDialog` 内容纵向总高度超出这台设备实际可用屏幕高度：没有 `verticalScroll` 时，数字键盘第 3/4 行（含 Confirm/取消按钮）直接超出物理屏幕边界，既看不见也点不到。三个新弹窗的 `Column` 都补了 `verticalScroll(rememberScrollState())`。
+*   **验证**：全仓库 `assembleDebug`+`testDebugUnitTest` 保持绿色；在模拟器上真机走通了完整 Cash 支付链路——输入 $5.00 收款、界面正确算出找零 $0.87、`TransactionRepository` 本地落库 `payment_method=CASH`/`payment_status=PAID`（`Local stub created: OUR-CASH-...` + `MOCK: Transaction recorded`）、`ReceiptPrinterManager` 按预期方式优雅失败（模拟器没有真实打印机，同卡支付路径在这个环境下的既有行为一致，不是新问题）、成功弹窗 "Cash received. Change due: $0.87" 正确显示、购物车正确清空。QR/Member 两条路径代码走查与 Cash 同构、编译通过，但受限于测试当时模拟器性能极差（Input dispatching 超时触发多次系统级 ANR 弹窗，与本次改动无关，是环境问题），未能在本次会话里完整真机跑通，留作后续验证项。
+
+### v2.38 (2026-08-27) — Ourea 侧边栏内跳转页面主题一致性修复 (Insights Theming + Real Bug Fix)
+
+紧接 v2.37，继续完善 Ourea 界面。检查侧边栏能跳转到的几个复用页面（Insights/Transactions/Settings）在深色主题下的实际表现：
+
+*   **`SettingsScreen` 本来就是对的**：全程用 `MaterialTheme.colorScheme.*`，深色主题下渲染正常（金色标签、金色按钮、正确的输入框），不用改。
+*   **`TransactionHistoryScreen` 用 Material3 `ListItem`**，自带正确的主题色处理，不用改。
+*   **`InsightsScreen`（`feature/apex`）发现一个真 bug，不只是配色不统一**：`Revenue: $0.00`/`Transactions: 0` 两行文字之前没有显式指定颜色，在 `app/iris` 的浅色默认主题下凑巧能看见，但在 `app/ourea` 的深色主题下变成了近黑底近黑字，几乎不可读。修复：显式指定 `MaterialTheme.colorScheme.onBackground`。标题颜色此前硬编码为一个和任何主题都无关的固定蓝色 `GoldSkyBlue(#007AFF)`，**没有直接把它换成主题色**（这会连带改变 `app/iris` 现在的样子，这次没有被要求碰 iris），而是加了个 `titleColor: Color = GoldSkyBlue` 参数，`app/iris` 的调用点不用改、行为不变，`app/ourea` 显式传 `OureaGold`。
+*   **验证**：模拟器截图确认——`Insights` 标题正确显示金色，两行数字文字清晰可读；`Settings` 页面确认原本就正常。全仓库 `assembleDebug`（含 `app/iris`，确认默认参数没有破坏它）+`testDebugUnitTest` 保持绿色。
+
+### v2.37 (2026-08-27) — D3 集成架构进一步澄清：Ourea 作为 USB Host 接外置读卡终端，非同机部署 (D3 Is External-Over-USB, Not Co-Located — Scaffold Only)
+
+紧接 v2.36，同一天内对 D3 的定位又做了一轮澄清，**推翻了 v2.36"不需要改代码"的结论**。
+
+*   **v2.36 当时的假设**：D3 和 Q3mini 一样，App 装在 D3 终端自己身上、进程内调用同一台设备的支付硬件——按这个假设，现有 `WizarPosPaymentProvider`（本地 socket 127.0.0.1:6666）理论上不用改。
+*   **用户后续澄清推翻了这个假设**：实际场景是"计算机主机和 D3 读卡机"——即 **Ourea（大屏桌面 POS）作为 USB Host，去控制一台通过 USB 线外接的、物理上独立的 D3 终端**，不是同一台设备。这是和现有所有硬件集成（PAX/ID TECH/WizarPOS Q3mini，全部是"App 和支付硬件同机、进程内/本地 socket 调用"）完全不同的接入方式——USB 设备枚举、权限申请、连接生命周期、报文协议都不一样，`WizarPosPaymentProvider` 那套代码不适用。
+*   **协议细节仍然没有可靠来源**：用户之前转述的"D3 用 PAYWizard AIDL 接口 + Default 连接模式（对比 Q3 的 USB Accessory 模式）"这段文字，和项目里已有的、基于官方协议 PDF 写成并真机验证过的 `docs/wizarpos_upt_integration_spec.md`（Q3mini 走本地 socket，未提及 AIDL 或 USB Accessory 模式）直接矛盾，且转述文字的原始来源一直没有确认（可能是另一个 AI 读 PDF 生成的转述，不是原文）。支付协议报文格式编错是会真的连不上设备甚至处理错真实金额的，不能靠猜。
+*   **这次只搭了空壳**：新建 `app/ourea/src/main/java/com/goldsky/ssp/ourea/D3UsbPaymentProvider.kt`，实现 `IPaymentProvider` 接口（和 PAX/IDTECH/WizarPOS 用同一套抽象，方便以后接进 `PaymentProviderFactory`），每个方法体目前都是显式失败（`onFailure(..., isHardwareFault = true)`），没有编造任何 USB 报文格式；`AndroidManifest.xml` 加了 `android.hardware.usb.host` 的 `<uses-feature>` 声明（`required="false"`）。**没有注册进任何 Factory，没有接进 UI**——纯占位，等拿到真实协议文档（D3/D22 对应的、类似 Q3mini 那份"慧银支付应用集成协议"的原始 PDF）再补实现。
+*   **验证**：`:app:ourea:assembleDebug` 通过，全仓库构建保持绿色。
+
+### v2.36 (2026-08-27) — WizarPOS "D3 Smart ECR" 澄清：不是新协议，是同一 SDK 下的另一款硬件 (D3 Scoped, No Code Change Needed)
+
+用户要求"把 wizarpos smart erc 集成进来"，并给了 WizarPOS 官方 CloudPOS SDK 文档站的链接。逐页翻查 + 站内搜索后确认：**"Smart ECR" 不是一种集成模式/协议，是 WizarPOS 硬件产品线里的一个具体型号——"D3(Smart ECR)"**，和 Q1/Q2/Q3/Q3mini/Q3PRO/D22/Unattended POS 等并列在同一份 POS_Specs 页面里，用的是同一套 CloudPOS SDK。
+
+*   **结论：现有 WizarPOS 集成理论上不需要改代码就能对接 D3**。`WizarPosHardwareProvider`（`core/hardware`）用的是 CloudPOS SDK 的 `POSTerminal.getInstance(context)`，不针对具体型号；实际收单走的 `WizarPosPaymentProvider`/`WizarPosSocketClient`（P3 本地 Socket 协议，`127.0.0.1:6666` 连同一台设备上跑的 PAYWizard 伴生 App）同样是型号无关的——这套本来就是为了对接 WizarPOS 全系列终端设计的，不是写死给 Q3mini 用的。已在 `WizarPosHardwareProvider.kt` 类注释里明确记录这一点，避免以后有人误以为这套代码是 Q3mini 专属。
+*   **和 D3 无关、真正 Q3mini/UPT 专属的部分**：`WizarPosGpioProvider`/`WizarPosMdbProvider`（继电器控制、MDB 总线，vending 无人值守场景用的外设）。D3 作为收银台配套刷卡终端预期不会用到这两个，但代码本身没有限制，真有对应硬件也能调。
+*   **没做、也做不了的部分**：D3 的官方 PDF 规格书（`D3_Classic_White(Android_11).pdf`）没法用现有工具解析（WebFetch 处理不了这份 PDF 的二进制内容，本地也没装 PDF 渲染工具），所以 D3 具体外设配置（有没有扫码枪、打印机等）没有确认；手头也没有真实 D3 设备，无法做真机联调。**这两项都需要用户后续补上**——要么找到可读的规格书文本，要么等有真机后再验证。
+
+### v2.35 (2026-08-27) — products 表同一类被掩盖的 RLS 缺口修复 + Ourea 全链路真机验证 (Products RLS Gap Fixed, Full E2E Verified)
+
+紧接 v2.34，同一天完善。目标是把 Ourea 的加购物车→结账→支付这条链路在模拟器里跑通验证，而不是只看界面截图。
+
+*   **又踩到一个和 v2.32（devices 表）一模一样的坑**：`products` 表上 `authenticated` 角色唯一的 SELECT 策略（"Devices can see own org products"）要求 org 归属匹配，而测试用的匿名认证设备从未被后台分配过 org，导致目录同步一直返回空。照搬 v2.32 的修法，按 `is_anonymous` claim 加了一条新策略（不是无条件放开，真人 CMP 登录仍然只走 org 归属那条），同步记录进本文件对应表定义附近。
+*   **插入 7 条测试商品**（`vertical_type='RETAIL'`, `org_id` 留空），验证过用只读诊断 SQL（`SET LOCAL ROLE authenticated` + 模拟 `request.jwt.claims`）确认策略生效后能查到全部 7 条。
+*   **全链路真机验证结果（模拟器，真实网络调用，非 mock 数据）**：目录同步成功（"Sync complete: 7 products from Supabase cached"）→ 加入购物车（Espresso x2, $7.00）→ CHECKOUT 按钮渐变正确显示启用态 → TipSelectionDialog（共享组件，自动套用新主题金色，未改动）→ 新做的支付确认面板（账单明细 $7.00 + 税 $0.00 + 小费 18%=$1.26 + 应付 $8.26，数字全部正确）→ 点击 Charge Card 后真实调用 `IdTechPaymentProvider.startSale(826, ...)`，因模拟器没接真实读卡器而真实失败（"Failed to start card acceptance (EMV+CTLS+MSR)"，与本 session 更早测试 `app/iris` 时看到的同一条真实硬件层错误一致）→ 红色 PaymentResultDialog 正确弹出。
+*   **一个顺带确认的、非 bug 的现象**：交易记录写入日志显示"MOCK: Transaction recorded (skipped remote)"——这是因为 `app/ourea/build.gradle` 的调试构建变体沿用了 `app/iris` 同款的 `IS_MOCK=true` 配置，`TransactionRepository.recordTransactionRemote()` 按设计在此标志位下跳过远程写入，不是这次改动引入的问题。
+*   **结论**：Ourea 现在是一个视觉上对齐 GoldSky 品牌、业务逻辑上真实可跑通（硬件调用层面）的桌面 POS 原型，而不只是界面骨架。
+
+### v2.34 (2026-08-27) — Ourea 视觉身份对齐 GoldSky 品牌 logo (Brand-Consistent Visual Identity)
+
+紧接 v2.33，同一天完善。用户提出"基于新一代 AI POS 的理念完善，界面风格和 logo 一致"——两句话分开澄清后确定范围：
+
+*   **"AI POS 理念"这半句**：用户明确"界面看来不要很 AI，但功能上能发现是 AI 赋能过的"，也就是要真实的 AI 能力（不是 AI 风格的视觉皮肤）。但现在代码里没有任何 LLM/AI API 集成，`feature/apex`（品牌上是"AI 助手"）目前只是个 40 行营收计数器，商品目录/交易记录也都是空的、没有真实种子数据可供任何推荐类功能使用。跟用户确认后，**这次范围只做视觉这一块，真正的 AI 能力（语音搜索/智能推荐/等）另外单独讨论范围再做**，不在这次凭空造。
+*   **"界面风格和 logo 一致"这半句，本次实际完成的部分**：v2.33 的第一版视觉是从参考截图（"Posly"）直接借来的纯深色+扁平橙色，和 GoldSky 自己的 logo（`core/ui` 下早就有、但此前没人用过的 `goldsky_logo.png`——金色圆弧 + 带电路纹理的天蓝"翼" + 带星尘纹理的暖橙"眼"）没有关系。这次把 `OureaTheme.kt` 的配色改成直接取自 logo 本身（金色 `#F7C948`、天蓝 `#3AB6E8`、暖橙 `#E0621C`），侧边栏顶部的占位图标换成真实 logo 图片，主 CTA（CHECKOUT / Charge Card）改用金→橙渐变而不是纯色块，选中态导航图标从纯色块改成柔和底色+金色图标（更克制、更"高级感"，避免参考截图那种扁平色块的既视感）。
+*   **验证**：`assembleDebug`/`testDebugUnitTest` 保持绿色；模拟器里临时跳过 PIN 门禁（验证完已改回）截图确认：logo 正确显示、选中态图标为柔和金色高亮、CHECKOUT 按钮在有效/禁用两种状态下颜色正确切换。
+*   **待办（未做，等用户给范围）**：`feature/apex` 品牌定位（"AI 助手"）和实际内容（营收计数器）的落差此前在功能对齐盘点里就标记过，这次仍未处理；真正的 AI 功能要等有具体范围（语音/推荐/等）和必要的基础设施（LLM API key 等，如果需要）才能动手，不能靠现在这点空数据编出效果。
+
+### v2.33 (2026-08-27) — Ourea（桌面 POS）首个可运行版本 (Ourea First Build)
+
+`app/ourea` 不再是空白——按 v2.30/v2.32 确认的定位（Desktop POS，装 `feature:retail` 的柜台结账逻辑）新建了这个模块，UI 视觉风格参照 `C:\goldsky\Requirment\Ourea` 下的 4 张参考截图（来自另一个叫 "Posly" 的产品的小红书截图，**是视觉参考，不是文字需求文档，也不是要逐像素复刻的规范**）。
+
+*   **范围确认（用户选择）**：只重做结账相关的 UI 视觉风格，复用 `feature:retail` 已验证过的业务逻辑（`RetailViewModel`/`RetailRepository`/`TipSelectionDialog`/`triggerPaymentFlow` 真实支付调用），不新增业务逻辑——参考图里的丰富仪表板分析、应用内菜单分类管理这两块明确排除在这次范围外。
+*   **新增内容**：`OureaTheme.kt`（深色导航栏配色，自己的主题，不影响 core/ui 共享主题或其他 app shell 的视觉）、`OureaScreens.kt`（左侧图标导航栏 + 商品网格 + 购物车面板 + 支付确认面板）、`MainActivity.kt`（硬件/支付/认证注册逻辑与 `app/iris` 完全一致，直接照搬而非重新推导）。
+*   **诚实的取舍**：参考图里的现金/扫码/会员卡/组合支付四种支付方式，代码里目前只有刷卡（真实 `PaymentProviderFactory` 调用）是有实现支撑的，所以只做了这一个,没有为了视觉还原做三个不会真正工作的假按钮。同理，侧边栏只接了 Cart/Insights(现有)/Transactions(现有)/Settings(现有) 四个有真实页面撑着的图标，参考图里的折扣/消息/通知图标因为代码里没有对应功能，没有做成摆设。
+*   **验证**：`:app:ourea:assembleDebug` 通过，模拟器真机安装运行，PIN 解锁后侧边栏+购物车+商品网格正常渲染（当前设备目录为空，显示"No products yet"是真实状态，不是 bug）。全仓库 `assembleDebug`+`testDebugUnitTest` 保持绿色。
+*   **未验证**：还没有真实商品数据跑过一次完整的加入购物车→小费→支付确认→真实刷卡这一整条链路（模拟器目前没有同步到目录数据）；`app/iris` 自己的内容原样保留未删除（Iris 的真实定位仍待定，见 v2.30）。
+
+### v2.32 (2026-08-27) — JWT 签名密钥轮换已执行，根因确认修复；发现并修复一个被旧 bug 掩盖的独立 RLS 缺口 (JWT Rotation Executed & Verified — Root Cause Actually Fixed)
+
+紧接 v2.31，同一天内用户在 Supabase 控制台完成了轮换（Legacy HS256 → 新的非对称 ECC P-256，两阶段过渡：旧密钥仍对未过期 token 保留验签能力，需要之后手动 revoke）。这次做了真机验证，结论明确：
+
+*   **验证方法**：在模拟器里跑 `app/iris`，用真实的匿名登录 session（`signInAnonymously`，`role: authenticated`，`is_anonymous: true`）发起设备自注册请求，观察真实的成功/失败结果；中途还在 `public.debug_auth_context()`（临时 SQL 函数，验证完已删除）配合 `DeviceRepository.debugAuthContext()`（临时诊断调用，验证完已删除）确认了 PostgREST 实际赋予这次请求的 Postgres 角色。
+*   **确认根因已修复**：轮换后，`current_role`/`jwt_role_claim` 均正确显示为 `authenticated`（此前的核心 bug——每个 authenticated session 被 PostgREST 当 anon 处理——不再发生）。这在架构上说得通：新的非对称密钥体系下 GoTrue 和 PostgREST 从同一个密钥管理源头验签，不再存在 v2.31 里说的"raw string vs base64-decoded"编码歧义。
+*   **轮换刚做完时曾报告"仍然失败"，后来查明是另一个独立缺口，不是轮换没生效**：`devices` 表的自注册请求是 `upsert`（`on_conflict=sn`），upsert 需要 SELECT 权限做冲突检测——这个模式此前在 `heartbeats` 表上就出现过一次（`return=representation` 需要重新 SELECT 插入的行）。`authenticated` 角色在 `devices` 上唯一的 SELECT 策略（"Org members can view org devices"）要求 `is_sys_admin()` 或已有 org 归属，一个刚自注册、还没分配 org 的匿名设备两个条件都不满足，upsert 因此被拒。**这个缺口一直存在，只是被"authenticated 被当 anon 处理"这个旧 bug 意外掩盖了**——旧 bug 下请求实际走的是 `anon` 角色，而 `anon` 早就有无条件的 SELECT 策略（v2.29 之前加的），所以自注册"能用"完全是巧合。轮换把认证修对之后，这个一直存在的洞就露出来了。
+*   **修复**：没有照抄 anon 那条无条件 SELECT（本文件里另有一段注释记录过，之前给 `authenticated` 开过一次无条件 SELECT，导致任何 CMP 商户管理员都能看到别的租户设备清单，后来专门收窄改掉——不能重蹈覆辙）。改用按 `is_anonymous` claim 区分：只放行"匿名登录的设备 session"，真人 CMP 登录（`is_anonymous: false`）仍然只能走 org 归属那条策略。
+    ```sql
+    DROP POLICY IF EXISTS "Anonymous devices can view own row for upsert" ON public.devices;
+    CREATE POLICY "Anonymous devices can view own row for upsert" ON public.devices
+    FOR SELECT TO authenticated
+    USING (COALESCE((auth.jwt() ->> 'is_anonymous')::boolean, false));
+    ```
+    应用方式同 v2.29/v2.31：已通过 Supabase SQL Editor 在生产库执行，同步追加进本文件对应表定义附近。
+*   **验证结果**：修复后，同样的自注册请求成功（`Device SN_UNKNOWN registered successfully`，非 mock 分支的真实网络路径）。
+*   **未验证 / 后续待办**：
+    *   `transactions` 走的是纯 `insert()`（无 `on_conflict`），不会触发同样的 upsert-需要-SELECT 缺口，理论上现在应该能正常写入了，但**没有跑完整的收银流程实测**（只测到设备自注册这一步）——下次有空跑一次真实结账验证 `transactions` 真的落库。
+    *   `heartbeats`/`device_shadows`/`device_commands`/`qr_payment_sessions`/`vip_cards`/`coupons` 同理，理论上现在 authenticated 角色应该能正常工作了（根因已修），但没有逐个实测，不排除其中某些也有类似 devices 这种被掩盖的独立缺口。
+    *   `devices`/`products` 上 v2.29 加的 anon 策略**仍未收回**——虽然根因已修，但还在旧密钥的 token 过期窗口内，暂缓收回，等确认所有客户端都已经用上新密钥签发的 token 之后再动（同 v2.31 的 TODO）。
+
+### v2.31 (2026-08-27) — JWT 根因修复路径复核：轮换风险被高估，anon RLS 补丁范围有缺口 (JWT Root-Fix Path Re-Assessed)
+
+延续 v2.27 (2026-08-08)/v2.24/v2.23 那条 RLS 修复线，以及本文档未单独成条但已发生的"GoTrue/PostgREST 密钥编码不一致导致 authenticated session 被当 anon 处理"根因诊断（当时决定不轮换、改用 anon 策略打补丁）。这次功能对齐盘点发现两个新情况，合并记录：
+
+*   **anon 策略补丁范围有缺口**：此前只给 `devices`（约1102-1113行）和 `products`（约1134-1137行）补了 `anon` 角色策略；`transactions`（约1202-1230行）、`heartbeats`、`device_shadows`、`device_commands`、`qr_payment_sessions`、`vip_cards`、`coupons` 等仍然只有 `authenticated` 策略，理论上仍会被同一根因问题挡住写入。`transactions` 的 ownership 校验（`device_sn IN (SELECT ... WHERE auth_user_id = auth.uid())`）依赖真实身份，不能像 devices/products 那样简单补一条无条件 `anon` 策略——那会让持有（公开的）anon key 的任何人读写任意设备的交易记录，这对财务表是不可接受的降级，所以这次没有照搬同一个补丁模式。
+*   **轮换风险重新核实，比之前评估的低**：把 Supabase 轮换弹窗点名的 11 个 Edge Function（`gs-epos` 6 个、`gs-ssp-cmp` 的 `esp32-ads`、`gs-ssp` 自己的 `create-qr-session`/`submit-acquirer-onboarding`/`sync-acquirer-settlements`/`upload-acquirer-document`）逐个查了源码，**没有一个手动引用 JWT secret 的值**——全部只是走平台自带的 `verify_jwt`（默认开启）网关，函数代码本身不掺和密钥编码。之前"轮换太危险"的判断是在没读这些函数代码、只看轮换弹窗名单的情况下做出的，偏保守。真正的轮换风险只是"轮换那一刻起，旧密钥签发的 token 全部失效，客户端要重新登录/刷新拿新 token"——如果 Supabase 的轮换支持 Standby key 两阶段流程（先激活新密钥、旧密钥仍可验签一段时间、之后再手动 revoke），这个过渡是平滑的，需要在控制台里确认具体是不是这种两阶段模式。
+
+*   **结论 / 待办**：
+    *   推荐路径改为轮换到新的非对称 JWT Signing Keys，从根上消除 GoTrue/PostgREST 的编码不一致问题——而不是继续给每张表挨个补 anon 策略（每补一张都是在稀释真实的行级安全，且没有一次性解决问题，后续任何新表都可能踩同一个坑）。
+    *   **TODO（轮换成功验证后再做，现在不要动）**：`devices`/`products` 上现在开着的 `anon` 角色策略（1102-1113行、1134-1137行）应该收回/收紧回 `authenticated`-only，因为它们的存在理由（"当前 auth 是坏的"）在轮换后就不成立了。收回前要先确认轮换后 `authenticated` 角色的读写确实恢复正常，不能顺手删。
+    *   轮换本身（Supabase 控制台操作）是否真的走两阶段过渡，需要用户在控制台确认后再决定是否执行——这一步没有做，只是把复核结果和待办记录下来。
+
+### v2.30 (2026-08-27) — Aegis 系列重命名执行完成 + Iris/Ourea 归属澄清 (Rename Executed, Iris/Ourea Scope Corrected)
+
+紧接 v2.29 的设计结论，同一天内完成了实际执行，并且中途发现 v2.29 自己对 Iris/Ourea 的归属判断有误，一并记录修正——**这条目是当前权威状态，v2.29 的"现状→目标映射"表格里 Iris/Ourea 那两行已被本条目取代**。
+
+*   **已执行**：`app/aegis`（洗车）→ `app/aegis-wash`；`app/ourea`（原装自助售货）→ `app/aegis-vend`；`app/sentinel`（充电桩）→ `app/aegis-ev`。三者包名/applicationId/模块目录/展示名均按 v2.29 确认的子包规范改好，业务内容不变。`settings.gradle` 同步更新。全仓库 `assembleDebug` + `testDebugUnitTest` 验证通过。`app/aegis-parking` 仍未搭建（`feature/parking` 还是 1 文件占位骨架）。
+*   **执行中的一次误判，已被产品侧纠正**：v2.29 曾判断"`app/iris` 现装的完整柜台结账流程（`feature:retail`）应该迁到 Ourea（桌面 POS）名下"，据此把该内容原样复制建了一个新的 `app/ourea` 模块。**产品侧随即纠正：`feature:retail` 那套代码本来就应该属于 Iris，不是 Ourea 的内容**——`app/ourea` 副本已撤销删除，`settings.gradle` 里对应的 `include` 也已移除。
+*   **当前准确状态**：`app/iris`（`com.goldsky.ssp.iris`）= `feature:retail` 完整柜台结账流程，确认归属正确。`app/ourea`（桌面 POS）**尚不存在**，其真实功能范围待产品侧另行定义，**不能靠复制 Iris 内容来搭建**——这是本次唯一还悬着的开放问题。
+
+### v2.29 (2026-08-27) — GoldSky 品牌产品线分类澄清 + Aegis 系列拆分设计 (Brand Taxonomy Correction, Design Only — Not Yet Implemented)
+
+`app/*` 四个 app shell（`iris`/`ourea`/`aegis`/`sentinel`）此前是在**没有拿到真实品牌命名规范**的情况下，靠猜测把现有空壳目录和业务内容配对起来的——`iris` 被塞入了完整的柜台结账流程、`aegis` 塞入洗车、`ourea` 塞入自助售货、`sentinel`（一个规范里根本不存在的名字）塞入充电桩。这次由产品侧给出权威澄清，暴露出四个映射全部或部分错误。**本条目只记录设计结论，代码重命名/迁移尚未开始**，是后续实施的依据。
+
+*   **确权的品牌产品线**：
+    | 代号 | 中文/含义 | 定位 |
+    |---|---|---|
+    | GoldSky Raqia | 天空结构 | GS-SSP 本身（系统底座），不是某个具体 app |
+    | GoldSky Cael | 天空空间 | CMP，即 `gs-ssp-cmp`（已在该仓库正确使用这一品牌名） |
+    | GoldSky Ourea | 山神 | 桌面 POS（Desktop POS，有人值守柜台收银） |
+    | GoldSky Iris | 虹 | 手持 POS（Handheld POS） |
+    | GoldSky Aegis | 盾 | 无人值守终端**系列品牌**（不是单一 app，见下） |
+    | GoldSky Apex | 顶峰 | AI 助手 |
+
+*   **关键澄清：Aegis 不是一个统一 app**。此前实现假设"无人值守"应该是一个用 Flavor/入口区分业态的单一 app（沿用重构前单体的模式），但产品侧明确：**wash / vending / parking / EV 每个业态各自独立构建成一个 app，只是统一挂在 "Aegis" 这个系列品牌下**——即 "GoldSky Aegis Wash"、"GoldSky Aegis Vend"、"GoldSky Aegis EV"、"GoldSky Aegis Parking" 是四个并列的、独立可安装的 app，不是一个 app 内的四个模式。
+
+*   **确认的命名规范**：子包形式。包名 `com.goldsky.ssp.aegis.<vertical>`（如 `com.goldsky.ssp.aegis.wash`），模块目录 `app/aegis-<vertical>`（如 `app/aegis-wash`），applicationId 与包名一致，展示名形如 "GoldSky Aegis Wash"。
+
+*   **现状 → 目标 映射（尚未执行）**：
+    *   `app/aegis`（现装洗车内容）→ 改名为 `app/aegis-wash`，包名/applicationId 改为 `com.goldsky.ssp.aegis.wash`。业务内容本身基本不用动，只是壳子命名要对齐系列规范。
+    *   `app/ourea`（现装自助售货内容，品牌名用错）→ 改名为 `app/aegis-vend`，包名 `com.goldsky.ssp.aegis.vend`。
+    *   `app/sentinel`（现装充电桩内容，"Sentinel" 不是规范里的名字）→ 改名为 `app/aegis-ev`，包名 `com.goldsky.ssp.aegis.ev`。
+    *   `app/aegis-parking`：目前 `feature/parking` 仍是 1 文件占位骨架，对应的 app shell 尚未搭建，暂不在这次范围内。
+    *   `app/iris`（现装完整柜台结账流程：购物车/小费/收银/收据打印/Insights/Expenses 等）→ 这套内容按定位更接近**桌面 POS**，应迁移/改名为正确的 "Ourea"（Desktop POS），而不是留在 "Iris" 名下。
+    *   "Iris"（手持 POS）自己应该承载什么功能，目前还没有明确规格——现有柜台结账流程整体迁给 Ourea 之后，Iris 需要重新定义范围，这是待确认的开放问题，不能凭空杜撰。
+
+*   **为什么会出这个偏差**：品牌命名规范此前既不在本文档、`CLAUDE.md`，也不在任何可检索到的仓库文档里存在记录——这不是"忘记"了已知信息，而是这份信息从未被录入过任何一份可被读取的文档。本条目连同 `CLAUDE.md` 的模块布局章节的同步更新，是把这份此前只存在于产品侧口头澄清里的规范正式固化下来，避免未来任何一次改动再靠猜测复现同样的错误。
+
 ### v2.28 (2026-08-09) — MVP 功能实测：远程设备控制完全不可用 (Found via Live Browser Testing)
 按 CMP.GOLDSKY.CA 规划建议书的 MVP 验收标准（登录权限、设备绑定、对账大盘、远程触发继电器）逐项在浏览器里实测，而不是只看代码。前三项通过；**第四项——后台远程触发继电器功能，是 MVP 的核心卖点——完全不可用**。
 *   **现象**：Device Diagnostics 页面点击 One-Click Remote Restart / Start Service 均返回 "Command failed to send"，网络面板显示 `POST device_commands` 返回 400。

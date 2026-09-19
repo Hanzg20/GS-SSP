@@ -1,0 +1,69 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+// Same local.properties -> BuildConfig pattern as app/iris and app/aegis-wash.
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
+
+android {
+    namespace 'com.goldsky.ssp.aegis.vend'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.goldsky.ssp.aegis.vend"
+        minSdk 25
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0-aegis-vend"
+
+        buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
+        buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
+        buildConfigField "boolean", "IS_MOCK", "true"
+    }
+
+    buildFeatures {
+        compose true
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    buildTypes {
+        debug {
+            // See app/aegis-wash/build.gradle's identical block for why -- cloudpos_sdk.aar
+            // is arm64-v8a only, blocking install on an x86_64 dev emulator entirely.
+            packagingOptions {
+                jniLibs {
+                    excludes += ["**/*.so"]
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.9.0'
+    implementation project(':core:common')
+    implementation project(':core:data')
+    implementation project(':core:hardware')
+    implementation project(':core:ui')
+    implementation project(':core:payment')
+    implementation project(':feature:vending')
+    implementation project(':libs:pax')
+    implementation project(':libs:wizarpos')
+
+    implementation 'androidx.activity:activity-compose:1.7.0'
+}

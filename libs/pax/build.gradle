@@ -1,0 +1,25 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.goldsky.ssp.libs.pax'
+    compileSdk 34
+}
+
+dependencies {
+    api files('PAX_POSLinkAndroid_20260202.aar')
+    api files('UptApi_V1.02.jar')
+}
+
+// This module is a pure internal wrapper around vendor AARs/JARs -- other
+// modules only ever consume it via `implementation project(':libs:pax')`,
+// which resolves through AGP's project-to-project variant matching, not
+// through this module's own standalone-publishable AAR. bundleDebugAar
+// fails outright ("Direct local .aar file dependencies are not supported
+// when building an AAR") because AGP refuses to re-package a local AAR
+// dependency inside another library's own AAR output -- nothing needs that
+// standalone artifact here, so just skip it rather than restructure around it.
+tasks.matching { it.name ==~ /bundle(Debug|Release)Aar/ }.configureEach {
+    enabled = false
+}

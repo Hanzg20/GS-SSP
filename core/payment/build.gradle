@@ -1,0 +1,45 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.serialization'
+}
+
+android {
+    namespace 'com.goldsky.ssp.core.payment'
+    compileSdk 34
+    buildToolsVersion "36.0.0"
+
+    defaultConfig {
+        minSdk 25
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.9.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.activity:activity-ktx:1.8.0'
+    implementation "androidx.work:work-runtime-ktx:2.9.0"
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
+
+    api project(':core:common')
+    api project(':core:hardware')
+    api project(':core:data')
+
+    implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4"
+
+    testImplementation 'junit:junit:4.13.2'
+}

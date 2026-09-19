@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Standard Screen Dimensions -->
+    <dimen name="header_logo_size">50dp</dimen>
+    <dimen name="header_title_size">18sp</dimen>
+    <dimen name="card_price_size">32sp</dimen>
+    <dimen name="card_label_size">11sp</dimen>
+    <dimen name="card_margin">6dp</dimen>
+    <dimen name="vip_banner_title_size">16sp</dimen>
+    <dimen name="vip_banner_sub_size">10sp</dimen>
+    <dimen name="scan_hint_size">11sp</dimen>
+
+    <!-- Custom Amount Dialog -->
+    <dimen name="dialog_padding">32dp</dimen>
+    <dimen name="flip_container_height">120dp</dimen>
+    <dimen name="btn_confirm_height">70dp</dimen>
+    <dimen name="btn_cancel_height">60dp</dimen>
+</resources>

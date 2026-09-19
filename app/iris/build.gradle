@@ -1,0 +1,74 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.serialization'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+// Same local.properties -> BuildConfig pattern the pre-refactor monolith used
+// (rootProject.file, not project.file -- local.properties lives at the repo
+// root, not per-module).
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
+
+android {
+    namespace 'com.goldsky.ssp.iris'
+    compileSdk 34
+    buildToolsVersion "36.0.0"
+
+    defaultConfig {
+        applicationId "com.goldsky.ssp.iris"
+        minSdk 25
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0-iris"
+
+        buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
+        buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
+        buildConfigField "boolean", "IS_MOCK", "true"
+    }
+
+    buildFeatures {
+        compose true
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+tasks.withType(JavaCompile) {
+    enabled = false
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.9.0'
+    implementation project(':core:common')
+    implementation project(':core:data')
+    implementation project(':core:hardware')
+    implementation project(':core:ui')
+    implementation project(':core:payment')
+    implementation project(':feature:retail')
+    implementation project(':feature:apex')
+    implementation project(':libs:pax')
+    implementation project(':libs:wizarpos')
+
+    implementation 'androidx.activity:activity-compose:1.7.2'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1'
+    implementation 'androidx.navigation:navigation-compose:2.7.4'
+
+    testImplementation 'junit:junit:4.13.2'
+}

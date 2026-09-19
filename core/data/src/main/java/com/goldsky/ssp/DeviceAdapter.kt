@@ -1,0 +1,56 @@
+package com.goldsky.ssp
+
+import android.os.Build
+
+/**
+ * Detects hardware model and capabilities.
+ */
+object DeviceAdapter {
+
+    enum class HardwareModel {
+        IM25,
+        IM30,
+        WIZARPOS_Q1,
+        WIZARPOS_Q2,
+        WIZARPOS_Q3MINI,
+        UNKNOWN
+    }
+
+    /**
+     * Detects the hardware model based on Build.MODEL.
+     */
+    fun getModel(): HardwareModel {
+        val model = Build.MODEL.uppercase()
+        return when {
+            model.contains("IM25") -> HardwareModel.IM25
+            model.contains("IM30") -> HardwareModel.IM30
+            model.contains("WIZARPOS") && model.contains("Q1") -> HardwareModel.WIZARPOS_Q1
+            model.contains("WIZARPOS") && model.contains("Q2") -> HardwareModel.WIZARPOS_Q2
+            model.contains("WIZARPOS") && model.contains("Q3") -> HardwareModel.WIZARPOS_Q3MINI
+            else -> HardwareModel.UNKNOWN
+        }
+    }
+
+    /**
+     * Returns the recommended hardware vendor string for the current device.
+     */
+    fun getRecommendedVendor(): String {
+        return when (getModel()) {
+            HardwareModel.IM25, HardwareModel.IM30 -> "PAX"
+            HardwareModel.WIZARPOS_Q1, HardwareModel.WIZARPOS_Q2, HardwareModel.WIZARPOS_Q3MINI -> "WIZARPOS"
+            else -> "IDTECH"
+        }
+    }
+
+    /**
+     * Returns true if the device has a full screen suitable for rich UI.
+     */
+    fun isRichUiSupported(): Boolean = getModel() == HardwareModel.IM30 
+            || getModel() == HardwareModel.WIZARPOS_Q2
+            || getModel() == HardwareModel.WIZARPOS_Q3MINI
+
+    /**
+     * Returns true if the device is a smaller footprint terminal.
+     */
+    fun isCompactTerminal(): Boolean = getModel() == HardwareModel.IM25 || getModel() == HardwareModel.WIZARPOS_Q1
+}

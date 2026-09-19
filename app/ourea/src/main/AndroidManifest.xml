@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.goldsky.ssp.ourea">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- For D3UsbPaymentProvider (see that file): Ourea acting as USB host to an
+         externally-attached WizarPOS D3 "Smart ECR" card reader, not yet implemented. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="GoldSky Ourea"
+        android:roundIcon="@drawable/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SSP">
+
+        <!-- Desktop POS: countertop tablet/monitor, landscape (unlike app/iris's
+             portrait handheld layout); the sidebar-nav UI is designed landscape-first. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="com.goldsky.ssp.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- New Splash Screen as the main LAUNCHER -->
+        <activity
+            android:name="com.goldsky.ssp.ui.SplashActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.SSP.Fullscreen">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="com.goldsky.ssp.ui.AdActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SSP.Fullscreen" />
+
+        <activity
+            android:name="com.goldsky.ssp.ui.VipActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SSP.Fullscreen" />
+
+    </application>
+</manifest>

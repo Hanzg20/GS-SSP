@@ -1,5 +1,5 @@
 -- =============================================================================
--- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.30 (2026-08-26)
+-- GS-SSP Supabase (PostgreSQL) Full Database Schema v2.33 (2026-08-27)
 -- Unified Technology Platform for Smart Industries
 --
 -- This is the single source of truth for the Supabase schema. Previously
@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS public.devices (
     loc_id UUID REFERENCES public.locations(id) ON DELETE SET NULL,
     org_id UUID REFERENCES public.organizations(id) ON DELETE SET NULL, -- denormalized from loc_id->locations.org_id, kept directly on devices so RLS policies and the config query (app_configurations.org_id) don't need a join
     secret_key UUID DEFAULT gen_random_uuid(), -- Machine Secret for identity verification
-    vertical_type TEXT DEFAULT 'WASH' CHECK (vertical_type IN ('WASH', 'LAUNDRY', 'EV', 'VEND')),
+    vertical_type TEXT DEFAULT 'WASH' CHECK (vertical_type IN ('WASH', 'LAUNDRY', 'EV', 'VEND', 'RETAIL')),
     status TEXT DEFAULT 'ONLINE',
     app_version TEXT,
     config_version TEXT,
@@ -225,7 +225,7 @@ CREATE TABLE IF NOT EXISTS public.devices (
 CREATE TABLE IF NOT EXISTS public.products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
-    vertical_type TEXT NOT NULL CHECK (vertical_type IN ('WASH', 'LAUNDRY', 'EV', 'VEND')), -- kept in sync with devices.vertical_type below; a lookup table was considered and rejected (see v2.9 changelog) since only WASH is actually in use today
+    vertical_type TEXT NOT NULL CHECK (vertical_type IN ('WASH', 'LAUNDRY', 'EV', 'VEND', 'RETAIL')), -- kept in sync with devices.vertical_type above. RETAIL added 2026-08-27: app:iris's RetailRepository.syncWithCloud() queries vertical_type='RETAIL', which this constraint silently rejected at the DB level -- every retail product insert was failing, not just returning empty on read
     name TEXT NOT NULL,
     price_cents INTEGER NOT NULL,
     attributes JSONB DEFAULT '{}',       -- Hardware-specific: { "serial_hex": "AA...", "pulse": 12 }
@@ -312,6 +312,14 @@ ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS card_expiration_date DATE;
 ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS max_daily_cents INTEGER;
 ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS daily_spent_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS daily_spent_date DATE;
+-- tier: v2.48 found this column never existed even though Kotlin's VipCard.tier
+-- (default "REGULAR") and the PLATINUM/GOLD tiered-discount branches in
+-- feature/wash's initVipPayment and app/ourea's triggerVipPayment both
+-- already switch on it -- the discount could never actually fire since the
+-- server had no tier to return, every card silently behaved as REGULAR.
+-- CHECK mirrors the exact three values those call sites already handle.
+ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'REGULAR'
+  CHECK (tier IN ('REGULAR', 'GOLD', 'PLATINUM'));
 
 -- 3. MEDIA ENGINE
 -- Advertising Materials
@@ -1076,6 +1084,65 @@ FOR UPDATE TO authenticated
 USING (true)
 WITH CHECK (true);
 
+-- v2.32 (2026-08-27): every authenticated-scoped policy above assumed the
+-- caller's session JWT actually verifies as `authenticated` -- discovered
+-- live that it silently doesn't for this project (GoTrue signs with the
+-- legacy JWT secret one way, PostgREST verifies it another way; every
+-- real signed-in session -- including plain anonymous sign-in -- was being
+-- treated as `anon` by PostgREST/RLS with no error surfaced anywhere except
+-- "0 rows"/"RLS violation" on writes). Rather than rotate the legacy secret
+-- (which the Supabase dashboard's own rotate flow warns would need
+-- coordinated changes across every verify_jwt=true Edge Function in BOTH
+-- this repo and gs-epos, not something to do without checking that repo
+-- first), added matching `anon`-role policies so self-service device
+-- registration and public catalog reads keep working under the current
+-- broken-auth reality. Deliberately as permissive as the existing
+-- `authenticated` insert/update policies already are (see the v2.28 note
+-- above -- those were already unconditional `true`), so this isn't a new
+-- security posture, just extending the same posture to `anon`. The one
+-- real trade-off: unlike the org-scoped "Org members can view org devices"
+-- policy below, this anon SELECT has no org scoping at all (anon has no
+-- stable identity to scope by), so any anonymous caller can now enumerate
+-- every org's device inventory (serial numbers, org_id, hardware_vendor --
+-- no credentials, this table has no secret_key column despite an earlier
+-- comment upthread implying one). Acceptable pre-launch (no real customer
+-- device fleets yet); revisit once the JWT mismatch is actually fixed.
+-- UPDATE (v2.32, 2026-08-27): the JWT signing key rotation landed and the
+-- root cause (authenticated sessions being treated as anon) is confirmed
+-- fixed -- see v2.32 in system_architecture.md. These three anon policies
+-- are now STILL LEFT IN PLACE deliberately, not yet revoked: we're inside
+-- the old key's grace window (tokens signed before rotation are still
+-- valid and still hit these anon policies until they expire). REVOKE once
+-- that window has passed and authenticated-only access is confirmed
+-- sufficient -- don't drop preemptively.
+DROP POLICY IF EXISTS "Anon device can insert own row" ON public.devices;
+CREATE POLICY "Anon device can insert own row" ON public.devices
+FOR INSERT TO anon
+WITH CHECK (true);
+DROP POLICY IF EXISTS "Anon device can update own row" ON public.devices;
+CREATE POLICY "Anon device can update own row" ON public.devices
+FOR UPDATE TO anon
+USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Anon device can view own row" ON public.devices;
+CREATE POLICY "Anon device can view own row" ON public.devices
+FOR SELECT TO anon
+USING (true);
+
+-- v2.32 (2026-08-27): separate, pre-existing gap that the old "authenticated
+-- treated as anon" bug happened to mask -- see v2.32 in system_architecture.md
+-- for the full story. Self-registration upserts (on_conflict=sn) need a
+-- SELECT policy for conflict detection; the only authenticated SELECT policy
+-- on this table ("Org members can view org devices" below) requires an
+-- existing org membership, which a freshly self-registering device doesn't
+-- have yet. Scoped to is_anonymous sessions only (not a blanket authenticated
+-- SELECT) specifically to avoid repeating the CMP-cross-tenant-visibility bug
+-- documented further up this file -- real human CMP logins (is_anonymous
+-- false) still only see their own org via the policy below.
+DROP POLICY IF EXISTS "Anonymous devices can view own row for upsert" ON public.devices;
+CREATE POLICY "Anonymous devices can view own row for upsert" ON public.devices
+FOR SELECT TO authenticated
+USING (COALESCE((auth.jwt() ->> 'is_anonymous')::boolean, false));
+
 -- Products: Devices see only their organization's products
 DROP POLICY IF EXISTS "Devices can see own org products" ON public.products;
 CREATE POLICY "Devices can see own org products" ON public.products
@@ -1086,6 +1153,37 @@ USING (
     WHERE auth_user_id = auth.uid()
   )
 );
+
+-- v2.34 (2026-08-27): same masked-gap story as devices' "Anonymous devices
+-- can view own row for upsert" policy (see system_architecture.md v2.32) --
+-- now that authenticated sessions are correctly recognized post-JWT-
+-- rotation, a freshly self-registered device (anonymous auth, no org
+-- assignment yet) has no SELECT path onto its own catalog: the org-scoped
+-- policy above requires a device_auth_map row this device doesn't have.
+-- Scoped to is_anonymous sessions + is_active rows only (not a blanket
+-- authenticated SELECT) for the same reason as the devices fix -- real
+-- human CMP logins keep going through the org-scoped policy above.
+DROP POLICY IF EXISTS "Anonymous devices can view active products" ON public.products;
+CREATE POLICY "Anonymous devices can view active products" ON public.products
+FOR SELECT TO authenticated
+USING (is_active = true AND COALESCE((auth.jwt() ->> 'is_anonymous')::boolean, false));
+
+-- v2.32 (2026-08-27): same broken-auth workaround as the anon devices
+-- policies above. A self-service kiosk showing its product catalog
+-- shouldn't need a working login anyway -- this is arguably the more
+-- correct long-term model, not just a stopgap. Scoped to is_active only
+-- (not per-org, since anon has no org identity to scope by -- same
+-- trade-off noted above); RetailRepository.syncWithCloud() doesn't filter
+-- by org_id client-side either currently, so this doesn't newly regress
+-- anything the app itself was already relying on.
+-- UPDATE (v2.32, 2026-08-27): rotation landed and root cause confirmed
+-- fixed -- same "still in the old key's grace window, revoke later, not
+-- yet" note as the anon devices policies above. See system_architecture.md
+-- v2.32.
+DROP POLICY IF EXISTS "Anon can view active products (public catalog)" ON public.products;
+CREATE POLICY "Anon can view active products (public catalog)" ON public.products
+FOR SELECT TO anon
+USING (is_active = true);
 
 -- Heartbeats: Devices can only report for themselves
 DROP POLICY IF EXISTS "Devices can insert own heartbeats" ON public.heartbeats;
@@ -1379,6 +1477,17 @@ EXECUTE FUNCTION public.touch_updated_at();
 -- invite-gated as before for CMP purposes -- nothing about who can get CMP
 -- access changed, only whether an unrelated app sharing this project's Auth
 -- can create users.
+--
+-- v2.31 (2026-08-26): profiles.full_name was never populated -- the signup
+-- form (gs-ssp-cmp's Auth.tsx) has always sent full_name in
+-- options.data (auth.users.raw_user_meta_data), but this INSERT dropped it
+-- on the floor, and nothing else in the CMP writes full_name, so every
+-- self-registered user permanently had NULL here. Found via a live
+-- end-to-end signUp() test (selftest-20260826@goldsky.ca) while verifying
+-- the invite-accept flow needs no manual SQL -- that part was already
+-- correct, this was a separate, previously-undetected bug in the same
+-- function. Existing NULL rows are not backfilled here (no source to
+-- backfill from; the name was never captured anywhere).
 CREATE OR REPLACE FUNCTION public.handle_new_profile()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -1397,7 +1506,8 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  INSERT INTO public.profiles (id, email) VALUES (NEW.id, NEW.email);
+  INSERT INTO public.profiles (id, email, full_name)
+    VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'full_name');
   INSERT INTO public.org_members (profile_id, org_id, role, capability)
     VALUES (NEW.id, v_invite.org_id, v_invite.role, v_invite.capability);
   UPDATE public.invited_emails SET accepted_at = now() WHERE id = v_invite.id;
@@ -1478,6 +1588,68 @@ $$;
 
 REVOKE ALL ON FUNCTION public.deduct_vip_balance(TEXT, INT) FROM public;
 GRANT EXECUTE ON FUNCTION public.deduct_vip_balance(TEXT, INT) TO anon, authenticated;
+
+-- Function: read-only VIP card lookup by card_uid, added 2026-08-29 to close
+-- the same masked-org-gap products/devices hit (see v2.32/v2.34/v2.35) --
+-- vip_cards' only device-facing SELECT policy is org-scoped, which returns
+-- nothing for a device not yet assigned to an org. Unlike products/devices,
+-- this couldn't just get a blanket `is_anonymous` SELECT policy: a card
+-- balance isn't a public catalog, and RLS can't enforce "only when queried
+-- by a specific card_uid" -- any policy that makes a row visible at all
+-- makes it visible to a client that queries without that filter too.
+-- SECURITY DEFINER + a specific p_card_uid parameter avoids that: no
+-- table-level SELECT grant needed for this lookup at all.
+CREATE OR REPLACE FUNCTION public.get_vip_card_by_uid(p_card_uid TEXT)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_card RECORD;
+BEGIN
+  SELECT card_uid, balance_cents, is_active, tier
+  INTO v_card
+  FROM public.vip_cards
+  WHERE card_uid = p_card_uid;
+
+  IF NOT FOUND THEN
+    RETURN json_build_object('found', false);
+  END IF;
+
+  RETURN json_build_object(
+    'found', true,
+    'card_uid', v_card.card_uid,
+    'balance_cents', v_card.balance_cents,
+    'is_active', v_card.is_active,
+    'tier', v_card.tier
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_vip_card_by_uid(TEXT) FROM public;
+GRANT EXECUTE ON FUNCTION public.get_vip_card_by_uid(TEXT) TO authenticated;
+
+-- Function: resolves a 12-character member QR code (see
+-- docs/coupon_redemption_integration.md §2.1) to the card_uid the rest of
+-- the VIP flow (deduct_vip_balance) actually operates on. Same
+-- masked-org-gap / no-enumeration reasoning as get_vip_card_by_uid above.
+CREATE OR REPLACE FUNCTION public.resolve_vip_card_uid_by_qr(p_qr_code TEXT)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid TEXT;
+BEGIN
+  SELECT card_uid INTO v_uid FROM public.vip_cards WHERE qr_code = p_qr_code;
+  RETURN json_build_object('card_uid', v_uid); -- v_uid is NULL when not found; the JSON key is always present
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.resolve_vip_card_uid_by_qr(TEXT) FROM public;
+GRANT EXECUTE ON FUNCTION public.resolve_vip_card_uid_by_qr(TEXT) TO authenticated;
 
 -- Function: Atomically check-and-redeem a coupon, in the same style as
 -- deduct_vip_balance() above -- FOR UPDATE row lock so two near-simultaneous

@@ -1,0 +1,61 @@
+{
+  "version": "1.0.1",
+  "vertical_type": "WASH",
+  "products": [
+    {
+      "id": "p4",
+      "name": "Starter",
+      "price_cents": 400,
+      "vertical_type": "WASH",
+      "attributes": { "serial_hex": "AA 01 04 55", "duration_sec": 240 },
+      "is_active": true
+    },
+    {
+      "id": "p5",
+      "name": "Basic",
+      "price_cents": 500,
+      "vertical_type": "WASH",
+      "attributes": { "serial_hex": "AA 01 05 55", "duration_sec": 300 },
+      "is_active": true
+    },
+    {
+      "id": "p6",
+      "name": "Deluxe",
+      "price_cents": 600,
+      "vertical_type": "WASH",
+      "attributes": { "serial_hex": "AA 01 06 55", "duration_sec": 360 },
+      "is_active": true
+    },
+    {
+      "id": "p7",
+      "name": "Extra",
+      "price_cents": 700,
+      "vertical_type": "WASH",
+      "attributes": { "serial_hex": "AA 01 07 55", "duration_sec": 420 },
+      "is_active": true
+    },
+    {
+      "id": "p8",
+      "name": "Premium",
+      "price_cents": 800,
+      "vertical_type": "WASH",
+      "attributes": { "serial_hex": "AA 01 08 55", "duration_sec": 480 },
+      "is_active": true
+    }
+  ],
+  "settings": {
+    "maintenance_pin": "1234",
+    "kiosk_timeout_sec": 60,
+    "telemetry_interval_sec": 900,
+    "pulse_weight_cents": 100,
+    "pulse_hex": "AA 01 01 55",
+    "locale_tag": "en-US",
+    "print_receipt_enabled": true,
+    "payment_method_mode": 0,
+    "dispense_ack_mode": "assumed_success"
+  },
+  "branding": {
+    "brand_name": "GS-SSP Default",
+    "primary_color_hex": "#FFB800"
+  }
+}

@@ -1,0 +1,20 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.goldsky.ssp.libs.wizarpos'
+    compileSdk 34
+}
+
+dependencies {
+    api files('cloudpos_sdk.aar')
+    api files('Universal_SDK_1.00.190_os.jar')
+}
+
+// See libs/pax/build.gradle for why bundleDebugAar/bundleReleaseAar are
+// disabled here -- same pure-wrapper situation, same AGP restriction on
+// re-packaging a local AAR inside another library's own AAR output.
+tasks.matching { it.name ==~ /bundle(Debug|Release)Aar/ }.configureEach {
+    enabled = false
+}

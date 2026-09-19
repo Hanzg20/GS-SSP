@@ -2,9 +2,9 @@ package com.goldsky.ssp.payment.hardware
 
 import android.content.Context
 import com.goldsky.ssp.BuildConfig
-import com.goldsky.ssp.payment.hardware.idtech.IdTechHardwareProvider
-import com.goldsky.ssp.payment.hardware.pax.PaxHardwareProvider
-import com.goldsky.ssp.payment.hardware.wizarpos.WizarPosHardwareProvider
+import com.goldsky.ssp.iris.hardware.idtech.IdTechHardwareProvider
+import com.goldsky.ssp.iris.hardware.pax.PaxHardwareProvider
+import com.goldsky.ssp.iris.hardware.wizarpos.WizarPosHardwareProvider
 import com.goldsky.ssp.payment.hardware.mock.MockHardwareProvider
 
 /**

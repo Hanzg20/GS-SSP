@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Laid out bottom-up rather than top-down: the buy QR is anchored to the
+  bottom and the card preview absorbs whatever vertical space is left over
+  (height=0dp between the back button and the tier row). The terminal this
+  runs on gives the app only ~408-432dp of usable height on its 480x480
+  screen, and the previous top-down stack with a 1.6:1 ratio card pushed the
+  buy QR, the page's only call to action, completely off screen.
+-->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark"
+    android:paddingBottom="20dp">
+
+    <!-- Back Button -->
+    <Button
+        android:id="@+id/btn_back_main"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="8dp"
+        android:backgroundTint="@color/btn_neutral_bg"
+        android:minWidth="0dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:text="BACK"
+        android:textColor="@color/text_light"
+        android:textSize="14sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Bottom row: pricing tiers stacked as a column on the left, buy QR
+         on the right (bigger/clearer now that it isn't squeezed into a
+         full-width strip below three horizontally-laid-out tier cards).
+         Pinned to the bottom so it's always on screen. -->
+    <LinearLayout
+        android:id="@+id/layout_bottom_row"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="bottom"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <!-- Pricing Tiers (Vertical column) -->
+        <LinearLayout
+            android:id="@+id/layout_tiers"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:paddingStart="10dp"
+            android:paddingEnd="4dp">
+
+            <!-- Tier 1 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="3dp"
+                android:background="@drawable/bg_glass_card"
+                android:elevation="4dp"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:padding="6dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vip_tier1_load"
+                    android:textColor="@color/text_light"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_marginEnd="6dp"
+                    android:text="→"
+                    android:textColor="@color/text_muted" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vip_tier1_get"
+                    android:textColor="@color/gold_accent"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Tier 2 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="3dp"
+                android:background="@drawable/bg_glass_card"
+                android:elevation="4dp"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:padding="6dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vip_tier2_load"
+                    android:textColor="@color/text_light"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_marginEnd="6dp"
+                    android:text="→"
+                    android:textColor="@color/text_muted" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vip_tier2_get"
+                    android:textColor="@color/gold_accent"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Tier 3 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="3dp"
+                android:background="@drawable/bg_glass_card"
+                android:elevation="4dp"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:padding="6dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vip_tier3_load"
+                    android:textColor="@color/text_light"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_marginEnd="6dp"
+                    android:text="→"
+                    android:textColor="@color/text_muted" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vip_tier3_get"
+                    android:textColor="@color/gold_accent"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Buy QR: bigger now that it has its own column instead of a
+             squeezed full-width strip. -->
+        <LinearLayout
+            android:id="@+id/layout_buy_qr"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <ImageView
+                android:id="@+id/img_vip_qr"
+                android:layout_width="150dp"
+                android:layout_height="150dp"
+                android:background="#FFFFFF"
+                android:contentDescription="@string/vip_scan_buy"
+                android:padding="2dp" />
+
+            <TextView
+                android:id="@+id/tv_vip_qr_hint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/vip_scan_buy"
+                android:textColor="@color/gold_accent"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- VIP Card Preview: the full, uncropped source photo (nothing trimmed
+         off, including the person holding the card). fitCenter guarantees
+         the whole image is always visible, letterboxing left/right against
+         layout_card_bg rather than cropping any of it away. Takes whatever
+         height is left between the back button and the bottom row, so it can
+         never push content off screen. -->
+    <View
+        android:id="@+id/layout_card_bg"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="10dp"
+        android:background="@color/bg_card"
+        app:layout_constraintBottom_toTopOf="@id/layout_bottom_row"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHeight_max="200dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btn_back_main" />
+
+    <ImageView
+        android:id="@+id/img_vip_card"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:contentDescription="@string/vip_banner_title"
+        android:scaleType="fitCenter"
+        android:src="@drawable/vip_card_photo"
+        app:layout_constraintBottom_toBottomOf="@id/layout_card_bg"
+        app:layout_constraintEnd_toEndOf="@id/layout_card_bg"
+        app:layout_constraintStart_toStartOf="@id/layout_card_bg"
+        app:layout_constraintTop_toTopOf="@id/layout_card_bg" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

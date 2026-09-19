@@ -1,0 +1,57 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.serialization'
+}
+
+android {
+    namespace 'com.goldsky.ssp.core.hardware'
+    compileSdk 34
+    buildToolsVersion "36.0.0"
+
+    defaultConfig {
+        minSdk 25
+        // Vendor hardware providers (moved here from app/iris so any app
+        // shell can share them, see PaxHardwareProvider/WizarPosHardwareProvider)
+        // branch on this the same way app-level BuildConfig.IS_MOCK does.
+        // false so real hardware (POSTerminal.getInstance / PAX DAL) actually
+        // initializes -- was hardcoded true, which silently skipped real SDK
+        // init unconditionally, even on real WizarPOS/PAX terminals, and was
+        // the root cause of the technician dashboard always showing
+        // "SN: WIZAR_SN_UNKNOWN" on real hardware instead of the device's
+        // actual serial (confirmed against WP6350VQ36000255, 2026-09-18).
+        buildConfigField "boolean", "IS_MOCK", "false"
+    }
+
+    buildFeatures {
+        buildConfig true
+        aidl true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+    api 'androidx.core:core-ktx:1.9.0'
+    api 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
+    api 'androidx.lifecycle:lifecycle-common-java8:2.6.1'
+    api "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4"
+    api "org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1"
+
+    api project(':core:common')
+    api project(':libs:pax')
+    api project(':libs:wizarpos')
+
+    testImplementation 'junit:junit:4.13.2'
+}

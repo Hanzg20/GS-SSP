@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark"
+    tools:context=".MainActivity">
+
+    <!-- ================== 1. HEADER ================== -->
+    <!-- LOGO REMOVED per user request (logo only for Splash and Ad pages) -->
+    <ImageView
+        android:id="@+id/img_logo"
+        android:layout_width="@dimen/header_logo_size"
+        android:layout_height="@dimen/header_logo_size"
+        android:layout_marginTop="16dp"
+        android:src="@drawable/goldsky_logo"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/tv_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/title_welcome"
+        android:textColor="@color/gold_accent"
+        android:textSize="@dimen/header_title_size"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/img_logo" />
+
+    <!-- ================== 2. SCAN BELT (moved above package selection) ================== -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/layout_scan_belt"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:background="@color/bg_card"
+        android:clickable="true"
+        android:focusable="true"
+        app:layout_constraintHeight_percent="0.12"
+        app:layout_constraintTop_toBottomOf="@id/tv_title">
+
+        <!-- Laser Line with subtle glow -->
+        <View
+            android:id="@+id/view_laser_line"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:background="@drawable/laser_line"
+            android:alpha="0.8"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/scan_voucher_hint"
+            android:textColor="@color/text_muted"
+            android:textSize="@dimen/scan_hint_size"
+            android:drawableStart="@android:drawable/ic_menu_camera"
+            android:drawablePadding="8dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- ================== 3. 3x2 MATRIX PACKAGE SELECTION ================== -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/layout_package_selection"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintBottom_toTopOf="@id/layout_vip_banner"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/layout_scan_belt">
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/guideline_v1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.33" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/guideline_v2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.66" />
+
+        <!-- Card 1: $4 -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/card_4"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="@dimen/card_margin"
+            android:background="@drawable/bg_glass_card"
+            android:clickable="true"
+            android:focusable="true"
+            android:elevation="4dp"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintEnd_toEndOf="@id/guideline_v1"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toTopOf="@id/card_7"
+            app:layout_constraintVertical_chainStyle="packed">
+            <TextView android:id="@+id/tv_price_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="$4" android:textColor="@color/gold_accent" android:textSize="@dimen/card_price_size" android:textStyle="bold" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_bias="0.4" />
+            <TextView android:id="@+id/tv_label_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Starter" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_4" />
+            <TextView android:id="@+id/tv_duration_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="4 min" android:textColor="@color/text_muted" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_label_4" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- Card 2: $5 -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/card_5"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="@dimen/card_margin"
+            android:background="@drawable/bg_glass_card"
+            android:clickable="true"
+            android:focusable="true"
+            android:elevation="4dp"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintEnd_toEndOf="@id/guideline_v2"
+            app:layout_constraintStart_toStartOf="@id/guideline_v1"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toTopOf="@id/card_8"
+            app:layout_constraintVertical_chainStyle="packed">
+            <TextView android:id="@+id/tv_price_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="$5" android:textColor="@color/gold_accent" android:textSize="@dimen/card_price_size" android:textStyle="bold" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_bias="0.4" />
+            <TextView android:id="@+id/tv_label_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Basic" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_5" />
+            <TextView android:id="@+id/tv_duration_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="5 min" android:textColor="@color/text_muted" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_label_5" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- Card 3: $6 -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/card_6"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="@dimen/card_margin"
+            android:background="@drawable/bg_glass_card"
+            android:clickable="true"
+            android:focusable="true"
+            android:elevation="4dp"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="@id/guideline_v2"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toTopOf="@id/card_custom"
+            app:layout_constraintVertical_chainStyle="packed">
+            <TextView android:id="@+id/tv_price_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="$6" android:textColor="@color/gold_accent" android:textSize="@dimen/card_price_size" android:textStyle="bold" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_bias="0.4" />
+            <TextView android:id="@+id/tv_label_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Deluxe" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_6" />
+            <TextView android:id="@+id/tv_duration_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="6 min" android:textColor="@color/text_muted" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_label_6" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- Card 4: $7 -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/card_7"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="@dimen/card_margin"
+            android:background="@drawable/bg_glass_card"
+            android:clickable="true"
+            android:focusable="true"
+            android:elevation="4dp"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintEnd_toEndOf="@id/guideline_v1"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/card_4"
+            app:layout_constraintBottom_toBottomOf="parent">
+            <TextView android:id="@+id/tv_price_7" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="$7" android:textColor="@color/gold_accent" android:textSize="@dimen/card_price_size" android:textStyle="bold" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_bias="0.4" />
+            <TextView android:id="@+id/tv_label_7" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Extra" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_7" />
+            <TextView android:id="@+id/tv_duration_7" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="7 min" android:textColor="@color/text_muted" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_label_7" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- Card 5: $8 -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/card_8"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="@dimen/card_margin"
+            android:background="@drawable/bg_glass_card"
+            android:clickable="true"
+            android:focusable="true"
+            android:elevation="4dp"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintEnd_toEndOf="@id/guideline_v2"
+            app:layout_constraintStart_toStartOf="@id/guideline_v1"
+            app:layout_constraintTop_toBottomOf="@id/card_5"
+            app:layout_constraintBottom_toBottomOf="parent">
+            <TextView android:id="@+id/tv_price_8" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="$8" android:textColor="@color/gold_accent" android:textSize="@dimen/card_price_size" android:textStyle="bold" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_bias="0.4" />
+            <TextView android:id="@+id/tv_label_8" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Premium" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_8" />
+            <TextView android:id="@+id/tv_duration_8" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="8 min" android:textColor="@color/text_muted" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_label_8" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- Card 6: Custom -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/card_custom"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="@dimen/card_margin"
+            android:background="@drawable/bg_glass_card"
+            android:clickable="true"
+            android:focusable="true"
+            android:elevation="4dp"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="@id/guideline_v2"
+            app:layout_constraintTop_toBottomOf="@id/card_6"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <TextView
+                android:id="@+id/tv_custom_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Custom"
+                android:textColor="@color/royal_blue"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- ================== 4. VIP BANNER (New 15%) ================== -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/layout_vip_banner"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_vip_banner"
+        android:clickable="true"
+        android:focusable="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintHeight_percent="0.12">
+
+        <TextView
+            android:id="@+id/tv_vip_banner_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/vip_banner_title"
+            android:textColor="@color/text_dark"
+            android:textSize="@dimen/vip_banner_title_size"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toTopOf="@id/tv_vip_banner_sub"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_chainStyle="packed" />
+
+        <TextView
+            android:id="@+id/tv_vip_banner_sub"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/vip_banner_subtitle"
+            android:textColor="@color/text_dark"
+            android:textSize="@dimen/vip_banner_sub_size"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_vip_banner_text" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- ================== 4b. SCAN FEEDBACK BANNER (Overlay) ==================
+         Plain Toast is too small/brief to read from kiosk viewing distance
+         (system-enforced ~3.5s max, no font-size control); this is a custom
+         view shown/hidden with an explicit Handler delay instead, so both
+         size and on-screen duration are under our control. See
+         MainActivity.showScanFeedback(). -->
+    <TextView
+        android:id="@+id/tv_scan_feedback"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        android:background="@drawable/prompt_bg"
+        android:elevation="12dp"
+        android:gravity="center"
+        android:padding="20dp"
+        android:textColor="@color/text_light"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:visibility="visible"
+        tools:text="Unrecognized code — not issued by this location" />
+
+    <!-- ================== 5. WORKING LAYOUT (Overlay) ================== -->
+    <!-- Content moved to dialog_payment.xml for top-level rendering -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/layout_working"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/scrim_dark"
+        android:visibility="gone" />
+
+    <!-- ================== 6. STATUS & VERSION (Technician) ================== -->
+    <View
+        android:id="@+id/view_health_indicator"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="8dp"
+        android:background="@color/text_muted"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Doubles as the technician-mode entry point (3 taps within 2s, see
+         MainActivity.setupMaintenanceTrigger()) and the simulation-mode
+         toggle (long press, see setupClickListeners()); previously both
+         lived on img_logo, which went visibility="gone" per a layout change
+         ("LOGO REMOVED per user request") and silently stopped receiving any
+         touches at all (a GONE view is excluded from hit-testing, not just
+         rendering). This corner is isolated from every customer-facing
+         control (scan belt/price grid/VIP banner all sit well above it), so
+         repeated taps here can't be mistaken for a real button the way
+         tapping tv_title repeatedly risks fat-fingering the scan belt right
+         below it. Padding gives a comfortable touch target without changing
+         where the tiny version text itself visually sits. -->
+    <TextView
+        android:id="@+id/tv_app_version"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:layout_marginBottom="4dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:padding="12dp"
+        android:text="v1.0.0"
+        android:textColor="@color/text_faint"
+        android:textSize="8sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

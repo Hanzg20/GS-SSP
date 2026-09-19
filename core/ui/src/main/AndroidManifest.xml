@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.goldsky.ssp.core.ui">
+
+    <application>
+        <!-- Common activities like AdActivity can be declared here or merged -->
+    </application>
+</manifest>

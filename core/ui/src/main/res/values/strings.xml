@@ -1,0 +1,120 @@
+<resources>
+    <string name="app_name">GS-SSP Car Wash</string>
+    <string name="title_welcome">Welcome to GS-SSP Smart Wash</string>
+    <string name="subtitle_welcome">Unified Technology Platform for Smart Industries</string>
+    <string name="brand_footer">Powered by GoldSky Technologies</string>
+
+    <string name="standard_wash">Starter Wash</string>
+    <string name="standard_wash_price">$4</string>
+    <string name="standard_wash_desc">High Pressure Rinse • 4 Min</string>
+    
+    <string name="delux_wash">Deluxe Wash</string>
+    <string name="delux_wash_price">$6</string>
+    <string name="delux_wash_desc">Foam + Triple Shine • 6 Min</string>
+    
+    <string name="wax_wash">Premium Wax</string>
+    <string name="wax_wash_price">$8</string>
+    <string name="wax_wash_desc">Hot Wax + Wheel Blast • 8 Min</string>
+
+    <string name="custom_wash">Custom</string>
+    <string name="custom_wash_desc">Set your own duration</string>
+
+    <string name="scan_voucher_hint">Hold Coupon / Member QR Code Up to the Screen</string>
+
+    <string name="payment_choice_title">Select Payment Method</string>
+    <string name="btn_pay_card">Pay with Card</string>
+    <string name="btn_pay_card_desc">Tap, Insert or Swipe</string>
+    <string name="btn_pay_scan">Scan to Pay</string>
+    <string name="btn_pay_scan_desc">Mobile Wallets / QR Code</string>
+    <string name="btn_back">Back</string>
+    <string name="prompt_tap_card">Tap Card</string>
+
+    <string name="vip_banner_title">BECOME A VIP MEMBER</string>
+    <string name="vip_banner_subtitle">Get up to 25%% Bonus Credit</string>
+    <string name="vip_tier1_load">$50 LOAD</string>
+    <string name="vip_tier1_get">$60 TOTAL</string>
+    <string name="vip_tier2_load">$100 LOAD</string>
+    <string name="vip_tier2_get">$125 TOTAL</string>
+    <string name="vip_tier3_load">$200 LOAD</string>
+    <string name="vip_tier3_get">$240 TOTAL</string>
+    <string name="vip_tier3_extra">+ FREE ON RIM TIRE SWAP</string>
+    <string name="vip_feature_1">24/7 Self-Serve</string>
+    <string name="vip_feature_2">Warm Water &amp; High Pressure</string>
+    <string name="vip_feature_3">No Expiry</string>
+    <string name="vip_scan_buy">SCAN TO BUY VIP CARD NOW</string>
+
+    <string name="prompt_pay_title">Waiting for Payment</string>
+    <string name="prompt_pay_subtitle">Amount Due: %s</string>
+    <string name="prompt_card_guide">Please tap, insert or swipe your card</string>
+    <string name="prompt_card_support">Supports Visa / Mastercard / Interac / AMEX</string>
+    <string name="prompt_qr_guide">Scan to pay with Apple Pay / Google Pay / Mobile</string>
+    <string name="btn_cancel">Cancel Payment</string>
+
+    <string name="state_working">Wash in Progress…</string>
+    <string name="state_remaining">Time Remaining</string>
+    <string name="sec_suffix">sec</string>
+
+    <string name="toast_payment_success_enjoy">All successful! Enjoy your wash.</string>
+    <string name="toast_mode_demo">Demo Mode Activated</string>
+    <string name="toast_mode_prod">Production Mode Activated</string>
+    <string name="toast_serial_fail">Failed to communicate with controller</string>
+    <string name="toast_wash_finish">Wash cycle complete. Thank you!</string>
+    <string name="toast_pay_timeout">Payment timed out. Please try again.</string>
+    <string name="toast_payment_processing_wait">Payment processing, please wait…</string>
+    <string name="toast_member_recognized">Member recognized! Please select your wash package.</string>
+    <string name="toast_member_code_invalid">Member code not recognized</string>
+    <string name="toast_coupon_applied">Coupon applied! Please select your wash package.</string>
+    <string name="toast_coupon_invalid">This coupon can\'t be used, please see staff</string>
+    <string name="toast_coupon_see_staff">This coupon needs staff assistance to redeem</string>
+    <string name="toast_code_unrecognized">Unrecognized code — not issued by this location</string>
+    <string name="toast_scan_failed">Couldn\'t read that code, please try again</string>
+    <string name="toast_scan_timeout">No code detected, please try again</string>
+    <string name="voice_vip_low_balance">Insufficient balance. Please top up your card or choose another payment method.</string>
+
+    <string name="status_processing">Processing Payment...</string>
+    <string name="status_approved">Transaction Approved</string>
+    <string name="status_paid">Paid</string>
+    <string name="status_sending_command">Activating Wash Equipment...</string>
+    <string name="status_success">Payment Successful!</string>
+    <string name="status_enjoy_wash">All Successful!\nEnjoy Your Wash</string>
+    <string name="status_error_refund">Machine Error.\nRefund fully processed.</string>
+    <string name="status_start_wash">Starting Wash Cycle</string>
+    <string name="status_verifying">Verifying credentials...</string>
+
+    <!-- Wash-stage stepper shown during startFinalizationSequence's hardware
+         dispense phase: a fixed 4-stage narrative mapped onto real dispense
+         progress (see DispenseEngine's onProgress callback), not literal
+         per-pulse steps, since pulse count varies by amount charged. -->
+    <string-array name="wash_stage_labels">
+        <item>Rinsing…</item>
+        <item>Applying Soap…</item>
+        <item>Final Rinse…</item>
+        <item>Drying…</item>
+    </string-array>
+
+    <string name="ad_prompt">TAP TO PAY</string>
+    <string name="ad_announcement_label">ANNOUNCEMENT</string>
+    <string name="ad_promo_label">PROMOTION</string>
+    <string name="ad_pause_content_description">Pause</string>
+    <string name="ad_resume_content_description">Resume</string>
+
+    <!-- Tech Dashboard 2.0 -->
+    <string name="tech_core_command">CORE COMMAND</string>
+    <string name="tech_industrial_dash">GS-SSP INDUSTRIAL DASHBOARD</string>
+    <string name="tech_connectivity">CONNECTIVITY</string>
+    <string name="tech_supabase_link">SUPABASE LINK</string>
+    <string name="tech_controller">CONTROLLER (UART1)</string>
+    <string name="tech_security">PHYSICAL SECURITY</string>
+    <string name="tech_identity">IDENTITY</string>
+    <string name="tech_system_probing">SYSTEM PROBING</string>
+    <string name="tech_pulse_4">PULSE $4</string>
+    <string name="tech_pulse_8">PULSE $8</string>
+    <string name="tech_halt">HALT</string>
+    <string name="tech_scan">SCAN</string>
+    <string name="tech_nfc">NFC</string>
+    <string name="tech_sync">SYNC</string>
+    <string name="tech_telemetry">TERMINAL TELEMETRY</string>
+    <string name="tech_watchdog">WATCHDOG HEARTBEAT</string>
+    <string name="tech_sim_mode">HARDWARE SIMULATION MODE</string>
+    <string name="tech_version_footer">Industrial Core GS-SSP v2.2.0 • PCI-7 Compliant</string>
+</resources>

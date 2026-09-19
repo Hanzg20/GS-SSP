@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+android {
+    namespace 'com.goldsky.ssp.core.ui'
+    compileSdk 34
+    buildToolsVersion "36.0.0"
+
+    defaultConfig {
+        minSdk 25
+    }
+
+    buildFeatures {
+        compose true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+}
+
+dependencies {
+    api 'androidx.core:core-ktx:1.9.0'
+    api 'androidx.appcompat:appcompat:1.6.1'
+    api 'com.google.android.material:material:1.8.0'
+    api 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
+    
+    api project(':core:data')
+    api project(':core:hardware')
+
+    api 'androidx.compose.ui:ui:1.5.4'
+    api 'androidx.compose.material3:material3:1.1.2'
+    api 'androidx.compose.material:material-icons-extended:1.5.4'
+    
+    api "io.coil-kt:coil-compose:2.6.0"
+}

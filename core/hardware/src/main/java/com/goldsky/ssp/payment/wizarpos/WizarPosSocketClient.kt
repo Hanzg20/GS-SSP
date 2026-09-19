@@ -1,0 +1,117 @@
+package com.goldsky.ssp.payment.wizarpos
+
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.InputStream
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
+/**
+ * TCP Client for WizarPOS PAYWizard Local Integration.
+ * Implements P3 (Core Protocol) framing: STX | VER | CTRL | LEN | JSON | ETX | BCC
+ */
+object WizarPosSocketClient {
+    private const val TAG = "WizarPosSocket"
+    private const val HOST = "127.0.0.1"
+    private const val PORT = 6666
+    private const val CONNECT_TIMEOUT_MS = 5000
+    private const val READ_TIMEOUT_MS = 60000 
+    
+    private var sequenceNumber = 1
+
+    /**
+     * Sends a request (String or ByteArray) using P3 framing.
+     */
+    suspend fun sendRequest(payload: Any, ctrlPath: Byte = WizarPosP3Protocol.CTRL_FROM_CASHIER): ByteArray? = withContext(Dispatchers.IO) {
+        var socket: Socket? = null
+        try {
+            Log.d(TAG, "Connecting to Localhost PAYWizard Service ($HOST:$PORT)...")
+            socket = Socket()
+            socket.connect(InetSocketAddress(HOST, PORT), CONNECT_TIMEOUT_MS)
+            socket.soTimeout = READ_TIMEOUT_MS
+            Log.d(TAG, "Socket Connected. Preparing P3 Frame.")
+
+            val outputStream = socket.getOutputStream()
+            val inputStream = socket.getInputStream()
+
+            // 1. Pack and Send P3 Frame
+            val frame = WizarPosP3Protocol.pack(ctrlPath, sequenceNumber++, payload)
+            outputStream.write(frame)
+            outputStream.flush()
+            Log.i(TAG, ">> [SENT] P3 Frame (${frame.size} bytes). Path: $ctrlPath")
+
+            // 2. Read Response with STX alignment
+            val responseFrame = readP3Frame(inputStream) ?: run {
+                Log.e(TAG, "<< [ERROR] Failed to read valid P3 frame from service.")
+                return@withContext null
+            }
+            
+            // 3. Unpack Bytes
+            val responseBytes = WizarPosP3Protocol.unpackBytes(responseFrame)
+            Log.i(TAG, "<< [RECV] P3 Response (${responseBytes?.size} bytes)")
+
+            responseBytes
+        } catch (e: java.net.ConnectException) {
+            Log.e(TAG, "Connection Refused. Is PAYWizard running on port $PORT?")
+            null
+        } catch (e: Exception) {
+            Log.e(TAG, "P3 Socket Communication Failure: ${e.message}")
+            null
+        } finally {
+            try { 
+                socket?.close() 
+                Log.d(TAG, "Socket Closed.")
+            } catch (e: Exception) {}
+        }
+    }
+
+    /**
+     * Reads a full P3 frame from the input stream.
+     * Searches for STX, reads header, then reads the body based on length.
+     */
+    private fun readP3Frame(inputStream: InputStream): ByteArray? {
+        try {
+            // A. Find STX (0x02)
+            var b: Int
+            while (true) {
+                b = inputStream.read()
+                if (b == -1) return null
+                if (b.toByte() == WizarPosP3Protocol.STX) break
+            }
+            
+            // B. Read Header (VER(1) + CTRL(4) + LEN(2) = 7 bytes)
+            val header = readFully(inputStream, 7) ?: return null
+            val contentLen = ByteBuffer.wrap(header, 5, 2).order(ByteOrder.BIG_ENDIAN).short.toInt() and 0xFFFF
+            
+            // C. Read Body (CONTENT(N) + ETX(1) + BCC(1) = contentLen + 2 bytes)
+            val body = readFully(inputStream, contentLen + 2) ?: return null
+            
+            // D. Assemble Full Frame: STX(1)+VER(1)+CTRL(4)+LEN(2)+CONTENT(N)+ETX(1)+BCC(1) = N+10
+            // (matches WizarPosP3Protocol.pack()/unpackBytes()'s own N+10 sizing -- must stay in
+            // sync or unpackBytes()'s frame.size check rejects every response as a size mismatch)
+            val fullFrame = ByteArray(contentLen + 10)
+            fullFrame[0] = WizarPosP3Protocol.STX
+            System.arraycopy(header, 0, fullFrame, 1, 7)
+            System.arraycopy(body, 0, fullFrame, 8, body.size)
+            
+            return fullFrame
+        } catch (e: Exception) {
+            Log.e(TAG, "Error reading P3 frame: ${e.message}")
+            return null
+        }
+    }
+
+    private fun readFully(inputStream: InputStream, length: Int): ByteArray? {
+        val buffer = ByteArray(length)
+        var totalRead = 0
+        while (totalRead < length) {
+            val read = inputStream.read(buffer, totalRead, length - totalRead)
+            if (read == -1) return null
+            totalRead += read
+        }
+        return buffer
+    }
+}

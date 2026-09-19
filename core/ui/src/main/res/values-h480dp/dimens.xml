@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Optimized for Square / Short Screens (e.g. WizarPOS Q3 UPT) -->
+    <dimen name="header_logo_size">32dp</dimen>
+    <dimen name="header_title_size">14sp</dimen>
+    <dimen name="card_price_size">22sp</dimen>
+    <dimen name="card_label_size">9sp</dimen>
+    <dimen name="card_margin">3dp</dimen>
+    <dimen name="vip_banner_title_size">12sp</dimen>
+    <dimen name="vip_banner_sub_size">8sp</dimen>
+    <dimen name="scan_hint_size">9sp</dimen>
+
+    <!-- Custom Amount Dialog (Compressed) -->
+    <dimen name="dialog_padding">8dp</dimen>
+    <dimen name="flip_container_height">80dp</dimen>
+    <dimen name="btn_confirm_height">48dp</dimen>
+    <dimen name="btn_cancel_height">48dp</dimen>
+</resources>

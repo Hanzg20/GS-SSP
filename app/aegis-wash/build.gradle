@@ -1,0 +1,71 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// Same local.properties -> BuildConfig pattern as app/iris (see that
+// build.gradle for the rationale).
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
+
+android {
+    namespace 'com.goldsky.ssp.aegis.wash'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.goldsky.ssp.aegis.wash"
+        minSdk 25
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0-aegis-wash"
+
+        buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
+        buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
+        buildConfigField "boolean", "IS_MOCK", "true"
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    buildTypes {
+        debug {
+            // libs:wizarpos' cloudpos_sdk.aar only ships arm64-v8a natives (real
+            // WizarPOS hardware) -- installing on an x86_64 dev emulator fails
+            // outright with INSTALL_FAILED_NO_MATCHING_ABIS with no ABI-selection
+            // workaround available. Debug/mock testing (BuildConfig.IS_MOCK=true)
+            // never actually calls into these natives, so it's safe to drop them
+            // from just the debug APK; a real release build targeting real
+            // hardware must NOT carry this exclusion.
+            packagingOptions {
+                jniLibs {
+                    excludes += ["**/*.so"]
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.9.0'
+    implementation project(':core:common')
+    implementation project(':core:data')
+    implementation project(':core:hardware')
+    implementation project(':core:ui')
+    implementation project(':core:payment')
+    implementation project(':feature:wash')
+    implementation project(':libs:pax')
+    implementation project(':libs:wizarpos')
+}

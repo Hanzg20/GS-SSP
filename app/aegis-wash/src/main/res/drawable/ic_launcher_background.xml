@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Matches SplashActivity's background (core/ui's bg_dark, #000000) so the
+     launcher icon and the boot splash read as the same mark. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#000000" />
+</shape>

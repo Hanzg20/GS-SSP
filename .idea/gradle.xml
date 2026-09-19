@@ -10,6 +10,27 @@
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/app" />
+            <option value="$PROJECT_DIR$/app/aegis-ev" />
+            <option value="$PROJECT_DIR$/app/aegis-vend" />
+            <option value="$PROJECT_DIR$/app/aegis-wash" />
+            <option value="$PROJECT_DIR$/app/iris" />
+            <option value="$PROJECT_DIR$/app/ourea" />
+            <option value="$PROJECT_DIR$/core" />
+            <option value="$PROJECT_DIR$/core/common" />
+            <option value="$PROJECT_DIR$/core/data" />
+            <option value="$PROJECT_DIR$/core/hardware" />
+            <option value="$PROJECT_DIR$/core/payment" />
+            <option value="$PROJECT_DIR$/core/ui" />
+            <option value="$PROJECT_DIR$/feature" />
+            <option value="$PROJECT_DIR$/feature/apex" />
+            <option value="$PROJECT_DIR$/feature/ev" />
+            <option value="$PROJECT_DIR$/feature/parking" />
+            <option value="$PROJECT_DIR$/feature/retail" />
+            <option value="$PROJECT_DIR$/feature/vending" />
+            <option value="$PROJECT_DIR$/feature/wash" />
+            <option value="$PROJECT_DIR$/libs" />
+            <option value="$PROJECT_DIR$/libs/pax" />
+            <option value="$PROJECT_DIR$/libs/wizarpos" />
           </set>
         </option>
       </GradleProjectSettings>

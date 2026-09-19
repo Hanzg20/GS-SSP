@@ -13,11 +13,28 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' }
-        flatDir {
-            dirs 'app/libs'
-        }
     }
 }
 rootProject.name = "SSP"
-include ':app'
+
+include ':core:common'
+include ':core:data'
+include ':core:ui'
+include ':core:hardware'
+include ':core:payment'
+
+include ':feature:retail'
+include ':feature:apex'
+include ':feature:wash'
+include ':feature:vending'
+include ':feature:parking'
+include ':feature:ev'
+
+include ':libs:pax'
+include ':libs:wizarpos'
+
+include ':app:iris'
+include ':app:ourea'
+include ':app:aegis-wash'
+include ':app:aegis-vend'
+include ':app:aegis-ev'
