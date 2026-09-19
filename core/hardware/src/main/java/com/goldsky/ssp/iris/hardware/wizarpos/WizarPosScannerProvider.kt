@@ -74,8 +74,29 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
                 // KEY_CAMERA_INDEX, nothing else.
                 val param = ScanParameter()
                 param.set(ScanParameter.KEY_CAMERA_INDEX, 0)
+                // foundBarcode() is meant to be one-shot per startScan(), but the
+                // stopScan() call below -- needed to release the device between
+                // scans -- makes the vendor SDK invoke this same callback again a
+                // moment later with a non-success result code. That's the exact
+                // same self-inflicted-callback-after-stop() quirk MainActivity
+                // already guards against for its own explicit stopScan() call
+                // (see initCouponScan()'s isScanTimingOut), just triggered here by
+                // our internal stop instead. Left unguarded, that stray second
+                // call reached MainActivity.onScanFailure() AFTER a real
+                // onScanSuccess() and overwrote the success banner with "couldn't
+                // read, try again" -- confirmed on real hardware 2026-09-19 via
+                // logcat (onScanSuccess for a coupon, then "Scan error: 0" ~660ms
+                // later) cross-referenced against the coupons table, which showed
+                // the redemption had genuinely gone through (uses_count=1) despite
+                // the terminal ending on a failure message.
+                var delivered = false
                 scannerDevice?.startScan(param, object : IScanCallBack {
                     override fun foundBarcode(result: ScanResult) {
+                        if (delivered) {
+                            Log.d(TAG, "Ignoring stray foundBarcode after result already delivered: code=${result.resultCode}")
+                            return
+                        }
+                        delivered = true
                         if (result.resultCode == ScanResult.SCAN_SUCCESS) {
                             mainHandler.post { callback.onScanSuccess(result.text ?: "") }
                         } else {
