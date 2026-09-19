@@ -144,6 +144,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_org_members_global_role_uniq ON public.org
 CREATE TABLE IF NOT EXISTS public.invited_emails (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT NOT NULL UNIQUE,
+    -- Set by the admin at invite time, not typed by the invitee on the
+    -- signup form -- the signup form's Full Name field turned out to be an
+    -- unwinnable fight against browser autofill spraying a saved credential
+    -- into it (every input-level defense tried, including Shadow DOM, still
+    -- got overwritten; see gs-ssp-cmp/src/components/ShadowInput.tsx's doc
+    -- comment). Collecting it here instead removes the field from the
+    -- signup form entirely rather than continuing to fight the browser for
+    -- it. Nullable for invites created before this column existed.
+    full_name TEXT,
     org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
     role TEXT NOT NULL CHECK (role IN ('SYS_ADMIN', 'MERCHANT_ADMIN')),
     capability TEXT NOT NULL DEFAULT 'admin' CHECK (capability IN ('admin', 'employee', 'decision_maker')),
@@ -1488,6 +1497,12 @@ EXECUTE FUNCTION public.touch_updated_at();
 -- correct, this was a separate, previously-undetected bug in the same
 -- function. Existing NULL rows are not backfilled here (no source to
 -- backfill from; the name was never captured anywhere).
+--
+-- v2.34 (2026-09-19): prefer v_invite.full_name (set by the admin when
+-- creating the invite) over the signup form's own raw_user_meta_data value
+-- -- the signup form no longer has a Full Name field at all (see
+-- invited_emails.full_name's comment), but raw_user_meta_data is kept as a
+-- fallback for any client that still sends it.
 CREATE OR REPLACE FUNCTION public.handle_new_profile()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -1507,7 +1522,7 @@ BEGIN
   END IF;
 
   INSERT INTO public.profiles (id, email, full_name)
-    VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'full_name');
+    VALUES (NEW.id, NEW.email, COALESCE(v_invite.full_name, NEW.raw_user_meta_data->>'full_name'));
   INSERT INTO public.org_members (profile_id, org_id, role, capability)
     VALUES (NEW.id, v_invite.org_id, v_invite.role, v_invite.capability);
   UPDATE public.invited_emails SET accepted_at = now() WHERE id = v_invite.id;
@@ -1744,16 +1759,27 @@ BEGIN
     RETURN json_build_object('success', false, 'message', 'not_authorized');
   END IF;
 
-  -- gen_random_uuid() (built into core Postgres 13+, always resolvable
-  -- regardless of search_path) instead of pgcrypto's gen_random_bytes() --
-  -- on Supabase, pgcrypto installs into the `extensions` schema, not
-  -- `public`, so the unqualified call failed under this function's
-  -- SET search_path = public (caught live during testing 2026-07-24:
-  -- "function gen_random_bytes(integer) does not exist"). Same
-  -- unpredictability requirement from docs/coupon_redemption_integration.md
-  -- §4.2 is still met -- a v4 UUID has 122 bits of randomness, more than
-  -- gen_random_bytes(8)'s 64.
-  v_code := 'COMP-' || replace(gen_random_uuid()::text, '-', '');
+  -- Short, print/scan-friendly code (<=10 chars, per product requirement
+  -- 2026-09-19 -- was 'COMP-' + a 32-char UUID hex, 37 chars total, too long
+  -- to comfortably print or read off a screen). 8 chars from a 32-symbol
+  -- alphabet (excludes 0/O/1/I/L to avoid misreads) is ~40 bits of
+  -- randomness -- plenty for a single-use, per-org-scoped, device-redeemed
+  -- coupon at this system's realistic volume, still meeting the
+  -- "unpredictable, not guessable" requirement from
+  -- docs/coupon_redemption_integration.md §4.2, just with a smaller margin
+  -- than the old UUID-based code. Uses plain random() rather than pgcrypto's
+  -- gen_random_bytes() for the same reason as before -- pgcrypto installs
+  -- into the `extensions` schema, not `public`, so an unqualified call fails
+  -- under this function's SET search_path = public. The retry loop is a
+  -- cheap defensive fallback against the extremely unlikely collision, since
+  -- code is the table's PRIMARY KEY.
+  LOOP
+    v_code := (
+      SELECT string_agg(substr('ABCDEFGHJKMNPQRSTUVWXYZ23456789', (random() * 31)::int + 1, 1), '')
+      FROM generate_series(1, 8)
+    );
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM public.coupons WHERE code = v_code);
+  END LOOP;
 
   INSERT INTO public.coupons (
     code, org_id, type, value, max_uses, issued_reason, issued_by_profile_id, related_transaction_id
@@ -1782,11 +1808,11 @@ GRANT EXECUTE ON FUNCTION public.issue_compensation_coupon(UUID, INT, INT, UUID)
 -- number actually encoded on the card. qr_code IS generated server-side, but
 -- MUST be exactly 12 alphanumeric characters -- per
 -- docs/coupon_redemption_integration.md §2.1, the IM30 scanner routes a scan
--- to the member-QR path purely by matching ^[A-Za-z0-9]{12}$ (coupon codes
--- are deliberately 16+ chars so the two never collide on length). Using
--- issue_compensation_coupon's gen_random_uuid()-based approach here would
--- produce a 35-char string that the client would silently misroute to
--- redeem_coupon() instead -- built from the same 36-char alphabet
+-- to the member-QR path purely by matching ^[A-Za-z0-9]{12}$. Coupon codes
+-- are 8 chars as of 2026-09-19 (shortened from the original 16+), but the
+-- routing rule only ever needed "not exactly 12", not "16+" specifically --
+-- 8 still never collides with 12. This qr_code stays fixed at exactly 12
+-- deliberately -- built from the same 36-char alphabet
 -- cmpService.generateVipQrCode() already uses client-side for the same
 -- format, not gen_random_bytes() (pgcrypto lives in the extensions schema,
 -- not public, under this function's SET search_path).

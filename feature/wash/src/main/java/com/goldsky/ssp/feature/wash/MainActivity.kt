@@ -52,13 +52,16 @@ class MainActivity : BaseAdActivity() {
 
     companion object {
         // docs/coupon_redemption_integration.md §4.2: real coupon codes are
-        // required to be 16+ chars of cryptographic randomness (member codes
-        // are the separate, exactly-12-char format checked elsewhere in
-        // initCouponScan()). Used only to pick which rejection message to
-        // show after the server has already said "not_found" -- see that
-        // call site's comment for why this must never gate the RPC call
-        // itself.
-        private const val MIN_PLAUSIBLE_COUPON_CODE_LENGTH = 16
+        // exactly 8 chars of random alphanumeric (shortened 2026-09-19 from
+        // the original 16+ char UUID-derived format, for printing/on-screen
+        // display -- see issue_compensation_coupon()'s comment). Set below
+        // that real length, not equal to it, so a genuine code is never
+        // rejected by this floor; member codes are the separate,
+        // exactly-12-char format checked elsewhere in initCouponScan()).
+        // Used only to pick which rejection message to show after the
+        // server has already said "not_found" -- see that call site's
+        // comment for why this must never gate the RPC call itself.
+        private const val MIN_PLAUSIBLE_COUPON_CODE_LENGTH = 6
 
         // The vendor scan SDK has no timeout of its own -- foundBarcode()
         // simply never fires if nothing is ever presented to the camera, so
@@ -503,12 +506,14 @@ class MainActivity : BaseAdActivity() {
                                     // ever changes which TEXT we show, never whether we asked the
                                     // server. docs/coupon_redemption_integration.md §2.1/§4.2 define
                                     // the two formats we ever issue as non-overlapping by length
-                                    // (member codes exactly 12 chars, coupon codes 16+ cryptographically
-                                    // random chars -- confirmed against every real code in
-                                    // docs/supabase_full_schema.sql, seed and generated alike). A
-                                    // rejected string shorter than that can never have been a code we
-                                    // issued, so it gets an honest "not from here" message instead of
-                                    // implying the customer tried and failed to use a real coupon.
+                                    // (member codes exactly 12 chars, coupon codes exactly 8 random
+                                    // alphanumeric chars as of 2026-09-19 -- confirmed against every
+                                    // real code in docs/supabase_full_schema.sql, seed and generated
+                                    // alike; shortened from the original 16+ char format). A rejected
+                                    // string shorter than MIN_PLAUSIBLE_COUPON_CODE_LENGTH can never
+                                    // have been a code we issued, so it gets an honest "not from here"
+                                    // message instead of implying the customer tried and failed to use
+                                    // a real coupon.
                                     // Anything >= MIN_PLAUSIBLE_COUPON_CODE_LENGTH still gets the
                                     // deliberately-generic "can't be used" text -- see §4.6: never
                                     // distinguish not_found from already_used/expired/wrong_org for a
