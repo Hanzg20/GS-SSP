@@ -69,6 +69,12 @@
     <string name="toast_code_unrecognized">Unrecognized code — not issued by this location</string>
     <string name="toast_scan_failed">Couldn\'t read that code, please try again</string>
     <string name="toast_scan_timeout">No code detected, please try again</string>
+    <string name="coupon_confirm_title">Use this coupon?</string>
+    <string name="coupon_confirm_button">Confirm</string>
+    <string name="coupon_confirm_message_free">%1$s $%2$.2f\nCoupon covers the full amount — Free\n%3$s</string>
+    <string name="coupon_confirm_message_discounted">%1$s $%2$.2f\nCoupon applied — pay $%3$.2f\n%4$s</string>
+    <string name="coupon_confirm_expires">Expires %1$s</string>
+    <string name="toast_coupon_cancelled">No problem — the coupon hasn\'t been used</string>
     <string name="voice_vip_low_balance">Insufficient balance. Please top up your card or choose another payment method.</string>
 
     <string name="status_processing">Processing Payment...</string>

@@ -488,43 +488,44 @@ class MainActivity : BaseAdActivity() {
                         }
                     } else {
                         CoroutineScope(Dispatchers.Main).launch {
-                            when (val redemption = CouponRepository.redeemCoupon(scanned, deviceSn)) {
-                                is CouponRedeemResult.Success -> {
-                                    if (redemption.applicableProductId == null) {
+                            // peek_coupon() only -- redeem_coupon() (the real,
+                            // atomic consumption) is deliberately deferred until
+                            // the customer confirms below, see
+                            // showCouponConfirmDialog()'s comment for why.
+                            when (val peek = CouponRepository.peekCoupon(scanned, deviceSn)) {
+                                is CouponPeekResult.Success -> {
+                                    val matchedProduct = findMatchingLocalProduct(peek)
+                                    if (matchedProduct != null) {
                                         pendingVipCardUid = null
-                                        pendingCoupon = redemption
-                                        showScanFeedback(getString(R.string.toast_coupon_applied))
+                                        showCouponConfirmDialog(scanned, peek, matchedProduct)
+                                    } else if (peek.applicableProductId == null) {
+                                        // Generic "any package" discount (no specific package to
+                                        // pre-select and confirm) -- unchanged from the original
+                                        // flow: consume now, let the customer pick a package
+                                        // afterward, discount applied on top of it.
+                                        when (val redemption = CouponRepository.redeemCoupon(scanned, deviceSn)) {
+                                            is CouponRedeemResult.Success -> {
+                                                pendingVipCardUid = null
+                                                pendingCoupon = redemption
+                                                showScanFeedback(getString(R.string.toast_coupon_applied))
+                                            }
+                                            is CouponRedeemResult.Rejected, CouponRedeemResult.NetworkError -> {
+                                                showScanFeedback(getString(couponRejectionMessageRes(scanned)))
+                                            }
+                                        }
                                     } else {
-                                        // Already consumed server-side (uses_count incremented) -- the
-                                        // client has no reliable way to match it against the currently
-                                        // selected package, see the plan's product-id matching gap note.
+                                        // Bound to a specific package (applicable_product_id set),
+                                        // but nothing in the local catalog matches that id -- most
+                                        // likely the device's synced config and the portal's
+                                        // products table have drifted (see products vs
+                                        // app_configurations comment in docs/supabase_full_schema.sql).
+                                        // Never consumed here (peek_coupon only) -- staff can still
+                                        // redeem it manually.
                                         showScanFeedback(getString(R.string.toast_coupon_see_staff))
                                     }
                                 }
-                                is CouponRedeemResult.Rejected, CouponRedeemResult.NetworkError -> {
-                                    // The RPC round-trip already ran either way -- this branch only
-                                    // ever changes which TEXT we show, never whether we asked the
-                                    // server. docs/coupon_redemption_integration.md §2.1/§4.2 define
-                                    // the two formats we ever issue as non-overlapping by length
-                                    // (member codes exactly 12 chars, coupon codes exactly 8 random
-                                    // alphanumeric chars as of 2026-09-19 -- confirmed against every
-                                    // real code in docs/supabase_full_schema.sql, seed and generated
-                                    // alike; shortened from the original 16+ char format). A rejected
-                                    // string shorter than MIN_PLAUSIBLE_COUPON_CODE_LENGTH can never
-                                    // have been a code we issued, so it gets an honest "not from here"
-                                    // message instead of implying the customer tried and failed to use
-                                    // a real coupon.
-                                    // Anything >= MIN_PLAUSIBLE_COUPON_CODE_LENGTH still gets the
-                                    // deliberately-generic "can't be used" text -- see §4.6: never
-                                    // distinguish not_found from already_used/expired/wrong_org for a
-                                    // string that could plausibly be a real coupon, or the message
-                                    // itself becomes a probing oracle.
-                                    val messageRes = if (scanned.length < MIN_PLAUSIBLE_COUPON_CODE_LENGTH) {
-                                        R.string.toast_code_unrecognized
-                                    } else {
-                                        R.string.toast_coupon_invalid
-                                    }
-                                    showScanFeedback(getString(messageRes))
+                                is CouponPeekResult.Rejected, CouponPeekResult.NetworkError -> {
+                                    showScanFeedback(getString(couponRejectionMessageRes(scanned)))
                                 }
                             }
                         }
@@ -545,6 +546,113 @@ class MainActivity : BaseAdActivity() {
                 runOnUiThread { showScanFeedback(getString(R.string.toast_scan_failed)) }
             }
         })
+    }
+
+    /**
+     * docs/coupon_redemption_integration.md §2.1/§4.2: real coupon codes are
+     * exactly 8 random alphanumeric chars (member codes are the separate,
+     * exactly-12-char format checked earlier in initCouponScan()). Shared by
+     * both peek_coupon() rejection paths (initial scan, and the confirm
+     * dialog's own redeem_coupon() call) so both apply the exact same
+     * §4.6 anti-probing rule consistently.
+     */
+    private fun couponRejectionMessageRes(scannedCode: String): Int {
+        return if (scannedCode.length < MIN_PLAUSIBLE_COUPON_CODE_LENGTH) {
+            R.string.toast_code_unrecognized
+        } else {
+            R.string.toast_coupon_invalid
+        }
+    }
+
+    /**
+     * Resolves a peeked coupon to a single package this terminal can
+     * actually dispense, so initCouponScan() can skip package selection and
+     * go straight to a confirm dialog. Two cases:
+     * - [CouponPeekResult.Success.applicableProductId] set (Cael's Campaign
+     *   Builder device/package picker) -- match it by id against the local
+     *   catalog.
+     * - Unset but FIXED_OFF (e.g. a compensation coupon, which is always
+     *   FIXED_OFF with value = the amount to offset, never bound to a
+     *   product -- see issue_compensation_coupon()) -- match by price
+     *   instead: a coupon meant to fully offset one specific wash is, by
+     *   construction, for whichever package costs exactly that much. Only
+     *   matches when exactly one local package has that price -- an
+     *   ambiguous or zero match falls back to manual selection rather than
+     *   guessing.
+     */
+    private fun findMatchingLocalProduct(peek: CouponPeekResult.Success): Product? {
+        val localProducts = ConfigManager.getConfig()?.products ?: emptyList()
+        return when {
+            peek.applicableProductId != null ->
+                localProducts.firstOrNull { it.id == peek.applicableProductId }
+            peek.type == "FIXED_OFF" ->
+                localProducts.filter { it.price_cents == peek.value }.singleOrNull()
+            else -> null
+        }
+    }
+
+    /** Same fallback convention refreshProductsUI() uses for a product missing serial_hex. */
+    private fun serialHexOf(product: Product): String {
+        return product.attributes?.get("serial_hex")?.jsonPrimitive?.contentOrNull
+            ?: "AA 01 ${"%02X".format(product.price_cents / 100)} 55"
+    }
+
+    /**
+     * Shows the "do you want to use this coupon" confirmation and only calls
+     * the real, consuming redeem_coupon() if the customer confirms.
+     * peek_coupon() (already called before this) never touches uses_count,
+     * so declining here, or the customer just walking away, leaves the
+     * coupon completely untouched -- "cancel" is a real cancel, not a
+     * courtesy label on an already-spent coupon. This is the reason
+     * initCouponScan() calls peek_coupon() instead of redeem_coupon()
+     * directly: redeem_coupon() consumes atomically on every call (by
+     * design, to block concurrent double-redemption -- see its own
+     * comment), so a confirm/cancel dialog can only be honest if placed
+     * before that call, not after it.
+     */
+    private fun showCouponConfirmDialog(code: String, peek: CouponPeekResult.Success, product: Product) {
+        val originalPriceCents = product.price_cents
+        val discountedCents = when (peek.type) {
+            "PERCENT_OFF" -> originalPriceCents - (originalPriceCents * peek.value / 100)
+            "FIXED_OFF" -> maxOf(0, originalPriceCents - peek.value)
+            "FREE_WASH" -> 0
+            else -> originalPriceCents
+        }
+        val expiryLine = peek.expiresAt?.let { getString(R.string.coupon_confirm_expires, it.replace("T", " ").take(16)) } ?: ""
+        val message = if (discountedCents <= 0) {
+            getString(R.string.coupon_confirm_message_free, product.name, originalPriceCents / 100.0, expiryLine)
+        } else {
+            getString(R.string.coupon_confirm_message_discounted, product.name, originalPriceCents / 100.0, discountedCents / 100.0, expiryLine)
+        }
+
+        val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
+        dialog.setContentView(R.layout.dialog_coupon_confirm)
+        dialog.findViewById<TextView>(R.id.tv_coupon_confirm_message).text = message
+
+        dialog.findViewById<Button>(R.id.btn_coupon_confirm).setOnClickListener {
+            applyClickFeedback(it)
+            dialog.dismiss()
+            CoroutineScope(Dispatchers.Main).launch {
+                when (val redemption = CouponRepository.redeemCoupon(code, deviceSn)) {
+                    is CouponRedeemResult.Success -> {
+                        pendingCoupon = redemption
+                        startPackagePurchaseFlow(originalPriceCents, serialHexOf(product), product.id)
+                    }
+                    is CouponRedeemResult.Rejected, CouponRedeemResult.NetworkError -> {
+                        // Consumed elsewhere in the gap between peek and confirm --
+                        // an existing, already-handled outcome (already_used), not new.
+                        showScanFeedback(getString(couponRejectionMessageRes(code)))
+                    }
+                }
+            }
+        }
+        dialog.findViewById<Button>(R.id.btn_coupon_cancel).setOnClickListener {
+            applyClickFeedback(it)
+            dialog.dismiss()
+            showScanFeedback(getString(R.string.toast_coupon_cancelled))
+        }
+        dialog.setOnShowListener { applyKioskWindowFlags() }
+        dialog.show()
     }
 
     /**

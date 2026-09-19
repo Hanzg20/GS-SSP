@@ -22,6 +22,22 @@ private data class RedeemCouponResult(
     val message: String? = null
 )
 
+@Serializable
+private data class PeekCouponParams(
+    val p_code: String,
+    val p_device_sn: String
+)
+
+@Serializable
+private data class PeekCouponResult(
+    val success: Boolean,
+    val type: String? = null,
+    val value: Int? = null,
+    val applicable_product_id: String? = null,
+    val expires_at: String? = null,
+    val message: String? = null
+)
+
 /**
  * Outcome of [CouponRepository.redeemCoupon]. Mirrors [VipDeductResult]'s
  * split of "server said no" vs "we couldn't even reach the server" -- the
@@ -35,6 +51,19 @@ sealed class CouponRedeemResult {
     data class Success(val type: String, val value: Int, val applicableProductId: String?) : CouponRedeemResult()
     data class Rejected(val reason: String) : CouponRedeemResult() // not_found | inactive | expired | already_used | wrong_org | device_not_registered
     object NetworkError : CouponRedeemResult()
+}
+
+/**
+ * Outcome of [CouponRepository.peekCoupon] -- same shape as
+ * [CouponRedeemResult] plus [Success.expiresAt] (redeem_coupon() doesn't
+ * return it since nothing before this needed it). A [Success] here does NOT
+ * mean the coupon has been consumed -- see peek_coupon()'s own comment in
+ * docs/supabase_full_schema.sql for why this must stay read-only.
+ */
+sealed class CouponPeekResult {
+    data class Success(val type: String, val value: Int, val applicableProductId: String?, val expiresAt: String?) : CouponPeekResult()
+    data class Rejected(val reason: String) : CouponPeekResult()
+    object NetworkError : CouponPeekResult()
 }
 
 private const val TAG = "CouponRepository"
@@ -71,6 +100,36 @@ object CouponRepository {
         } catch (e: Exception) {
             Log.e(TAG, "Redeem RPC error (network/transport): ${e.message}")
             CouponRedeemResult.NetworkError
+        }
+    }
+
+    /**
+     * Read-only validity check via peek_coupon() -- does NOT consume the
+     * coupon. Callers must still call [redeemCoupon] to actually apply it;
+     * this exists only so a confirm dialog can be shown with real data
+     * before that irreversible step.
+     */
+    suspend fun peekCoupon(code: String, deviceSn: String): CouponPeekResult = withContext(Dispatchers.IO) {
+        try {
+            val result = SupabaseClientProvider.client.postgrest.rpc(
+                "peek_coupon",
+                PeekCouponParams(p_code = code, p_device_sn = deviceSn)
+            )
+            val decoded = result.decodeAs<PeekCouponResult>()
+            if (decoded.success) {
+                CouponPeekResult.Success(
+                    type = decoded.type ?: "FIXED_OFF",
+                    value = decoded.value ?: 0,
+                    applicableProductId = decoded.applicable_product_id,
+                    expiresAt = decoded.expires_at
+                )
+            } else {
+                Log.w(TAG, "Peek rejected: ${decoded.message}")
+                CouponPeekResult.Rejected(decoded.message ?: "unknown")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Peek RPC error (network/transport): ${e.message}")
+            CouponPeekResult.NetworkError
         }
     }
 }

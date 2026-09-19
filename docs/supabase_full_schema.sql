@@ -1722,6 +1722,70 @@ $$;
 REVOKE ALL ON FUNCTION public.redeem_coupon(TEXT, TEXT) FROM public;
 GRANT EXECUTE ON FUNCTION public.redeem_coupon(TEXT, TEXT) TO authenticated;
 
+-- Function: read-only mirror of redeem_coupon()'s validation chain, added
+-- 2026-09-19 -- same not_found/inactive/expired/already_used/wrong_org
+-- checks, but no `FOR UPDATE`, no uses_count increment, no
+-- coupon_redemptions insert. Exists so the terminal can show a "do you want
+-- to use this coupon" confirm dialog with real data (type/value/expiry/
+-- applicable_product_id) BEFORE the coupon is actually consumed --
+-- redeem_coupon() itself always consumes atomically on call, which made a
+-- true confirm/cancel dialog impossible on top of it alone (clicking
+-- "cancel" after a redeem_coupon() call would still have burned the coupon
+-- for nothing). The real consumption still only ever happens via
+-- redeem_coupon(), called only after the customer confirms -- this function
+-- must never be treated as sufficient authorization to dispense anything by
+-- itself. A coupon that passes peek_coupon() can still fail redeem_coupon()
+-- moments later (e.g. redeemed elsewhere in the gap between the two calls)
+-- -- that's the existing, already-handled already_used outcome, not a new
+-- race condition. Same grant as redeem_coupon() (authenticated only, not
+-- anon) for the same reason -- the terminal has already completed its
+-- anonymous sign-in by the time either is reachable.
+CREATE OR REPLACE FUNCTION public.peek_coupon(p_code TEXT, p_device_sn TEXT)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_coupon RECORD;
+  v_device_org_id UUID;
+BEGIN
+  SELECT org_id INTO v_device_org_id FROM public.devices WHERE sn = p_device_sn;
+  IF NOT FOUND THEN
+    RETURN json_build_object('success', false, 'message', 'device_not_registered');
+  END IF;
+
+  SELECT * INTO v_coupon FROM public.coupons WHERE code = p_code;
+
+  IF NOT FOUND THEN
+    RETURN json_build_object('success', false, 'message', 'not_found');
+  END IF;
+  IF NOT v_coupon.is_active THEN
+    RETURN json_build_object('success', false, 'message', 'inactive');
+  END IF;
+  IF v_coupon.expires_at IS NOT NULL AND v_coupon.expires_at < now() THEN
+    RETURN json_build_object('success', false, 'message', 'expired');
+  END IF;
+  IF v_coupon.uses_count >= v_coupon.max_uses THEN
+    RETURN json_build_object('success', false, 'message', 'already_used');
+  END IF;
+  IF v_coupon.org_id != v_device_org_id THEN
+    RETURN json_build_object('success', false, 'message', 'wrong_org');
+  END IF;
+
+  RETURN json_build_object(
+    'success', true,
+    'type', v_coupon.type,
+    'value', v_coupon.value,
+    'applicable_product_id', v_coupon.applicable_product_id,
+    'expires_at', v_coupon.expires_at
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.peek_coupon(TEXT, TEXT) FROM public;
+GRANT EXECUTE ON FUNCTION public.peek_coupon(TEXT, TEXT) TO authenticated;
+
 -- Function: operationalizes docs/cloud_management_platform_design.md
 -- §3.3.1's "Service Compensation (One-Click)" workflow -- a MERCHANT_ADMIN
 -- (or SYS_ADMIN) issues a compensation coupon, typically against a specific
