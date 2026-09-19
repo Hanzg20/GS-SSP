@@ -461,6 +461,16 @@ class MainActivity : BaseAdActivity() {
             override fun onScanSuccess(result: String) {
                 scanTimeoutRunnable?.let { scanTimeoutHandler.removeCallbacks(it) }
                 val scanned = result.trim()
+                // Length + suffix only, not the full code -- enough to
+                // cross-reference against the coupons table when a
+                // redemption result looks wrong, without logging a
+                // reusable code in full. Added after a real "already_used"
+                // report that turned out to be a stale QR code still on
+                // screen (a coupon genuinely already redeemed, correctly
+                // rejected) rather than a bug -- there was previously no way
+                // to tell which code the camera actually decoded without
+                // this, 2026-09-19.
+                Log.d("MainActivity", "Scanned code: len=${scanned.length} suffix=${scanned.takeLast(6)}")
                 runOnUiThread {
                     if (Regex("^[A-Za-z0-9]{12}$").matches(scanned)) {
                         CoroutineScope(Dispatchers.Main).launch {
