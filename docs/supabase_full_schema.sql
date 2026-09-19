@@ -1671,9 +1671,15 @@ GRANT EXECUTE ON FUNCTION public.resolve_vip_card_uid_by_qr(TEXT) TO authenticat
 -- redemptions of the same code (screenshot forwarded to two people, printed
 -- voucher photocopied) can't both succeed. This is the ONLY path allowed to
 -- modify coupons.uses_count / write coupon_redemptions (see REVOKE above).
--- Only 'authenticated' is granted EXECUTE (not 'anon' like
--- deduct_vip_balance) since by the time this is reachable the app has
--- already completed its anonymous sign-in (see SupabaseClientProvider.kt).
+-- CORRECTED 2026-09-20: this comment previously claimed only 'authenticated'
+-- was granted (not 'anon', unlike deduct_vip_balance), reasoning the app
+-- would have completed its anonymous sign-in by the time this is reachable.
+-- That was never actually true in production -- confirmed live via a
+-- "permission denied for function peek_coupon" error on the real kiosk (see
+-- peek_coupon() below) using its anon publishable key, not a per-user JWT.
+-- 'anon' has always genuinely been required here; keep both grants below in
+-- sync with whatever this function actually has, not with what a comment
+-- like this one assumes.
 CREATE OR REPLACE FUNCTION public.redeem_coupon(p_code TEXT, p_device_sn TEXT)
 RETURNS JSON
 LANGUAGE plpgsql
@@ -1720,7 +1726,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.redeem_coupon(TEXT, TEXT) FROM public;
-GRANT EXECUTE ON FUNCTION public.redeem_coupon(TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.redeem_coupon(TEXT, TEXT) TO anon, authenticated;
 
 -- Function: read-only mirror of redeem_coupon()'s validation chain, added
 -- 2026-09-19 -- same not_found/inactive/expired/already_used/wrong_org
@@ -1737,9 +1743,14 @@ GRANT EXECUTE ON FUNCTION public.redeem_coupon(TEXT, TEXT) TO authenticated;
 -- itself. A coupon that passes peek_coupon() can still fail redeem_coupon()
 -- moments later (e.g. redeemed elsewhere in the gap between the two calls)
 -- -- that's the existing, already-handled already_used outcome, not a new
--- race condition. Same grant as redeem_coupon() (authenticated only, not
--- anon) for the same reason -- the terminal has already completed its
--- anonymous sign-in by the time either is reachable.
+-- race condition. GRANTED TO ANON TOO (2026-09-20 fix): first shipped as
+-- authenticated-only on the assumption redeem_coupon() being
+-- authenticated-only meant the kiosk always has a real session by this
+-- point -- confirmed wrong live, "permission denied for function
+-- peek_coupon" on the real device, calling with its anon publishable key.
+-- redeem_coupon() has actually always been granted to anon as well (its own
+-- comment above was the same stale assumption, also corrected now) -- keep
+-- these two functions' grants identical going forward.
 CREATE OR REPLACE FUNCTION public.peek_coupon(p_code TEXT, p_device_sn TEXT)
 RETURNS JSON
 LANGUAGE plpgsql
@@ -1784,7 +1795,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.peek_coupon(TEXT, TEXT) FROM public;
-GRANT EXECUTE ON FUNCTION public.peek_coupon(TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.peek_coupon(TEXT, TEXT) TO anon, authenticated;
 
 -- Function: operationalizes docs/cloud_management_platform_design.md
 -- §3.3.1's "Service Compensation (One-Click)" workflow -- a MERCHANT_ADMIN
