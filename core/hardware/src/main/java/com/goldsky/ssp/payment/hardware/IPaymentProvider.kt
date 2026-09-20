@@ -4,8 +4,20 @@ package com.goldsky.ssp.payment.hardware
  * Common interface for card payment processing across different vendors (PAX, ID TECH).
  */
 interface IPaymentProvider {
-    
+
+    /**
+     * What the terminal reported about the card, for credit/debit
+     * classification. [scheme] is the terminal's own "Credit"/"Debit" flag
+     * (WizarPOS TransScheme) when it sends one; [aid] is the EMV application
+     * id and [bin] the first 6 PAN digits -- kept so a card can be re-classified
+     * later without re-reading it. Any field may be null.
+     */
+    data class CardInfo(val scheme: String?, val brand: String?, val aid: String?, val bin: String?)
+
     interface PaymentCallback {
+        /** Called before [onSuccess] by providers that can report card details. Default: ignore. */
+        fun onCardInfo(info: CardInfo) {}
+
         /**
          * [entryMode] records how the card was actually presented (e.g.
          * "MSR", "EMV_OR_CTLS(cardType=...)") for reconciliation/receipts --

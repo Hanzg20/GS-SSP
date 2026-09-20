@@ -114,6 +114,9 @@ class MainActivity : BaseAdActivity() {
     // result is routed to exactly one of the two (see docs/
     // coupon_redemption_integration.md §2.1's format-based routing).
     private var pendingVipCardUid: String? = null
+    // Card details the terminal reported for the card payment in flight
+    // (set in initCardPayment's callback, consumed once by startFinalizationSequence).
+    private var pendingCardInfo: com.goldsky.ssp.payment.hardware.IPaymentProvider.CardInfo? = null
     private var pendingCoupon: CouponRedeemResult.Success? = null
 
     // Technician/Maintenance Variables
@@ -1111,6 +1114,9 @@ class MainActivity : BaseAdActivity() {
             } else {
                 val provider = PaymentProviderFactory.getPaymentProvider(this@MainActivity, hardwareVendor)
                 provider.startSale(priceInCents, txRefNum, object : com.goldsky.ssp.payment.hardware.IPaymentProvider.PaymentCallback {
+                    override fun onCardInfo(info: com.goldsky.ssp.payment.hardware.IPaymentProvider.CardInfo) {
+                        pendingCardInfo = info
+                    }
                     override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                         startFinalizationSequence(priceInCents, startHex, refNum, dialog, txRefNum, entryMode = entryMode)
                     }
@@ -1290,7 +1296,14 @@ class MainActivity : BaseAdActivity() {
 
             // 1. Record transaction to Supabase (v2.0 Audit)
             if (pendingEcrRefNum != null) {
-                TransactionRepository.updatePaymentStatus(this@MainActivity, pendingEcrRefNum, "PAID", entryMode)
+                val cardInfo = pendingCardInfo
+                pendingCardInfo = null
+                TransactionRepository.updatePaymentStatus(
+                    this@MainActivity, pendingEcrRefNum, "PAID", entryMode,
+                    paymentMethod = cardInfo?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid) },
+                    cardAid = cardInfo?.aid,
+                    cardBin = cardInfo?.bin
+                )
             } else {
                 TransactionRepository.recordTransaction(
                     this@MainActivity,

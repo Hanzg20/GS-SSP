@@ -26,7 +26,10 @@ data class TransactionRecord(
     val product_id: String? = null,
     val entry_mode: String? = null,
     // Set for VIP_CARD payments only; transactions.vip_card_uid (see docs/migrations/2026-09-20_vip_card_ledger.sql)
-    val vip_card_uid: String? = null
+    val vip_card_uid: String? = null,
+    // EMV AID / first 6 PAN digits of a card payment, see CardTypeClassifier
+    val card_aid: String? = null,
+    val card_bin: String? = null
 )
 
 /**
@@ -86,7 +89,16 @@ object TransactionRepository {
     /**
      * Flips payment_status locally and remotely.
      */
-    suspend fun updatePaymentStatus(context: Context, ecrRefNum: String, status: String, entryMode: String? = null): Boolean =
+    suspend fun updatePaymentStatus(
+        context: Context,
+        ecrRefNum: String,
+        status: String,
+        entryMode: String? = null,
+        // Card payments only: refines the PENDING row's provisional CREDIT_CARD once the terminal reports the real card.
+        paymentMethod: String? = null,
+        cardAid: String? = null,
+        cardBin: String? = null
+    ): Boolean =
         withContext(Dispatchers.IO) {
             // Update local
             try {
@@ -99,11 +111,14 @@ object TransactionRepository {
                 Log.e(TAG, "Local payment status update failed: ${e.message}")
             }
 
-            val ok = updatePaymentStatusRemote(ecrRefNum, status, entryMode)
+            val ok = updatePaymentStatusRemote(ecrRefNum, status, entryMode, paymentMethod, cardAid, cardBin)
             if (!ok) {
                 OfflineQueueManager.enqueue(
                     context.filesDir,
-                    PendingOp(type = "update_status", ecrRefNum = ecrRefNum, status = status, entryMode = entryMode)
+                    PendingOp(
+                        type = "update_status", ecrRefNum = ecrRefNum, status = status, entryMode = entryMode,
+                        paymentMethod = paymentMethod, cardAid = cardAid, cardBin = cardBin
+                    )
                 )
                 Log.w(TAG, "Payment status update queued offline: $ecrRefNum -> $status")
             }
@@ -175,11 +190,21 @@ object TransactionRepository {
         }
     }
 
-    suspend fun updatePaymentStatusRemote(ecrRefNum: String, status: String, entryMode: String? = null): Boolean = withContext(Dispatchers.IO) {
+    suspend fun updatePaymentStatusRemote(
+        ecrRefNum: String,
+        status: String,
+        entryMode: String? = null,
+        paymentMethod: String? = null,
+        cardAid: String? = null,
+        cardBin: String? = null
+    ): Boolean = withContext(Dispatchers.IO) {
         try {
             SupabaseClientProvider.client.postgrest["transactions"].update(
                 {
                     set("payment_status", status)
+                    paymentMethod?.let { set("payment_method", it) }
+                    cardAid?.let { set("card_aid", it) }
+                    cardBin?.let { set("card_bin", it) }
                 }
             ) {
                 filter {

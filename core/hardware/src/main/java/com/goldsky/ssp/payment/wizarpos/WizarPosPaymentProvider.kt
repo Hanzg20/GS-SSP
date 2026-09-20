@@ -129,6 +129,16 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                 if (isSuccess) {
                     val authNo = root["AuthCode"]?.jsonPrimitive?.content ?: "OK"
                     val refNo = root["RRN"]?.jsonPrimitive?.content ?: originalRef
+                    // Empty/"null" strings mean the terminal didn't fill the field.
+                    fun field(k: String) = root[k]?.jsonPrimitive?.content?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+                    val info = IPaymentProvider.CardInfo(
+                        scheme = field("TransScheme"),
+                        brand = field("CardBrand"),
+                        aid = field("EmvAid"),
+                        bin = field("CardNum")?.filter { it.isDigit() }?.take(6)?.takeIf { it.length == 6 }
+                    )
+                    Log.i(TAG, "Card info: scheme=${info.scheme} brand=${info.brand} aid=${info.aid} bin=${info.bin}")
+                    callback.onCardInfo(info)
                     // entryMode CTLS as a placeholder, real one could be parsed from CardNum/TransType
                     callback.onSuccess(authNo, refNo, "PAYWIZARD")
                 } else {

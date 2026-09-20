@@ -448,7 +448,9 @@ CREATE INDEX IF NOT EXISTS idx_transactions_status ON public.transactions(paymen
 -- startFinalizationSequence's insert branch for VIP/QR/free-wash) -- never
 -- patched in by a later UPDATE, so no RLS/grant changes needed beyond what
 -- INSERT on this table already allowed.
-ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (payment_method IN ('CREDIT_CARD', 'VIP_CARD', 'QR_CODE', 'COUPON'));
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (payment_method IN ('CREDIT_CARD', 'DEBIT_CARD', 'VIP_CARD', 'QR_CODE', 'COUPON'));
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS card_aid TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS card_bin TEXT;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS product_id UUID REFERENCES public.products(id) ON DELETE SET NULL;
 
 -- entry_mode: how the card was actually presented (see

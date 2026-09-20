@@ -15,7 +15,10 @@ data class PendingOp(
     val ecrRefNum: String? = null,
     val status: String? = null,
     // Only ever set on "update_status" ops (see TransactionRepository.updatePaymentStatus).
-    val entryMode: String? = null
+    val entryMode: String? = null,
+    val paymentMethod: String? = null,
+    val cardAid: String? = null,
+    val cardBin: String? = null
 )
 
 /**
