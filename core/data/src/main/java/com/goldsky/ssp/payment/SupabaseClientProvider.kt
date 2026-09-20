@@ -83,8 +83,26 @@ object SupabaseClientProvider {
         try {
             client.auth.signInAnonymously()
             Log.i(TAG, "Signed in anonymously for postgrest/realtime access")
+            // A fresh anonymous sign-in is a NEW auth user that device_auth_map
+            // has never heard of: every RLS policy scoped through it (transactions,
+            // heartbeats, shadows) then silently matches zero rows -- seen live
+            // 2026-09-20, card payments approved by the terminal but left PENDING
+            // in the database. Re-link it right away instead of waiting for the
+            // next app launch.
+            relinkDeviceIdentity()
         } catch (e: Exception) {
             Log.e(TAG, "Anonymous sign-in failed: ${e.message}")
+        }
+    }
+
+    /** Re-binds the current auth session to this device (device_auth_map). No-op before first registration. */
+    suspend fun relinkDeviceIdentity() {
+        val sn = DeviceRepository.getPersistedDeviceSn() ?: return
+        try {
+            DeviceRepository.syncDeviceIdentity(sn)
+            Log.i(TAG, "Re-linked auth session to device $sn")
+        } catch (e: Exception) {
+            Log.e(TAG, "Re-link failed: ${e.message}")
         }
     }
 }

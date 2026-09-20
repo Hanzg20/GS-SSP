@@ -171,17 +171,35 @@ object TransactionRepository {
         }
     }
 
+    /**
+     * UPDATE ... WHERE ecr_ref_num = ? that reports whether a row was actually
+     * changed. PostgREST answers 200 with zero rows when RLS hides the row (e.g.
+     * the auth session isn't linked to this device in device_auth_map), which
+     * used to be logged as success while the transaction stayed PENDING. On zero
+     * rows: re-link the session and retry once; still zero -> false, so the
+     * caller queues it for replay instead of dropping it.
+     */
+    private suspend fun updateRows(
+        label: String,
+        ecrRefNum: String,
+        values: io.github.jan.supabase.postgrest.query.PostgrestUpdate.() -> Unit
+    ): Boolean {
+        repeat(2) { attempt ->
+            val result = SupabaseClientProvider.client.postgrest["transactions"].update(values) {
+                select()
+                filter { eq("ecr_ref_num", ecrRefNum) }
+            }
+            if (result.data.trim() != "[]") return true
+            Log.w(TAG, "$label update matched 0 rows for $ecrRefNum (attempt ${attempt + 1})")
+            if (attempt == 0) SupabaseClientProvider.relinkDeviceIdentity()
+        }
+        return false
+    }
+
     suspend fun updateHardwareStatusRemote(ecrRefNum: String, status: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            SupabaseClientProvider.client.postgrest["transactions"].update(
-                {
-                    set("hardware_status", status)
-                }
-            ) {
-                filter {
-                    eq("ecr_ref_num", ecrRefNum)
-                }
-            }
+            val updated = updateRows("hardware_status", ecrRefNum) { set("hardware_status", status) }
+            if (!updated) return@withContext false
             Log.i(TAG, "Hardware status updated to $status for $ecrRefNum")
             true
         } catch (e: Exception) {
@@ -199,18 +217,13 @@ object TransactionRepository {
         cardBin: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            SupabaseClientProvider.client.postgrest["transactions"].update(
-                {
-                    set("payment_status", status)
-                    paymentMethod?.let { set("payment_method", it) }
-                    cardAid?.let { set("card_aid", it) }
-                    cardBin?.let { set("card_bin", it) }
-                }
-            ) {
-                filter {
-                    eq("ecr_ref_num", ecrRefNum)
-                }
+            val updated = updateRows("payment_status", ecrRefNum) {
+                set("payment_status", status)
+                paymentMethod?.let { set("payment_method", it) }
+                cardAid?.let { set("card_aid", it) }
+                cardBin?.let { set("card_bin", it) }
             }
+            if (!updated) return@withContext false
             Log.i(TAG, "Payment status updated to $status for $ecrRefNum")
             true
         } catch (e: Exception) {
