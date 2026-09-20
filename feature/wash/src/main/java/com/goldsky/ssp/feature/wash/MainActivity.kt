@@ -483,7 +483,12 @@ class MainActivity : BaseAdActivity() {
                             if (cardUid != null) {
                                 pendingCoupon = null
                                 pendingVipCardUid = cardUid
-                                showScanFeedback(getString(R.string.toast_member_recognized))
+                                // Best-effort lookup for the card no./balance line; a
+                                // failure here must not block the flow, the deduct RPC
+                                // re-validates the card server-side anyway.
+                                val card = VipRepository.getVipCard(cardUid)
+                                val base = getString(R.string.toast_member_recognized)
+                                showScanFeedback(if (card != null) "${vipCardSummary(card)}\n$base" else base)
                             } else {
                                 showScanFeedback(getString(R.string.toast_member_code_invalid))
                             }
@@ -894,6 +899,15 @@ class MainActivity : BaseAdActivity() {
     }
 
 
+    private fun formatCents(cents: Int): String = "$" + String.format(java.util.Locale.US, "%.2f", cents / 100.0)
+
+    // display_card_number is what's printed on the card; card_uid is the NFC
+    // serial and not human-legible, so it's only a last-resort fallback.
+    private fun vipCardNumber(card: VipCard): String = card.display_card_number ?: card.card_uid
+
+    private fun vipCardSummary(card: VipCard): String =
+        "Card No. ${vipCardNumber(card)}  |  Balance: ${formatCents(card.balance_cents)}"
+
     private fun initVipPayment(uid: String, priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null) {
         val layoutStatus = dialog.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
         val tvStatus = dialog.findViewById<TextView>(R.id.tv_status_msg)
@@ -921,10 +935,14 @@ class MainActivity : BaseAdActivity() {
                 priceInCents
             }
 
-            tvStatus.text = "Authorizing Payment..."
+            tvStatus.text = listOfNotNull(card?.let { vipCardSummary(it) }, "Authorizing Payment...").joinToString("\n")
             when (val result = VipRepository.deductBalance(uid, finalPrice)) {
                 is VipDeductResult.Success -> {
-                    tvStatus.text = "VIP Payment Successful!"
+                    tvStatus.text = listOfNotNull(
+                        "VIP Payment Successful!",
+                        card?.let { "Card No. ${vipCardNumber(it)}" },
+                        "Remaining Balance: ${formatCents(result.newBalanceCents)}"
+                    ).joinToString("\n")
                     delay(1500)
                     startFinalizationSequence(finalPrice, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog, productId = productId, paymentMethod = "VIP_CARD", entryMode = "NFC_TAP")
                 }
@@ -935,7 +953,9 @@ class MainActivity : BaseAdActivity() {
                         "card_not_found" -> "VIP Card Not Recognized"
                         else -> "VIP Card Balance Insufficient"
                     }
-                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                    val detail = if (card != null && result.reason == "insufficient_balance")
+                        "\n${vipCardSummary(card)}\nAmount Due: ${formatCents(finalPrice)}" else ""
+                    Toast.makeText(this@MainActivity, message + detail, Toast.LENGTH_LONG).show()
                     if (result.reason == "insufficient_balance") {
                         TtsManager.speak(getString(R.string.voice_vip_low_balance))
                     }
@@ -967,6 +987,48 @@ class MainActivity : BaseAdActivity() {
      * doesn't apply here.
      */
     private fun startPreAuthenticatedVipFlow(priceInCents: Int, startHex: String, uid: String, productId: String? = null) {
+        // Only interrupt the customer when the payment can't succeed anyway
+        // (balance short / card deactivated) -- say so up front instead of a
+        // rejected deduct. Otherwise go straight to payment; the card no. and
+        // balance are shown in the payment status (see initVipPayment).
+        CoroutineScope(Dispatchers.Main).launch {
+            val card = VipRepository.getVipCard(uid)
+            // card == null: lookup failed (network) -- don't block, the deduct
+            // RPC still validates server-side and NetworkError falls back to
+            // tap-card.
+            if (card != null && (!card.is_active || card.balance_cents < priceInCents)) {
+                showVipUnavailableDialog(card, priceInCents)
+            } else {
+                proceedVipPayment(priceInCents, startHex, uid, productId)
+            }
+        }
+    }
+
+    /** pendingVipCardUid is already cleared, so Back lands on package selection with no card bound. */
+    private fun showVipUnavailableDialog(card: VipCard, priceInCents: Int) {
+        val no = "Card No. ${vipCardNumber(card)}"
+        val message = if (!card.is_active) {
+            "$no\nThis VIP card has been deactivated.\nPlease use another payment method."
+        } else {
+            "$no\nBalance: ${formatCents(card.balance_cents)}\nAmount Due: ${formatCents(priceInCents)}\n" +
+                "Short by ${formatCents(priceInCents - card.balance_cents)}.\nPlease top up, or choose another package / payment method."
+        }
+        val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
+        dialog.setContentView(R.layout.dialog_coupon_confirm)
+        dialog.findViewById<TextView>(R.id.tv_coupon_confirm_title).text =
+            if (card.is_active) "Insufficient Balance" else "Card Deactivated"
+        dialog.findViewById<TextView>(R.id.tv_coupon_confirm_message).text = message
+        dialog.findViewById<Button>(R.id.btn_coupon_confirm).visibility = View.GONE
+        dialog.findViewById<Button>(R.id.btn_coupon_cancel).apply {
+            text = "Back"
+            setOnClickListener { applyClickFeedback(it); dialog.dismiss() }
+        }
+        dialog.setOnShowListener { applyKioskWindowFlags() }
+        dialog.show()
+        if (card.is_active) TtsManager.speak(getString(R.string.voice_vip_low_balance))
+    }
+
+    private fun proceedVipPayment(priceInCents: Int, startHex: String, uid: String, productId: String? = null) {
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         dialog.setContentView(R.layout.dialog_payment)
         paymentDialog = dialog

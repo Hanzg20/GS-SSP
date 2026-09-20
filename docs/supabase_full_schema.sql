@@ -1644,7 +1644,7 @@ AS $$
 DECLARE
   v_card RECORD;
 BEGIN
-  SELECT card_uid, balance_cents, is_active
+  SELECT card_uid, balance_cents, is_active, display_card_number
   INTO v_card
   FROM public.vip_cards
   WHERE card_uid = p_card_uid;
@@ -1658,7 +1658,8 @@ BEGIN
     'card_uid', v_card.card_uid,
     'balance_cents', v_card.balance_cents,
     'is_active', v_card.is_active,
-    'tier', 'REGULAR'
+    'tier', 'REGULAR',
+    'display_card_number', v_card.display_card_number
   );
 END;
 $$;
