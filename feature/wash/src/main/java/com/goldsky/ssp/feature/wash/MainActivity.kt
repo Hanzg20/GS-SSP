@@ -944,7 +944,7 @@ class MainActivity : BaseAdActivity() {
                         "Remaining Balance: ${formatCents(result.newBalanceCents)}"
                     ).joinToString("\n")
                     delay(1500)
-                    startFinalizationSequence(finalPrice, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog, productId = productId, paymentMethod = "VIP_CARD", entryMode = "NFC_TAP")
+                    startFinalizationSequence(finalPrice, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog, productId = productId, paymentMethod = "VIP_CARD", entryMode = "NFC_TAP", vipCardUid = uid)
                 }
                 is VipDeductResult.Rejected -> {
                     paymentInFlight = false
@@ -1237,6 +1237,8 @@ class MainActivity : BaseAdActivity() {
         productId: String? = null,
         paymentMethod: String = "UNKNOWN",
         entryMode: String? = null,
+        // VIP_CARD payments only: recorded on the transaction row so a card's spend can be traced.
+        vipCardUid: String? = null,
         // Real tx_id from QrPaymentRepository.createSession/pollUntilPaid, set only
         // by the QR call site. Deliberately kept separate from refNum (rather than
         // passing it as refNum directly) because refNum.isEmpty() also gates the
@@ -1299,7 +1301,8 @@ class MainActivity : BaseAdActivity() {
                         ecr_ref_num = ecrRefNum,
                         payment_method = paymentMethod,
                         product_id = productId,
-                        entry_mode = entryMode
+                        entry_mode = entryMode,
+                        vip_card_uid = vipCardUid
                     )
                 )
             }

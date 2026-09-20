@@ -24,7 +24,9 @@ data class TransactionRecord(
     val currency: String = "USD",
     val payment_method: String? = null,
     val product_id: String? = null,
-    val entry_mode: String? = null
+    val entry_mode: String? = null,
+    // Set for VIP_CARD payments only; transactions.vip_card_uid (see docs/migrations/2026-09-20_vip_card_ledger.sql)
+    val vip_card_uid: String? = null
 )
 
 /**
