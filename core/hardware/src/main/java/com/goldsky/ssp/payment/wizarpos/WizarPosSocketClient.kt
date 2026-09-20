@@ -18,7 +18,10 @@ object WizarPosSocketClient {
     private const val HOST = "127.0.0.1"
     private const val PORT = 6666
     private const val CONNECT_TIMEOUT_MS = 5000
-    private const val READ_TIMEOUT_MS = 60000 
+    // Must outlast PAYWizard's own transaction timeout (180 s, "timeOut: 180 s" in its
+    // log): at 60 s we gave up and recorded DECLINED, then the terminal approved the
+    // card a few seconds later -- charged, but untracked and never dispensed.
+    private const val READ_TIMEOUT_MS = 200_000
     
     private var sequenceNumber = 1
 
