@@ -24,7 +24,16 @@ android {
 
         buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
         buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
-        buildConfigField "boolean", "IS_MOCK", "true"
+        // false so CoreConfig.isMock/HardwareConfig.isMock reflect real
+        // hardware testing -- was hardcoded true, which made
+        // TransactionRepository.recordTransactionRemote()/updatePaymentStatusRemote()
+        // silently skip writing to Supabase entirely (logged "MOCK: Transaction
+        // recorded (skipped remote)" and nothing else), so every real card
+        // payment tested on a live WizarPOS Q3mini recorded zero revenue in
+        // Eagleson Coin Wash's account -- confirmed live, 2026-09-19: the
+        // transactions table had 0 rows for that device despite a full day of
+        // real testing.
+        buildConfigField "boolean", "IS_MOCK", "false"
     }
 
     buildFeatures {
@@ -40,22 +49,20 @@ android {
         jvmTarget = '11'
     }
 
-    buildTypes {
-        debug {
-            // libs:wizarpos' cloudpos_sdk.aar only ships arm64-v8a natives (real
-            // WizarPOS hardware) -- installing on an x86_64 dev emulator fails
-            // outright with INSTALL_FAILED_NO_MATCHING_ABIS with no ABI-selection
-            // workaround available. Debug/mock testing (BuildConfig.IS_MOCK=true)
-            // never actually calls into these natives, so it's safe to drop them
-            // from just the debug APK; a real release build targeting real
-            // hardware must NOT carry this exclusion.
-            packagingOptions {
-                jniLibs {
-                    excludes += ["**/*.so"]
-                }
-            }
-        }
-    }
+    // No debug-only jniLibs exclusion anymore -- it used to strip every .so
+    // from the debug APK on the theory that IS_MOCK=true never called into
+    // them, which stopped being true once IS_MOCK flipped to false above.
+    // Worse, that exclusion was also silently discarding real, present
+    // natives (libjni_cloudpos_ext_board.so, libjni_cloudpos_serial_multi.so,
+    // etc. -- confirmed live in libs/wizarpos/cloudpos_sdk.aar's jni/
+    // folders, 2026-09-19) that GPIO relay dispensing and the serial port
+    // genuinely need on real WizarPOS hardware. Every "native lib not found"
+    // crash fixed earlier today (WizarPosGpioProvider/WizarPosSerialProvider)
+    // was this exclusion doing exactly what it was told to, not a real gap
+    // in the vendor SDK. Testing against an x86_64 emulator is no longer
+    // possible for this app shell as a result (INSTALL_FAILED_NO_MATCHING_ABIS,
+    // same as any app shipping arm-only native code) -- acceptable since all
+    // testing here is against real WizarPOS hardware.
 }
 
 dependencies {
