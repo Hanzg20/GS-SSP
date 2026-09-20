@@ -57,7 +57,8 @@ class MainActivity : BaseAdActivity() {
         // display -- see issue_compensation_coupon()'s comment). Set below
         // that real length, not equal to it, so a genuine code is never
         // rejected by this floor; member codes are the separate,
-        // exactly-12-char format checked elsewhere in initCouponScan()).
+        // exactly-6-char format (shortened from 12, 2026-09-20) checked
+        // elsewhere in initCouponScan()).
         // Used only to pick which rejection message to show after the
         // server has already said "not_found" -- see that call site's
         // comment for why this must never gate the RPC call itself.
@@ -429,8 +430,9 @@ class MainActivity : BaseAdActivity() {
      * Entry point for the home-screen "Scan Coupon / Member QR Code" belt
      * (layout_scan_belt) -- previously pure decoration with no backing logic
      * (see docs/coupon_redemption_integration.md). Routes the scanned string
-     * by format (§2.1): a 12-character alphanumeric code is a member QR
-     * code, anything else is a coupon/voucher code. The client never judges
+     * by format (§2.1): a 6-character alphanumeric code (shortened from 12,
+     * 2026-09-20) is a member QR code, anything else is a coupon/voucher
+     * code. The client never judges
      * a coupon's validity itself -- redeem_coupon() does that atomically,
      * server-side; the client only routes the result.
      */
@@ -475,7 +477,7 @@ class MainActivity : BaseAdActivity() {
                 // this, 2026-09-19.
                 Log.d("MainActivity", "Scanned code: len=${scanned.length} suffix=${scanned.takeLast(6)}")
                 runOnUiThread {
-                    if (Regex("^[A-Za-z0-9]{12}$").matches(scanned)) {
+                    if (Regex("^[A-Za-z0-9]{6}$").matches(scanned)) {
                         CoroutineScope(Dispatchers.Main).launch {
                             val cardUid = VipRepository.resolveCardUidByQrCode(scanned)
                             if (cardUid != null) {
@@ -551,7 +553,8 @@ class MainActivity : BaseAdActivity() {
     /**
      * docs/coupon_redemption_integration.md §2.1/§4.2: real coupon codes are
      * exactly 8 random alphanumeric chars (member codes are the separate,
-     * exactly-12-char format checked earlier in initCouponScan()). Shared by
+     * exactly-6-char format, shortened from 12 on 2026-09-20, checked
+     * earlier in initCouponScan()). Shared by
      * both peek_coupon() rejection paths (initial scan, and the confirm
      * dialog's own redeem_coupon() call) so both apply the exact same
      * §4.6 anti-probing rule consistently.

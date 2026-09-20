@@ -131,7 +131,7 @@ override fun startCardDetection(amountInCents: Int, callback: IPaymentProvider.P
 
 *   **Cash**：新增 `OureaCashDialog`（数字键盘输入实收现金，实时算找零/差额，Confirm 在实收 < 应收时禁用）+ `MainActivity.triggerCashPayment`。现金没有网关/硬件往返，staff 是在确认"钱已经收到"，所以直接落 `payment_status=PAID`（不同于卡/QR 那种先 PENDING 再翻 PAID 的模式），`payment_method="CASH"`。
 *   **QR**：新增 `OureaQrPaymentDialog`（展示 `QrUtils.generateQrCode` 生成的二维码，等待中可取消）+ `MainActivity.startQrPayment`，复用 `QrPaymentRepository`（`feature/wash` 的 kiosk 扫码支付已经在用的同一个 Supabase-backed session/poll 实现，不是客户端假计时器）。取消会 `Job.cancel()` 真正中断轮询。
-*   **Member Card**：新增 `OureaMemberDialog`（人工输入/条码枪当键盘输入 12 位会员码，格式校验通过 `VipRepository.resolveCardUidByQrCode` 期望的同一个正则才允许提交）+ `MainActivity.triggerVipPayment`，PLATINUM/GOLD 阶梯折扣逻辑照抄 `feature/wash` 的 `initVipPayment`（应用在购物车总额上，wash 那边是应用在单一价格上）。用手动输入码而不是 NFC 感应，是因为 Ourea 现有硬件 provider 都是刷卡支付终端、不是会员卡 NFC 读卡器，也没有接扫码枪硬件。
+*   **Member Card**：新增 `OureaMemberDialog`（人工输入/条码枪当键盘输入 6 位会员码，2026-09-20 由 12 位缩短而来，格式校验通过 `VipRepository.resolveCardUidByQrCode` 期望的同一个正则才允许提交）+ `MainActivity.triggerVipPayment`，PLATINUM/GOLD 阶梯折扣逻辑照抄 `feature/wash` 的 `initVipPayment`（应用在购物车总额上，wash 那边是应用在单一价格上）。用手动输入码而不是 NFC 感应，是因为 Ourea 现有硬件 provider 都是刷卡支付终端、不是会员卡 NFC 读卡器，也没有接扫码枪硬件。
 *   `OureaPaymentUiState.Success` 从 `authCode: String` 改成通用 `message: String`（cash/QR/member 的成功提示不是一个授权码），四条支付路径在各自的最终提示文案里说明各自结果（找零金额/折扣是否命中等）。
 *   **真机验证过程中发现两个真实布局 bug，均已修复**（不是猜的，是模拟器截图直接看到的）：
     1.  支付确认页四个按钮原来用 `.width(280.dp)`/`.width(133.dp)` 固定宽度：在这个 app 实际的横屏分辨率下，左侧 `weight(1f)` 那一栏实际测得的宽度远小于 320dp（侧边栏 + 340dp 的 Bill Details 面板吃掉了大部分宽度），固定宽度按钮溢出到列外，被后画的 Bill Details 面板整个挡住、完全不可见/不可点（QR Code 按钮、Member Card 文字、Back to Order 按钮当时都是这样）。改为 `fillMaxWidth()` + 外层 `widthIn(max = 320.dp)` 解决；两个按钮一行并排也放不下文字（"QR Code"/"Cash" 换行后被固定高度裁切），最终改成四个按钮全部纵向堆叠、`verticalScroll` 兜底。
@@ -657,7 +657,7 @@ sequenceDiagram
 | API / 方法 | 作用 | 所属文件 | 入参 | 出参 |
 | :-- | :-- | :-- | :-- | :-- |
 | `VipRepository.getVipCard()` | 按 NFC 拍卡读到的 `card_uid` 查会员卡 | `payment/VipRepository.kt` | `uid: String` | `VipCard?`（`card_uid`, `balance_cents`, `is_active`） |
-| `VipRepository.resolveCardUidByQrCode()` | 按扫码扫到的 12 位会员码反查 `card_uid` | `payment/VipRepository.kt` | `qrCode: String` | `String?`（card_uid，查不到返回 null） |
+| `VipRepository.resolveCardUidByQrCode()` | 按扫码扫到的 6 位会员码（2026-09-20 由 12 位缩短）反查 `card_uid` | `payment/VipRepository.kt` | `qrCode: String` | `String?`（card_uid，查不到返回 null） |
 | `VipRepository.deductBalance()` | 调 `deduct_vip_balance` RPC 原子扣款（校验+扣减在同一 Postgres 事务里，行锁防并发重复扣款） | `payment/VipRepository.kt` | `uid: String`, `amountInCents: Int` | `VipDeductResult`：`Success(newBalanceCents)` \| `Rejected(reason)` \| `NetworkError` |
 
 #### 3.3.5 优惠券 / 会员码核销层（非支付类 RPC，用于折扣计算）

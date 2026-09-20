@@ -282,9 +282,10 @@ CREATE TABLE IF NOT EXISTS public.vip_cards (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 12-character member QR code (see docs/coupon_redemption_integration.md
--- §2.1) -- a separate generated field, NOT card_uid (which is the NFC
--- serial). Nullable: not every card has one issued yet.
+-- 6-character member QR code (shortened from 12, 2026-09-20; see
+-- docs/coupon_redemption_integration.md §2.1) -- a separate generated
+-- field, NOT card_uid (which is the NFC serial). Nullable: not every card
+-- has one issued yet.
 ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS qr_code TEXT UNIQUE;
 CREATE INDEX IF NOT EXISTS idx_vip_cards_qr_code ON public.vip_cards(qr_code);
 
@@ -1645,8 +1646,8 @@ $$;
 REVOKE ALL ON FUNCTION public.get_vip_card_by_uid(TEXT) FROM public;
 GRANT EXECUTE ON FUNCTION public.get_vip_card_by_uid(TEXT) TO authenticated;
 
--- Function: resolves a 12-character member QR code (see
--- docs/coupon_redemption_integration.md §2.1) to the card_uid the rest of
+-- Function: resolves a 6-character member QR code (shortened from 12,
+-- 2026-09-20; see docs/coupon_redemption_integration.md §2.1) to the card_uid the rest of
 -- the VIP flow (deduct_vip_balance) actually operates on. Same
 -- masked-org-gap / no-enumeration reasoning as get_vip_card_by_uid above.
 CREATE OR REPLACE FUNCTION public.resolve_vip_card_uid_by_qr(p_qr_code TEXT)
@@ -1881,16 +1882,18 @@ GRANT EXECUTE ON FUNCTION public.issue_compensation_coupon(UUID, INT, INT, UUID)
 -- serial (read by whatever card reader the front-desk uses to provision it),
 -- supplied by the caller rather than generated, since it must match the
 -- number actually encoded on the card. qr_code IS generated server-side, but
--- MUST be exactly 12 alphanumeric characters -- per
--- docs/coupon_redemption_integration.md §2.1, the IM30 scanner routes a scan
--- to the member-QR path purely by matching ^[A-Za-z0-9]{12}$. Coupon codes
--- are 8 chars as of 2026-09-19 (shortened from the original 16+), but the
--- routing rule only ever needed "not exactly 12", not "16+" specifically --
--- 8 still never collides with 12. This qr_code stays fixed at exactly 12
--- deliberately -- built from the same 36-char alphabet
--- cmpService.generateVipQrCode() already uses client-side for the same
--- format, not gen_random_bytes() (pgcrypto lives in the extensions schema,
--- not public, under this function's SET search_path).
+-- MUST be exactly 6 alphanumeric characters (shortened from 12, 2026-09-20,
+-- same "too long for a kiosk screen" reasoning as the coupon-code
+-- shortening) -- per docs/coupon_redemption_integration.md §2.1, the
+-- terminal routes a scan to the member-QR path purely by matching
+-- ^[A-Za-z0-9]{6}$. Coupon codes are 8 chars as of 2026-09-19, but the
+-- routing rule only ever needed "not the same length as a coupon code", not
+-- any specific number -- 6 still never collides with 8. Built from the
+-- same 36-char alphabet as before, not gen_random_bytes() (pgcrypto lives
+-- in the extensions schema, not public, under this function's
+-- SET search_path). There is no client-side equivalent generator (Cael's
+-- VoucherHub always goes through this RPC) despite an earlier version of
+-- this comment claiming one existed.
 -- Postgres overloads by signature -- the 3-arg version from before this
 -- pass would otherwise keep existing alongside the new 8-arg one instead of
 -- being replaced by it.
@@ -1930,14 +1933,24 @@ BEGIN
     RETURN json_build_object('success', false, 'message', 'not_authorized');
   END IF;
 
+  -- Shortened to 6 chars (was 12) 2026-09-20, per the same "too long to read
+  -- off a kiosk screen" product requirement as the coupon-code shortening.
+  -- Still never collides with an 8-char coupon code on length (6 != 8),
+  -- which is all the client's format-based routing regex ever needed.
   -- floor(), not a bare ::int cast -- Postgres rounds a float->int cast to
   -- the nearest integer rather than truncating, so ::int alone occasionally
   -- yields 36 (when random()*36 lands in [35.5, 36)), an out-of-range substr
   -- position that silently returns NULL and gets dropped by string_agg,
-  -- producing an 11-char code (caught live: "HNYN0F93N3Y" before this fix).
-  SELECT string_agg(
-    substr('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', floor(random() * 36)::int + 1, 1), ''
-  ) INTO v_qr_code FROM generate_series(1, 12);
+  -- producing a short code (caught live: "HNYN0F93N3Y" before this fix, back
+  -- when the code was still 12 chars). The retry loop is a cheap defensive
+  -- fallback against the (now somewhat less unlikely, at only 6 chars)
+  -- collision, since qr_code is UNIQUE.
+  LOOP
+    SELECT string_agg(
+      substr('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', floor(random() * 36)::int + 1, 1), ''
+    ) INTO v_qr_code FROM generate_series(1, 6);
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM public.vip_cards WHERE qr_code = v_qr_code);
+  END LOOP;
 
   BEGIN
     INSERT INTO public.vip_cards (
@@ -2431,9 +2444,10 @@ VALUES
 ('VIP_CARD_INACTIVE', '00000000-0000-0000-0000-000000000001', 10000, false)
 ON CONFLICT (card_uid) DO NOTHING;
 
--- 12-char member QR code for the same card, so the scan-to-identify path
--- (docs/coupon_redemption_integration.md §2.1) has a real row to resolve.
-UPDATE public.vip_cards SET qr_code = 'MBRQR6789ABC' WHERE card_uid = 'VIP_CARD_UID_6789';
+-- 6-char member QR code (shortened from 12, 2026-09-20) for the same card,
+-- so the scan-to-identify path (docs/coupon_redemption_integration.md §2.1)
+-- has a real row to resolve. Matches PaxScannerProvider's mock scan value.
+UPDATE public.vip_cards SET qr_code = 'MBRQR6' WHERE card_uid = 'VIP_CARD_UID_6789';
 
 -- 16. QR payment sessions covering every status value -- PENDING is useful
 -- for manually flipping to PAID while testing the poll path (real payment
@@ -2446,9 +2460,9 @@ VALUES
 ('TX_SAMPLE_0003', 'PAX-IM30-LAUN-002', 350, 'EXPIRED', NULL)
 ON CONFLICT (tx_id) DO NOTHING;
 
--- 17. Sample coupons -- codes deliberately NOT 12 alphanumeric characters
+-- 17. Sample coupons -- codes deliberately NOT 6 alphanumeric characters
 -- (some contain hyphens, others are a different length) so they can never
--- collide with the 12-char member-QR-code format's routing regex
+-- collide with the 6-char member-QR-code format's routing regex
 -- (docs/coupon_redemption_integration.md §2.1). All applicable_product_id
 -- NULL ("any package") -- see the client-side matching gap noted in
 -- MainActivity's coupon handling for why a product-restricted coupon isn't

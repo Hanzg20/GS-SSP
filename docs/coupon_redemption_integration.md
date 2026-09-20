@@ -11,9 +11,9 @@
 | **优惠券 (Discount)** | 按百分比或固定金额减免 | 营销活动、会员权益 | 从套餐价里扣减，差额仍需正常支付（刷卡/扫码/VIP 余额） |
 | **促销券 (Promotion)** | 通常是"某个具体套餐免费"或"低价套餐" | 拉新活动、异业合作 | 全额或部分覆盖，可能仍有差价 |
 | **补偿券 (Compensation)** | 因硬件故障等原因，运营方主动补偿客户的一次免费/折扣洗车 | **[已确定，2026-07-24]** 由该租户的 `MERCHANT_ADMIN`（不是技师/GoldSky 的 `OPS_STAFF`）在云管平台开具，通常关联到某一笔失败的历史交易；面额和次数上限（`value`/`max_uses`）都是开具时手动填写，不预设固定值；不需要额外审批流程 | **[已确定]** 存一个金额（开具时填写，比如 $4、$6，对应套餐价），不是单独的类型，机制上等同于 `FIXED_OFF`，只是 `issued_reason='COMPENSATION'` 用于审计报表区分来源 |
-| **会员码 (Member QR)** | 客户手机上出示的会员二维码，用来识别 VIP 身份，走 VIP 余额扣款 | 会员 App/小程序 | **[已确定，2026-07-24 修正为文本型]** 固定长度 **12 位字符**（字母+数字，不再限定纯数字），靠"长度=12"这个格式特征跟券码区分（券码 2026-09-19 起不超过 10 位，见 §4.2，长度上天然不重叠）；识别后走已有的 `deduct_vip_balance()` RPC，不是新逻辑，只是识别方式从 NFC 拍卡换成扫码 |
+| **会员码 (Member QR)** | 客户手机上出示的会员二维码，用来识别 VIP 身份，走 VIP 余额扣款 | 会员 App/小程序 | **[已确定，2026-07-24 修正为文本型；2026-09-20 缩短为 6 位]** 固定长度 **6 位字符**（字母+数字，原为 12 位，太长不便展示/朗读，缩短处理跟券码缩短同批次做的），靠"长度=6"这个格式特征跟券码区分（券码 2026-09-19 起固定 8 位，见 §4.2，长度上天然不重叠）；识别后走已有的 `deduct_vip_balance()` RPC，不是新逻辑，只是识别方式从 NFC 拍卡换成扫码 |
 
-首页的"Scan Coupon / Member QR Code Below"这一个入口同时覆盖优惠券/促销券/补偿券和会员码识别，靠扫描结果的**内容格式**区分（见 §2.1）：`^[A-Za-z0-9]{12}$`（12 位字母数字组合）路由到会员识别，其他一律当券码去 `redeem_coupon()` 查。不需要让客户先选"我要扫的是券还是会员码"。
+首页的"Scan Coupon / Member QR Code Below"这一个入口同时覆盖优惠券/促销券/补偿券和会员码识别，靠扫描结果的**内容格式**区分（见 §2.1）：`^[A-Za-z0-9]{6}$`（6 位字母数字组合，2026-09-20 起，原为 12 位）路由到会员识别，其他一律当券码去 `redeem_coupon()` 查。不需要让客户先选"我要扫的是券还是会员码"。
 
 ---
 
@@ -46,19 +46,21 @@ sequenceDiagram
 
 ### 2.1 客户端路由逻辑（已确定：按格式区分）
 
-**修正**：12 位会员码不等于 `card_uid`。对照 `docs/cloud_management_platform_design.md` §3.3.1（"Automated generation of 12-character codes for every `vip_cards` record"），这个码是给每张 VIP 卡**另外生成**的一个字段，不是复用 NFC 那个 `card_uid`（现有 `card_uid` 种子数据是 `"VIP_CARD_UID_6789"` 这种，跟会员码本身格式也不一样）。所以 `vip_cards` 需要新增一列存这个码，核销前要先拿它反查出 `card_uid`，不能直接把扫到的会员码当 `card_uid` 传给 `deductBalance()`。
+**修正**：会员码不等于 `card_uid`。对照 `docs/cloud_management_platform_design.md` §3.3.1（"Automated generation of alphanumeric codes for every `vip_cards` record"），这个码是给每张 VIP 卡**另外生成**的一个字段，不是复用 NFC 那个 `card_uid`（现有 `card_uid` 种子数据是 `"VIP_CARD_UID_6789"` 这种，跟会员码本身格式也不一样）。所以 `vip_cards` 需要新增一列存这个码，核销前要先拿它反查出 `card_uid`，不能直接把扫到的会员码当 `card_uid` 传给 `deductBalance()`。
 
-**2026-07-24 修正**：会员码格式由"12 位纯数字"改为**文本型（12 位字母+数字组合）**，运管平台生成时可以用更大的字符集（不必强行凑纯数字），碰撞概率更低、生成也更灵活；客户端路由逻辑只依赖"长度=12"这个特征，不再要求纯数字。
+**2026-07-24 修正**：会员码格式由"12 位纯数字"改为**文本型（12 位字母+数字组合）**，运管平台生成时可以用更大的字符集（不必强行凑纯数字），碰撞概率更低、生成也更灵活；客户端路由逻辑只依赖"长度是否等于会员码位数"这个特征，不再要求纯数字。
+
+**2026-09-20 修正**：会员码从 12 位缩短为 **6 位**（字母+数字，跟券码同批次做的展示长度收紧）。`admin_create_vip_card()` 生成的字符集不变，只是长度改了；带一个碰撞重试循环（`generate_series(1, 6)` + `EXIT WHEN NOT EXISTS`），避免极小概率撞码时静默生成重复码。
 
 Schema 补充（`vip_cards` 加一列）：
 ```sql
-ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS qr_code TEXT UNIQUE; -- 12 位字符会员码（字母+数字），运管平台生成
+ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS qr_code TEXT UNIQUE; -- 6 位字符会员码（字母+数字，2026-09-20 起，原为 12 位），运管平台生成
 CREATE INDEX IF NOT EXISTS idx_vip_cards_qr_code ON public.vip_cards(qr_code);
 ```
 
 ```kotlin
 val scanned = result.trim()
-if (Regex("^[A-Za-z0-9]{12}$").matches(scanned)) {
+if (Regex("^[A-Za-z0-9]{6}$").matches(scanned)) {
     // 会员码：先反查 card_uid，再走已有的 VIP 识别/扣款逻辑
     val cardUid = VipRepository.resolveCardUidByQrCode(scanned) // 新增：SELECT card_uid FROM vip_cards WHERE qr_code = ?
     if (cardUid != null) {
@@ -73,7 +75,7 @@ if (Regex("^[A-Za-z0-9]{12}$").matches(scanned)) {
 }
 ```
 
-会员码固定 12 位字符，跟券码（2026-09-19 起改为不超过 10 位随机字符串，实际 8 位，见 §4.2）在长度上天然不重叠（8 ≠ 12），不用担心两种格式互相误判——路由逻辑只依赖"长度是否等于 12"，不依赖券码具体多长。
+会员码固定 6 位字符（2026-09-20 起，原为 12 位），跟券码（固定 8 位，见 §4.2）在长度上天然不重叠（6 ≠ 8），不用担心两种格式互相误判——路由逻辑只依赖"长度是否等于 6"，不依赖券码具体多长，两边各自改长度互不影响，只要两个数字不相等就行。
 
 ---
 
@@ -206,7 +208,7 @@ val finalPriceCents = when (redemption.type) {
 - 不支持跨租户通用券，`coupons.org_id` 必填。
 - 发放渠道是运管平台 / 云管平台 API，不在 IM30 端实现，IM30 只消费 `redeem_coupon()`。
 - 补偿券不是独立类型，就是 `FIXED_OFF` + `issued_reason='COMPENSATION'`，存实际金额（$4/$6 等）。
-- 会员码固定格式：12 位字符（字母+数字组合，2026-07-24 由纯数字改为文本型），靠长度跟券码路由区分。
+- 会员码固定格式：6 位字符（字母+数字组合，2026-07-24 由纯数字改为文本型，2026-09-20 由 12 位缩短为 6 位），靠长度跟券码路由区分。
 - **[2026-07-24]** 补偿券开具规则：由该租户的 `MERCHANT_ADMIN` 在云管平台开具（不是 IM30 本机的技师入口，也不是 GoldSky 的 `OPS_STAFF`）；单张面额、可核销次数（`max_uses`）都在开具时手动填写，不预设固定值；**不需要审批**——`MERCHANT_ADMIN` 对自己租户内的补偿券开具有完全自主权，跟 `organizations` 的租户隔离边界一致。**[2026-07-24 更新]** `profiles`/`org_members`（MVP 角色范围）+ `issue_compensation_coupon()` RPC 已经落地（见 §3 的 schema），`coupons.issued_by_profile_id` 外键已生效——数据库这一侧已经不再是占位状态。仍然缺的是云管平台自己的人类账号登录（Supabase Auth 邮箱/密码或 SSO）和实际发券按钮的 UI，这两个目前都还不存在，`org_members` 里的角色授予现阶段只能靠手动 SQL 引导。
 
 **仍待决策**：

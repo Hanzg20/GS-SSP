@@ -425,7 +425,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Member-card payment by manually-entered 12-character code (same
+     * Member-card payment by manually-entered 6-character code (same
      * format/regex VipRepository.resolveCardUidByQrCode expects -- see
      * feature/wash/MainActivity's member-QR-scan path) rather than an NFC
      * tap: Ourea's wired hardware providers are card-payment terminals, not

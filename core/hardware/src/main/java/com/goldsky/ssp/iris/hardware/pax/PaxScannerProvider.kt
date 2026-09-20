@@ -66,7 +66,10 @@ class PaxScannerProvider(
     private fun startMockScan(callback: IScannerProvider.ScanCallback) {
         Log.d(TAG, "PAX scanner unavailable: simulating a scan in 4 seconds")
         mainHandler.postDelayed({
-            callback.onScanSuccess("MBRQR6789ABC")
+            // Matches the seed vip_cards row (card_uid VIP_CARD_UID_6789) --
+            // shortened from "MBRQR6789ABC" to the new 6-char qr_code format,
+            // 2026-09-20, kept in sync with docs/supabase_full_schema.sql's seed data.
+            callback.onScanSuccess("MBRQR6")
         }, 4000)
     }
 

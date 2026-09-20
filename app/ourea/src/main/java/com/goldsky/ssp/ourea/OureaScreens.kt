@@ -653,14 +653,14 @@ fun OureaCashDialog(totalCents: Int, onConfirm: (cashReceivedCents: Int) -> Unit
 }
 
 /** Matches VipRepository.resolveCardUidByQrCode's expected format (see feature/wash's member-QR-scan regex). */
-private val MEMBER_CODE_REGEX = Regex("^[A-Za-z0-9]{12}$")
+private val MEMBER_CODE_REGEX = Regex("^[A-Za-z0-9]{6}$")
 
 /**
  * Manual member-code entry (staff-typed, or a barcode scanner acting as a
  * keyboard) -- see MainActivity.triggerVipPayment's doc comment for why
  * this isn't an NFC tap. Submit stays disabled until the code matches the
- * 12-character format VipRepository actually looks up, so an obviously
- * malformed code never round-trips to the backend.
+ * 6-character format (shortened from 12, 2026-09-20) VipRepository actually
+ * looks up, so an obviously malformed code never round-trips to the backend.
  */
 @Composable
 fun OureaMemberDialog(onSubmit: (code: String) -> Unit, onDismiss: () -> Unit) {
@@ -672,13 +672,13 @@ fun OureaMemberDialog(onSubmit: (code: String) -> Unit, onDismiss: () -> Unit) {
             Column(modifier = Modifier.padding(24.dp).width(340.dp).verticalScroll(rememberScrollState())) {
                 Text("Member Card", color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Enter or scan the 12-character member code", color = OureaTextSecondary, fontSize = 13.sp)
+                Text("Enter or scan the 6-character member code", color = OureaTextSecondary, fontSize = 13.sp)
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(
                     value = code,
-                    onValueChange = { if (it.length <= 12) code = it.uppercase() },
+                    onValueChange = { if (it.length <= 6) code = it.uppercase() },
                     singleLine = true,
-                    placeholder = { Text("ABCD1234EFGH", color = OureaTextSecondary) },
+                    placeholder = { Text("ABCD12", color = OureaTextSecondary) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = OureaSurfaceVariant,
                         unfocusedContainerColor = OureaSurfaceVariant,

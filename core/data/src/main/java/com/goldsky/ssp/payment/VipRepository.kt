@@ -128,7 +128,7 @@ object VipRepository {
     }
 
     /**
-     * Resolves a 12-character member QR code (see
+     * Resolves a 6-character member QR code (shortened from 12, 2026-09-20; see
      * docs/coupon_redemption_integration.md §2.1) to the card_uid the rest
      * of the VIP flow (deductBalance, initVipPayment) actually operates on.
      * Same RPC-not-table-SELECT reasoning as [getVipCard]'s doc comment --
