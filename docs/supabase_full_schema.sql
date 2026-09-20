@@ -2607,6 +2607,66 @@ ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS acquirer_account_id UUID
     REFERENCES public.merchant_acquirer_accounts(id);
 ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS acquirer_terminal_id TEXT; -- Nuvei TID 等,单设备级
 
+-- Merchant-set display alias, 2026-09-20 -- lets a merchant give a device a
+-- name meaningful to their own operation ("Front Lot #3", "北门洗车机")
+-- instead of everywhere showing the raw serial number or the shared
+-- location name. Nullable: falls back to sn/loc_name at every display site
+-- when unset, same convention as loc_name's own "Unknown Location" fallback.
+-- Deliberately NOT exposed via a generic RLS UPDATE policy on devices (that
+-- table has no org-scoped UPDATE policy for non-sys-admins at all -- see the
+-- "Org members can view org devices" SELECT-only policy above) -- a merchant
+-- setting their own alias should not also be able to reassign org_id/loc_id/
+-- vertical_type/is_active on the same row via the same grant, so this goes
+-- through a narrow RPC instead, same pattern as every other merchant-facing
+-- mutation in this file (redeem_coupon, admin_create_vip_card, etc).
+ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS alias TEXT CHECK (alias IS NULL OR char_length(alias) <= 60);
+
+INSERT INTO public.permissions (key, description, category) VALUES
+    ('devices.manage', 'Rename devices (set a custom display alias)', 'devices')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO public.capability_permissions (capability, permission)
+VALUES ('admin', 'devices.manage')
+ON CONFLICT DO NOTHING;
+
+CREATE OR REPLACE FUNCTION public.update_device_alias(p_device_sn TEXT, p_alias TEXT)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id UUID;
+  v_alias TEXT;
+BEGIN
+  SELECT org_id INTO v_org_id FROM public.devices WHERE sn = p_device_sn;
+  IF NOT FOUND THEN
+    RETURN json_build_object('success', false, 'message', 'device_not_found');
+  END IF;
+  IF v_org_id IS NULL OR NOT public.has_permission_for_org('devices.manage', v_org_id) THEN
+    RETURN json_build_object('success', false, 'message', 'not_authorized');
+  END IF;
+
+  -- Empty/whitespace-only input clears the alias (reverts to the sn/loc_name
+  -- fallback everywhere), rather than storing a blank string as if it were
+  -- a real alias.
+  v_alias := NULLIF(trim(p_alias), '');
+  IF v_alias IS NOT NULL AND char_length(v_alias) > 60 THEN
+    RETURN json_build_object('success', false, 'message', 'alias_too_long');
+  END IF;
+
+  UPDATE public.devices SET alias = v_alias WHERE sn = p_device_sn;
+
+  INSERT INTO public.audit_logs (actor_profile_id, org_id, action, target_table, target_id, details)
+  VALUES (auth.uid(), v_org_id, 'UPDATE_DEVICE_ALIAS', 'devices', p_device_sn, json_build_object('alias', v_alias));
+
+  RETURN json_build_object('success', true, 'sn', p_device_sn, 'alias', v_alias);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.update_device_alias(TEXT, TEXT) FROM public;
+GRANT EXECUTE ON FUNCTION public.update_device_alias(TEXT, TEXT) TO authenticated;
+
 -- =============================================================================
 -- 20. Acquirer settlement/reporting records, added v2.21 (2026-08-22)
 --
