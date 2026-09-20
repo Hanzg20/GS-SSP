@@ -1615,6 +1615,26 @@ GRANT EXECUTE ON FUNCTION public.deduct_vip_balance(TEXT, INT) TO anon, authenti
 -- makes it visible to a client that queries without that filter too.
 -- SECURITY DEFINER + a specific p_card_uid parameter avoids that: no
 -- table-level SELECT grant needed for this lookup at all.
+--
+-- CORRECTED 2026-09-20: this function (and resolve_vip_card_uid_by_qr below)
+-- had NEVER ACTUALLY BEEN APPLIED to the live database despite being
+-- documented here since 2026-08-29 -- confirmed live via \df returning zero
+-- rows for both names. Every VIP payment (QR-scan AND NFC-tap, both go
+-- through get_vip_card_by_uid via initVipPayment) was broken in production
+-- the entire time, surfaced only when a real customer's QR scan came back
+-- "member code not recognized". The likely reason it silently never got
+-- deployed: this function's original body selected a `vip_cards.tier`
+-- column that has never existed on the live table (confirmed via \d
+-- vip_cards) -- CREATE FUNCTION for a syntactically valid plpgsql body
+-- doesn't fail until first call, so this could have been "created" once,
+-- errored at first real invocation, and never got a working version pushed
+-- after that. Fixed by dropping the tier column reference and hardcoding
+-- 'REGULAR' in the response instead -- VipCard.tier already defaults to
+-- "REGULAR" client-side (see VipRepository.kt), so no client change needed.
+-- Also corrected to GRANT anon (not authenticated-only) -- same wrong
+-- "the kiosk already has a real session by this point" assumption as
+-- redeem_coupon/peek_coupon's now-corrected comments; the kiosk calls this
+-- with its anon publishable key too.
 CREATE OR REPLACE FUNCTION public.get_vip_card_by_uid(p_card_uid TEXT)
 RETURNS JSON
 LANGUAGE plpgsql
@@ -1624,7 +1644,7 @@ AS $$
 DECLARE
   v_card RECORD;
 BEGIN
-  SELECT card_uid, balance_cents, is_active, tier
+  SELECT card_uid, balance_cents, is_active
   INTO v_card
   FROM public.vip_cards
   WHERE card_uid = p_card_uid;
@@ -1638,18 +1658,21 @@ BEGIN
     'card_uid', v_card.card_uid,
     'balance_cents', v_card.balance_cents,
     'is_active', v_card.is_active,
-    'tier', v_card.tier
+    'tier', 'REGULAR'
   );
 END;
 $$;
 
 REVOKE ALL ON FUNCTION public.get_vip_card_by_uid(TEXT) FROM public;
-GRANT EXECUTE ON FUNCTION public.get_vip_card_by_uid(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_vip_card_by_uid(TEXT) TO anon, authenticated;
 
 -- Function: resolves a 6-character member QR code (shortened from 12,
 -- 2026-09-20; see docs/coupon_redemption_integration.md §2.1) to the card_uid the rest of
 -- the VIP flow (deduct_vip_balance) actually operates on. Same
 -- masked-org-gap / no-enumeration reasoning as get_vip_card_by_uid above.
+-- Same 2026-09-20 "never actually deployed, and authenticated-only was
+-- wrong anyway" correction as get_vip_card_by_uid above -- this one had no
+-- bad column reference, it was simply missing entirely.
 CREATE OR REPLACE FUNCTION public.resolve_vip_card_uid_by_qr(p_qr_code TEXT)
 RETURNS JSON
 LANGUAGE plpgsql
@@ -1665,7 +1688,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.resolve_vip_card_uid_by_qr(TEXT) FROM public;
-GRANT EXECUTE ON FUNCTION public.resolve_vip_card_uid_by_qr(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_vip_card_uid_by_qr(TEXT) TO anon, authenticated;
 
 -- Function: Atomically check-and-redeem a coupon, in the same style as
 -- deduct_vip_balance() above -- FOR UPDATE row lock so two near-simultaneous
