@@ -1302,7 +1302,8 @@ class MainActivity : BaseAdActivity() {
                     this@MainActivity, pendingEcrRefNum, "PAID", entryMode,
                     paymentMethod = cardInfo?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid) },
                     cardAid = cardInfo?.aid,
-                    cardBin = cardInfo?.bin
+                    cardBin = cardInfo?.bin,
+                    cardBrand = cardInfo?.brand
                 )
             } else {
                 TransactionRepository.recordTransaction(

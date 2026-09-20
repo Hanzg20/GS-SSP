@@ -18,7 +18,8 @@ data class PendingOp(
     val entryMode: String? = null,
     val paymentMethod: String? = null,
     val cardAid: String? = null,
-    val cardBin: String? = null
+    val cardBin: String? = null,
+    val cardBrand: String? = null
 )
 
 /**

@@ -29,7 +29,8 @@ data class TransactionRecord(
     val vip_card_uid: String? = null,
     // EMV AID / first 6 PAN digits of a card payment, see CardTypeClassifier
     val card_aid: String? = null,
-    val card_bin: String? = null
+    val card_bin: String? = null,
+    val card_brand: String? = null
 )
 
 /**
@@ -97,7 +98,8 @@ object TransactionRepository {
         // Card payments only: refines the PENDING row's provisional CREDIT_CARD once the terminal reports the real card.
         paymentMethod: String? = null,
         cardAid: String? = null,
-        cardBin: String? = null
+        cardBin: String? = null,
+        cardBrand: String? = null
     ): Boolean =
         withContext(Dispatchers.IO) {
             // Update local
@@ -111,13 +113,13 @@ object TransactionRepository {
                 Log.e(TAG, "Local payment status update failed: ${e.message}")
             }
 
-            val ok = updatePaymentStatusRemote(ecrRefNum, status, entryMode, paymentMethod, cardAid, cardBin)
+            val ok = updatePaymentStatusRemote(ecrRefNum, status, entryMode, paymentMethod, cardAid, cardBin, cardBrand)
             if (!ok) {
                 OfflineQueueManager.enqueue(
                     context.filesDir,
                     PendingOp(
                         type = "update_status", ecrRefNum = ecrRefNum, status = status, entryMode = entryMode,
-                        paymentMethod = paymentMethod, cardAid = cardAid, cardBin = cardBin
+                        paymentMethod = paymentMethod, cardAid = cardAid, cardBin = cardBin, cardBrand = cardBrand
                     )
                 )
                 Log.w(TAG, "Payment status update queued offline: $ecrRefNum -> $status")
@@ -214,7 +216,8 @@ object TransactionRepository {
         entryMode: String? = null,
         paymentMethod: String? = null,
         cardAid: String? = null,
-        cardBin: String? = null
+        cardBin: String? = null,
+        cardBrand: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
         try {
             val updated = updateRows("payment_status", ecrRefNum) {
@@ -222,6 +225,7 @@ object TransactionRepository {
                 paymentMethod?.let { set("payment_method", it) }
                 cardAid?.let { set("card_aid", it) }
                 cardBin?.let { set("card_bin", it) }
+                cardBrand?.let { set("card_brand", it) }
             }
             if (!updated) return@withContext false
             Log.i(TAG, "Payment status updated to $status for $ecrRefNum")

@@ -451,6 +451,7 @@ CREATE INDEX IF NOT EXISTS idx_transactions_status ON public.transactions(paymen
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (payment_method IN ('CREDIT_CARD', 'DEBIT_CARD', 'VIP_CARD', 'QR_CODE', 'COUPON'));
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS card_aid TEXT;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS card_bin TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS card_brand TEXT;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS product_id UUID REFERENCES public.products(id) ON DELETE SET NULL;
 
 -- entry_mode: how the card was actually presented (see
