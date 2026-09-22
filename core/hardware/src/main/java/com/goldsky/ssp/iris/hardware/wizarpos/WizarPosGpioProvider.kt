@@ -82,4 +82,30 @@ class WizarPosGpioProvider(private val terminal: POSTerminal?) : IGpioProvider {
             Log.e(TAG, "Error closing ExtBoard: ${e.message}")
         }
     }
+
+    /**
+     * Native hardware-timed override, per the real Digit IO pin map
+     * (docs/wizarpos_upt_integration_spec.md §1.1): this drives the same
+     * RELAY_DC-/DC+ circuit (PIN6/7) as [setRelay]/`triggerRelayOn/Off`,
+     * just via `ExtBoardDevice.triggerRelay(portNum, onMs, offMs, times)`
+     * (confirmed present on the bundled SDK via javap, matches WizarPOS's
+     * own official APIDemoForAar usage `triggerRelay(0, 500, 500, 5)`) --
+     * a single call the native/firmware layer times, instead of this class's
+     * setRelay(true)+delay+setRelay(false)+delay loop from the app side.
+     * `times=1`: DigitIoAdapter still calls this once per credit so its
+     * existing per-pulse onProgress callback and per-pulse failure handling
+     * (requireAck/assumed_success) are unchanged -- only the ON/OFF timing
+     * for a single pulse moves from app-side delay() to native timing.
+     */
+    override suspend fun triggerRelayPulse(port: Int, onMs: Long, offMs: Long): Boolean {
+        if (!ensureOpened()) return false
+        return try {
+            extBoardDevice?.triggerRelay(port, onMs.toInt(), offMs.toInt(), 1)
+            Log.i(TAG, "Native relay pulse on port $port (${onMs}ms/${offMs}ms)")
+            true
+        } catch (e: Throwable) {
+            Log.e(TAG, "triggerRelay error: ${e.message}")
+            false
+        }
+    }
 }

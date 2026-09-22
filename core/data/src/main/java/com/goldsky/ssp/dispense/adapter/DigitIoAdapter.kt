@@ -5,7 +5,6 @@ import com.goldsky.ssp.dispense.ack.AssumedSuccessAckStrategy
 import com.goldsky.ssp.payment.ConfigManager
 import com.goldsky.ssp.payment.hardware.IGpioProvider
 import com.goldsky.ssp.payment.hardware.ISerialProvider
-import kotlinx.coroutines.delay
 
 /**
  * Andy's Scheme: Directly trigger the hardware relay via GPIO (Digit IO),
@@ -22,6 +21,14 @@ import kotlinx.coroutines.delay
  * constants in gs-EdgeNexus's relay_driver.h (RELAY_PULSE_WIDTH_MS /
  * RELAY_PULSE_INTERVAL_MS -- "Nayax-optimized ... DO NOT CHANGE") for the
  * same class of relay board driven via direct GPIO there.
+ *
+ * Each pulse's ON/OFF timing is delegated to [IGpioProvider.triggerRelayPulse]
+ * (2026-09-22) rather than this class doing setRelay+delay+setRelay+delay
+ * itself -- on WizarPOS hardware that resolves to a native/firmware-timed
+ * call (`ExtBoardDevice.triggerRelay`), avoiding this coroutine's own
+ * delay() jitter for money-driving output; see
+ * docs/wizarpos_upt_integration_spec.md §1.1 for the physical pin map this
+ * drives (RELAY_DC-/DC+, not the separate Pulse-port circuit).
  *
  * [gpioProvider] must be resolved by the caller (DispenseEngine, via
  * HardwareFactory.getGpioProvider(context, vendor) using a real Activity
@@ -72,21 +79,26 @@ class DigitIoAdapter : IDispenseAdapter {
         var anyPulseUnconfirmed = false
         return try {
             for (i in 1..pulseCount) {
-                // setRelay returning false means the pulse never actually
-                // reached the relay (device unopened, native SDK fault) --
-                // it does NOT throw, so this must be checked explicitly.
-                if (!gpioProvider.setRelay(0, true)) {
+                // triggerRelayPulse returning false means the pulse never
+                // actually reached the relay (device unopened, native SDK
+                // fault) -- it does NOT throw, so this must be checked
+                // explicitly, same contract setRelay had. Prefer this over a
+                // manual setRelay(true)+delay+setRelay(false)+delay sequence
+                // -- providers with a native pulse-train primitive (see
+                // WizarPosGpioProvider) time the ON/OFF window in
+                // hardware/firmware instead of via this coroutine's delay(),
+                // which is subject to dispatcher/GC jitter; providers without
+                // one fall back to the same software-timed sequence this
+                // loop used to do inline (IGpioProvider's default impl).
+                if (!gpioProvider.triggerRelayPulse(0, PULSE_WIDTH_MS, PULSE_INTERVAL_MS)) {
                     if (requireAck) {
-                        android.util.Log.e(TAG, "GPIO relay ON command rejected by hardware at pulse $i/$pulseCount")
+                        android.util.Log.e(TAG, "GPIO relay pulse rejected by hardware at pulse $i/$pulseCount")
                         try { gpioProvider.setRelay(0, false) } catch (_: Exception) {}
                         return DispenseOutcome.Failed("GPIO relay command rejected at pulse $i/$pulseCount")
                     }
-                    android.util.Log.w(TAG, "GPIO relay ON command rejected at pulse $i/$pulseCount, continuing (assumed_success mode)")
+                    android.util.Log.w(TAG, "GPIO relay pulse rejected at pulse $i/$pulseCount, continuing (assumed_success mode)")
                     anyPulseUnconfirmed = true
                 }
-                delay(PULSE_WIDTH_MS)
-                gpioProvider.setRelay(0, false)
-                delay(PULSE_INTERVAL_MS)
                 onProgress(i, pulseCount)
             }
             if (anyPulseUnconfirmed) {

@@ -31,4 +31,32 @@ interface IGpioProvider {
      * Releases GPIO resources.
      */
     fun release()
+
+    /**
+     * Fires a single hardware-timed ON/OFF relay pulse (port ON for [onMs],
+     * then OFF for [offMs]) -- one "credit" in a coin-acceptor-style pulse
+     * train (see DigitIoAdapter). Prefer this over a manual
+     * setRelay(true)+delay(onMs)+setRelay(false)+delay(offMs) sequence
+     * wherever the vendor SDK offers native timing: kotlinx.coroutines.delay()
+     * on the app side is subject to coroutine-dispatcher/GC jitter a
+     * native/firmware-timed call isn't, and this is money-driving output
+     * (2026-09-19's IS_MOCK incident showed this exact path silently costing
+     * real revenue when it misbehaves -- see docs/system_architecture.md).
+     *
+     * Default implementation is the old software-timed sequence, for
+     * providers with no native pulse-train primitive (PaxGpioProvider,
+     * MockGpioProvider) -- override where a native one exists (see
+     * WizarPosGpioProvider, backed by ExtBoardDevice.triggerRelay).
+     *
+     * @return true if the pulse was accepted by the hardware (same
+     * fail-closed contract as [setRelay] -- never assume the pulse happened
+     * just because this didn't throw).
+     */
+    suspend fun triggerRelayPulse(port: Int, onMs: Long, offMs: Long): Boolean {
+        if (!setRelay(port, true)) return false
+        kotlinx.coroutines.delay(onMs)
+        setRelay(port, false)
+        kotlinx.coroutines.delay(offMs)
+        return true
+    }
 }
