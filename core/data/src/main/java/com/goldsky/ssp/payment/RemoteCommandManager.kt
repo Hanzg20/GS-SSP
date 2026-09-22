@@ -100,7 +100,30 @@ object RemoteCommandManager {
                     }
                     "FETCH_LOGS" -> {
                         Log.i(TAG, "Executing Remote FETCH_LOGS...")
-                        success = DiagnosticManager.uploadLogs(deviceCommand.device_sn)
+                        // uploadLogs() now returns a 3-way result (see its doc
+                        // comment) instead of a Boolean -- Empty is treated as
+                        // a failure here (device_commands.status has no room
+                        // for a third value without a schema change), but
+                        // reported distinctly via reportError so whoever
+                        // issued this command from CMP can tell "nothing
+                        // useful captured" apart from a generic failure. This
+                        // matters MORE for a remote-triggered fetch than for
+                        // the tech dashboard's own button: there's by
+                        // definition nobody physically at the kiosk to
+                        // approve the Android 12+ log-access consent dialog
+                        // uploadLogs's doc comment describes, so Empty is the
+                        // likely/expected outcome here, not an edge case.
+                        when (val result = DiagnosticManager.uploadLogs(deviceCommand.device_sn)) {
+                            is LogUploadResult.Success -> success = true
+                            is LogUploadResult.Empty -> {
+                                success = false
+                                DiagnosticManager.reportError(
+                                    deviceCommand.device_sn, "FETCH_LOGS_EMPTY", severity = "WARNING",
+                                    trace = "Captured only ${result.lineCount} lines -- likely blocked by the Android 12+ log-access consent dialog, which needs a human physically at the device to approve"
+                                )
+                            }
+                            is LogUploadResult.Failed -> success = false
+                        }
                     }
                     "START_SERVICE" -> {
                         val hex = deviceCommand.payload?.get("start_hex")?.jsonPrimitive?.contentOrNull

@@ -158,6 +158,14 @@ object TtsManager : DefaultLifecycleObserver {
         tts?.stop()
     }
 
+    /**
+     * True once the TTS engine has finished initializing successfully (see
+     * [registerLifecycle]'s callback). Added 2026-09-23 so callers (the wash
+     * technician dashboard's VOICE self-test) can report a real pass/fail
+     * instead of assuming the engine is ready.
+     */
+    fun isReady(): Boolean = isInitialized
+
     override fun onDestroy(owner: LifecycleOwner) {
         super.onDestroy(owner)
         Log.i(TAG, "Shutting down TTS engine")

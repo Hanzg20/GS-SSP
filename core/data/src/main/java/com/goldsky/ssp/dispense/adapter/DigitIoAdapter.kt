@@ -53,13 +53,19 @@ class DigitIoAdapter : IDispenseAdapter {
     private val TAG = "DigitIoAdapter"
 
     companion object {
-        private const val PULSE_WIDTH_MS = 500L
-        private const val PULSE_INTERVAL_MS = 500L
+        // Not private: the wash technician dashboard's hardware test buttons
+        // (MainActivity.openTechTools) need to fire the SAME real pulse this
+        // class uses, not their own separately-maintained copy -- two copies
+        // of these constants is exactly how the test buttons silently drifted
+        // onto the wrong physical circuit in the first place (see
+        // docs/wizarpos_upt_integration_spec.md §1.1's history, 2026-09-22).
+        const val PULSE_WIDTH_MS = 500L
+        const val PULSE_INTERVAL_MS = 500L
         // 0 or 1, per the vendor's setPulseVoltage/triggerPulse contract --
         // see the class doc above. Derived from a real on-site multimeter
         // reading (PIN1 idle = 12V/HIGH => voltage=0), not guessed.
-        private const val PULSE_VOLTAGE = 0
-        private const val PULSE_PORT = 0 // PIN1 (Pulse channel 1)
+        const val PULSE_VOLTAGE = 0
+        const val PULSE_PORT = 0 // PIN1 (Pulse channel 1)
     }
 
     override suspend fun dispense(

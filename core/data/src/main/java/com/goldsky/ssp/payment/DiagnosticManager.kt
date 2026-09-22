@@ -64,23 +64,58 @@ object DiagnosticManager {
     /**
      * Captures and uploads recent logcat entries to Supabase Storage.
      */
-    suspend fun uploadLogs(sn: String, lineCount: Int = 2000): Boolean = withContext(Dispatchers.IO) {
-        return@withContext try {
+    suspend fun uploadLogs(sn: String, lineCount: Int = 2000): LogUploadResult = withContext(Dispatchers.IO) {
+        try {
             Log.i(TAG, "Capturing $lineCount lines of logcat for $sn...")
             val process = Runtime.getRuntime().exec("logcat -d -t $lineCount")
             val logText = process.inputStream.bufferedReader().use { it.readText() }
+
+            // On Android 12+ (API 31+, this app's targetSdk), a non-system app
+            // calling into logcat like this triggers the OS's own "Access to
+            // Logs" consent dialog (LogAccessDialogActivity) -- confirmed live
+            // on a real Q3mini, 2026-09-23: the dialog opened and auto-dismissed
+            // with nobody there to tap Allow. There is no app-level API to
+            // suppress or pre-grant this; it needs a human physically at the
+            // unit, which an unattended kiosk's remote-diagnostics use case
+            // usually doesn't have. Silently reporting "Logs Uploaded" for
+            // effectively-empty content (the actual observed failure mode)
+            // would be worse than a clear distinct outcome here -- a technician
+            // pulling this expecting real diagnostics needs to know the upload
+            // itself succeeded but carried nothing useful, not just "it worked".
+            val lines = logText.lineSequence().filter { it.isNotBlank() }.count()
+            if (lines < MIN_USEFUL_LOG_LINES) {
+                Log.w(TAG, "Logcat capture suspiciously small ($lines lines) -- likely blocked by the Android 12+ log-access consent dialog, not a real empty log")
+                return@withContext LogUploadResult.Empty(lines)
+            }
+
             val fileName = "logs/${sn}_${System.currentTimeMillis()}.txt"
-            
             SupabaseClientProvider.client.storage["device-logs"].upload(
                 path = fileName,
                 data = logText.toByteArray(),
                 upsert = true
             )
-            Log.i(TAG, "Logcat successfully uploaded: $fileName")
-            true
+            Log.i(TAG, "Logcat successfully uploaded: $fileName ($lines lines)")
+            LogUploadResult.Success(fileName, lines)
         } catch (e: Exception) {
             Log.e(TAG, "Logcat upload failed: ${e.message}")
-            false
+            LogUploadResult.Failed(e.message ?: "unknown error")
         }
     }
+
+    private const val MIN_USEFUL_LOG_LINES = 10
+}
+
+/**
+ * Outcome of [DiagnosticManager.uploadLogs]. A plain Boolean previously
+ * collapsed "genuinely uploaded something useful", "upload technically
+ * succeeded but the captured text was suspiciously empty" (the real, observed
+ * failure mode on Android 12+ -- see uploadLogs's doc comment), and "the
+ * network/storage call itself failed" into the same two states, which is
+ * exactly the kind of ambiguity that let the tech dashboard's EXPORT LOGS
+ * button claim success for content nobody could actually use.
+ */
+sealed class LogUploadResult {
+    data class Success(val fileName: String, val lineCount: Int) : LogUploadResult()
+    data class Empty(val lineCount: Int) : LogUploadResult()
+    data class Failed(val reason: String) : LogUploadResult()
 }

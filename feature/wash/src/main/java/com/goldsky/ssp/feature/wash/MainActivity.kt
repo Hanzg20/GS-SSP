@@ -1623,17 +1623,33 @@ class MainActivity : BaseAdActivity() {
         updateHealthUI()
 
         // 3. Command Grid
+        // Was sendTestCmd() (Console-serial hex frames) unconditionally for
+        // all three buttons -- on Q3mini/IM30 UPT that's a completely
+        // different physical circuit from the Digit IO Pulse line (PIN1)
+        // DigitIoAdapter actually dispenses on (see the 2026-09-22 Relay/Pulse
+        // circuit fix), so on real UPT wash hardware these buttons tested
+        // wiring nothing downstream was listening to. sendTestPulses() below
+        // routes through whichever circuit DispenseEngine.dispense() itself
+        // would pick, so this tool can't drift out of sync with the real
+        // dispense path again.
         dialog.findViewById<Button>(R.id.btn_op_relay_4).setOnClickListener {
             applyClickFeedback(it)
-            sendTestCmd("AA 01 04 55")
+            sendTestPulses(4)
         }
         dialog.findViewById<Button>(R.id.btn_op_relay_8).setOnClickListener {
             applyClickFeedback(it)
-            sendTestCmd("AA 01 08 55")
+            sendTestPulses(8)
         }
         dialog.findViewById<Button>(R.id.btn_op_stop).setOnClickListener {
             applyClickFeedback(it)
-            sendTestCmd("AA 00 00 55")
+            if (isUptDigitIoMachine()) {
+                // No persistent ON state to stop on the Pulse circuit --
+                // triggerLogicPulse is a single self-timed native call, not a
+                // held-open relay (see DigitIoAdapter's exception-path comment).
+                Toast.makeText(this, "N/A on Digit IO Pulse circuit: each test pulse is a single self-timed call, nothing stays ON to stop", Toast.LENGTH_LONG).show()
+            } else {
+                sendTestCmd("AA 00 00 55")
+            }
         }
 
         // 4. Peripherals
@@ -1662,14 +1678,25 @@ class MainActivity : BaseAdActivity() {
             CoroutineScope(Dispatchers.Main).launch {
                 it.isEnabled = false
                 (it as Button).text = "SYNCING..."
-                
+
                 KeyHealthMonitor.reset()
-                DeviceAccessManager.setRemoteLock(false)
                 val identity = DeviceRepository.syncDeviceIdentity(deviceSn)
+                // Was DeviceAccessManager.setRemoteLock(false) unconditionally,
+                // called BEFORE the sync even ran -- that silently cleared any
+                // remote lock (fraud hold, admin maintenance lock, non-payment)
+                // the instant someone got past the technician PIN, with no
+                // server round-trip and no check of why it was set. remoteLocked
+                // is a persisted command-channel flag (see DeviceAccessManager's
+                // class doc) meant to be cleared only by a real UNLOCK command
+                // from RemoteCommandManager, not by a generic sync button --
+                // left untouched here. The one thing a sync legitimately
+                // refreshes is devices.is_active, same pattern this file
+                // already uses elsewhere (see the RemoteCommandManager wiring).
+                DeviceAccessManager.applyActiveState(identity?.is_active)
                 val config = ConfigManager.loadConfig(this@MainActivity, identity?.org_id)
                 refreshProductsUI(config.products)
                 DiagnosticManager.recordMaintenance(deviceSn, "DASH_FORCE_SYNC")
-                
+
                 updateHealthUI()
                 it.isEnabled = true
                 it.text = "SYNC"
@@ -1683,10 +1710,25 @@ class MainActivity : BaseAdActivity() {
             btn.isEnabled = false
             btn.text = "UPLOADING..."
             CoroutineScope(Dispatchers.Main).launch {
-                val success = DiagnosticManager.uploadLogs(deviceSn)
+                val result = DiagnosticManager.uploadLogs(deviceSn)
                 btn.isEnabled = true
                 btn.text = "EXPORT LOGS"
-                Toast.makeText(this@MainActivity, if (success) "Logs Uploaded" else "Upload Failed", Toast.LENGTH_SHORT).show()
+                // Was a bare success/fail Toast that couldn't distinguish
+                // "actually uploaded something useful" from "technically
+                // succeeded but the log was suspiciously empty" -- on this
+                // app's targetSdk (34, Android 12+ consent-dialog territory)
+                // the latter is the real observed failure mode, and telling a
+                // technician "Logs Uploaded" for empty content is worse than
+                // telling them nothing.
+                val message = when (result) {
+                    is com.goldsky.ssp.payment.LogUploadResult.Success ->
+                        "Logs Uploaded (${result.lineCount} lines)"
+                    is com.goldsky.ssp.payment.LogUploadResult.Empty ->
+                        "Log capture empty -- on this device's screen, approve the system \"Allow log access\" prompt, then retry"
+                    is com.goldsky.ssp.payment.LogUploadResult.Failed ->
+                        "Upload Failed: ${result.reason}"
+                }
+                Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
             }
         }
 
@@ -1724,18 +1766,69 @@ class MainActivity : BaseAdActivity() {
                 it.isEnabled = false
                 val btn = it as Button
                 val originalText = btn.text
-                
-                val steps = listOf("NET", "DB", "SERIAL", "READER", "PRINTER", "VOICE")
-                for (step in steps) {
-                    btn.text = "CHECKING: $step..."
-                    delay(800)
+
+                // Was pure theater until 2026-09-23: looped through these six
+                // step names with a fixed delay() and then unconditionally
+                // wrote "ALL SYSTEMS NOMINAL" regardless of updateHealthUI()'s
+                // actual result -- a technician relying on this to clear a
+                // truly faulty unit (network down, DB unreachable, tamper
+                // triggered) would have been told everything was fine. Each
+                // step below now runs a real check and the final verdict is
+                // derived from what they actually found.
+                val failures = mutableListOf<String>()
+
+                btn.text = "CHECKING: NET..."
+                delay(400)
+                if (!isNetworkAvailable(this@MainActivity)) failures += "NET"
+
+                btn.text = "CHECKING: DB..."
+                delay(400)
+                if (!ConfigManager.isDatabaseOnline()) failures += "DB"
+
+                btn.text = "CHECKING: SERIAL..."
+                delay(400)
+                if (!isSimulationMode && !HardwareFactory.getSerialProvider(this@MainActivity, hardwareVendor).isOpened()) {
+                    failures += "SERIAL"
                 }
-                
+
+                btn.text = "CHECKING: READER..."
+                delay(400)
+                if (!isSimulationMode && !hardware.isOperational()) failures += "READER"
+
+                // PRINTER: init() + hasPaper() only -- a real hardware
+                // round-trip, but no paper burned on every diagnostic run
+                // (startPrint() is deliberately not called here).
+                btn.text = "CHECKING: PRINTER..."
+                delay(400)
+                if (!isSimulationMode) {
+                    val printer = HardwareFactory.getPrinterProvider(this@MainActivity, hardwareVendor)
+                    if (!printer.init() || !printer.hasPaper()) failures += "PRINTER"
+                }
+
+                // VOICE: a real, audible utterance -- the technician is
+                // standing at the unit pressing this button, so unlike an
+                // unattended background check, actually speaking is the
+                // most honest self-test (silence = fail is obvious to them).
+                btn.text = "CHECKING: VOICE..."
+                if (!isSimulationMode) {
+                    TtsManager.speak("Diagnostic check complete")
+                    if (!TtsManager.isReady()) failures += "VOICE"
+                }
+                delay(400)
+
                 updateHealthUI()
-                btn.text = "DIAGNOSTIC COMPLETE - ALL SYSTEMS NOMINAL"
-                btn.setBackgroundColor(getColor(R.color.tech_neon_green))
-                btn.setTextColor(getColor(R.color.tech_deep_bg))
-                
+
+                if (failures.isEmpty()) {
+                    btn.text = "DIAGNOSTIC COMPLETE - ALL SYSTEMS NOMINAL"
+                    btn.setBackgroundColor(getColor(R.color.tech_neon_green))
+                    btn.setTextColor(getColor(R.color.tech_deep_bg))
+                } else {
+                    btn.text = "FAULT: ${failures.joinToString(", ")}"
+                    btn.setBackgroundColor(getColor(R.color.tech_tamper_red))
+                    btn.setTextColor(getColor(R.color.text_light))
+                    DiagnosticManager.recordMaintenance(deviceSn, "DIAGNOSTIC_FAULT")
+                }
+
                 delay(3000)
                 btn.text = originalText
                 btn.setBackgroundColor(getColor(R.color.tech_pill_bg))
@@ -1795,6 +1888,58 @@ class MainActivity : BaseAdActivity() {
         } else {
             val sent = HardwareFactory.getSerialProvider(this, hardwareVendor).sendHexString(hex)
             Toast.makeText(this, if (sent) "Sent: $hex" else "Send FAILED", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * True for exactly the hardware DispenseEngine.dispense() routes onto
+     * DigitIoAdapter/the Digit IO Pulse circuit for -- kept as a literal copy
+     * of that method's own check (Q3mini/IM30 UPT models) rather than a
+     * shared constant, since DispenseEngine lives in core/data and has no
+     * Context/Activity dependency to share one from; if that selection logic
+     * ever changes, this must change with it.
+     */
+    private fun isUptDigitIoMachine(): Boolean {
+        val modelStr = DeviceAdapter.getModel().toString()
+        return modelStr.contains("Q3MINI") || modelStr.contains("IM30")
+    }
+
+    /**
+     * Fires [count] real test pulses on whichever circuit is actually live
+     * for this hardware -- Digit IO's Pulse circuit (PIN1, native
+     * triggerLogicPulse, same constants DigitIoAdapter's real dispense uses)
+     * on Q3mini/IM30 UPT, or the legacy Console-serial hex path
+     * (sendTestCmd) on older relay-board hardware where that's still the
+     * real dispense path. Added 2026-09-23 to replace unconditional
+     * sendTestCmd() calls that tested dead wiring on UPT hardware once wash
+     * dispense moved to Digit IO (see docs/wizarpos_upt_integration_spec.md
+     * §1.1).
+     */
+    private fun sendTestPulses(count: Int) {
+        if (!isUptDigitIoMachine()) {
+            sendTestCmd(if (count >= 8) "AA 01 08 55" else "AA 01 04 55")
+            return
+        }
+        if (isSimulationMode) {
+            Toast.makeText(this, "Simulating: $count pulses on PIN1", Toast.LENGTH_SHORT).show()
+            return
+        }
+        CoroutineScope(Dispatchers.Main).launch {
+            val gpio = HardwareFactory.getGpioProvider(this@MainActivity, hardwareVendor)
+            var okCount = 0
+            repeat(count) {
+                if (gpio.triggerLogicPulse(
+                        com.goldsky.ssp.dispense.adapter.DigitIoAdapter.PULSE_PORT,
+                        com.goldsky.ssp.dispense.adapter.DigitIoAdapter.PULSE_VOLTAGE,
+                        com.goldsky.ssp.dispense.adapter.DigitIoAdapter.PULSE_WIDTH_MS,
+                        com.goldsky.ssp.dispense.adapter.DigitIoAdapter.PULSE_INTERVAL_MS
+                    )
+                ) {
+                    okCount++
+                }
+            }
+            Toast.makeText(this@MainActivity, "Pulse test: $okCount/$count sent on PIN1", Toast.LENGTH_SHORT).show()
+            DiagnosticManager.recordMaintenance(deviceSn, "DASH_RELAY_TEST")
         }
     }
 
