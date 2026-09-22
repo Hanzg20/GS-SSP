@@ -3,6 +3,15 @@
 > [!NOTE]
 > **版本号说明**: 本文档实际由两条独立演进线合并而成（CMP/Supabase 后端的 RLS 修复线，与 Android HAL/产品线的架构演进线），两条线各自独立递增版本号，合并后出现了 `v2.23`/`v2.24`/`v2.27` 各被使用两次、且部分条目未按日期严格排序的情况（例如 `v2.27 (2026-08-20)` 实际是全文最新的一次修改，却排在 `v2.28 (2026-08-09)` 之后）。**版本号不是可靠的时间/依赖排序依据，请以每条目标题里的日期为准**；正文中散落的 `[v2.1]` 等内联标记同理，指的是该版本条目引入的变更，不代表这是当前最新状态。
 
+### v2.50 (2026-09-23) — 打通 CMP→终端的品牌信息（Logo/商户名/欢迎语）字段名不匹配 bug (Branding Pipeline Field-Name Mismatch Fixed)
+
+排查商户在终端上"看到自己品牌"这条链路时发现：`gs-ssp-cmp` 的 `ConfigPricingManager`（Branding 标签页）一直在往 `app_configurations.branding` 发布 `{logoUrl, themeColor, announcement}`（驼峰命名，`announcement` 这个字段名 Kotlin 侧压根没有），而终端 `core/data`'s `Branding` 数据类期待的是 `{logo_url, brand_name, primary_color_hex}`（下划线命名）——`kotlinx.serialization` 默认精确匹配 key，不做驼峰/下划线转换，所以商户不管怎么在 CMP 上传 logo、改欢迎语、点发布，终端侧的反序列化全部静默回落到默认值，从未真正生效过。
+
+*   **CMP 侧**（`ConfigPricingManager.tsx`）：`handlePublish()` 的 payload key 改成跟 Kotlin 完全一致的下划线命名；新增"商户名称"输入框（之前只有 logo/主题色/公示文本三个字段，没有名称，`brand_name` 永远吃不到真实值）；新增 `deviceService.getLatestConfig(orgId)`，打开页面时用组织已发布的真实配置预填表单，而不是硬编码占位符——不然改一个字段发布就会把其它已经生效的品牌信息静默覆盖回占位符。
+*   **Kotlin 侧**：`Branding` 加 `welcome_message: String?` 字段（对应 CMP 的"Kiosk 公示文本"，此前完全没有承接的字段）；`BrandingManager` 新增 `applyWelcomeText()`，按 `welcome_message` → `"Welcome to {brand_name}"` → 调用方自带的静态默认文案三级降级；接入 `feature/wash`（`tv_title`，跟已有的 `applyLogo` 挂在同一个配置加载点）。
+*   **已知仍未覆盖，留作后续**：`app/iris`/`app/ourea`（有人值守柜台收银场景）完全没有调用 `BrandingManager`，一直显示写死的 GoldSky logo/主题——这两个 Compose 界面该把品牌信息放哪个具体位置（结账页头部？空闲页？）是产品设计问题，这次没有擅自加。另外 `organizations.logo_url`（真实存在于生产库、但 `docs/supabase_full_schema.sql` 没记录的一列，经 `OrganizationManagement.tsx`——仅 SYS_ADMIN 可见——写入）跟 `app_configurations.branding.logo_url`（本条目实际打通的这条链路）是两个互不同步的独立字段，尚未收敛成单一数据源，也是后续要做的事。
+*   **验证**：`gs-ssp-cmp` 用 `tsconfig.app.json`（不是根 `tsconfig.json`，那个不检查任何东西）typecheck 通过，除了一个已知的、跟本次改动无关的预置类型 bug（`update_device_alias` 不在生成的 RPC 类型联合里）。Android 侧 `core/ui`/`core/data`/`feature/wash` 编译通过，`assembleDebug`+`testDebugUnitTest` 保持绿色。**未做端到端真实发布验证**（需要真的在 CMP 点发布、设备收到 `SYNC_CONFIG` 后拉取新配置、肉眼确认 `tv_title` 显示出了商户自定义的欢迎语）。
+
 ### v2.49 (2026-08-29) — 补上 vip_cards 缺失的 tier 列：PLATINUM/GOLD 折扣逻辑第一次真正有数据可用 (vip_cards.tier Column Added — Discount Logic Finally Has Data)
 
 紧接 v2.48。上一条目顺手发现的缺口——`vip_cards` 表根本没有 `tier` 列，`feature/wash`/`app/ourea` 里的 PLATINUM/GOLD 阶梯折扣分支永远拿到 Kotlin 侧的默认值 "REGULAR"，折扣从来没真正生效过——这次正式修。

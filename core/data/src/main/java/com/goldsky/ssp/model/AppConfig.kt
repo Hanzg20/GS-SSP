@@ -26,7 +26,17 @@ data class AppConfig(
 data class Branding(
     val logo_url: String? = null,
     val brand_name: String = "GS-SSP",
-    val primary_color_hex: String = "#FFB800"
+    val primary_color_hex: String = "#FFB800",
+    // A merchant-authored greeting (CMP's "Kiosk Marquee Announcement" field,
+    // gs-ssp-cmp's ConfigPricingManager) -- added 2026-09-23 alongside fixing
+    // the CMP publish payload's key names (was sending logoUrl/themeColor/
+    // announcement, camelCase and with no welcome_message equivalent at all,
+    // so kotlinx.serialization's exact-key-match decode silently fell back
+    // to this class's defaults on every terminal). Null means "nothing
+    // published yet" -- see BrandingManager.applyWelcomeText for the
+    // fallback chain (welcome_message -> "Welcome to {brand_name}" -> the
+    // screen's own static default string).
+    val welcome_message: String? = null
 )
 
 @Serializable

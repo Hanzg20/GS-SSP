@@ -314,6 +314,7 @@ class MainActivity : BaseAdActivity() {
             
             // Apply tenant branding
             BrandingManager.applyLogo(findViewById(R.id.img_logo), config.branding)
+            BrandingManager.applyWelcomeText(findViewById(R.id.tv_title), config.branding, getString(R.string.title_welcome))
         }
     }
 
