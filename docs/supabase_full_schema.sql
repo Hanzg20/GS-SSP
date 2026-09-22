@@ -1544,6 +1544,20 @@ EXECUTE FUNCTION public.handle_new_profile();
 -- under a row lock (FOR UPDATE) so two concurrent taps on the same card
 -- can't double-spend. This is the ONLY path allowed to modify
 -- vip_cards.balance_cents (see REVOKE above).
+--
+-- SECURITY FIX 2026-09-22: this function had NO org-ownership check at all --
+-- any authenticated device that knew/guessed a card_uid belonging to a
+-- DIFFERENT org could deduct that card's balance. Flagged as a known gap
+-- during the 2026-08-29 vip_cards RLS pass and left unfixed at the time
+-- ("pre-existing, out of scope for a fix-the-read-side-RLS-gap task"); closed
+-- now. Scoped identically to the "Devices can see own org vip cards" RLS
+-- policy and get_vip_card_by_uid's read path: the card's org_id must be one
+-- of the org_ids the calling device (auth.uid(), via device_auth_map)
+-- belongs to. A mismatch (or a card with no org_id at all) returns
+-- 'card_not_found' -- deliberately the SAME message as a genuinely missing
+-- card, not a distinct 'wrong_org', so a device fishing for other orgs'
+-- card_uids can't use the response to confirm a UID exists elsewhere (same
+-- no-enumeration reasoning as get_vip_card_by_uid/resolve_vip_card_uid_by_qr).
 CREATE OR REPLACE FUNCTION public.deduct_vip_balance(p_card_uid TEXT, p_amount_cents INT)
 RETURNS JSON
 LANGUAGE plpgsql
@@ -1557,18 +1571,26 @@ DECLARE
   v_max_daily_cents INT;
   v_daily_spent_cents INT;
   v_daily_spent_date DATE;
+  v_org_id UUID;
 BEGIN
   IF p_amount_cents <= 0 THEN
     RETURN json_build_object('success', false, 'message', 'invalid_amount');
   END IF;
 
-  SELECT balance_cents, is_active, card_expiration_date, max_daily_cents, daily_spent_cents, daily_spent_date
-  INTO v_balance_cents, v_active, v_expiration, v_max_daily_cents, v_daily_spent_cents, v_daily_spent_date
+  SELECT balance_cents, is_active, card_expiration_date, max_daily_cents, daily_spent_cents, daily_spent_date, org_id
+  INTO v_balance_cents, v_active, v_expiration, v_max_daily_cents, v_daily_spent_cents, v_daily_spent_date, v_org_id
   FROM public.vip_cards
   WHERE card_uid = p_card_uid
   FOR UPDATE;
 
   IF v_balance_cents IS NULL THEN
+    RETURN json_build_object('success', false, 'message', 'card_not_found');
+  END IF;
+
+  IF v_org_id IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.device_auth_map
+    WHERE auth_user_id = auth.uid() AND org_id = v_org_id
+  ) THEN
     RETURN json_build_object('success', false, 'message', 'card_not_found');
   END IF;
 
