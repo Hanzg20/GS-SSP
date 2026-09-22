@@ -8,7 +8,7 @@ Q3mini UPT 背部接口从左至右定义如下：
 
 | 物理端口 | 推荐驱动 | 逻辑 ID | 用途说明 |
 | :--- | :--- | :--- | :--- |
-| **Digit IO (左)** | `ExtBoardDevice` | N/A | 10-Pin 端子，内含两组电气上独立的电路——**Pulse** (PIN1/2/8) 与 **Relay** (PIN6/7)，见 §1.1。当前 `DigitIoAdapter`（`core/data/.../dispense/adapter/DigitIoAdapter.kt`，是 `wash` 在 Q3mini/IM30 UPT 上出货的实际生产路径，见 `DispenseEngine.dispense()` 的选路逻辑）经 `triggerRelayOn(0)`/`triggerRelayOff(0)` 驱动 **Relay** 电路。 |
+| **Digit IO (左)** | `ExtBoardDevice` | N/A | 10-Pin 端子，内含两组电气上独立的电路——**Pulse** (PIN1/2/8) 与 **Relay** (PIN6/7)，见 §1.1。当前 `DigitIoAdapter`（`core/data/.../dispense/adapter/DigitIoAdapter.kt`，是 `wash` 在 Q3mini/IM30 UPT 上出货的实际生产路径，见 `DispenseEngine.dispense()` 的选路逻辑）经 `setPulseVoltage`/`triggerPulse` 驱动 **Pulse** 电路的 PIN1（`portNum=0`），现场接线已确认（2026-09-22）。 |
 | **MDB Slave (中)** | `ExtBoardDevice` | ID_SERIAL_EXT (2) | **售货机协议**。通过 `pollEvent` 处理 VMC 状态机交互。 |
 | **Console (右)** | `SerialPortDevice` | ID_SERIAL_EXT2 (6) | **RS232 通讯**。用于外接 DEX 控制器或第三方 HEX 指令板卡。 |
 
@@ -33,10 +33,10 @@ Q3mini UPT 背部接口从左至右定义如下：
 
 | 电路 | 引脚 | API | 说明 |
 | :--- | :--- | :--- | :--- |
-| Pulse | PIN1/2 (`portNum=0/1`)、PIN8 | `setPulseVoltage(int voltage)`、`triggerPulse(portNum, voltage, duration, interval, num)`、`triggerPulseUs(...)` | 12V 逻辑脉冲信号输出，硬件计时。`voltage`: 0=待机高电平/输出低电平，1=待机低电平/输出高电平；同一端口两个方法的 `voltage` 参数必须保持一致；`interval` 为**上一个脉冲结束到下一个脉冲开始**的间隔。 |
-| Relay | PIN6 (DC-) / PIN7 (DC+) | `triggerRelayOn(port)` / `triggerRelayOff(port)`（当前 `DigitIoAdapter` 用法）、`triggerRelay(port, onMs, offMs, times)`（硬件计时版，官方 APIDemo 用法：`triggerRelay(0, 500, 500, 5)`） | 驱动外部 12V 继电器线圈的低边开关，用于直接切换较大功率负载（如水泵/电磁阀电源）。 |
+| Pulse | PIN1/2 (`portNum=0/1`)、PIN8 | `setPulseVoltage(int voltage)`、`triggerPulse(portNum, voltage, duration, interval, num)`、`triggerPulseUs(...)` | 12V 逻辑脉冲信号输出，硬件计时。`voltage`: 0=待机高电平/输出低电平，1=待机低电平/输出高电平；同一端口两个方法的 `voltage` 参数必须保持一致；`interval` 为**上一个脉冲结束到下一个脉冲开始**的间隔。**当前 `DigitIoAdapter` 用法** —— PIN1（`portNum=0`），`voltage=0`（现场实测 PIN1 待机 12V/高电平，对应 `voltage=0`）。 |
+| Relay | PIN6 (DC-) / PIN7 (DC+) | `triggerRelayOn(port)` / `triggerRelayOff(port)`、`triggerRelay(port, onMs, offMs, times)`（硬件计时版，官方 APIDemo 用法：`triggerRelay(0, 500, 500, 5)`） | 驱动外部 12V 继电器线圈的低边开关，用于直接切换较大功率负载（如水泵/电磁阀电源）。目前代码未使用此电路（`WizarPosGpioProvider.triggerRelayPulse` 仍保留实现，供未来真正需要驱动继电器线圈的场景——如 EV 接触器、停车道闸电磁阀——复用）。 |
 
-**⚠️ 未确认，待与现场接线核实**：`DigitIoAdapter`（`core/data/.../dispense/adapter/DigitIoAdapter.kt`）目前用 `triggerRelayOn(0)` + `delay(500ms)` + `triggerRelayOff(0)` + `delay(500ms)` 的**软件计时**循环去驱动 **Relay** 电路（PIN6/7），模拟投币计数器式的多脉冲信用。这在电气上说得通（继电器触点闭合本身就是常见的投币脉冲模拟方式），但没有确认过洗车场站实际下游计时板/继电器板具体接在 PIN6/7 (Relay) 还是 PIN1/2/8 (Pulse)——如果下游板子期望的是逻辑电平脉冲而非继电器干接点，接线就接错了电路。另外，即使确认 Relay 电路是对的，SDK 也提供了**硬件计时**的 `triggerRelay(port, onMs, offMs, times)` 一次性下发整个脉冲序列，比 App 侧 `delay()` 循环（受 Android 协程调度/GC 抖动影响）更可靠，值得作为后续优化。
+**✅ 已确认（2026-09-22，现场接线核实）**：洗车场站下游计时板的实际输入接在 **PIN1（Pulse 电路，`portNum=0`）**，不是 Relay 电路（PIN6/7 是继电器线圈的驱动端，用途不同，不是本场景该用的电路）。`DigitIoAdapter` 已切换为 `setPulseVoltage(0)` + `triggerPulse(0, 0, 500, 500, 1)`（硬件计时，逐脉冲调用），取代此前一版用 `triggerRelayOn/Off` 软件计时循环驱动 Relay 电路的实现。
 
 ## 2. 支付集成：PAYWizard Socket 模式
 

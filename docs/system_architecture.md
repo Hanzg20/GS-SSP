@@ -961,14 +961,14 @@ IM30 端的 App 采用 **MVVM (Model-View-ViewModel)** 架构，结合 **Reposit
 
 | 变体 (Flavor) | 核心场景 | **主力硬件** | 物理协议 | 资金流模型 | 关键技术特征 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`wash`** | 自助洗车 | **Q3mini UPT** | Digit IO (Relay) | 预付单扣 | **更正 2026-09-22（此前条目已过时）**：出货已改经 `DigitIoAdapter` 直连 `WizarPosGpioProvider`（`triggerRelayOn/Off`），由 `DispenseEngine.dispense()` 对 Q3mini/IM30 UPT + `WASH` 场景自动选路，不再经 Console 串口；现场实测已于 2026-09-18 在真机确认。物理接线/API 对照见 §13.2 与 `docs/wizarpos_upt_integration_spec.md` §1.1 |
+| **`wash`** | 自助洗车 | **Q3mini UPT** | Digit IO (Pulse) | 预付单扣 | **更正 2026-09-22（此前两版条目均已过时）**：出货经 `DigitIoAdapter` 直连 `WizarPosGpioProvider`，由 `DispenseEngine.dispense()` 对 Q3mini/IM30 UPT + `WASH` 场景自动选路，不再经 Console 串口；现场实测于 2026-09-18 在真机确认可出货，随后 2026-09-22 现场接线核实下游计时板实际接在 **Pulse 电路 PIN1**（非 Relay 电路 PIN6/7），代码已对应改为 `setPulseVoltage`/`triggerPulse`。物理接线/API 对照见 §13.2 与 `docs/wizarpos_upt_integration_spec.md` §1.1 |
 | **`vending`** | 自动售货 | **Q3mini UPT** | **MDB** | 预付+确认 | ExtBoard 事件驱动模式（含 vend 应答），自动对账与库存同步 |
 | **`parking`** | 智慧停车 | IM30 / Q3mini | Pulse / DI | 预付单扣 | 车牌识别集成预留，闸机抬杆脉冲控制 |
 | **`ev`** | 新能源充电 | IM30 / Q3mini | **Modbus** | **预授权** | 实时电量 (kWh) 采集，支持 Nuvei 押金模式 |
 | **`retail`** | 零售收银 | **Q1 / Q2** | Internal API | **有人值守** | 购物车逻辑，员工 ID 审计，手持扫码理货 |
 
 ### 11.2 工业控制 HAL 层标准化
-*   **Digit IO (GPIO)**: `WizarPosGpioProvider` 已实装 `triggerRelayOn/Off` 直接驱动物理继电器，`DigitIoAdapter` 已作为 `IDispenseAdapter` 接入 `DispenseEngine`（**更正 2026-09-22，此前条目误称"尚未接入"**）——Q3mini/IM30 UPT 上的 `wash` 出货现经此路，已真机验证（2026-09-18）。当前用软件 `delay()` 循环调用 `triggerRelayOn/Off` 模拟脉冲序列，SDK 另提供硬件计时的 `triggerRelay(port, onMs, offMs, times)` 一次下发整段序列，更抗协程调度抖动，值得后续切换，见 §13.2。
+*   **Digit IO (GPIO)**: `DigitIoAdapter` 已作为 `IDispenseAdapter` 接入 `DispenseEngine`（**更正 2026-09-22，此前条目误称"尚未接入"**）——Q3mini/IM30 UPT 上的 `wash` 出货现经此路，已真机验证（2026-09-18）。驱动的是 **Pulse 电路（PIN1，`portNum=0`）**，经 `ExtBoardDevice.setPulseVoltage`/`triggerPulse` 硬件计时下发（**更正，同日**：早前一版误用 Relay 电路 PIN6/7 的 `triggerRelayOn/Off`，现场接线核实后改正——Relay 电路是继电器线圈驱动端，跟下游计时板要的逻辑脉冲信号是两回事）。见 §13.2 与 `docs/wizarpos_upt_integration_spec.md` §1.1。
 *   **MDB High-Level API**: 采用 `pollEvent` 状态机接收 VMC 事件；`approveVend()`/`denyVend()` 已实装，经 `ExtBoardDevice.respondEvent()` 应答 VMC 的 vend 请求（此前版本完全缺失这一步）。**该应答机制未经官方 MDB 协议 PDF 或真机验证**。业务层经新增的 `IMdbController`/`WizarPosMdbController` 桥接层接入 `VendingViewModel`（仅 `WIZARPOS_Q3MINI` 机型启用，其余机型沿用 `MockMdbController` 模拟器）。
 *   **Double-Stage Serial**: 串口通讯遵循 **Header-Body** 双段读取最佳实践，规避工业电磁干扰。
 
@@ -996,7 +996,7 @@ GS-SSP 通过本地 Socket (`127.0.0.1:6666`) 调用预装的 **PAYWizard** 安�
 *   **生产环境**: 支持通过 **Varsheet API** 远程注入 Nuvei MID/TID/Key。
 
 ### 13.2 硬件控制：三路并行 HAL
-1.  **左路 (Digit IO)**: `WizarPosGpioProvider` 已实装 `triggerRelayOn/Off` 物理高低电平控制，`DigitIoAdapter` 已作为 `IDispenseAdapter` 接入 `DispenseEngine`（**更正 2026-09-22，此前两条"尚未接入"的记录均已过时**）——`DispenseEngine.dispense()` 对 Q3mini/IM30 UPT + `vertical_type == "WASH"` 自动选用 `DigitIoAdapter`，`wash` 出货实际经此路直连 Relay 电路（PIN6/7，见 §1.1 与 `docs/wizarpos_upt_integration_spec.md` §1.1 的完整 10-Pin 定义），非 Console 串口。**待确认**：现场下游计时/继电器板具体接在 Relay (PIN6/7) 还是 Pulse (PIN1/2/8，`triggerPulse`/`setPulseVoltage` 专属电路) 尚未与实际接线核实，两者电气特性不同（前者为继电器干接点低边开关，后者为直接 12V 逻辑脉冲输出）；另外当前 `triggerRelayOn/Off` + App 侧 `delay()` 的软件计时脉冲序列，可换成 SDK 原生硬件计时的 `triggerRelay(port, onMs, offMs, times)` 一次下发，规避协程调度抖动。
+1.  **左路 (Digit IO)**: `DigitIoAdapter` 已作为 `IDispenseAdapter` 接入 `DispenseEngine`（**更正 2026-09-22，此前多条"尚未接入"/"走 Relay 电路"的记录均已过时**）——`DispenseEngine.dispense()` 对 Q3mini/IM30 UPT + `vertical_type == "WASH"` 自动选用 `DigitIoAdapter`，`wash` 出货实际经此路直连 **Pulse 电路（PIN1，`portNum=0`）**，非 Console 串口，也不是 Relay 电路（PIN6/7，2026-09-22 现场接线核实排除，见 §1.1 与 `docs/wizarpos_upt_integration_spec.md` §1.1 的完整 10-Pin 定义）。经 `ExtBoardDevice.setPulseVoltage(0)`/`triggerPulse(0, 0, 500, 500, 1)` 硬件计时下发，`voltage=0` 由现场实测 PIN1 待机 12V/高电平推得，非猜测。Relay 电路的硬件计时接口（`triggerRelay(port, onMs, offMs, times)`）仍保留在 `WizarPosGpioProvider` 里，留给未来真正要驱动继电器线圈的场景（如 EV 接触器、停车道闸）复用。
 2.  **中路 (MDB Slave)**: 事件驱动状态机（`WizarPosMdbProvider.pollEvent`），用于对接售货机 VMC；已实装 `approveVend()`/`denyVend()`（经 `ExtBoardDevice.respondEvent()` 应答 VMC 的 vend 请求，此前完全缺失这一步）。**⚠️ 应答机制未经官方 MDB 协议 PDF 或真机验证**。业务层通过新增的 `IMdbController`/`WizarPosMdbController` 桥接层接入 `VendingViewModel`（仅 `WIZARPOS_Q3MINI` 机型启用，其余机型仍用 `MockMdbController` 模拟器）。
 3.  **右路 (Console)**: **Port 6 (ID_SERIAL_EXT2)**。实装双段读取，用于第三方 HEX 板卡（`PulseCreditAdapter`/`SingleCommandAdapter` 等非 UPT 或非 WASH 场景走这一路，见 `DispenseEngine.dispense()` 选路逻辑）。
 
