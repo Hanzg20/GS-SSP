@@ -81,6 +81,31 @@ CREATE TABLE IF NOT EXISTS public.organizations (
 ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES public.organizations(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_organizations_parent ON public.organizations(parent_id);
 
+-- Reconciliation, 2026-09-23: `logo_url` already existed live in production
+-- (uploaded/edited via gs-ssp-cmp's OrganizationManagement.tsx, SYS_ADMIN-only,
+-- and already rendered in that same app's own sidebar org-switcher, see
+-- SimpleSidebar.tsx) but was never added to this file -- doc/prod drift, same
+-- recurring class of gap other tables in this schema have hit. Documented
+-- here as the ALTER it actually was, not folded into the CREATE TABLE above.
+ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS logo_url TEXT;
+
+-- `brand_name`/`welcome_message`, added 2026-09-23 as the single source of
+-- truth for what a merchant's TERMINAL shows -- deliberately NOT reusing
+-- `organizations.name` for this: `name` is already used as the real legal
+-- entity name for acquirer onboarding (see OrganizationManagement.tsx's
+-- `acquirerService.createApplication(..., { legalName: selectedOrg.name })`,
+-- part of the live Nuvei/Elavon AppLink integration), so letting it double
+-- as a customer-facing kiosk display name risks a merchant casually editing
+-- their storefront greeting and corrupting the legal name on file with an
+-- acquirer. `brand_name` NULL means "no override set" -- callers fall back
+-- to `name` themselves (see gs-ssp-cmp's ConfigPricingManager), this column
+-- doesn't duplicate that default via a trigger.
+-- `primary_color_hex` deliberately stays app_configurations-only (not moved
+-- here): unlike logo_url/brand_name/welcome_message, it was never
+-- independently duplicated anywhere else, no drift risk to close.
+ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS brand_name TEXT;
+ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS welcome_message TEXT;
+
 -- Human identity for the cloud management platform (CMP) -- distinct from
 -- device identity (devices/device_auth_map below, which is anonymous-auth
 -- and has no human attached). One row per signed-up Supabase Auth user,
