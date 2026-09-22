@@ -108,4 +108,30 @@ class WizarPosGpioProvider(private val terminal: POSTerminal?) : IGpioProvider {
             false
         }
     }
+
+    /**
+     * Native hardware-timed override for the **Pulse** circuit (PIN1/2/8,
+     * NOT the same physical circuit [triggerRelayPulse] drives -- see
+     * docs/wizarpos_upt_integration_spec.md §1.1). Uses
+     * `ExtBoardDevice.setPulseVoltage(voltage)` + `.triggerPulse(portNum,
+     * voltage, onMs, offMs, times=1)`, both confirmed present on the bundled
+     * SDK via javap. `setPulseVoltage` is called every time, not once at
+     * init: it's a device-wide (not per-port) setting per its single-int
+     * signature, and the vendor's own docs require it to always match the
+     * `voltage` passed to `triggerPulse` -- re-applying it here means the
+     * two can never silently drift apart, at the cost of one extra JNI call
+     * per pulse (cheap relative to the 500ms+ pulse itself).
+     */
+    override suspend fun triggerLogicPulse(port: Int, voltage: Int, onMs: Long, offMs: Long): Boolean {
+        if (!ensureOpened()) return false
+        return try {
+            extBoardDevice?.setPulseVoltage(voltage)
+            extBoardDevice?.triggerPulse(port, voltage, onMs.toInt(), offMs.toInt(), 1)
+            Log.i(TAG, "Native logic pulse on port $port (voltage=$voltage, ${onMs}ms/${offMs}ms)")
+            true
+        } catch (e: Throwable) {
+            Log.e(TAG, "triggerPulse error: ${e.message}")
+            false
+        }
+    }
 }

@@ -59,4 +59,42 @@ interface IGpioProvider {
         kotlinx.coroutines.delay(offMs)
         return true
     }
+
+    /**
+     * Fires a single hardware-timed pulse on the **Pulse** circuit -- NOT the
+     * same physical circuit [triggerRelayPulse] drives. Per
+     * docs/wizarpos_upt_integration_spec.md §1.1 (real 10-pin measurement,
+     * 2026-09-22): Relay (PIN6/7, DC-/DC+) energizes an external relay's
+     * COIL; Pulse (PIN1/2/8) is a direct 12V logic-level signal output, the
+     * electrically correct one for signaling a downstream pulse-counting
+     * board (coin-acceptor-style credit timer) -- confirmed 2026-09-22 by
+     * the wash site's actual wiring: the downstream board's input is on
+     * PIN1 (`port=0`), not the relay coil terminals.
+     *
+     * @param voltage 0 or 1, per the vendor's documented contract: idle
+     * level is the OPPOSITE of [voltage] (voltage=0 => idle HIGH/pulse LOW;
+     * voltage=1 => idle LOW/pulse HIGH). Must be derived from a real
+     * multimeter reading of the port's idle level, never guessed -- on this
+     * wash site PIN1 measured 12V (HIGH) at idle, which is `voltage=0`.
+     * Every call re-applies `setPulseVoltage` before triggering so voltage
+     * and idle state can't silently drift apart (the vendor's own docs
+     * require the two to always match).
+     *
+     * Default implementation has no real Pulse-circuit primitive to fall
+     * back on (`PaxGpioProvider`/`MockGpioProvider` have no notion of a
+     * separate logic-pulse output distinct from a relay toggle) -- best
+     * effort via the generic on/off toggle, ignoring polarity. Override
+     * where a real one exists (see WizarPosGpioProvider, backed by
+     * `ExtBoardDevice.setPulseVoltage`/`triggerPulse`).
+     *
+     * @return true if the pulse was accepted by the hardware (same
+     * fail-closed contract as [setRelay]/[triggerRelayPulse]).
+     */
+    suspend fun triggerLogicPulse(port: Int, voltage: Int, onMs: Long, offMs: Long): Boolean {
+        if (!setRelay(port, true)) return false
+        kotlinx.coroutines.delay(onMs)
+        setRelay(port, false)
+        kotlinx.coroutines.delay(offMs)
+        return true
+    }
 }
