@@ -1,6 +1,7 @@
 package com.goldsky.ssp.feature.timer
 
 import com.goldsky.ssp.model.Product
+import com.goldsky.ssp.model.forVertical
 
 /** One sellable block of time, e.g. $2 -> 4 min. */
 data class TimerPackage(
@@ -23,8 +24,8 @@ data class TimerPackage(
          * an unknown amount of time is worse than not offering it.
          */
         fun fromProducts(products: List<Product>): List<TimerPackage> =
-            products
-                .filter { it.is_active && it.vertical_type.equals(VERTICAL, ignoreCase = true) && it.price_cents > 0 }
+            products.forVertical(VERTICAL)
+                .filter { it.is_active && it.price_cents > 0 }
                 .mapNotNull { p ->
                     val sec = p.durationSec?.takeIf { it > 0 } ?: return@mapNotNull null
                     TimerPackage(p.id, p.name, p.price_cents, sec)

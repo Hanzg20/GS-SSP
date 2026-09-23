@@ -34,6 +34,7 @@ import com.goldsky.ssp.dispense.DispenseOutcome
 import com.goldsky.ssp.model.PaymentMethodMode
 import com.goldsky.ssp.model.Product
 import com.goldsky.ssp.model.WashPackage
+import com.goldsky.ssp.model.forVertical
 import com.goldsky.ssp.payment.*
 import com.goldsky.ssp.payment.hardware.HardwareFactory
 import com.goldsky.ssp.ui.BaseAdActivity
@@ -51,6 +52,10 @@ import kotlinx.serialization.json.intOrNull
 class MainActivity : BaseAdActivity() {
 
     companion object {
+        // Only this vertical's packages -- the org's config also carries other
+        // terminals' products (e.g. Aegis Timer's vacuum packages), see forVertical.
+        private const val WASH_VERTICAL = "WASH"
+
         // docs/coupon_redemption_integration.md §4.2: real coupon codes are
         // exactly 8 chars of random alphanumeric (shortened 2026-09-19 from
         // the original 16+ char UUID-derived format, for printing/on-screen
@@ -307,7 +312,7 @@ class MainActivity : BaseAdActivity() {
     private fun loadInitialConfig(orgId: String?) {
         CoroutineScope(Dispatchers.Main).launch {
             val config = ConfigManager.loadConfig(this@MainActivity, orgId)
-            refreshProductsUI(config.products)
+            refreshProductsUI(config.products.forVertical(WASH_VERTICAL))
             
             // Sync dynamic TTS language
             TtsManager.setLocale(config.settings.locale_tag)
@@ -593,7 +598,7 @@ class MainActivity : BaseAdActivity() {
      *   guessing.
      */
     private fun findMatchingLocalProduct(peek: CouponPeekResult.Success): Product? {
-        val localProducts = ConfigManager.getConfig()?.products ?: emptyList()
+        val localProducts = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL) ?: emptyList()
         return when {
             peek.applicableProductId != null ->
                 localProducts.firstOrNull { it.id == peek.applicableProductId }
@@ -1695,7 +1700,7 @@ class MainActivity : BaseAdActivity() {
                 // already uses elsewhere (see the RemoteCommandManager wiring).
                 DeviceAccessManager.applyActiveState(identity?.is_active)
                 val config = ConfigManager.loadConfig(this@MainActivity, identity?.org_id)
-                refreshProductsUI(config.products)
+                refreshProductsUI(config.products.forVertical(WASH_VERTICAL))
                 DiagnosticManager.recordMaintenance(deviceSn, "DASH_FORCE_SYNC")
 
                 updateHealthUI()

@@ -46,6 +46,16 @@ data class Product(
     val durationSec: Int? get() = attributes?.get("duration_sec")?.jsonPrimitive?.intOrNull
 }
 
+/**
+ * The products one vertical's terminal may sell. app_configurations is
+ * per-org, not per-device, so a site running wash AND Aegis Timer terminals
+ * publishes one list with both kinds in it -- every consumer must filter to
+ * its own vertical or it will sell another machine's packages (e.g. a $2
+ * vacuum package landing on a wash button and dispensing 2 wash pulses).
+ */
+fun List<Product>.forVertical(verticalType: String): List<Product> =
+    filter { it.vertical_type.equals(verticalType, ignoreCase = true) }
+
 @Serializable
 data class ModifierGroup(
     val id: String,
