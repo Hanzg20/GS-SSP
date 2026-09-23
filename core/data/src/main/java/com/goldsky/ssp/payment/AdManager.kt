@@ -31,21 +31,29 @@ object AdManager {
     private val _playlistUpdateFlow = MutableSharedFlow<List<TargetedAd>>(replay = 1)
     val playlistUpdateFlow = _playlistUpdateFlow.asSharedFlow()
 
-    fun init(context: Context) {
+    /**
+     * Schedules every terminal's background jobs (heartbeat, offline
+     * transaction replay, daily batch close, storage cleaning) plus ad
+     * playlist sync. [syncAds] = false for shells with no ad screen (Aegis
+     * Timer) -- the rest is still required there, batch close especially.
+     */
+    fun init(context: Context, syncAds: Boolean = true) {
         val constraints = androidx.work.Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
         // 1. Ad Sync (Every 2 hours)
-        val syncRequest = PeriodicWorkRequestBuilder<AdSyncWorker>(2, TimeUnit.HOURS)
-            .setConstraints(constraints)
-            .build()
+        if (syncAds) {
+            val syncRequest = PeriodicWorkRequestBuilder<AdSyncWorker>(2, TimeUnit.HOURS)
+                .setConstraints(constraints)
+                .build()
 
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            AD_SYNC_WORK,
-            ExistingPeriodicWorkPolicy.REPLACE, // Change to REPLACE to apply new constraints
-            syncRequest
-        )
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                AD_SYNC_WORK,
+                ExistingPeriodicWorkPolicy.REPLACE, // Change to REPLACE to apply new constraints
+                syncRequest
+            )
+        }
 
         // 2. Heartbeat (Every 15 mins - WorkManager minimum)
         val heartbeatRequest = PeriodicWorkRequestBuilder<HeartbeatWorker>(15, TimeUnit.MINUTES)

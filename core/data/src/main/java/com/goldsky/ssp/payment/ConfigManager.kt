@@ -87,6 +87,16 @@ object ConfigManager {
         assetConfig
     }
 
+    /**
+     * Cache -> assets only, no network: lets a kiosk paint its last-known
+     * config instantly at startup instead of waiting out [loadConfig]'s cloud
+     * round trip (several seconds on site Wi-Fi). Call [loadConfig] after it
+     * to refresh. Doesn't overwrite a config already loaded this process.
+     */
+    suspend fun loadLocalConfig(context: Context): AppConfig = withContext(Dispatchers.IO) {
+        currentConfig ?: (tryLoadCache(context) ?: loadFromAssets(context)).also { currentConfig = it }
+    }
+
     private suspend fun tryFetchRemoteConfig(orgId: String): AppConfig? {
         return try {
             // Filtered by org_id -- previously this fetched the single most

@@ -51,8 +51,7 @@ object TtsManager : DefaultLifecycleObserver {
                     // sounding sped-up or unnatural.
                     tts?.setPitch(1.08f)
                     tts?.setSpeechRate(1.05f)
-                    applyLocale(currentLocale)
-                    selectBestVoice(currentLocale)
+                    configureVoice(currentLocale)
                     Log.i(TAG, "TTS Engine initialized successfully")
                 } else {
                     Log.e(TAG, "TTS Initialization failed: $status")
@@ -68,7 +67,21 @@ object TtsManager : DefaultLifecycleObserver {
     fun setLocale(languageTag: String) {
         val locale = Locale.forLanguageTag(languageTag)
         currentLocale = locale
-        if (isInitialized) {
+        if (isInitialized) configureVoice(locale)
+    }
+
+    // setLanguage() + enumerating engine.voices are slow binder round trips
+    // to the TTS engine -- ~10s on a WizarPOS Q3mini's first init, measured
+    // 2026-09-24 as a frozen UI ("Skipped 593 frames") because both the init
+    // callback and setLocale() run on the main thread. Done on one dedicated
+    // thread instead so calls stay ordered; speak() meanwhile just uses
+    // whatever voice the engine currently has.
+    private val voiceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "tts-voice-config").apply { isDaemon = true }
+    }
+
+    private fun configureVoice(locale: Locale) {
+        voiceExecutor.execute {
             applyLocale(locale)
             selectBestVoice(locale)
         }

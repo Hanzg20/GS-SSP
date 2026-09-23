@@ -111,6 +111,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 subtitle = config.branding.welcome_message,
             )
         }
+        refreshHealth()
     }
 
     fun setLocked(locked: Boolean) = _state.update { it.copy(locked = locked) }
