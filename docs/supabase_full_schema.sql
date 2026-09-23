@@ -81,30 +81,14 @@ CREATE TABLE IF NOT EXISTS public.organizations (
 ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES public.organizations(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_organizations_parent ON public.organizations(parent_id);
 
--- Reconciliation, 2026-09-23: `logo_url` already existed live in production
--- (uploaded/edited via gs-ssp-cmp's OrganizationManagement.tsx, SYS_ADMIN-only,
--- and already rendered in that same app's own sidebar org-switcher, see
--- SimpleSidebar.tsx) but was never added to this file -- doc/prod drift, same
--- recurring class of gap other tables in this schema have hit. Documented
--- here as the ALTER it actually was, not folded into the CREATE TABLE above.
-ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS logo_url TEXT;
-
--- `brand_name`/`welcome_message`, added 2026-09-23 as the single source of
--- truth for what a merchant's TERMINAL shows -- deliberately NOT reusing
--- `organizations.name` for this: `name` is already used as the real legal
--- entity name for acquirer onboarding (see OrganizationManagement.tsx's
--- `acquirerService.createApplication(..., { legalName: selectedOrg.name })`,
--- part of the live Nuvei/Elavon AppLink integration), so letting it double
--- as a customer-facing kiosk display name risks a merchant casually editing
--- their storefront greeting and corrupting the legal name on file with an
--- acquirer. `brand_name` NULL means "no override set" -- callers fall back
--- to `name` themselves (see gs-ssp-cmp's ConfigPricingManager), this column
--- doesn't duplicate that default via a trigger.
--- `primary_color_hex` deliberately stays app_configurations-only (not moved
--- here): unlike logo_url/brand_name/welcome_message, it was never
--- independently duplicated anywhere else, no drift risk to close.
-ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS brand_name TEXT;
-ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS welcome_message TEXT;
+-- (organizations.logo_url: see §21 near the end of this file for that
+-- column's own history -- NOT re-added here. Corrects a mistake in this
+-- same spot from earlier today, 2026-09-23: it was claimed undocumented/
+-- drifted, but §21 already documents it, added back on v2.22 2026-08-23 --
+-- just missed on a grep that only checked the CREATE TABLE block above, not
+-- the whole file. organizations.brand_name/welcome_message, the actually-new
+-- columns from that same pass, are documented in §22 alongside §21, not
+-- here, to keep this org-identity history in one place.)
 
 -- Human identity for the cloud management platform (CMP) -- distinct from
 -- device identity (devices/device_auth_map below, which is anonymous-auth
@@ -2795,3 +2779,63 @@ USING (org_id IN (SELECT public.member_org_ids()));
 -- needed since that bucket's INSERT/DELETE policies only check bucket_id.
 -- =============================================================================
 ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS logo_url TEXT;
+
+-- =============================================================================
+-- 22. Merchant self-service profile: brand_name/welcome_message + the RLS
+-- gap that would have silently blocked every merchant from using it,
+-- 2026-09-23.
+--
+-- brand_name/welcome_message are the single source of truth for what a
+-- merchant's TERMINAL shows (see gs-ssp-cmp's ConfigPricingManager and the
+-- new MerchantProfile self-service page). Deliberately NOT reusing `name`
+-- for this: `name` is already the real legal entity name sent to acquirer
+-- onboarding (OrganizationManagement.tsx's
+-- `acquirerService.createApplication(..., { legalName: selectedOrg.name })`,
+-- part of the live Nuvei/Elavon AppLink integration) -- letting a merchant
+-- casually edit their kiosk greeting through the same field risks
+-- corrupting the legal name on file with a real payment acquirer.
+-- `primary_color_hex` deliberately stays app_configurations-only, not moved
+-- here: unlike logo_url/brand_name/welcome_message it was never
+-- independently duplicated anywhere else, no drift risk to close.
+ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS brand_name TEXT;
+ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS welcome_message TEXT;
+
+-- REAL GAP FOUND WHILE BUILDING THE SELF-SERVICE PAGE, not yet fixed
+-- anywhere until now: `organizations` has only ever had SYS_ADMIN-only
+-- INSERT/UPDATE/DELETE policies (see §1's "Sys admins can update
+-- organizations"), and `locations` has only ever had a SYS_ADMIN-only
+-- "FOR ALL" manage policy (§1's "Sys admins can manage locations", v2.22).
+-- A MERCHANT_ADMIN could never have actually saved anything through
+-- ConfigPricingManager's `orgService.updateOrganization()` call added
+-- earlier today (step 2) -- RLS would have silently rejected it for anyone
+-- but GoldSky's own staff. Fixed with a permission-gated policy on each,
+-- same has_permission_for_org() pattern the VIP/coupon RPCs already use,
+-- rather than a blanket "org members can write" policy (out of caution --
+-- team.manage/catalog.manage already separate "can invite people" from
+-- "can edit prices"; a merchant's own profile fields deserve their own key
+-- too, not bundled into an unrelated one).
+INSERT INTO public.permissions (key, description, category) VALUES
+    ('org.manage', 'Edit organization profile (name, logo, welcome message) and locations', 'org')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO public.capability_permissions (capability, permission)
+VALUES ('admin', 'org.manage')
+ON CONFLICT DO NOTHING;
+
+DROP POLICY IF EXISTS "Org admins can update own organization" ON public.organizations;
+CREATE POLICY "Org admins can update own organization" ON public.organizations
+FOR UPDATE TO authenticated
+USING (public.has_permission_for_org('org.manage', id))
+WITH CHECK (public.has_permission_for_org('org.manage', id));
+
+DROP POLICY IF EXISTS "Org admins can manage own locations" ON public.locations;
+CREATE POLICY "Org admins can manage own locations" ON public.locations
+FOR ALL TO authenticated
+USING (public.has_permission_for_org('org.manage', org_id))
+WITH CHECK (public.has_permission_for_org('org.manage', org_id));
+-- Note: this is FOR ALL (covers UPDATE, INSERT, and DELETE) -- deliberately
+-- broader than the organizations policy above (UPDATE only, since an org
+-- row itself is never created/deleted by a merchant). A merchant plausibly
+-- does need to add/remove their own locations (opening/closing a store),
+-- not just edit an existing one's address.
+-- =============================================================================
