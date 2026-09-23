@@ -25,6 +25,11 @@ interface IPaymentProvider {
          * Defaults to "UNKNOWN" for callers that don't have a more specific
          * value (e.g. VIP/QR/coupon flows, which don't go through a card
          * reader at all).
+         *
+         * [refNum] is whatever THIS provider's [voidTransaction]/
+         * [refundTransaction] need to find the sale again -- callers store it
+         * only to pass back for an automatic reversal. For WizarPOS that's
+         * the sale's own TransIndexCode (our ecrRefNum), not the bank RRN.
          */
         fun onSuccess(authCode: String, refNum: String, entryMode: String = "UNKNOWN")
 

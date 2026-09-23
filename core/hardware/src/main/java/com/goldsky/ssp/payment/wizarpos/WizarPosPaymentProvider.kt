@@ -29,6 +29,11 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
     private var detectionJob: Job? = null
     private var rfCardDevice: RFCardReaderDevice? = null
 
+    // TransIndexCode -> amount of sales this process started, so a later
+    // Reversal can carry TransAmount like the vendor's own demo does
+    // (Serial&SocketDemo240910 MainActivity, B_TRAN_REVERSAL).
+    private val saleAmounts = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
     /**
      * Data model aligned with WizarPOS GlobalRequest.java
      */
@@ -46,6 +51,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
 
     override fun startSale(amountInCents: Int, ecrRefNum: String, callback: IPaymentProvider.PaymentCallback) {
         Log.i(TAG, "Starting PAYWizard SALE: $amountInCents cents")
+        saleAmounts[ecrRefNum] = amountInCents
         
         CoroutineScope(Dispatchers.Main).launch {
             callback.onProgress("CONNECTING TO TERMINAL...")
@@ -72,6 +78,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
             
             val request = GlobalRequest(
                 TransType = "Reversal",
+                TransAmount = saleAmounts[refNum]?.toString(),
                 OriTransIndexCode = refNum,
                 TransIndexCode = "V-" + java.lang.System.currentTimeMillis()
             )
@@ -128,7 +135,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                 
                 if (isSuccess) {
                     val authNo = root["AuthCode"]?.jsonPrimitive?.content ?: "OK"
-                    val refNo = root["RRN"]?.jsonPrimitive?.content ?: originalRef
+                    val rrn = root["RRN"]?.jsonPrimitive?.content
                     // Empty/"null" strings mean the terminal didn't fill the field.
                     fun field(k: String) = root[k]?.jsonPrimitive?.content?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
                     val info = IPaymentProvider.CardInfo(
@@ -138,9 +145,18 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                         bin = field("CardNum")?.filter { it.isDigit() }?.take(6)?.takeIf { it.length == 6 }
                     )
                     Log.i(TAG, "Card info: scheme=${info.scheme} brand=${info.brand} aid=${info.aid} bin=${info.bin}")
+                    Log.i(TAG, "Approved: TransIndexCode=$originalRef RRN=$rrn")
                     callback.onCardInfo(info)
+                    // refNum is what the caller later hands back to voidOrRefund, so
+                    // it must be the key PAYWizard looks the original up by:
+                    // OriTransIndexCode = "Original request TransIndexCode"
+                    // (WIZARPOSPaymentAppIntegrationProtocolV2.3.13, request fields;
+                    // the vendor demo reverses "ID123456" = the sale's TransIndexCode).
+                    // This used to return the bank RRN, so every automatic
+                    // VOID/REFUND after a dispense failure referenced a
+                    // transaction PAYWizard couldn't find.
                     // entryMode CTLS as a placeholder, real one could be parsed from CardNum/TransType
-                    callback.onSuccess(authNo, refNo, "PAYWIZARD")
+                    callback.onSuccess(authNo, originalRef, "PAYWIZARD")
                 } else {
                     callback.onFailure("Payment Error: $resultMsg ($resultCode)")
                 }
