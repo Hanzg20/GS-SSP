@@ -1,0 +1,64 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+// Same local.properties -> BuildConfig pattern as app/iris and app/aegis-wash.
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
+
+android {
+    namespace 'com.goldsky.ssp.aegis.timer'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.goldsky.ssp.aegis.timer"
+        minSdk 25
+        targetSdk 34
+        versionCode 1
+        versionName "0.1.0-aegis-timer"
+
+        buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
+        buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
+        // false from day one -- see app/aegis-wash/build.gradle: IS_MOCK=true
+        // on a real-hardware shell silently skipped every Supabase
+        // transaction write at a live site (2026-09-19).
+        buildConfigField "boolean", "IS_MOCK", "false"
+    }
+
+    buildFeatures {
+        compose true
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    // No debug jniLibs exclusion (unlike app/aegis-ev): the ext-board GPIO
+    // path needs libjni_cloudpos_ext_board.so on real WizarPOS hardware --
+    // see app/aegis-wash/build.gradle. Real-hardware-only as a result.
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.9.0'
+    implementation project(':core:common')
+    implementation project(':core:data')
+    implementation project(':core:hardware')
+    implementation project(':core:ui')
+    implementation project(':core:payment')
+    implementation project(':feature:timer')
+    implementation project(':libs:pax')
+    implementation project(':libs:wizarpos')
+
+    implementation 'androidx.activity:activity-compose:1.7.0'
+}

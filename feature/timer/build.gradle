@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+android {
+    namespace 'com.goldsky.ssp.feature.timer'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 25
+    }
+
+    buildFeatures {
+        compose true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.9.0'
+    api project(':core:common')
+    api project(':core:data')
+    api project(':core:ui')
+    api project(':core:hardware')
+    api project(':core:payment')
+
+    implementation 'androidx.activity:activity-compose:1.7.0'
+    implementation 'androidx.compose.ui:ui:1.5.4'
+    implementation 'androidx.compose.material3:material3:1.1.2'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1'
+}

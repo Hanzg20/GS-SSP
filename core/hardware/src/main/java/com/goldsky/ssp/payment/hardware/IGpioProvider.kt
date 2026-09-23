@@ -97,4 +97,35 @@ interface IGpioProvider {
         kotlinx.coroutines.delay(offMs)
         return true
     }
+
+    /**
+     * Holds the **Relay** circuit (PIN6/7) ON for [durationMs] -- the
+     * "terminal times the session, output stays conducting" dispense mode
+     * (Aegis Timer products, e.g. a self-service vacuum: $2 = 4 min, $3 = 5 min), as opposed to the
+     * credit-pulse-train mode [triggerLogicPulse] serves for wash.
+     *
+     * May block for up to [durationMs] depending on the vendor's native call
+     * (DigitIoAdapter's per-pulse loop has no delay() yet produces discrete
+     * pulses, which suggests WizarPOS's triggerPulse/triggerRelay block until
+     * done) -- always call off the main thread, and drive any on-screen
+     * countdown from the caller's own clock, not from this returning.
+     * Where the vendor can hardware-time the hold (see WizarPosGpioProvider,
+     * `ExtBoardDevice.triggerRelay(port, durationMs, ..., 1)`), the board
+     * switches OFF by itself even if this app crashes or is killed mid-session
+     * -- the fail-safe that matters here, since a stuck-ON output is free
+     * service until someone notices. This default has no such primitive and
+     * just turns the relay ON: the caller must ALWAYS call [releaseHold] when
+     * its own countdown ends (do so regardless of provider, as a second
+     * safeguard behind the hardware timer).
+     *
+     * @return true if the hardware accepted the command (same fail-closed
+     * contract as [setRelay]).
+     */
+    suspend fun holdRelayOutput(port: Int, durationMs: Long): Boolean = setRelay(port, true)
+
+    /**
+     * Ends a [holdRelayOutput] session (early stop, or the caller's own
+     * end-of-countdown safeguard). Safe to call when nothing is held.
+     */
+    fun releaseHold(port: Int): Boolean = setRelay(port, false)
 }

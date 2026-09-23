@@ -134,4 +134,42 @@ class WizarPosGpioProvider(private val terminal: POSTerminal?) : IGpioProvider {
             false
         }
     }
+
+    /**
+     * Hardware-timed hold: a single `triggerRelay(port, durationMs, offMs, 1)`
+     * so the ext-board MCU switches the relay OFF by itself -- survives an
+     * app crash/kill mid-session, unlike triggerRelayOn + app-side timer.
+     *
+     * NOT YET VERIFIED on real hardware (2026-09-23): the SDK's onMs is a
+     * plain int with no documented upper bound, and the vendor's own demo
+     * only ever uses 500ms. If the MCU stores it in 16 bits, anything above
+     * 65535ms (~65s) silently wraps/truncates and the output drops early --
+     * this is exactly what feature:timer's HoldTestScreen exists to measure. The
+     * native call's own return latency is logged too (does it block for the
+     * whole duration?), and whether [releaseHold]'s triggerRelayOff can cut
+     * a hardware-timed hold short is the other open question it answers.
+     */
+    override suspend fun holdRelayOutput(port: Int, durationMs: Long): Boolean {
+        if (!ensureOpened()) return false
+        if (durationMs <= 0 || durationMs > Int.MAX_VALUE) {
+            Log.e(TAG, "holdRelayOutput: durationMs out of range: $durationMs")
+            return false
+        }
+        return try {
+            val t0 = android.os.SystemClock.elapsedRealtime()
+            extBoardDevice?.triggerRelay(port, durationMs.toInt(), HOLD_TRAILING_OFF_MS, 1)
+            val took = android.os.SystemClock.elapsedRealtime() - t0
+            Log.i(TAG, "Native relay HOLD on port $port for ${durationMs}ms (native call returned after ${took}ms)")
+            true
+        } catch (e: Throwable) {
+            Log.e(TAG, "triggerRelay (hold) error: ${e.message}")
+            false
+        }
+    }
+
+    override fun releaseHold(port: Int): Boolean = setRelay(port, false)
 }
+
+// times=1, so the trailing OFF interval after the single ON phase has no
+// visible effect; kept small but non-zero in case the firmware rejects 0.
+private const val HOLD_TRAILING_OFF_MS = 100

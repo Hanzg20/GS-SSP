@@ -24,7 +24,7 @@ core/ui        -- Shared Compose theme + legacy View-based kiosk UI (BaseAdActiv
                   RotatingBrushView, WaterWaveView -- the last three are car-wash-specific visuals living in a module every
                   app shell depends on; don't assume a non-wash shell needs them).
 
-feature/retail, feature/apex, feature/vending, feature/ev, feature/wash, feature/parking
+feature/retail, feature/apex, feature/vending, feature/ev, feature/wash, feature/parking, feature/timer
                -- per-vertical screens/viewmodels. retail (checkout/dine-in/delivery/settings/staff-pin, Compose) and vending
                   are substantially built out; apex/wash/parking are single-file skeletons; ev is partial.
 
@@ -56,6 +56,11 @@ app/aegis-wash, app/aegis-vend, app/aegis-ev
                   (EV charging, feature:ev). Renamed 2026-08-27 from the old, wrongly-named `app/aegis`/`app/ourea`/
                   `app/sentinel` respectively -- content unchanged, only package/applicationId/module dir/label changed.
                -- `app/aegis-parking` does not exist yet; `feature/parking` is still a 1-file stub.
+app/aegis-timer -- Aegis Timer (`com.goldsky.ssp.aegis.timer`, feature:timer), added 2026-09-23: the time-based product family
+                  (pay -> terminal times the session and HOLDS an output ON, countdown on screen) -- first product is the
+                  self-service vacuum beside the wash ($2/4min, $3/5min, card-only, alarm-only on fault). Deliberately NOT a
+                  wash config mode: wash is a pulse-count vertical. So far only an on-site output test screen
+                  (HoldTestScreen, `IGpioProvider.holdRelayOutput`/`releaseHold`); no payment/customer flow yet.
 Vendor SDK stub types not backed by any real AAR (`com.pax.dal.*`, `com.pax.neptunelite.api.*` -- the NeptuneLite DAL API,
 distinct from the POSLink AAR in libs/pax) live in `core/hardware/src/main/java/com/pax/**`, shared by every app shell.
 

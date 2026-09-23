@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- PAX -->
+    <uses-permission android:name="com.pax.permission.IO_CONTROL" />
+    <!-- WizarPOS ext-board (Digit IO) and MCU -->
+    <uses-permission android:name="android.permission.CLOUDPOS_INNER_GPIO" />
+    <uses-permission android:name="android.permission.CLOUDPOS_MCUCTL" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SERIAL" />
+    <uses-permission android:name="android.permission.CLOUDPOS_VIRTUAL_SERIAL_PORT" />
+
+    <!-- Not HOME/boot-autostart yet: this build is only the on-site output
+         test and may share a unit with aegis-wash, which owns HOME. -->
+    <application
+        android:name=".AegisTimerApplication"
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="GoldSky Aegis Timer"
+        android:roundIcon="@drawable/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SSP">
+
+        <activity
+            android:name="com.goldsky.ssp.feature.timer.MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>
