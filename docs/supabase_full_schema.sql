@@ -933,6 +933,29 @@ WITH CHECK (
   )
 );
 
+-- Reconciliation, 2026-09-23: user reported gs-ssp-cmp's Device Management
+-- page ("监控设备状态并远程处理故障" -- REBOOT/LOCK/FETCH_LOGS/SYNC_CONFIG/
+-- START_SERVICE buttons, all via deviceService.sendDeviceCommand ->
+-- device_commands insert) doesn't actually work for a real merchant.
+-- `devices.command` is almost certainly the same class of gap as
+-- config.publish above: defined in the `permissions` catalog and covered by
+-- the bulk `INSERT ... SELECT 'admin', key FROM permissions` near this
+-- table's own CREATE TABLE block, which SHOULD have granted it -- but
+-- config.publish (same bulk statement, same batch) was confirmed NOT
+-- actually granted live despite that. Root cause of why the bulk grant
+-- didn't take for some keys is unconfirmed (most likely: that statement was
+-- documented here before it was ever actually run against production, or
+-- was run once against a `permissions` table that didn't yet have every row
+-- it has now) -- rather than add another narrow single-key grant, RE-RUN
+-- the original bulk statement itself: idempotent (ON CONFLICT DO NOTHING),
+-- catches devices.command AND any other permission from that original
+-- 8-key batch (catalog.manage/team.manage/coupons.manage/vip.manage/
+-- vip.topup/vip.compensate) that may have the same silent gap but hasn't
+-- been hit by a real test yet.
+INSERT INTO public.capability_permissions (capability, permission)
+SELECT 'admin', key FROM public.permissions
+ON CONFLICT DO NOTHING;
+
 -- coupons/app_configurations had table-level grants fully or partially
 -- revoked (see §6) back when nothing but SECURITY DEFINER RPCs and the
 -- device's own session touched them -- re-grant what the portal policies
