@@ -36,6 +36,14 @@ data class Product(
      * Callers must not treat null as zero.
      */
     val stockQty: Int? get() = attributes?.get("stock_qty")?.jsonPrimitive?.intOrNull
+
+    /**
+     * Session length for Aegis Timer products (vertical_type "TIMER", e.g.
+     * $2 -> 240 for a self-service vacuum), same `attributes` JSONB story as
+     * [category]. Null when unset or non-numeric -- a TIMER product without
+     * it can't be sold (there's no safe default length for paid time).
+     */
+    val durationSec: Int? get() = attributes?.get("duration_sec")?.jsonPrimitive?.intOrNull
 }
 
 @Serializable

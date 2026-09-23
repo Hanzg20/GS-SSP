@@ -1,0 +1,31 @@
+{
+  "version": "timer-1.0.0",
+  "vertical_type": "TIMER",
+  "products": [
+    {
+      "id": "timer-vacuum-240",
+      "name": "Vacuum",
+      "price_cents": 200,
+      "vertical_type": "TIMER",
+      "attributes": { "duration_sec": 240 },
+      "is_active": true
+    },
+    {
+      "id": "timer-vacuum-300",
+      "name": "Vacuum",
+      "price_cents": 300,
+      "vertical_type": "TIMER",
+      "attributes": { "duration_sec": 300 },
+      "is_active": true
+    }
+  ],
+  "settings": {
+    "maintenance_pin": "1234",
+    "locale_tag": "en-US",
+    "payment_method_mode": 1
+  },
+  "branding": {
+    "brand_name": "GS-SSP",
+    "primary_color_hex": "#FFB800"
+  }
+}

@@ -4,13 +4,37 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- PAX -->
+    <!-- PAX (same set as aegis-wash) -->
+    <uses-permission android:name="com.pax.permission.ICC" />
+    <uses-permission android:name="com.pax.permission.PICC" />
+    <uses-permission android:name="com.pax.permission.MAGCARD" />
+    <uses-permission android:name="com.pax.permission.PED" />
+    <uses-permission android:name="com.pax.permission.REBOOT" />
     <uses-permission android:name="com.pax.permission.IO_CONTROL" />
-    <!-- WizarPOS ext-board (Digit IO) and MCU -->
+    <!-- WizarPOS: card payment + ext-board (Digit IO) + MCU (same set as aegis-wash) -->
+    <uses-permission android:name="android.permission.CLOUDPOS_MSR" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SMARTCARD" />
+    <uses-permission android:name="android.permission.CLOUDPOS_CONTACTLESS_CARD" />
+    <uses-permission android:name="android.permission.CLOUDPOS_LED" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PIN_GET_PIN_BLOCK" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PIN_MAC" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PIN_ENCRYPT_DATA" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SAFE_MODULE" />
     <uses-permission android:name="android.permission.CLOUDPOS_INNER_GPIO" />
     <uses-permission android:name="android.permission.CLOUDPOS_MCUCTL" />
     <uses-permission android:name="android.permission.CLOUDPOS_SERIAL" />
     <uses-permission android:name="android.permission.CLOUDPOS_VIRTUAL_SERIAL_PORT" />
+
+    <!-- Package visibility for the payment apps/services the providers bind
+         (see aegis-wash's manifest for the on-device evidence). -->
+    <queries>
+        <intent>
+            <action android:name="com.pax.us.std.poslink.aidl" />
+        </intent>
+        <package android:name="com.cloudpos.scanserver" />
+    </queries>
+
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <!-- Not HOME/boot-autostart yet: this build is only the on-site output
          test and may share a unit with aegis-wash, which owns HOME. -->
@@ -26,7 +50,8 @@
         <activity
             android:name="com.goldsky.ssp.feature.timer.MainActivity"
             android:exported="true"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SSP.Fullscreen">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
