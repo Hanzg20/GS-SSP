@@ -864,6 +864,19 @@ CREATE POLICY "Org admins can publish app configurations" ON public.app_configur
 FOR INSERT TO authenticated
 WITH CHECK (public.has_permission('config.publish') AND (public.is_sys_admin() OR org_id IN (SELECT public.member_org_ids())));
 
+-- Reconciliation, 2026-09-23: `config.publish` was defined in the
+-- `permissions` catalog above (§ near line 691) but had NEVER been granted
+-- to any capability in `capability_permissions` -- meaning this INSERT
+-- policy silently rejected every non-SYS_ADMIN publish attempt since it was
+-- written. Only surfaced via a real end-to-end test of gs-ssp-cmp's
+-- MerchantProfile/ConfigPricingManager "Publish" flow: a MERCHANT_ADMIN's
+-- `organizations` write succeeded (org.manage RLS, added same day, working
+-- correctly) but the following `app_configurations` insert failed. Same
+-- fix shape as devices.manage/org.manage: grant to 'admin' by default.
+INSERT INTO public.capability_permissions (capability, permission)
+VALUES ('admin', 'config.publish')
+ON CONFLICT DO NOTHING;
+
 DROP POLICY IF EXISTS "Org members can view org coupons" ON public.coupons;
 CREATE POLICY "Org members can view org coupons" ON public.coupons
 FOR SELECT TO authenticated
