@@ -212,8 +212,16 @@ private fun PayingScreen(p: Screen.Paying, demo: Boolean, onCancel: () -> Unit) 
         Text(p.message, color = TextHi, fontSize = 18.sp, textAlign = TextAlign.Center)
         if (!demo) Text("Follow the prompts on the reader", color = TextLo, fontSize = 13.sp)
         Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().height(48.dp)) {
-            Text("Cancel", color = TextLo, fontSize = 16.sp)
+        // A real sale can't be cancelled from here: WizarPOS's
+        // cancelCurrentTransaction is a no-op (the P3 socket is blocked on the
+        // sale), and PAYWizard's own screen -- which has a Cancel -- is in front
+        // during payment anyway. Don't show a button that does nothing.
+        if (demo) {
+            OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                Text("Cancel", color = TextLo, fontSize = 16.sp)
+            }
+        } else {
+            Text("To cancel, press Cancel on the card reader", color = TextLo, fontSize = 13.sp)
         }
     }
 }
@@ -312,7 +320,14 @@ fun PinDialog(onDismiss: () -> Unit, onSubmit: (String) -> Boolean) {
 }
 
 @Composable
-fun TechScreen(demoMode: Boolean, onDemoChange: (Boolean) -> Unit, onExit: () -> Unit, holdTest: @Composable () -> Unit) {
+fun TechScreen(
+    demoMode: Boolean,
+    onDemoChange: (Boolean) -> Unit,
+    onExit: () -> Unit,
+    selfTest: PaymentSelfTestViewModel.State,
+    onRunSelfTest: () -> Unit,
+    holdTest: @Composable () -> Unit,
+) {
     Column(Modifier.fillMaxSize().background(Bg)) {
         Row(
             Modifier.fillMaxWidth().background(Surface).padding(horizontal = 12.dp, vertical = 6.dp),
@@ -329,7 +344,26 @@ fun TechScreen(demoMode: Boolean, onDemoChange: (Boolean) -> Unit, onExit: () ->
             color = if (demoMode) Amber else TextLo, fontSize = 11.sp,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
         )
+        PaymentSelfTestPanel(selfTest, onRunSelfTest)
         Box(Modifier.weight(1f)) { holdTest() }
+    }
+}
+
+@Composable
+private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(Surface, RoundedCornerShape(10.dp)).padding(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("支付撤销自检", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("真实刷卡 $1.00，成功后立即撤销", color = TextLo, fontSize = 11.sp)
+            }
+            Button(
+                onClick = onRun, enabled = !s.running,
+                colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = Bg),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+            ) { Text(if (s.running) "进行中…" else "开始", fontSize = 13.sp) }
+        }
+        s.lines.takeLast(3).forEach { Text(it, color = TextLo, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 2) }
     }
 }
 

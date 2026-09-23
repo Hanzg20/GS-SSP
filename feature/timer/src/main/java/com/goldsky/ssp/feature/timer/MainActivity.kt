@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
 
     private val timerVm: TimerViewModel by viewModels()
     private val holdVm: HoldTestViewModel by viewModels()
+    private val selfTestVm: PaymentSelfTestViewModel by viewModels()
     private var deviceSn = ""
     private var watchdogJob: Job? = null
 
@@ -69,8 +70,9 @@ class MainActivity : ComponentActivity() {
         // Resolved with this Activity's Context, same as wash does.
         val gpio = HardwareFactory.getGpioProvider(this, vendor)
         holdVm.attach(gpio, vendor)
+        val payment = PaymentProviderFactory.getPaymentProvider(this, vendor)
         timerVm.attach(
-            payment = PaymentProviderFactory.getPaymentProvider(this, vendor),
+            payment = payment,
             output = RelayHoldOutput(gpio),
             hardwareOk = { hardware.isOperational() },
         )
@@ -97,6 +99,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val s by timerVm.state.collectAsState()
+            val selfTest by selfTestVm.state.collectAsState()
             var showPin by remember { mutableStateOf(false) }
             var tech by remember { mutableStateOf(false) }
             BackHandler(enabled = true) { if (tech) tech = false } // kiosk: back never leaves the app
@@ -106,6 +109,8 @@ class MainActivity : ComponentActivity() {
                     demoMode = s.demoMode,
                     onDemoChange = timerVm::setDemoMode,
                     onExit = { holdVm.forceOff(); tech = false },
+                    selfTest = selfTest,
+                    onRunSelfTest = { selfTestVm.run(payment, deviceSn) },
                     holdTest = { HoldTestScreen(holdVm) },
                 )
             } else {
@@ -144,8 +149,7 @@ class MainActivity : ComponentActivity() {
     private fun loadConfig(orgId: String?) {
         lifecycleScope.launch {
             val config = ConfigManager.loadConfig(this@MainActivity, orgId)
-            // Packages first: TtsManager.setLocale can stall the main thread
-            // for seconds on first TTS-engine init (~10s measured on the Q3mini).
+            // Packages first so the screen never waits on TTS voice setup.
             timerVm.applyConfig(config)
             TtsManager.setLocale(config.settings.locale_tag)
         }
