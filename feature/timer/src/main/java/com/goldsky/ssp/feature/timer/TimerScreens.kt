@@ -65,7 +65,7 @@ fun TimerApp(
                 is Screen.StartFailed -> ResultScreen(
                     Coral, "!", "Machine could not start",
                     when (screen.refunded) {
-                        null -> "Reversing your payment…"
+                        null -> "Reversing your payment…\nIf the card reader asks, present your card again."
                         true -> "Your payment has been reversed.\nNo charge was made."
                         false -> "We couldn't reverse the payment automatically.\nPlease contact the attendant."
                     },

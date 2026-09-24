@@ -34,6 +34,15 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
     // (Serial&SocketDemo240910 MainActivity, B_TRAN_REVERSAL).
     private val saleAmounts = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
+    // TransIndexCode -> identifiers PAYWizard returned for an approved sale.
+    // Measured 2026-09-24 on a Q3mini (test host): a Reversal carrying only
+    // OriTransIndexCode + TransAmount was rejected "-191 Original transaction
+    // not found", while a Refund with the same OriTransIndexCode succeeded --
+    // the protocol only documents OriTransIndexCode lookup for Refund. So the
+    // Reversal now also carries the sale's InvoiceNum/TraceNum/TransID/RRN.
+    private data class SaleIds(val traceNum: String?, val invoiceNum: String?, val transId: String?, val rrn: String?)
+    private val saleIds = java.util.concurrent.ConcurrentHashMap<String, SaleIds>()
+
     /**
      * Data model aligned with WizarPOS GlobalRequest.java
      */
@@ -45,6 +54,11 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         val CallerName: String = "GS-SSP",
         val CurrencyCode: String = "124", // Default CAD (ISO 4217)
         val OriTransIndexCode: String? = null,
+        // Other ways PAYWizard can identify the original sale. Null = omitted.
+        val OriTraceNum: String? = null,
+        val OriInvoiceNum: String? = null,
+        val OriTransId: String? = null,
+        val OriRrn: String? = null,
         val EnableReceipt: Boolean = true,
         val isPrint: String = "true"
     )
@@ -80,6 +94,10 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                 TransType = "Reversal",
                 TransAmount = saleAmounts[refNum]?.toString(),
                 OriTransIndexCode = refNum,
+                OriTraceNum = saleIds[refNum]?.traceNum,
+                OriInvoiceNum = saleIds[refNum]?.invoiceNum,
+                OriTransId = saleIds[refNum]?.transId,
+                OriRrn = saleIds[refNum]?.rrn,
                 TransIndexCode = "V-" + java.lang.System.currentTimeMillis()
             )
 
@@ -146,6 +164,9 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                     )
                     Log.i(TAG, "Card info: scheme=${info.scheme} brand=${info.brand} aid=${info.aid} bin=${info.bin}")
                     Log.i(TAG, "Approved: TransIndexCode=$originalRef RRN=$rrn")
+                    if (request.TransType == "Purchase") {
+                        saleIds[originalRef] = SaleIds(field("TraceNum"), field("InvoiceNum"), field("TransID"), rrn)
+                    }
                     callback.onCardInfo(info)
                     // refNum is what the caller later hands back to voidOrRefund, so
                     // it must be the key PAYWizard looks the original up by:

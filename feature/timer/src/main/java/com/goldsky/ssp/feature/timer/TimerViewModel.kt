@@ -208,10 +208,14 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 cardAid = card?.aid, cardBin = card?.bin, cardBrand = card?.brand,
             )
         }
+        // The countdown runs from when the hold was issued, not from after the
+        // confirm window / cloud write -- measured on a Q3mini, starting it
+        // late left the screen showing 0:02 after the relay had already dropped.
+        val issuedAt = SystemClock.elapsedRealtime()
         if (startOutput(pkg.durationMs, ecrRefNum, pkg.productId)) {
-            if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "COMMAND_SENT_UNCONFIRMED")
+            runSession(pkg, pkg.durationMs - (SystemClock.elapsedRealtime() - issuedAt), pkg.durationMs)
             TtsManager.speak("Payment approved. Your ${pkg.name.lowercase()} is on.")
-            runSession(pkg, pkg.durationMs, pkg.durationMs)
+            if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "COMMAND_SENT_UNCONFIRMED")
         } else {
             onStartFailed(pkg, ecrRefNum, bankRef, demo)
         }
