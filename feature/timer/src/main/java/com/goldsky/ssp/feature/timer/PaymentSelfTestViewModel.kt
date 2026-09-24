@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.goldsky.ssp.payment.SettlementManager
 import com.goldsky.ssp.payment.TransactionRecord
 import com.goldsky.ssp.payment.TransactionRepository
 import com.goldsky.ssp.payment.hardware.IPaymentProvider
@@ -58,6 +59,20 @@ class PaymentSelfTestViewModel(app: Application) : AndroidViewModel(app) {
 
                 override fun onProgress(message: String) = log(message)
             })
+        }
+    }
+
+    /** Technician "settle now": same SettlementManager path as the 03:30 daily job. */
+    fun settle() {
+        if (_state.value.running) return
+        _state.value = State(running = true)
+        log("开始结算（Settle）…")
+        viewModelScope.launch {
+            val o = SettlementManager.settle(getApplication(), "MANUAL")
+            finish(
+                if (o.ok) "✅ 结算成功" + (o.totals?.let { "：${it.summary()}" } ?: "（应答中无批次汇总）")
+                else "❌ 结算失败：${o.message}"
+            )
         }
     }
 

@@ -330,6 +330,7 @@ fun TechScreen(
     onExit: () -> Unit,
     selfTest: PaymentSelfTestViewModel.State,
     onRunSelfTest: () -> Unit,
+    onSettle: () -> Unit,
     holdTest: @Composable () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().background(Bg)) {
@@ -348,13 +349,13 @@ fun TechScreen(
             color = if (demoMode) Amber else TextLo, fontSize = 11.sp,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
         )
-        PaymentSelfTestPanel(selfTest, onRunSelfTest)
+        PaymentSelfTestPanel(selfTest, onRunSelfTest, onSettle)
         Box(Modifier.weight(1f)) { holdTest() }
     }
 }
 
 @Composable
-private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () -> Unit) {
+private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () -> Unit, onSettle: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(Surface, RoundedCornerShape(10.dp)).padding(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -366,6 +367,11 @@ private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () ->
                 colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = Bg),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
             ) { Text(if (s.running) "进行中…" else "开始", fontSize = 13.sp) }
+            Spacer(Modifier.width(6.dp))
+            OutlinedButton(
+                onClick = onSettle, enabled = !s.running,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            ) { Text("立即结算", fontSize = 13.sp, color = TextHi) }
         }
         s.lines.takeLast(3).forEach { Text(it, color = TextLo, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 2) }
     }

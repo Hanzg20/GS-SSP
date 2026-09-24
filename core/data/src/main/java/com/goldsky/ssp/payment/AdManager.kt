@@ -25,6 +25,20 @@ object AdManager {
     private const val HEARTBEAT_WORK = "heartbeat_work"
     private const val TRANSACTION_REPLAY_WORK = "transaction_replay_work"
     private const val BATCH_CLOSE_WORK = "batch_close_work"
+    private const val SETTLE_HOUR = 3
+    private const val SETTLE_MINUTE = 30
+
+    /** Millis from now until the next local HH:MM (tomorrow if already past). */
+    internal fun millisUntilNext(hour: Int, minute: Int, now: java.util.Calendar = java.util.Calendar.getInstance()): Long {
+        val next = (now.clone() as java.util.Calendar).apply {
+            set(java.util.Calendar.HOUR_OF_DAY, hour)
+            set(java.util.Calendar.MINUTE, minute)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+            if (!after(now)) add(java.util.Calendar.DAY_OF_MONTH, 1)
+        }
+        return next.timeInMillis - now.timeInMillis
+    }
     private const val STORAGE_CLEAN_WORK = "storage_clean_work"
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -77,14 +91,21 @@ object AdManager {
             replayRequest
         )
 
-        // 4. Batch Close (Daily - Every 24 hours)
+        // 4. Batch Close -- daily at SETTLE_HOUR:SETTLE_MINUTE local time.
+        // Was a bare 24h period anchored to whenever the app first ran, so a
+        // settle could land mid-day and contend with a customer's payment for
+        // the payment channel. Re-enqueued on every start so the next run is
+        // always recomputed to the next 03:30 (KEEP would never move an
+        // already-installed terminal's old schedule).
         val batchRequest = PeriodicWorkRequestBuilder<BatchCloseWorker>(24, TimeUnit.HOURS)
             .setConstraints(constraints)
+            .setInitialDelay(millisUntilNext(SETTLE_HOUR, SETTLE_MINUTE), TimeUnit.MILLISECONDS)
+            .setBackoffCriteria(androidx.work.BackoffPolicy.LINEAR, 10, TimeUnit.MINUTES)
             .build()
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             BATCH_CLOSE_WORK,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
             batchRequest
         )
 

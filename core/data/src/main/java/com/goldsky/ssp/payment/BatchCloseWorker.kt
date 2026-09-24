@@ -4,42 +4,28 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.goldsky.ssp.payment.hardware.IPaymentProvider
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
- * Background worker that performs the daily transaction batch settlement.
- * Critical for ensuring merchant funds are processed and deposited.
+ * Daily batch settlement, scheduled for the small hours (see AdManager) so it
+ * never competes with a customer's payment for the payment channel. Retries a
+ * failed settle up to [MAX_ATTEMPTS] times, then raises a CRITICAL alert --
+ * an unsettled batch means the merchant isn't getting paid.
  */
 class BatchCloseWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
 
-    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        Log.i("BatchCloseWorker", "Starting scheduled batch close...")
-        
-        val vendor = DeviceRepository.getPersistedHardwareVendor()
-        val provider = PaymentProviderFactory.getPaymentProvider(applicationContext, vendor)
-        val deferred = CompletableDeferred<Result>()
+    override suspend fun doWork(): Result {
+        val outcome = SettlementManager.settle(applicationContext, "AUTO")
+        if (outcome.ok) return Result.success()
+        if (runAttemptCount + 1 >= MAX_ATTEMPTS) {
+            Log.e("BatchCloseWorker", "Settle failed $MAX_ATTEMPTS times, giving up until tomorrow: ${outcome.message}")
+            val sn = DeviceRepository.getPersistedDeviceSn() ?: "UNKNOWN"
+            DiagnosticManager.reportError(sn, "BATCH_CLOSE_GAVE_UP", severity = "CRITICAL", trace = outcome.message)
+            return Result.success() // keeps the periodic schedule; tomorrow tries again
+        }
+        return Result.retry()
+    }
 
-        provider.closeBatch(object : IPaymentProvider.PaymentCallback {
-            override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                Log.i("BatchCloseWorker", "Batch closed successfully: $authCode")
-                val sn = DeviceRepository.getPersistedDeviceSn() ?: "UNKNOWN"
-                DiagnosticManager.recordMaintenance(sn, "AUTO_BATCH_CLOSE")
-                deferred.complete(Result.success())
-            }
-
-            override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
-                Log.e("BatchCloseWorker", "Batch close failed: $errorMsg")
-                deferred.complete(Result.retry())
-            }
-
-            override fun onProgress(message: String) {
-                Log.d("BatchCloseWorker", "Batch progress: $message")
-            }
-        })
-
-        deferred.await()
+    private companion object {
+        const val MAX_ATTEMPTS = 3
     }
 }

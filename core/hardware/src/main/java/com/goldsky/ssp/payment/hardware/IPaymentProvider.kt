@@ -45,6 +45,14 @@ interface IPaymentProvider {
         fun onProgress(message: String)
 
         /**
+         * The provider's raw response body, for callers that need fields the
+         * callback doesn't model -- e.g. a settlement's batch totals
+         * (SettlementManager). Default no-op; providers call it when they
+         * have one (WizarPOS: Settle responses).
+         */
+        fun onRawResponse(json: String) {}
+
+        /**
          * Called when a card or NFC tag is detected.
          * [type] could be "MIFARE", "ISO_14443", "UNKNOWN", etc.
          * [uid] is the serial/unique ID of the card.

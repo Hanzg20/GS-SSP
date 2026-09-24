@@ -111,6 +111,7 @@ class MainActivity : ComponentActivity() {
                     onExit = { holdVm.forceOff(); tech = false },
                     selfTest = selfTest,
                     onRunSelfTest = { selfTestVm.run(payment, deviceSn) },
+                    onSettle = { selfTestVm.settle() },
                     holdTest = { HoldTestScreen(holdVm) },
                 )
             } else {

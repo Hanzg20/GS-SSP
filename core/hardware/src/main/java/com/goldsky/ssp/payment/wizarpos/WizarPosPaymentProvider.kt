@@ -154,6 +154,9 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
             if (responseBytes != null) {
                 val response = String(responseBytes, Charsets.UTF_8)
                 val root = json.parseToJsonElement(response).jsonObject
+                // Batch totals (BatchDetailInfo) for reconciliation. Settle
+                // responses carry no full card data, only masked lists.
+                if (request.TransType == "Settle") callback.onRawResponse(response)
                 
                 // TransResult is the primary success indicator (boolean)
                 val isSuccess = root["TransResult"]?.jsonPrimitive?.content?.toBoolean() ?: false
