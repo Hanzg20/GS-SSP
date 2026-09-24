@@ -77,8 +77,13 @@ object RemoteCommandManager {
      * Commands only arrive as live Realtime inserts, so one sent while the
      * app wasn't running (restart, reinstall, reboot) is never received and
      * sits PENDING forever -- seen live 2026-09-24: three LOCKs sent during
-     * an app reinstall stayed PENDING. At startup, apply the most recent
-     * LOCK/UNLOCK if it was never executed, then report the resulting state.
+     * an app reinstall stayed PENDING. At startup, re-apply the most recent
+     * LOCK/UNLOCK whatever its status -- it is the operator's latest intent
+     * and applying it twice is harmless -- then report the resulting state.
+     * (Only applying PENDING ones wasn't enough, also seen live: a LOCK
+     * already marked SUCCESS by another process on the same SN left this
+     * one unlocked, and it then reported remote_locked=false over the
+     * truth.)
      * Deliberately ONLY LOCK/UNLOCK (idempotent state): replaying a stale
      * START_SERVICE would dispense a free service, and a stale REBOOT would
      * reboot a terminal nobody meant to reboot now.
@@ -93,12 +98,14 @@ object RemoteCommandManager {
                 order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
                 limit(1)
             }.decodeList<DeviceCommand>().firstOrNull()
-            if (latest != null && latest.status == "PENDING") {
+            if (latest != null) {
                 val lock = latest.command == "LOCK"
-                Log.w(TAG, "Applying missed ${latest.command} (${latest.id}) at startup")
-                DeviceAccessManager.setRemoteLock(lock)
-                withContext(Dispatchers.Main) { commandListener?.onLockRequested(lock) }
-                updateCommandStatus(latest.id, "SUCCESS")
+                if (lock != DeviceAccessManager.isRemoteLocked()) {
+                    Log.w(TAG, "Applying latest ${latest.command} (${latest.id}, ${latest.status}) at startup")
+                    DeviceAccessManager.setRemoteLock(lock)
+                    withContext(Dispatchers.Main) { commandListener?.onLockRequested(lock) }
+                }
+                if (latest.status == "PENDING") updateCommandStatus(latest.id, "SUCCESS")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Lock catch-up failed: ${e.message}")

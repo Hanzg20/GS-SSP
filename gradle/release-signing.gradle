@@ -1,0 +1,59 @@
+// Shared release config for the Aegis app shells (apply from each app's
+// build.gradle AFTER its android { defaultConfig } block).
+//
+// Versioning: each app sets ext.appVersion = "MAJOR.MINOR.PATCH"; versionCode
+// is derived as MAJOR*10000 + MINOR*100 + PATCH so it can only go up when the
+// version goes up (WStore/TMS and Android both refuse a lower versionCode).
+//
+// Signing: a release keystore is read from local.properties (gitignored):
+//   release.storeFile=C:/path/to/goldsky-release.jks
+//   release.storePassword=...
+//   release.keyAlias=...
+//   release.keyPassword=...
+// Without it, assembleRelease produces an UNSIGNED apk -- the input WizarPOS
+// TokenSign expects to sign for production terminals anyway. That key must
+// never change once apps are deployed: updates signed with another key are
+// rejected, so back it up offline.
+
+def releaseProps = new Properties()
+def releasePropsFile = rootProject.file('local.properties')
+if (releasePropsFile.exists()) releasePropsFile.withInputStream { releaseProps.load(it) }
+
+def parts = project.ext.appVersion.tokenize('.').collect { it as int }
+assert parts.size() == 3 && parts.every { it >= 0 && it < 100 } : "appVersion must be MAJOR.MINOR.PATCH with each part < 100"
+
+android {
+    defaultConfig {
+        versionCode parts[0] * 10000 + parts[1] * 100 + parts[2]
+        versionName project.ext.appVersion
+    }
+
+    signingConfigs {
+        if (releaseProps.getProperty('release.storeFile')) {
+            release {
+                storeFile file(releaseProps.getProperty('release.storeFile'))
+                storePassword releaseProps.getProperty('release.storePassword')
+                keyAlias releaseProps.getProperty('release.keyAlias')
+                keyPassword releaseProps.getProperty('release.keyPassword')
+            }
+        }
+    }
+
+    // lintVital (run by every assembleRelease) needs :libs:pax/:libs:wizarpos
+    // packaged as AARs, which AGP refuses for modules wrapping local .aar
+    // files (see those modules' build.gradle). Run lint explicitly instead.
+    lint {
+        checkReleaseBuilds false
+    }
+
+    buildTypes {
+        release {
+            debuggable false
+            // Not minified yet: R8 would need keep rules for the cloudpos /
+            // POSLink / Supabase / kotlinx-serialization reflection paths, and
+            // an over-eager strip there fails only on real hardware.
+            minifyEnabled false
+            if (signingConfigs.findByName('release')) signingConfig signingConfigs.release
+        }
+    }
+}

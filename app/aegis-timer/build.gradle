@@ -11,6 +11,8 @@ if (localPropertiesFile.exists()) {
     localProperties.load(new FileInputStream(localPropertiesFile))
 }
 
+ext.appVersion = "0.2.0"
+
 android {
     namespace 'com.goldsky.ssp.aegis.timer'
     compileSdk 34
@@ -19,8 +21,7 @@ android {
         applicationId "com.goldsky.ssp.aegis.timer"
         minSdk 25
         targetSdk 34
-        versionCode 1
-        versionName "0.1.0-aegis-timer"
+        // versionCode/versionName come from ext.appVersion, see gradle/release-signing.gradle
 
         buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
         buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
@@ -48,6 +49,8 @@ android {
     // path needs libjni_cloudpos_ext_board.so on real WizarPOS hardware --
     // see app/aegis-wash/build.gradle. Real-hardware-only as a result.
 }
+
+apply from: rootProject.file('gradle/release-signing.gradle')
 
 dependencies {
     implementation 'androidx.core:core-ktx:1.9.0'

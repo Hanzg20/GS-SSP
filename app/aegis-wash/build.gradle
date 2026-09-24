@@ -11,6 +11,8 @@ if (localPropertiesFile.exists()) {
     localProperties.load(new FileInputStream(localPropertiesFile))
 }
 
+ext.appVersion = "1.1.0"
+
 android {
     namespace 'com.goldsky.ssp.aegis.wash'
     compileSdk 34
@@ -19,8 +21,7 @@ android {
         applicationId "com.goldsky.ssp.aegis.wash"
         minSdk 25
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0-aegis-wash"
+        // versionCode/versionName come from ext.appVersion, see gradle/release-signing.gradle
 
         buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
         buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
@@ -64,6 +65,8 @@ android {
     // same as any app shipping arm-only native code) -- acceptable since all
     // testing here is against real WizarPOS hardware.
 }
+
+apply from: rootProject.file('gradle/release-signing.gradle')
 
 dependencies {
     implementation 'androidx.core:core-ktx:1.9.0'
