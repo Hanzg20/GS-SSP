@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS public.devices (
     loc_id UUID REFERENCES public.locations(id) ON DELETE SET NULL,
     org_id UUID REFERENCES public.organizations(id) ON DELETE SET NULL, -- denormalized from loc_id->locations.org_id, kept directly on devices so RLS policies and the config query (app_configurations.org_id) don't need a join
     secret_key UUID DEFAULT gen_random_uuid(), -- Machine Secret for identity verification
-    vertical_type TEXT DEFAULT 'WASH' CHECK (vertical_type IN ('WASH', 'LAUNDRY', 'EV', 'VEND', 'RETAIL')),
+    vertical_type TEXT DEFAULT 'WASH' CHECK (vertical_type IN ('WASH', 'LAUNDRY', 'EV', 'VEND', 'RETAIL', 'TIMER')),
     status TEXT DEFAULT 'ONLINE',
     app_version TEXT,
     config_version TEXT,
@@ -243,7 +243,7 @@ CREATE TABLE IF NOT EXISTS public.devices (
 CREATE TABLE IF NOT EXISTS public.products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
-    vertical_type TEXT NOT NULL CHECK (vertical_type IN ('WASH', 'LAUNDRY', 'EV', 'VEND', 'RETAIL')), -- kept in sync with devices.vertical_type above. RETAIL added 2026-08-27: app:iris's RetailRepository.syncWithCloud() queries vertical_type='RETAIL', which this constraint silently rejected at the DB level -- every retail product insert was failing, not just returning empty on read
+    vertical_type TEXT NOT NULL CHECK (vertical_type IN ('WASH', 'LAUNDRY', 'EV', 'VEND', 'RETAIL', 'TIMER')), -- kept in sync with devices.vertical_type above. RETAIL added 2026-08-27: app:iris's RetailRepository.syncWithCloud() queries vertical_type='RETAIL', which this constraint silently rejected at the DB level -- every retail product insert was failing, not just returning empty on read
     name TEXT NOT NULL,
     price_cents INTEGER NOT NULL,
     attributes JSONB DEFAULT '{}',       -- Hardware-specific: { "serial_hex": "AA...", "pulse": 12 }
