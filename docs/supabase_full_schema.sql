@@ -409,7 +409,10 @@ CREATE TABLE IF NOT EXISTS public.app_error_logs (
     error_code TEXT,
     stack_trace TEXT,
     context JSONB DEFAULT '{}',          -- Snapshot of device state
-    created_at TIMESTAMPTZ DEFAULT now()
+    created_at TIMESTAMPTZ DEFAULT now(),
+    resolved_at TIMESTAMPTZ,             -- set via resolve_device_alert() (2026-09-25)
+    resolved_by UUID,
+    resolution_note TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_app_error_logs_device_created ON public.app_error_logs(device_sn, created_at DESC);
 
@@ -1292,6 +1295,50 @@ WITH CHECK (
     WHERE auth_user_id = auth.uid()
   )
 );
+
+-- CMP visibility + resolution of terminal alerts (2026-09-25, see
+-- docs/migrations/2026-09-25_device_alerts.sql).
+-- 2. Read: sys admins everything; org members their own org's devices.
+DROP POLICY IF EXISTS "Org members can view their devices' error logs" ON public.app_error_logs;
+CREATE POLICY "Org members can view their devices' error logs" ON public.app_error_logs
+FOR SELECT TO authenticated
+USING (
+    public.is_sys_admin()
+    OR device_sn IN (SELECT d.sn FROM public.devices d WHERE d.org_id IN (SELECT public.member_org_ids()))
+);
+
+-- 3. Resolve: through a function (no UPDATE policy), so only the three
+-- resolution columns can ever change -- the alert itself stays as the
+-- terminal wrote it. Gated on the existing devices.command permission.
+CREATE OR REPLACE FUNCTION public.resolve_device_alert(p_alert_id BIGINT, p_note TEXT DEFAULT NULL)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org UUID;
+BEGIN
+  SELECT d.org_id INTO v_org
+  FROM public.app_error_logs l
+  LEFT JOIN public.devices d ON d.sn = l.device_sn
+  WHERE l.id = p_alert_id;
+  IF NOT FOUND THEN
+    RETURN FALSE;
+  END IF;
+
+  IF NOT (public.is_sys_admin() OR (v_org IS NOT NULL AND public.has_permission_for_org('devices.command', v_org))) THEN
+    RAISE EXCEPTION 'not_allowed';
+  END IF;
+
+  UPDATE public.app_error_logs
+  SET resolved_at = now(), resolved_by = auth.uid(), resolution_note = p_note
+  WHERE id = p_alert_id AND resolved_at IS NULL;
+  RETURN FOUND;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.resolve_device_alert(BIGINT, TEXT) TO authenticated;
 
 -- Maintenance Records: same device-scoped pattern as error logs (this table
 -- had RLS enabled but no policy at all before -- every insert was denied).
