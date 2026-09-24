@@ -61,7 +61,11 @@ fun TimerApp(
                 is Screen.Paying -> PayingScreen(screen, s.demoMode, onCancelPayment)
                 is Screen.Running -> RunningScreen(screen, s.now)
                 is Screen.Finished -> ResultScreen(Emerald, "✓", "Time's up", "Thank you — see you next time!")
-                is Screen.Declined -> ResultScreen(Coral, "✕", "Payment not completed", screen.message + "\nPlease try again.")
+                is Screen.Declined -> when (screen.reason) {
+                    DeclineReason.CANCELLED -> ResultScreen(TextLo, "✕", "Payment cancelled", "No charge was made.")
+                    DeclineReason.UNAVAILABLE -> ResultScreen(Coral, "!", "Card payment unavailable", "Card payment is temporarily unavailable.\nPlease contact the attendant.")
+                    DeclineReason.DECLINED -> ResultScreen(Coral, "✕", "Payment not completed", "No charge was made.\nPlease try again or use another card.")
+                }
                 is Screen.StartFailed -> ResultScreen(
                     Coral, "!", "Machine could not start",
                     when (screen.refunded) {

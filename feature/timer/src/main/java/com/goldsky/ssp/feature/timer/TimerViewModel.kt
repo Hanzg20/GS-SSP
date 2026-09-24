@@ -43,7 +43,8 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         data class Paying(val pkg: TimerPackage, val message: String) : Screen
         data class Running(val pkg: TimerPackage, val startedAt: Long, val totalMs: Long) : Screen
         data class Finished(val pkg: TimerPackage) : Screen
-        data class Declined(val message: String) : Screen
+        /** Customer-facing outcome only; the raw provider message goes to the log and the transaction row. */
+        data class Declined(val reason: DeclineReason) : Screen
         /** [refunded] null while the reversal is still in flight. */
         data class StartFailed(val refunded: Boolean?) : Screen
     }
@@ -171,8 +172,10 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     if (isHardwareFault) {
                         DiagnosticManager.reportError(deviceSn, "CARD_READER_FAULT", severity = "CRITICAL", trace = errorMsg)
                     }
+                    Log.w(TAG, "Sale $ecrRefNum not completed: $errorMsg (hardwareFault=$isHardwareFault)")
                     if (_state.value.screen is Screen.Paying) {
-                        showThenHome(Screen.Declined(errorMsg.ifBlank { "Payment not completed" }), 4000)
+                        val reason = DeclineReason.classify(errorMsg, isHardwareFault)
+                        showThenHome(Screen.Declined(reason), if (reason == DeclineReason.UNAVAILABLE) 8000 else 4000)
                     }
                 }
 
