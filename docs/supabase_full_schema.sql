@@ -219,6 +219,8 @@ CREATE TABLE IF NOT EXISTS public.devices (
     org_id UUID REFERENCES public.organizations(id) ON DELETE SET NULL, -- denormalized from loc_id->locations.org_id, kept directly on devices so RLS policies and the config query (app_configurations.org_id) don't need a join
     secret_key UUID DEFAULT gen_random_uuid(), -- Machine Secret for identity verification
     vertical_type TEXT DEFAULT 'WASH' CHECK (vertical_type IN ('WASH', 'LAUNDRY', 'EV', 'VEND', 'RETAIL', 'TIMER')),
+    remote_locked BOOLEAN NOT NULL DEFAULT false, -- reported by the terminal itself after LOCK/UNLOCK and at startup (2026-09-24)
+    remote_lock_changed_at TIMESTAMPTZ,
     status TEXT DEFAULT 'ONLINE',
     app_version TEXT,
     config_version TEXT,

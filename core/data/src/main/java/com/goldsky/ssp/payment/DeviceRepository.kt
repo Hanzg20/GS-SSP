@@ -204,6 +204,34 @@ object DeviceRepository {
     /**
      * Registers the device or updates its online status in Supabase.
      */
+    /**
+     * Writes this terminal's remote-lock state to devices.remote_locked so CMP
+     * can show it (docs/migrations/2026-09-24_device_remote_lock.sql). Before
+     * this, the lock existed only in the terminal's own prefs: CMP could send
+     * LOCK but never tell whether a terminal was actually locked. Best-effort:
+     * a failure (offline, column not migrated yet) is logged and the next
+     * LOCK/UNLOCK or startup reports again.
+     */
+    suspend fun reportRemoteLock(sn: String, locked: Boolean): Boolean = withContext(Dispatchers.IO) {
+        if (sn.isBlank()) return@withContext false
+        try {
+            val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+                .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                .format(java.util.Date())
+            SupabaseClientProvider.client.postgrest["devices"].update({
+                set("remote_locked", locked)
+                set("remote_lock_changed_at", now)
+            }) {
+                filter { eq("sn", sn) }
+            }
+            Log.i(TAG, "Reported remote_locked=$locked for $sn")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to report remote lock state: ${e.message}")
+            false
+        }
+    }
+
     suspend fun registerDevice(sn: String, appVersion: String): Boolean = withContext(Dispatchers.IO) {
         try {
             authenticateDevice()

@@ -69,7 +69,41 @@ object RemoteCommandManager {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to subscribe: ${e.message}")
             }
+            catchUpLockState(sn)
         }
+    }
+
+    /**
+     * Commands only arrive as live Realtime inserts, so one sent while the
+     * app wasn't running (restart, reinstall, reboot) is never received and
+     * sits PENDING forever -- seen live 2026-09-24: three LOCKs sent during
+     * an app reinstall stayed PENDING. At startup, apply the most recent
+     * LOCK/UNLOCK if it was never executed, then report the resulting state.
+     * Deliberately ONLY LOCK/UNLOCK (idempotent state): replaying a stale
+     * START_SERVICE would dispense a free service, and a stale REBOOT would
+     * reboot a terminal nobody meant to reboot now.
+     */
+    private suspend fun catchUpLockState(sn: String) {
+        try {
+            val latest = SupabaseClientProvider.client.postgrest["device_commands"].select {
+                filter {
+                    eq("device_sn", sn)
+                    isIn("command", listOf("LOCK", "UNLOCK"))
+                }
+                order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                limit(1)
+            }.decodeList<DeviceCommand>().firstOrNull()
+            if (latest != null && latest.status == "PENDING") {
+                val lock = latest.command == "LOCK"
+                Log.w(TAG, "Applying missed ${latest.command} (${latest.id}) at startup")
+                DeviceAccessManager.setRemoteLock(lock)
+                withContext(Dispatchers.Main) { commandListener?.onLockRequested(lock) }
+                updateCommandStatus(latest.id, "SUCCESS")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Lock catch-up failed: ${e.message}")
+        }
+        DeviceRepository.reportRemoteLock(sn, DeviceAccessManager.isRemoteLocked())
     }
 
     private fun executeCommand(context: Context, deviceCommand: DeviceCommand, vendor: String) {
@@ -92,11 +126,13 @@ object RemoteCommandManager {
                         Log.w(TAG, "Executing Remote LOCK...")
                         DeviceAccessManager.setRemoteLock(true)
                         withContext(Dispatchers.Main) { commandListener?.onLockRequested(true) }
+                        DeviceRepository.reportRemoteLock(deviceCommand.device_sn, true)
                     }
                     "UNLOCK" -> {
                         Log.i(TAG, "Executing Remote UNLOCK...")
                         DeviceAccessManager.setRemoteLock(false)
                         withContext(Dispatchers.Main) { commandListener?.onLockRequested(false) }
+                        DeviceRepository.reportRemoteLock(deviceCommand.device_sn, false)
                     }
                     "FETCH_LOGS" -> {
                         Log.i(TAG, "Executing Remote FETCH_LOGS...")

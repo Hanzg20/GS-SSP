@@ -27,6 +27,9 @@ object DeviceAccessManager {
 
     fun isLocked(): Boolean = remoteLocked || !deviceActive
 
+    /** Only the remote LOCK/UNLOCK part -- what the terminal reports to devices.remote_locked. */
+    fun isRemoteLocked(): Boolean = remoteLocked
+
     fun lockReason(): String? = when {
         remoteLocked && !deviceActive -> "Remote locked & disabled by admin"
         remoteLocked -> "Remote locked by operator"
