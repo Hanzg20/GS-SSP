@@ -52,7 +52,13 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         val TransIndexCode: String? = null,
         val TransAmount: String? = null,
         val CallerName: String = "GS-SSP",
-        val CurrencyCode: String = "124", // Default CAD (ISO 4217)
+        // No default on purpose: kotlinx.serialization drops fields equal to
+        // their default, so the old `= "124"` meant a CAD sale never sent a
+        // CurrencyCode at all and PAYWizard fell back to USD (840) -- seen on
+        // the Q3mini emulator 2026-09-24. WizarPOS confirmed 124 must be set
+        // in the message as well as in the OPC/Nuvei parameters, and the
+        // protocol marks it mandatory for every request type.
+        val CurrencyCode: String,
         val OriTransIndexCode: String? = null,
         // Other ways PAYWizard can identify the original sale. Null = omitted.
         val OriTraceNum: String? = null,
@@ -63,6 +69,9 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         val isPrint: String = "true"
     )
 
+    /** ISO 4217 numeric code for this terminal's region (CA -> CAD 124, else USD 840). */
+    private fun currencyCode() = if (CoreConfig.region == "CA") "124" else "840"
+
     override fun startSale(amountInCents: Int, ecrRefNum: String, callback: IPaymentProvider.PaymentCallback) {
         Log.i(TAG, "Starting PAYWizard SALE: $amountInCents cents")
         saleAmounts[ecrRefNum] = amountInCents
@@ -70,14 +79,12 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         CoroutineScope(Dispatchers.Main).launch {
             callback.onProgress("CONNECTING TO TERMINAL...")
             
-            // Map region to ISO 4217 code
-            val currency = if (CoreConfig.region == "CA") "124" else "840"
 
             val request = GlobalRequest(
                 TransType = "Purchase",
                 TransAmount = amountInCents.toString(),
                 TransIndexCode = ecrRefNum,
-                CurrencyCode = currency
+                CurrencyCode = currencyCode()
             )
 
             executeRequest(request, ecrRefNum, callback)
@@ -92,6 +99,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
             
             val request = GlobalRequest(
                 TransType = "Reversal",
+                CurrencyCode = currencyCode(),
                 TransAmount = saleAmounts[refNum]?.toString(),
                 OriTransIndexCode = refNum,
                 OriTraceNum = saleIds[refNum]?.traceNum,
@@ -113,6 +121,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
             
             val request = GlobalRequest(
                 TransType = "Refund",
+                CurrencyCode = currencyCode(),
                 TransAmount = amountInCents.toString(),
                 OriTransIndexCode = refNum,
                 TransIndexCode = "R-" + java.lang.System.currentTimeMillis()
@@ -278,6 +287,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         CoroutineScope(Dispatchers.Main).launch {
             val request = GlobalRequest(
                 TransType = "Settle",
+                CurrencyCode = currencyCode(),
                 TransIndexCode = "S-" + java.lang.System.currentTimeMillis()
             )
             

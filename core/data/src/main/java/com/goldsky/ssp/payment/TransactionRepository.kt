@@ -21,7 +21,8 @@ data class TransactionRecord(
     val hardware_status: String? = null,
     val auth_code: String? = null,
     val ecr_ref_num: String? = null,
-    val currency: String = "USD",
+    // Was a flat "USD", so every Canadian transaction row said USD.
+    val currency: String = if (com.goldsky.ssp.common.CoreConfig.region == "CA") "CAD" else "USD",
     val payment_method: String? = null,
     val product_id: String? = null,
     val entry_mode: String? = null,
