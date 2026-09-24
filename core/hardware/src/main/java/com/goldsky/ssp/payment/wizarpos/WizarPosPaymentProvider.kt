@@ -132,6 +132,53 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         }
     }
 
+    /**
+     * PAYWizard QueryTransaction by OriTransIndexCode. Measured on the Q3mini
+     * (2026-09-25): an approved sale answers TransResult=true with the
+     * original Purchase's fields (TransID, TraceNum, InvoiceNum, RRN, amount,
+     * CardBrand...); a sale that never went through answers -125 "the
+     * original transaction does not exist"; a reversed sale still answers as
+     * the approved Purchase. The identifiers are cached so a reversal after
+     * an app restart can still send OriTransId -- without it the terminal
+     * asks for manual input (WizarPOS, 2026-09-24).
+     */
+    override fun queryTransaction(refNum: String, callback: (IPaymentProvider.QueryResult) -> Unit) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val result = try {
+                val randomBytes = ByteArray(4).apply { java.util.Random().nextBytes(this) }
+                WizarPosSocketClient.sendRequest(randomBytes, WizarPosP3Protocol.CTRL_HANDSHAKE_REQ)
+                val request = GlobalRequest(
+                    TransType = "QueryTransaction",
+                    CurrencyCode = currencyCode(),
+                    OriTransIndexCode = refNum,
+                    TransIndexCode = "Q-" + java.lang.System.currentTimeMillis()
+                )
+                val bytes = WizarPosSocketClient.sendRequest(json.encodeToString(request))
+                if (bytes == null) {
+                    IPaymentProvider.QueryResult.Error("no response from PAYWizard")
+                } else {
+                    val root = json.parseToJsonElement(String(bytes, Charsets.UTF_8)).jsonObject
+                    fun field(k: String) = root[k]?.jsonPrimitive?.content?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+                    val code = field("RespCode")
+                    when {
+                        field("TransResult")?.toBoolean() == true && field("TransType") == "Purchase" -> {
+                            val amount = field("TransAmount")?.toIntOrNull()
+                            saleIds[refNum] = SaleIds(field("TraceNum"), field("InvoiceNum"), field("TransID"), field("RRN"))
+                            amount?.let { saleAmounts[refNum] = it }
+                            IPaymentProvider.QueryResult.Approved(amount)
+                        }
+                        code == "-125" -> IPaymentProvider.QueryResult.NotFound
+                        else -> IPaymentProvider.QueryResult.Error("$code ${field("RespDesc") ?: ""}".trim())
+                    }
+                }
+            } catch (e: Exception) {
+                IPaymentProvider.QueryResult.Error("query failed: ${e.message}")
+            }
+            Log.i(TAG, "QueryTransaction $refNum -> $result")
+            callback(result)
+        }
+    }
+
     private suspend fun executeRequest(
         request: GlobalRequest, 
         originalRef: String, 

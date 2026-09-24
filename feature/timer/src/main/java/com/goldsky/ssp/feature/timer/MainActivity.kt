@@ -23,6 +23,7 @@ import com.goldsky.ssp.payment.DeviceAccessManager
 import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.payment.DiagnosticManager
 import com.goldsky.ssp.payment.PaymentProviderFactory
+import com.goldsky.ssp.payment.PendingResolver
 import com.goldsky.ssp.payment.RemoteCommandManager
 import com.goldsky.ssp.payment.ShadowManager
 import com.goldsky.ssp.payment.SupabaseClientProvider
@@ -94,6 +95,12 @@ class MainActivity : ComponentActivity() {
         // cleaning -- same jobs wash schedules, minus ad sync (no ad screen here).
         AdManager.init(this, syncAds = false)
         startWatchdog(hardware)
+        // Card sales left PENDING by a crash: reverse the approved ones,
+        // decline the rest. Only while idle on Home, never mid-sale.
+        lifecycleScope.launch {
+            delay(15_000)
+            if (timerVm.canEnterTechMode) runCatching { PendingResolver.resolve(this@MainActivity) }
+        }
 
         val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
 

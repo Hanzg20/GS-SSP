@@ -14,6 +14,9 @@ import androidx.work.WorkerParameters
 class BatchCloseWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
+        // Clear stuck PENDING sales first so the batch we close is final.
+        runCatching { PendingResolver.resolve(applicationContext) }
+            .onFailure { Log.e("BatchCloseWorker", "Pending resolve failed: ${it.message}") }
         val outcome = SettlementManager.settle(applicationContext, "AUTO")
         if (outcome.ok) return Result.success()
         if (runAttemptCount + 1 >= MAX_ATTEMPTS) {

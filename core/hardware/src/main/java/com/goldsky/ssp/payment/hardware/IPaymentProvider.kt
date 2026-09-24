@@ -107,6 +107,29 @@ interface IPaymentProvider {
      * Helper to attempt VOID first, then automatically fallback to REFUND
      * if VOID fails. Useful for hardware-failure-after-auth scenarios.
      */
+    /** Outcome of [queryTransaction]: what the payment app knows about a sale. */
+    sealed class QueryResult {
+        /**
+         * The sale was approved. NB (WizarPOS, measured 2026-09-25): a sale
+         * that was later reversed still queries as approved, so this says
+         * "was approved", never "money still held".
+         */
+        data class Approved(val amountCents: Int?) : QueryResult()
+        /** The payment app has no record of it -- never approved. */
+        object NotFound : QueryResult()
+        /** Couldn't find out (service down, unsupported, ...): try again later. */
+        data class Error(val message: String) : QueryResult()
+    }
+
+    /**
+     * Looks up a sale by the ecrRefNum it was started with -- used to settle
+     * transactions stuck PENDING after a crash between approval and our own
+     * PAID write (PendingResolver). Providers without a lookup answer Error.
+     */
+    fun queryTransaction(refNum: String, callback: (QueryResult) -> Unit) {
+        callback(QueryResult.Error("query not supported by this provider"))
+    }
+
     fun voidOrRefund(refNum: String, amountInCents: Int, callback: (success: Boolean, method: String) -> Unit) {
         voidTransaction(refNum, object : PaymentCallback {
             override fun onSuccess(authCode: String, refNum: String, entryMode: String) = callback(true, "VOID")

@@ -244,6 +244,11 @@ class MainActivity : BaseAdActivity() {
             if (identity?.org_id != null) {
                 loadInitialConfig(identity.org_id)
             }
+            // Card sales left PENDING by a crash: reverse the approved ones
+            // (charged but never washed), decline the rest -- only while no
+            // customer payment is in flight.
+            delay(15_000)
+            if (!paymentInFlight) runCatching { com.goldsky.ssp.payment.PendingResolver.resolve(this@MainActivity) }
         }
     }
 
