@@ -10,10 +10,16 @@
 //   release.storePassword=...
 //   release.keyAlias=...
 //   release.keyPassword=...
-// Without it, assembleRelease produces an UNSIGNED apk -- the input WizarPOS
-// TokenSign expects to sign for production terminals anyway. That key must
-// never change once apps are deployed: updates signed with another key are
-// rejected, so back it up offline.
+// Without it, assembleRelease produces an UNSIGNED apk.
+//
+// WizarPOS production terminals only install APKs signed by a key whose
+// certificate chains to WizarPOS's root (smartpossdk.gitbook.io/cloudpossdk
+// faq/certificate/apply-app-certificates + faq/other-development/
+// app-signing-process): generate this keystore, send its CSR to
+// support@wizarpos.com + team.support@wizarpos.com, import the returned
+// certificate chain into it, then sign with it. Dev-mode terminals skip the
+// check. That key must never change once apps are deployed -- updates
+// signed with another key are rejected -- so back it up offline.
 
 def releaseProps = new Properties()
 def releasePropsFile = rootProject.file('local.properties')
@@ -35,6 +41,11 @@ android {
                 storePassword releaseProps.getProperty('release.storePassword')
                 keyAlias releaseProps.getProperty('release.keyAlias')
                 keyPassword releaseProps.getProperty('release.keyPassword')
+                // AGP skips v1 (JAR) signing when minSdk >= 24; WizarPOS's own
+                // signing tool only offers v1/v2/v1v2, so keep both explicitly
+                // rather than bet on its verifier reading v2/v3 alone.
+                enableV1Signing true
+                enableV2Signing true
             }
         }
     }
