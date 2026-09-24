@@ -1371,7 +1371,15 @@ class MainActivity : BaseAdActivity() {
                 val hwStatus = if (outcome is DispenseOutcome.Confirmed) "ACK_RECEIVED" else "COMMAND_SENT_UNCONFIRMED"
                 TransactionRepository.updateHardwareStatus(this@MainActivity, ecrRefNum, hwStatus)
                 if (outcome is DispenseOutcome.DeliveredUnconfirmed) {
-                    DiagnosticManager.reportError(deviceSn, "HARDWARE_ACK_UNAVAILABLE", severity = "INFO")
+                    // Some pulses refused by the hardware: the customer got a
+                    // shortened wash for the full price -- someone must look.
+                    val partial = outcome.detail?.startsWith(com.goldsky.ssp.dispense.adapter.DigitIoAdapter.PARTIAL_PREFIX) == true
+                    DiagnosticManager.reportError(
+                        deviceSn,
+                        if (partial) "HARDWARE_PARTIAL_DISPENSE" else "HARDWARE_ACK_UNAVAILABLE",
+                        severity = if (partial) "CRITICAL" else "INFO",
+                        trace = outcome.detail
+                    )
                 }
 
                 // Receipt printing is cloud-configurable (KioskSettings.print_receipt_enabled) --

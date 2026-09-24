@@ -66,6 +66,9 @@ class DigitIoAdapter : IDispenseAdapter {
         // reading (PIN1 idle = 12V/HIGH => voltage=0), not guessed.
         const val PULSE_VOLTAGE = 0
         const val PULSE_PORT = 0 // PIN1 (Pulse channel 1)
+
+        /** DeliveredUnconfirmed detail prefix when only some pulses were accepted -- callers alert on it. */
+        const val PARTIAL_PREFIX = "PARTIAL: "
     }
 
     override suspend fun dispense(
@@ -101,7 +104,7 @@ class DigitIoAdapter : IDispenseAdapter {
         val requireAck = ackStrategy !is AssumedSuccessAckStrategy
         android.util.Log.i(TAG, "Initiating GPIO pulse train: $pulseCount pulses (${PULSE_WIDTH_MS}ms ON / ${PULSE_INTERVAL_MS}ms OFF) for ${job.amountCents} cents, requireAck=$requireAck")
         onProgress(0, pulseCount)
-        var anyPulseUnconfirmed = false
+        var accepted = 0
         return try {
             for (i in 1..pulseCount) {
                 // triggerLogicPulse returning false means the pulse never
@@ -119,14 +122,28 @@ class DigitIoAdapter : IDispenseAdapter {
                         return DispenseOutcome.Failed("GPIO relay command rejected at pulse $i/$pulseCount")
                     }
                     android.util.Log.w(TAG, "GPIO pulse rejected at pulse $i/$pulseCount, continuing (assumed_success mode)")
-                    anyPulseUnconfirmed = true
+                } else {
+                    accepted++
                 }
                 onProgress(i, pulseCount)
             }
-            if (anyPulseUnconfirmed) {
-                DispenseOutcome.DeliveredUnconfirmed("$pulseCount relay pulses attempted, hardware never confirmed receipt")
-            } else {
-                DispenseOutcome.Confirmed("$pulseCount relay pulses sent")
+            when {
+                // assumed_success means "the board can't ACK, so a pulse the
+                // hardware ACCEPTED counts as delivered" -- never "a pulse the
+                // hardware REJECTED counts as delivered". It was introduced
+                // (2026-09-18) while the ext-board native lib was missing and
+                // every call failed; since that fix a false here is a real
+                // refusal. Seen 2026-09-24 on the Q3mini: all 5 pulses of a
+                // paid $5 wash rejected (-87 "Too many users"), reported as
+                // delivered, no auto-void -- charged, nothing dispensed.
+                accepted == 0 -> {
+                    android.util.Log.e(TAG, "GPIO rejected all $pulseCount pulses -- nothing dispensed")
+                    DispenseOutcome.Failed("GPIO rejected all $pulseCount pulses")
+                }
+                accepted < pulseCount -> DispenseOutcome.DeliveredUnconfirmed(
+                    "$PARTIAL_PREFIX$accepted/$pulseCount pulses accepted by the hardware"
+                )
+                else -> DispenseOutcome.Confirmed("$pulseCount relay pulses sent")
             }
         } catch (e: Exception) {
             // No "force the pulse output back to idle" cleanup here (unlike
