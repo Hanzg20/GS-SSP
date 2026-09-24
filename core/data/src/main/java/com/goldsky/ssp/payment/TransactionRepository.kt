@@ -22,6 +22,11 @@ data class TransactionRecord(
     val auth_code: String? = null,
     val ecr_ref_num: String? = null,
     // Was a flat "USD", so every Canadian transaction row said USD.
+    // @EncodeDefault: a value equal to its default is otherwise dropped from
+    // the insert and the column's own DB default ('USD') wins -- which is
+    // exactly what happened on the first try (2026-09-24).
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault
     val currency: String = if (com.goldsky.ssp.common.CoreConfig.region == "CA") "CAD" else "USD",
     val payment_method: String? = null,
     val product_id: String? = null,
