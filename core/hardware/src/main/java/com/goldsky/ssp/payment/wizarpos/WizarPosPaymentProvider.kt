@@ -6,6 +6,7 @@ import com.cloudpos.POSTerminal
 import com.cloudpos.rfcardreader.RFCardReaderDevice
 import com.goldsky.ssp.common.HardwareConfig
 import com.goldsky.ssp.common.CoreConfig
+import com.goldsky.ssp.payment.hardware.CardBrands
 import com.goldsky.ssp.payment.hardware.IPaymentProvider
 import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
@@ -170,11 +171,12 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                     fun field(k: String) = root[k]?.jsonPrimitive?.content?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
                     val info = IPaymentProvider.CardInfo(
                         scheme = field("TransScheme"),
-                        brand = field("CardBrand"),
+                        brand = CardBrands.brand(field("CardBrand"), field("EmvAid")),
                         aid = field("EmvAid"),
                         bin = field("CardNum")?.filter { it.isDigit() }?.take(6)?.takeIf { it.length == 6 }
                     )
-                    Log.i(TAG, "Card info: scheme=${info.scheme} brand=${info.brand} aid=${info.aid} bin=${info.bin}")
+                    val entryMode = CardBrands.wizarPosEntryMode(field("EntryMode"))
+                    Log.i(TAG, "Card info: scheme=${info.scheme} brand=${info.brand} aid=${info.aid} bin=${info.bin} entry=$entryMode")
                     Log.i(TAG, "Approved: TransIndexCode=$originalRef RRN=$rrn")
                     if (request.TransType == "Purchase") {
                         saleIds[originalRef] = SaleIds(field("TraceNum"), field("InvoiceNum"), field("TransID"), rrn)
@@ -188,8 +190,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                     // This used to return the bank RRN, so every automatic
                     // VOID/REFUND after a dispense failure referenced a
                     // transaction PAYWizard couldn't find.
-                    // entryMode CTLS as a placeholder, real one could be parsed from CardNum/TransType
-                    callback.onSuccess(authNo, originalRef, "PAYWIZARD")
+                    callback.onSuccess(authNo, originalRef, entryMode)
                 } else {
                     callback.onFailure("Payment Error: $resultMsg ($resultCode)")
                 }

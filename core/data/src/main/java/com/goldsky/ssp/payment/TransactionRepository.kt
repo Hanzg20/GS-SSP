@@ -228,6 +228,9 @@ object TransactionRepository {
         try {
             val updated = updateRows("payment_status", ecrRefNum) {
                 set("payment_status", status)
+                // entryMode was accepted here but never written, so
+                // transactions.entry_mode stayed null for every terminal.
+                entryMode?.let { set("entry_mode", it) }
                 paymentMethod?.let { set("payment_method", it) }
                 cardAid?.let { set("card_aid", it) }
                 cardBin?.let { set("card_bin", it) }
