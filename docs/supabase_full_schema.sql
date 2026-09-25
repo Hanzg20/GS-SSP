@@ -445,7 +445,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     amount INTEGER NOT NULL,
     currency TEXT DEFAULT 'USD',
     payment_status TEXT CHECK (payment_status IN ('PENDING', 'PAID', 'DECLINED', 'VOIDED', 'REFUNDED')),
-    hardware_status TEXT,                -- ACK_RECEIVED / TIMEOUT
+    hardware_status TEXT,                -- ACK_RECEIVED / COMMAND_SENT_UNCONFIRMED (no-ACK board) / PARTIAL_DISPENSE / HARDWARE_ERROR
     auth_code TEXT,
     ecr_ref_num TEXT UNIQUE,
     created_at TIMESTAMPTZ DEFAULT now()

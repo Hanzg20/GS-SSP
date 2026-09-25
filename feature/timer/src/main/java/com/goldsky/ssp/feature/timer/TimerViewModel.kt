@@ -235,7 +235,12 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         if (startOutput(pkg.durationMs, ecrRefNum, pkg.productId)) {
             runSession(pkg, pkg.durationMs - (SystemClock.elapsedRealtime() - issuedAt), pkg.durationMs)
             TtsManager.speak("Payment approved. Your ${pkg.name.lowercase()} is on.")
-            if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "COMMAND_SENT_UNCONFIRMED")
+            // startOutput only returns true once the board accepted the hold
+            // (not rejected within the confirm window) -- the same evidence
+            // wash's DigitIo "Confirmed" rests on. COMMAND_SENT_UNCONFIRMED
+            // here made CMP flag every vacuum sale "ACK Missing (needs
+            // compensation)".
+            if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "ACK_RECEIVED")
         } else {
             onStartFailed(pkg, ecrRefNum, bankRef, demo)
         }
@@ -335,8 +340,17 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 ?: TimerPackage(saved.productId, "Session", 0, (saved.totalMs / 1000).toInt())
             val out = realOutput
             store.save(saved)
-            launch(Dispatchers.IO) { out.start(remaining) }
+            holdRejected = false
+            launch(Dispatchers.IO) { if (!out.start(remaining)) holdRejected = true }
             runSession(pkg, remaining, saved.totalMs)
+            // A crash can land before onPaid's status write, leaving a PAID row
+            // with no hardware status (CMP: "no hardware record").
+            delay(START_CONFIRM_WINDOW_MS)
+            if (holdRejected) {
+                DiagnosticManager.reportError(deviceSn, "TIMER_OUTPUT_START_FAIL", severity = "CRITICAL", trace = "resume ${saved.ecrRefNum}")
+            } else {
+                TransactionRepository.updateHardwareStatus(getApplication(), saved.ecrRefNum, "ACK_RECEIVED")
+            }
         }
     }
 

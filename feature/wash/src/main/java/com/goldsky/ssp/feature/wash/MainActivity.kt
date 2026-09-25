@@ -1427,12 +1427,19 @@ class MainActivity : BaseAdActivity() {
                 // (older boards with no ACK) gets its own status rather than being
                 // folded into ACK_RECEIVED, so an audit query can tell "we know it
                 // ran" from "we only know we sent it".
-                val hwStatus = if (outcome is DispenseOutcome.Confirmed) "ACK_RECEIVED" else "COMMAND_SENT_UNCONFIRMED"
+                val partial = outcome is DispenseOutcome.DeliveredUnconfirmed &&
+                    outcome.detail?.startsWith(com.goldsky.ssp.dispense.adapter.DigitIoAdapter.PARTIAL_PREFIX) == true
+                // PARTIAL_DISPENSE is its own status so CMP can ask for
+                // compensation on exactly these, not on every no-ACK board.
+                val hwStatus = when {
+                    outcome is DispenseOutcome.Confirmed -> "ACK_RECEIVED"
+                    partial -> "PARTIAL_DISPENSE"
+                    else -> "COMMAND_SENT_UNCONFIRMED"
+                }
                 TransactionRepository.updateHardwareStatus(this@MainActivity, ecrRefNum, hwStatus)
                 if (outcome is DispenseOutcome.DeliveredUnconfirmed) {
                     // Some pulses refused by the hardware: the customer got a
                     // shortened wash for the full price -- someone must look.
-                    val partial = outcome.detail?.startsWith(com.goldsky.ssp.dispense.adapter.DigitIoAdapter.PARTIAL_PREFIX) == true
                     DiagnosticManager.reportError(
                         deviceSn,
                         if (partial) "HARDWARE_PARTIAL_DISPENSE" else "HARDWARE_ACK_UNAVAILABLE",
