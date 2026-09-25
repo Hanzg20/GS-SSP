@@ -147,12 +147,15 @@ class PaxHardwareProvider : IHardwareProvider, DefaultLifecycleObserver {
         return mdbProvider ?: PaxMdbProvider(ctx).also { mdbProvider = it }
     }
 
-    override fun reboot() {
-        try {
+    override fun reboot(): Boolean {
+        val sys = dal?.sys ?: return false.also { Log.e(TAG, "Reboot failed: DAL not initialised") }
+        return try {
             Log.w(TAG, "Hardware REBOOT triggered via DAL")
-            dal?.sys?.reboot()
+            sys.reboot()
+            true
         } catch (e: Exception) {
             Log.e(TAG, "Reboot failed: ${e.message}")
+            false
         }
     }
 

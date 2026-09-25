@@ -119,8 +119,9 @@ class IdTechHardwareProvider : IHardwareProvider, DefaultLifecycleObserver {
         // No-op for ID TECH peripheral
     }
 
-    override fun reboot() {
-        Log.i(TAG, "MOCK REBOOT: ID TECH peripheral cannot reboot host terminal directly")
+    override fun reboot(): Boolean {
+        Log.w(TAG, "REBOOT unsupported: ID TECH peripheral cannot reboot the host terminal")
+        return false
     }
 
     override fun getTamperStatus(): Boolean = false

@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import com.cloudpos.POSTerminal
+import com.cloudpos.advance.ext.POSTerminalAdvance
 import com.goldsky.ssp.core.hardware.BuildConfig
 import com.goldsky.ssp.payment.hardware.*
 import com.goldsky.ssp.payment.wizarpos.WizarPosPaymentProvider
@@ -147,7 +148,25 @@ class WizarPosHardwareProvider : IHardwareProvider {
         return serialProvider!!
     }
 
-    override fun reboot() {
+    /**
+     * Through WizarPOS's system extension (ISystemDevice, served by the
+     * preinstalled com.wizarpos.wizarviewagentassistant). This was an empty
+     * body, so every remote REBOOT reported SUCCESS and nothing happened.
+     */
+    override fun reboot(): Boolean {
+        val ctx = context ?: return false.also { Log.e(TAG, "Reboot failed: provider not initialised") }
+        return try {
+            val system = POSTerminalAdvance.getInstance().systemDevice
+            if (!system.isOpened && !system.open(ctx)) {
+                Log.e(TAG, "Reboot failed: could not open WizarPOS system device")
+                return false
+            }
+            Log.w(TAG, "Hardware REBOOT via WizarPOS ISystemDevice")
+            system.reboot()
+        } catch (e: Exception) {
+            Log.e(TAG, "Reboot failed: ${e.message}")
+            false
+        }
     }
 
     override fun getTamperStatus(): Boolean = false

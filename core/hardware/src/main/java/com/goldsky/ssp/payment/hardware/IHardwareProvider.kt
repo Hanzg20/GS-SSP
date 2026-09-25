@@ -74,9 +74,11 @@ interface IHardwareProvider {
     fun getMdbProvider(): IMdbProvider
 
     /**
-     * Reboots the physical terminal.
+     * Reboots the physical terminal. Returns false when this vendor can't (or
+     * the request was refused), so a remote REBOOT is reported FAILED instead
+     * of SUCCESS with the terminal still running.
      */
-    fun reboot()
+    fun reboot(): Boolean
 
     /**
      * Checks the physical security status (Tamper).

@@ -53,8 +53,9 @@ class MockHardwareProvider : IHardwareProvider {
         // Log.v(TAG, "MOCK: Watchdog fed")
     }
 
-    override fun reboot() {
+    override fun reboot(): Boolean {
         Log.w(TAG, "MOCK: Reboot triggered")
+        return true
     }
 
     override fun getTamperStatus(): Boolean = false

@@ -133,7 +133,12 @@ object RemoteCommandManager {
                 when (cmd) {
                     "REBOOT" -> {
                         Log.w(TAG, "Executing Remote REBOOT...")
-                        HardwareFactory.getHardwareProvider(vendor).reboot()
+                        // Recorded before the call: a reboot that works kills
+                        // this process before the status write at the end.
+                        // A refused one overwrites it with FAILED below.
+                        updateCommandStatus(deviceCommand.id, "SUCCESS")
+                        delay(500)
+                        success = HardwareFactory.getHardwareProvider(vendor).reboot()
                     }
                     "SYNC_CONFIG" -> {
                         Log.i(TAG, "Executing Remote SYNC_CONFIG...")
