@@ -1,4 +1,4 @@
-package com.goldsky.ssp.feature.timer
+package com.goldsky.ssp.payment.hardware
 
 /**
  * What the customer is told when a sale doesn't complete. The provider's raw

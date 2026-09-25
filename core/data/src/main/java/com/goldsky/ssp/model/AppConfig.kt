@@ -33,9 +33,8 @@ data class Branding(
     // announcement, camelCase and with no welcome_message equivalent at all,
     // so kotlinx.serialization's exact-key-match decode silently fell back
     // to this class's defaults on every terminal). Null means "nothing
-    // published yet" -- see BrandingManager.applyWelcomeText for the
-    // fallback chain (welcome_message -> "Welcome to {brand_name}" -> the
-    // screen's own static default string).
+    // published yet" -- the kiosk header then hides its announcement
+    // ticker (see BrandingManager.applyHeader).
     val welcome_message: String? = null
 )
 

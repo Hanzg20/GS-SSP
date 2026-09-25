@@ -1,6 +1,7 @@
 <resources>
     <string name="app_name">GS-SSP Car Wash</string>
     <string name="title_welcome">Welcome to GS-SSP Smart Wash</string>
+    <string name="header_default_title">Self-Service</string>
     <string name="subtitle_welcome">Unified Technology Platform for Smart Industries</string>
     <string name="brand_footer">Powered by GoldSky Technologies</string>
 
@@ -83,7 +84,16 @@
     <string name="status_sending_command">Activating Wash Equipment...</string>
     <string name="status_success">Payment Successful!</string>
     <string name="status_enjoy_wash">All Successful!\nEnjoy Your Wash</string>
-    <string name="status_error_refund">Machine Error.\nRefund fully processed.</string>
+    <!-- Machine failed after a successful payment. Same wording as Aegis Timer. -->
+    <string name="status_error_reversing">Machine error.\nReversing your payment…</string>
+    <string name="tts_error_reversing">Sorry, the machine could not start. Your payment is being reversed.</string>
+    <string name="status_error_reversed">Your payment has been reversed.\nNo charge was made.</string>
+    <string name="status_error_refunded">Your payment has been refunded to your card.</string>
+    <string name="status_error_contact">Sorry, the machine could not start.\nPlease contact the attendant.</string>
+    <!-- Card sale did not complete (DeclineReason). Same wording as Aegis Timer. -->
+    <string name="pay_result_cancelled">Payment cancelled. No charge was made.</string>
+    <string name="pay_result_unavailable">Card payment is temporarily unavailable. Please contact the attendant.</string>
+    <string name="pay_result_declined">Payment not completed. No charge was made. Please try again or use another card.</string>
     <string name="status_start_wash">Starting Wash Cycle</string>
     <string name="status_verifying">Verifying credentials...</string>
 

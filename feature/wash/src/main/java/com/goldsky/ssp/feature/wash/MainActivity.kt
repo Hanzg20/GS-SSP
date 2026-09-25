@@ -36,6 +36,7 @@ import com.goldsky.ssp.model.Product
 import com.goldsky.ssp.model.WashPackage
 import com.goldsky.ssp.model.forVertical
 import com.goldsky.ssp.payment.*
+import com.goldsky.ssp.payment.hardware.DeclineReason
 import com.goldsky.ssp.payment.hardware.HardwareFactory
 import com.goldsky.ssp.ui.BaseAdActivity
 import com.goldsky.ssp.ui.VipActivity
@@ -55,6 +56,9 @@ class MainActivity : BaseAdActivity() {
         // Only this vertical's packages -- the org's config also carries other
         // terminals' products (e.g. Aegis Timer's vacuum packages), see forVertical.
         private const val WASH_VERTICAL = "WASH"
+        // How long the machine-error screen waits for the automatic VOID/REFUND
+        // before telling the customer to see the attendant instead.
+        private const val REVERSAL_WAIT_MS = 90_000L
 
         // docs/coupon_redemption_integration.md §4.2: real coupon codes are
         // exactly 8 chars of random alphanumeric (shortened 2026-09-19 from
@@ -324,7 +328,7 @@ class MainActivity : BaseAdActivity() {
             
             // Apply tenant branding
             BrandingManager.applyLogo(findViewById(R.id.img_logo), config.branding)
-            BrandingManager.applyWelcomeText(findViewById(R.id.tv_title), config.branding, getString(R.string.title_welcome))
+            BrandingManager.applyHeader(findViewById(R.id.tv_brand_title), findViewById(R.id.tv_title), config.branding, getString(R.string.header_default_title))
         }
     }
 
@@ -1133,8 +1137,20 @@ class MainActivity : BaseAdActivity() {
                     }
                     override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                         paymentInFlight = false
+                        // Raw provider text ("Payment Error: cancelled by user
+                        // (-139)") stays in the log; the customer gets plain words.
+                        Log.w("MainActivity", "Card sale failed: $errorMsg (hardwareFault=$isHardwareFault)")
+                        val reason = DeclineReason.classify(errorMsg, isHardwareFault)
                         runOnUiThread {
-                            Toast.makeText(this@MainActivity, "Payment Failed: $errorMsg", Toast.LENGTH_LONG).show()
+                            val msg = getString(
+                                when (reason) {
+                                    DeclineReason.CANCELLED -> R.string.pay_result_cancelled
+                                    DeclineReason.UNAVAILABLE -> R.string.pay_result_unavailable
+                                    DeclineReason.DECLINED -> R.string.pay_result_declined
+                                }
+                            )
+                            Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+                            if (reason != DeclineReason.CANCELLED) TtsManager.speak(msg)
                             dialog.dismiss()
                             resetAdTimer()
                         }
@@ -1413,8 +1429,10 @@ class MainActivity : BaseAdActivity() {
                 layoutStatus?.setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.alert_red_bg))
                 ivStatusIcon?.setImageResource(R.drawable.ic_error_circle)
                 popIcon(ivStatusIcon)
-                tvStatus?.text = getString(R.string.status_error_refund)
-                TtsManager.speak(getString(R.string.status_error_refund))
+                // Say what is actually happening: the reversal hasn't run yet
+                // (this used to announce "Refund fully processed" right here).
+                tvStatus?.text = getString(if (refNum.isNotEmpty()) R.string.status_error_reversing else R.string.status_error_contact)
+                TtsManager.speak(getString(if (refNum.isNotEmpty()) R.string.tts_error_reversing else R.string.status_error_contact))
 
                 // Industrial Audit: Report hardware failure and trigger VOID
                 // (falling back to REFUND automatically if VOID is declined,
@@ -1427,22 +1445,38 @@ class MainActivity : BaseAdActivity() {
 
                 if (refNum.isNotEmpty()) {
                     val provider = PaymentProviderFactory.getPaymentProvider(this@MainActivity, hardwareVendor)
-                    provider.voidOrRefund(refNum, amountCents) { success, method ->
-                        CoroutineScope(Dispatchers.Main).launch {
-                            if (success) {
-                                TransactionRepository.updatePaymentStatus(
-                                    this@MainActivity, ecrRefNum, if (method == "REFUND") "REFUNDED" else "VOIDED"
-                                )
-                            } else {
-                                // Neither VOID nor REFUND went through -- money was
-                                // captured but no automatic reversal succeeded.
-                                DiagnosticManager.reportError(deviceSn, "VOID_AND_REFUND_FAILED", severity = "CRITICAL")
+                    // Wait for the real outcome before telling the customer. A
+                    // VOID answers in about a second; the REFUND fallback may
+                    // put PAYWizard's card screen up, hence the long ceiling.
+                    val result = withTimeoutOrNull(REVERSAL_WAIT_MS) {
+                        suspendCancellableCoroutine<Pair<Boolean, String>> { cont ->
+                            provider.voidOrRefund(refNum, amountCents) { success, method ->
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    if (success) {
+                                        TransactionRepository.updatePaymentStatus(
+                                            this@MainActivity, ecrRefNum, if (method == "REFUND") "REFUNDED" else "VOIDED"
+                                        )
+                                    } else {
+                                        // Neither VOID nor REFUND went through -- money was
+                                        // captured but no automatic reversal succeeded.
+                                        DiagnosticManager.reportError(deviceSn, "VOID_AND_REFUND_FAILED", severity = "CRITICAL")
+                                    }
+                                }
+                                if (cont.isActive) cont.resumeWith(Result.success(success to method))
                             }
                         }
                     }
+                    val reversedText = when {
+                        result?.first == true && result.second == "REFUND" -> getString(R.string.status_error_refunded)
+                        result?.first == true -> getString(R.string.status_error_reversed)
+                        else -> getString(R.string.status_error_contact)
+                    }
+                    if (result == null) Log.w("SSP_HARDWARE", "Reversal still pending after ${REVERSAL_WAIT_MS}ms for $ecrRefNum")
+                    tvStatus?.text = reversedText
+                    TtsManager.speak(reversedText)
                 }
                 paymentInFlight = false
-                delay(5000)
+                delay(8000)
                 dialog?.dismiss()
                 resetAdTimer()
             }

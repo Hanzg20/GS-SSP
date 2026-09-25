@@ -1,5 +1,6 @@
 package com.goldsky.ssp.feature.timer
 
+import com.goldsky.ssp.payment.hardware.DeclineReason
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
@@ -18,13 +19,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -88,6 +97,36 @@ fun TimerApp(
 
 // ---- Home ---------------------------------------------------------------
 
+/**
+ * Merchant greeting (CMP "Kiosk Marquee Announcement") as a ticker that
+ * always scrolls right-to-left. Modifier.basicMarquee only moves when the
+ * text overflows, and a short greeting fits the 480px screen.
+ */
+@Composable
+private fun TickerText(text: String, color: Color, fontSize: TextUnit) {
+    val style = TextStyle(color = color, fontSize = fontSize, fontWeight = FontWeight.Bold)
+    val measurer = rememberTextMeasurer()
+    val textWidth = remember(text, style) { measurer.measure(text, style, maxLines = 1, softWrap = false).size.width }
+    val speedPxPerSec = with(LocalDensity.current) { 70.dp.toPx() }
+    var containerWidth by remember { mutableIntStateOf(0) }
+    val offset = remember { Animatable(0f) }
+    LaunchedEffect(text, textWidth, containerWidth) {
+        if (containerWidth == 0) return@LaunchedEffect
+        val span = (containerWidth + textWidth).toFloat()
+        while (true) {
+            offset.snapTo(0f)
+            offset.animateTo(span, tween((span / speedPxPerSec * 1000).toInt(), easing = LinearEasing))
+        }
+    }
+    Text(
+        text, style = style, maxLines = 1, softWrap = false,
+        modifier = Modifier.fillMaxWidth().onSizeChanged { containerWidth = it.width }.clipToBounds().layout { m, c ->
+            val p = m.measure(c.copy(minWidth = 0, maxWidth = Constraints.Infinity))
+            layout(c.maxWidth, p.height) { p.placeRelative((c.maxWidth - offset.value).toInt(), 0) }
+        },
+    )
+}
+
 @Composable
 private fun HomeScreen(
     s: TimerViewModel.UiState,
@@ -99,9 +138,12 @@ private fun HomeScreen(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(s.title, color = TextHi, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                s.subtitle?.let { Text(it, color = TextLo, fontSize = 12.sp, maxLines = 1) }
             }
             Box(Modifier.size(10.dp).clip(CircleShape).background(if (s.healthy) Emerald else Coral))
+        }
+        s.subtitle?.takeIf { it.isNotBlank() }?.let {
+            Spacer(Modifier.height(6.dp))
+            TickerText(it, color = TextHi, fontSize = 16.sp)
         }
 
         Spacer(Modifier.height(14.dp))

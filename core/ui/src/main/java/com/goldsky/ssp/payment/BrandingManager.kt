@@ -1,5 +1,6 @@
 package com.goldsky.ssp.payment
 
+import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
 import coil.load
@@ -32,22 +33,18 @@ object BrandingManager {
     }
 
     /**
-     * Sets a merchant-facing welcome text, added 2026-09-23 alongside fixing
-     * the CMP->Kotlin branding field-name mismatch (see Branding.welcome_message's
-     * doc comment). Fallback chain, in order:
-     * 1. [Branding.welcome_message] verbatim, if the merchant published one.
-     * 2. "Welcome to {brand_name}", if the merchant set a brand name but no
-     *    full custom message -- brand_name's own default is the literal
-     *    string "GS-SSP", so that default is deliberately excluded here
-     *    (showing "Welcome to GS-SSP" on every un-configured device would
-     *    look like a real merchant name, not an empty/default state).
-     * 3. [defaultText] -- the caller's own existing static string resource,
-     *    unchanged from before this function existed.
+     * Fills the kiosk header the same way Aegis Timer's HomeScreen does
+     * (TimerViewModel: title = brand_name, subtitle = welcome_message):
+     * - [title]: the merchant's brand name; the Branding default "GS-SSP" or a
+     *   blank name counts as unset and shows [defaultTitle] instead.
+     * - [ticker]: the merchant announcement (CMP "Kiosk Marquee
+     *   Announcement", [Branding.welcome_message]); hidden when none is
+     *   published.
      */
-    fun applyWelcomeText(textView: TextView, branding: Branding?, defaultText: String) {
-        val brandName = branding?.brand_name?.takeIf { it.isNotBlank() && it != "GS-SSP" }
-        textView.text = branding?.welcome_message?.takeIf { it.isNotBlank() }
-            ?: brandName?.let { "Welcome to $it" }
-            ?: defaultText
+    fun applyHeader(title: TextView, ticker: TextView, branding: Branding?, defaultTitle: String) {
+        title.text = branding?.brand_name?.takeIf { it.isNotBlank() && it != "GS-SSP" } ?: defaultTitle
+        val message = branding?.welcome_message?.takeIf { it.isNotBlank() }
+        ticker.text = message.orEmpty()
+        ticker.visibility = if (message == null) View.GONE else View.VISIBLE
     }
 }

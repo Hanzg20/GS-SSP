@@ -1,5 +1,6 @@
 package com.goldsky.ssp.feature.timer
 
+import com.goldsky.ssp.payment.hardware.DeclineReason
 import android.app.Application
 import android.os.SystemClock
 import android.util.Log
