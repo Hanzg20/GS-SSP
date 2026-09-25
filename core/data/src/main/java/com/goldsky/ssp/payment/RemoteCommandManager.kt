@@ -33,6 +33,16 @@ object RemoteCommandManager {
     interface CommandListener {
         fun onSyncRequested()
         fun onLockRequested(locked: Boolean)
+
+        /**
+         * Remote START_SERVICE from CMP: run [productId]'s service once, free,
+         * through the app's own output path (wash: DispenseEngine, so the
+         * Q3mini's DigitIo pulse circuit; timer: a hold session). Returns
+         * whether it started, or null if this app doesn't handle it -- only
+         * then does the legacy raw-serial [startHex] write run, which on a
+         * Q3mini drives a port nothing is wired to.
+         */
+        suspend fun onStartServiceRequested(productId: String?, startHex: String?, commandId: String): Boolean? = null
     }
 
     private var commandListener: CommandListener? = null
@@ -170,7 +180,14 @@ object RemoteCommandManager {
                     }
                     "START_SERVICE" -> {
                         val hex = deviceCommand.payload?.get("start_hex")?.jsonPrimitive?.contentOrNull
-                        if (hex != null) {
+                        val productId = deviceCommand.payload?.get("product_id")?.jsonPrimitive?.contentOrNull
+                        val handled = withContext(Dispatchers.Main) {
+                            commandListener?.onStartServiceRequested(productId, hex, deviceCommand.id)
+                        }
+                        if (handled != null) {
+                            Log.w(TAG, "Remote START_SERVICE product=$productId -> ${if (handled) "started" else "refused"}")
+                            success = handled
+                        } else if (hex != null) {
                             Log.w(TAG, "Executing Remote START_SERVICE with HEX: $hex")
                             HardwareFactory.getSerialProvider(context, vendor).sendHexString(hex)
                             withContext(Dispatchers.Main) {

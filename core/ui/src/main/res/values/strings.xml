@@ -94,6 +94,7 @@
     <string name="pay_result_cancelled">Payment cancelled. No charge was made.</string>
     <string name="pay_result_unavailable">Card payment is temporarily unavailable. Please contact the attendant.</string>
     <string name="pay_result_declined">Payment not completed. No charge was made. Please try again or use another card.</string>
+    <string name="tts_remote_start">Service started by the operator.</string>
     <string name="status_start_wash">Starting Wash Cycle</string>
     <string name="status_verifying">Verifying credentials...</string>
 

@@ -89,6 +89,8 @@ class MainActivity : ComponentActivity() {
             override fun onSyncRequested() = loadConfig(DeviceRepository.getPersistedOrgId())
             // A LOCK mid-session lets the paid session finish; it only blocks new sales.
             override fun onLockRequested(locked: Boolean) = timerVm.setLocked(DeviceAccessManager.isLocked())
+            override suspend fun onStartServiceRequested(productId: String?, startHex: String?, commandId: String) =
+                timerVm.startRemoteSession(productId, commandId)
         })
         ShadowManager.startSync(this, deviceSn)
         // Heartbeat, offline transaction replay, daily batch close, storage

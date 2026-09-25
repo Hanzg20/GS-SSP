@@ -190,6 +190,9 @@ class MainActivity : BaseAdActivity() {
                 }
                 performHealthCheck()
             }
+
+            override suspend fun onStartServiceRequested(productId: String?, startHex: String?, commandId: String): Boolean =
+                remoteStartWash(productId, commandId)
         })
 
         ShadowManager.startSync(this, deviceSn)
@@ -614,6 +617,41 @@ class MainActivity : BaseAdActivity() {
             peek.type == "FIXED_OFF" ->
                 localProducts.filter { it.price_cents == peek.value }.singleOrNull()
             else -> null
+        }
+    }
+
+    /**
+     * CMP remote start: one free run of [productId] through the same
+     * DispenseEngine a paid wash uses (DigitIo pulses on the Q3mini; the old
+     * handler wrote the hex to the serial port, which isn't wired there).
+     * Refused while a customer is mid-purchase or the product isn't a wash
+     * product in the current config.
+     */
+    private suspend fun remoteStartWash(productId: String?, commandId: String): Boolean {
+        if (isWorking || paymentInFlight || paymentDialog?.isShowing == true) {
+            Log.w("SSP_REMOTE", "Remote start refused: terminal busy with a customer")
+            return false
+        }
+        val product = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)?.find { it.id == productId }
+        if (product == null) {
+            Log.w("SSP_REMOTE", "Remote start refused: no wash product $productId in config")
+            return false
+        }
+        isWorking = true
+        try {
+            TtsManager.speak(getString(R.string.tts_remote_start))
+            Toast.makeText(this, getString(R.string.tts_remote_start), Toast.LENGTH_LONG).show()
+            val outcome = DispenseEngine.dispense(
+                DispenseJob(product.price_cents, serialHexOf(product), deviceSn, "REMOTE_$commandId"),
+                isSimulationMode,
+                HardwareFactory.getSerialProvider(this, hardwareVendor),
+                HardwareFactory.getGpioProvider(this, hardwareVendor)
+            )
+            Log.i("SSP_REMOTE", "Remote start ${product.name}: $outcome")
+            return outcome !is DispenseOutcome.Failed
+        } finally {
+            isWorking = false
+            resetAdTimer()
         }
     }
 

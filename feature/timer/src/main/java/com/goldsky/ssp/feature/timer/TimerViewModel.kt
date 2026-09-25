@@ -202,6 +202,22 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             .onFailure { Log.w(TAG, "cancelCurrentTransaction failed: ${it.message}") }
     }
 
+    /**
+     * CMP remote start: one free session of [productId] through the same hold
+     * path a paid session uses. Refused unless the kiosk is idle on Home.
+     */
+    suspend fun startRemoteSession(productId: String?, commandId: String): Boolean {
+        val s = _state.value
+        if (s.screen !is Screen.Home || !attached) return false
+        val pkg = s.packages.find { it.productId == productId } ?: return false
+        returnHomeJob?.cancel()
+        val issuedAt = SystemClock.elapsedRealtime()
+        if (!startOutput(pkg.durationMs, "REMOTE_$commandId", pkg.productId)) return false
+        runSession(pkg, pkg.durationMs - (SystemClock.elapsedRealtime() - issuedAt), pkg.durationMs)
+        TtsManager.speak("Service started by the operator. Your ${pkg.name.lowercase()} is on.")
+        return true
+    }
+
     private suspend fun onPaid(pkg: TimerPackage, ecrRefNum: String, bankRef: String, entryMode: String) {
         val demo = _state.value.demoMode
         if (!demo) {
