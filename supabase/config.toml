@@ -46,3 +46,8 @@ verify_jwt = true
 # service_role (see index.ts), not the caller's JWT, since one sync pass
 # spans many orgs. Not yet scheduled anywhere -- callable manually for now.
 verify_jwt = true
+
+[functions.alert-notify]
+# Called by a Database Webhook on app_error_logs INSERT, not by a signed-in
+# user -- authenticated by the x-alert-secret header instead (see index.ts).
+verify_jwt = false
