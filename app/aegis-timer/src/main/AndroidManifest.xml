@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- PAX (same set as aegis-wash) -->
     <uses-permission android:name="com.pax.permission.ICC" />
     <uses-permission android:name="com.pax.permission.PICC" />
@@ -36,8 +37,12 @@
 
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
-    <!-- Not HOME/boot-autostart yet: this build is only the on-site output
-         test and may share a unit with aegis-wash, which owns HOME. -->
+    <!-- Unattended kiosk: after a power cut the terminal must come back into
+         the sale screen by itself. HOME is what actually does that on Android
+         14 (background activity starts from a boot receiver are blocked);
+         BootReceiver is the fallback for when another app is the default HOME.
+         A unit with aegis-wash installed too (the bay5 test unit) will ask
+         once which HOME to use; real sites run one app per terminal. -->
     <application
         android:name=".AegisTimerApplication"
         android:allowBackup="true"
@@ -47,16 +52,31 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SSP">
 
+        <!-- singleTask: HOME presses must return to this one instance, never
+             stack a second kiosk (two ViewModels = two payment sessions). -->
         <activity
             android:name="com.goldsky.ssp.feature.timer.MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.SSP.Fullscreen">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
 
     </application>
 </manifest>

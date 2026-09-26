@@ -5,12 +5,19 @@
 // is derived as MAJOR*10000 + MINOR*100 + PATCH so it can only go up when the
 // version goes up (WStore/TMS and Android both refuse a lower versionCode).
 //
-// Signing: a release keystore is read from local.properties (gitignored):
-//   release.storeFile=C:/path/to/goldsky-release.jks
+// Signing: `gradlew :app:<app>:signRelease` builds the release APK unsigned,
+// then zipaligns, signs (apksigner, v1+v2) and verifies it, writing
+// build/outputs/apk/release/<app>-<version>-signed.apk. WizarPOS's
+// app-signing-process page says Android Studio/Gradle signing does not work
+// with their certificate -- apksigner is the documented path -- so there is
+// deliberately no signingConfig. The keystore is read from local.properties
+// (gitignored):
+//   release.storeFile=C:/goldsky/signing/goldsky-release.jks
 //   release.storePassword=...
-//   release.keyAlias=...
-//   release.keyPassword=...
-// Without it, assembleRelease produces an UNSIGNED apk.
+//   release.keyAlias=goldsky
+//   release.keyPassword=...   (optional, defaults to storePassword)
+// Without it, signRelease falls back to the Android debug keystore and names
+// the output <app>-<version>-DEBUGKEY-signed.apk (dev units only).
 //
 // WizarPOS production terminals only install APKs signed by a key whose
 // certificate chains to WizarPOS's root (smartpossdk.gitbook.io/cloudpossdk
@@ -34,22 +41,6 @@ android {
         versionName project.ext.appVersion
     }
 
-    signingConfigs {
-        if (releaseProps.getProperty('release.storeFile')) {
-            release {
-                storeFile file(releaseProps.getProperty('release.storeFile'))
-                storePassword releaseProps.getProperty('release.storePassword')
-                keyAlias releaseProps.getProperty('release.keyAlias')
-                keyPassword releaseProps.getProperty('release.keyPassword')
-                // AGP skips v1 (JAR) signing when minSdk >= 24; WizarPOS's own
-                // signing tool only offers v1/v2/v1v2, so keep both explicitly
-                // rather than bet on its verifier reading v2/v3 alone.
-                enableV1Signing true
-                enableV2Signing true
-            }
-        }
-    }
-
     // lintVital (run by every assembleRelease) needs :libs:pax/:libs:wizarpos
     // packaged as AARs, which AGP refuses for modules wrapping local .aar
     // files (see those modules' build.gradle). Run lint explicitly instead.
@@ -64,7 +55,68 @@ android {
             // POSLink / Supabase / kotlinx-serialization reflection paths, and
             // an over-eager strip there fails only on real hardware.
             minifyEnabled false
-            if (signingConfigs.findByName('release')) signingConfig signingConfigs.release
         }
+    }
+}
+
+// ---- signRelease: zipalign + apksigner (v1+v2) + verify ------------------
+
+def runTool = { List<String> cmd, Map<String, String> env = [:] ->
+    def pb = new ProcessBuilder(cmd).redirectErrorStream(true)
+    pb.environment().putAll(env)
+    def proc = pb.start()
+    def out = proc.inputStream.text
+    def rc = proc.waitFor()
+    if (out.trim()) println(out.trim())
+    if (rc != 0) throw new GradleException("${new File(cmd[0]).name} failed (exit $rc)")
+}
+
+tasks.register('signRelease') {
+    group = 'distribution'
+    description = 'Builds the release APK and signs it with apksigner (v1+v2), as WizarPOS requires.'
+    dependsOn 'assembleRelease'
+    doLast {
+        def isWin = System.getProperty('os.name').toLowerCase().contains('windows')
+        def buildTools = new File(android.sdkDirectory, 'build-tools').listFiles()
+            .findAll { it.isDirectory() && it.name ==~ /\d+(\.\d+)*/ }
+            .max { a, b ->
+                def x = a.name.tokenize('.')*.toInteger(), y = b.name.tokenize('.')*.toInteger()
+                [x, y].transpose().findResult { it[0] <=> it[1] ?: null } ?: x.size() <=> y.size()
+            }
+        if (buildTools == null) throw new GradleException("No build-tools found under ${android.sdkDirectory}")
+        def zipalign = new File(buildTools, isWin ? 'zipalign.exe' : 'zipalign').path
+        def apksigner = new File(buildTools, isWin ? 'apksigner.bat' : 'apksigner').path
+
+        def outDir = layout.buildDirectory.dir('outputs/apk/release').get().asFile
+        def unsigned = new File(outDir, "${project.name}-release-unsigned.apk")
+        if (!unsigned.exists()) throw new GradleException("Missing $unsigned")
+
+        def useRelease = releaseProps.getProperty('release.storeFile') != null
+        def ks = useRelease ? file(releaseProps.getProperty('release.storeFile'))
+                            : new File(System.getProperty('user.home'), '.android/debug.keystore')
+        def alias = useRelease ? releaseProps.getProperty('release.keyAlias') : 'androiddebugkey'
+        def storePass = useRelease ? releaseProps.getProperty('release.storePassword') : 'android'
+        def keyPass = useRelease ? (releaseProps.getProperty('release.keyPassword') ?: storePass) : 'android'
+        if (useRelease && (!ks.exists() || !alias || !storePass)) {
+            throw new GradleException('release.storeFile / release.keyAlias / release.storePassword incomplete in local.properties')
+        }
+
+        def aligned = new File(outDir, "${project.name}-release-aligned.apk")
+        def signed = new File(outDir, "${project.name}-${project.ext.appVersion}-${useRelease ? 'signed' : 'DEBUGKEY-signed'}.apk")
+        signed.delete()
+
+        runTool([zipalign, '-f', '-p', '4', unsigned.path, aligned.path])
+        // Passwords go through the environment, never the command line.
+        runTool([apksigner, 'sign', '--ks', ks.path, '--ks-key-alias', alias,
+                 '--ks-pass', 'env:GS_KS_PASS', '--key-pass', 'env:GS_KEY_PASS',
+                 '--v1-signing-enabled', 'true', '--v2-signing-enabled', 'true',
+                 '--v3-signing-enabled', 'false', '--v4-signing-enabled', 'false',
+                 '--out', signed.path, aligned.path],
+                [GS_KS_PASS: storePass, GS_KEY_PASS: keyPass])
+        aligned.delete()
+        // --min-sdk-version 18: without it apksigner skips checking v1 for a
+        // minSdk >= 24 APK (and API 9-17 can't verify SHA-256 JAR signatures).
+        runTool([apksigner, 'verify', '--min-sdk-version', '18', '--verbose', '--print-certs', signed.path])
+        println("Signed APK: $signed${useRelease ? '' : '  (DEBUG key -- dev units only)'}")
     }
 }
