@@ -7,9 +7,11 @@ import android.util.Log
 import com.goldsky.ssp.feature.timer.MainActivity
 
 /**
- * Brings the kiosk back after a reboot when Aegis Timer isn't the default
- * HOME (as HOME, the system already opens it). Android 14 may block this
- * background start; HOME is the reliable path.
+ * Brings the kiosk back after a reboot. Android 14 blocks this background
+ * start (BAL_BLOCK) unless the app holds "display over other apps"
+ * (SYSTEM_ALERT_WINDOW). On the Q3mini engineering unit the start is then
+ * allowed but still returns 101 while WizarPOS's OPC holds the screen after
+ * boot -- open question with WizarPOS (2026-09-27).
  */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {

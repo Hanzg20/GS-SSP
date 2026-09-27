@@ -5,6 +5,11 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Lets BootReceiver bring the kiosk back after a reboot: Android 14
+         blocks background activity starts (BAL_BLOCK, seen on the Q3mini)
+         unless the app holds "display over other apps". Must be granted once
+         per terminal (Settings, TMS, or adb appops). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- PAX (same set as aegis-wash) -->
     <uses-permission android:name="com.pax.permission.ICC" />
     <uses-permission android:name="com.pax.permission.PICC" />
