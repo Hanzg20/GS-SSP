@@ -353,6 +353,7 @@ ALTER TABLE public.vip_cards ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT
 CREATE TABLE IF NOT EXISTS public.advertisements (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE, -- NULL = global/system-wide ad
+    title TEXT,                          -- optional CMP-only display name (2026-09-28)
     media_url TEXT,                      -- required for VIDEO/IMAGE, null for TEXT/TEXT_AD
     media_type TEXT CHECK (media_type IN ('VIDEO', 'IMAGE', 'TEXT', 'TEXT_AD')),
     md5_hash TEXT,                       -- For delta sync (VIDEO/IMAGE only)
@@ -2388,6 +2389,10 @@ CREATE TABLE IF NOT EXISTS public.device_commands (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- NOTE 2026-09-28: the live DB had no advertisements.org_id, no
+-- ad_playback_logs, and CMP write policies open to any merchant admin.
+-- docs/migrations/2026-09-28_ads_org_scoping.sql is the authoritative
+-- version of the ad RLS/Storage policies and adds vw_ad_performance.
 -- Advertising Playback Logs (Proof of Play)
 CREATE TABLE IF NOT EXISTS public.ad_playback_logs (
     id BIGSERIAL PRIMARY KEY,
