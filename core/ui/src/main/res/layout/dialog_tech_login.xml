@@ -25,7 +25,7 @@
         android:layout_height="wrap_content"
         android:hint="Enter PIN"
         android:inputType="numberPassword"
-        android:maxLength="4"
+        android:maxLength="8"
         android:textAlignment="center"
         android:textColor="@color/text_light"
         android:textColorHint="@color/text_muted"
