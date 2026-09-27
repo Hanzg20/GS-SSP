@@ -47,6 +47,12 @@ data class TransactionRecord(
 object TransactionRepository {
     private const val TAG = "TransactionRepository"
 
+    // 8-4-4-4-12. The previous pattern was 8-4-12, which no real UUID
+    // matches, so every card sale's product_id was silently nulled.
+    private val UUID_RE = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+    internal fun isUuid(value: String): Boolean = UUID_RE.matches(value)
+
     /**
      * Records a new transaction entry locally and remotely.
      */
@@ -164,8 +170,9 @@ object TransactionRepository {
             return@withContext true
         }
         try {
-            val sanitizedRecord = if (record.product_id != null && !record.product_id.matches(Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))) {
-                // Simplified UUID check for brevity
+            // transactions.product_id is a UUID FK; drop anything else (e.g. a
+            // bundled-config id) rather than fail the whole insert.
+            val sanitizedRecord = if (record.product_id != null && !isUuid(record.product_id)) {
                 record.copy(product_id = null)
             } else {
                 record
