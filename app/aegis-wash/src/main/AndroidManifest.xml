@@ -11,6 +11,10 @@
 
     <!-- Permission for boot autostart (Kiosk mode) -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Same as aegis-timer: Android 14 blocks BootReceiver's activity start
+         (BAL_BLOCK, measured on the Q3mini) unless the app holds "display over
+         other apps". Granted once per terminal (Settings, TMS or adb appops). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- PAX Hardware Access Permissions -->
     <uses-permission android:name="com.pax.permission.ICC" />
