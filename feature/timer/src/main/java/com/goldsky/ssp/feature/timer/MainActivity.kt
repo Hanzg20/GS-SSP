@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
     private val timerVm: TimerViewModel by viewModels()
     private val holdVm: HoldTestViewModel by viewModels()
     private val selfTestVm: PaymentSelfTestViewModel by viewModels()
+    private val outputSettings by lazy { OutputSettingsStore(this) }
     private var deviceSn = ""
     private var watchdogJob: Job? = null
 
@@ -75,7 +76,7 @@ class MainActivity : ComponentActivity() {
         val payment = PaymentProviderFactory.getPaymentProvider(this, vendor)
         timerVm.attach(
             payment = payment,
-            output = RelayHoldOutput(gpio),
+            output = ConfigurableOutput(gpio) { outputSettings.load() },
             hardwareOk = { hardware.isOperational() },
         )
 
@@ -113,6 +114,7 @@ class MainActivity : ComponentActivity() {
             val selfTest by selfTestVm.state.collectAsState()
             var showPin by remember { mutableStateOf(false) }
             var tech by remember { mutableStateOf(false) }
+            var outSettings by remember { mutableStateOf(outputSettings.load()) }
             BackHandler(enabled = true) { if (tech) tech = false } // kiosk: back never leaves the app
 
             if (tech) {
@@ -123,6 +125,9 @@ class MainActivity : ComponentActivity() {
                     selfTest = selfTest,
                     onRunSelfTest = { selfTestVm.run(payment, deviceSn) },
                     onSettle = { selfTestVm.settle() },
+                    outputSettings = outSettings,
+                    onOutputChange = { outputSettings.save(it); outSettings = it },
+                    onTestOutput = { testOutput(gpio) },
                     holdTest = { HoldTestScreen(holdVm) },
                 )
             } else {
@@ -140,6 +145,15 @@ class MainActivity : ComponentActivity() {
                     (pin == expected).also { ok -> if (ok) { showPin = false; tech = true } }
                 }
             }
+        }
+    }
+
+    /** Technician "试运行": 5 s in the hold modes, one pulse's worth in coin mode. */
+    private fun testOutput(gpio: com.goldsky.ssp.payment.hardware.IGpioProvider) {
+        val s = outputSettings.load()
+        lifecycleScope.launch(Dispatchers.IO) {
+            val ok = ConfigurableOutput(gpio) { s }.start(5_000, s.centsPerPulse)
+            Log.i(TAG, "Output test ${s.mode} port=${s.port}: ok=$ok")
         }
     }
 

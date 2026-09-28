@@ -14,7 +14,10 @@ interface TimerOutput {
      * duration on some vendors (see IGpioProvider.holdRelayOutput) -- call off
      * the main thread. Returns false only on a definite hardware rejection.
      */
-    suspend fun start(durationMs: Long): Boolean
+    suspend fun start(durationMs: Long, priceCents: Int): Boolean
+
+    /** Session interrupted by a restart: re-establish the remaining time. */
+    suspend fun resume(remainingMs: Long): Boolean = start(remainingMs, 0)
 
     /** End-of-session / recovery safeguard. Safe to call when already off. */
     fun stop()
@@ -27,12 +30,12 @@ interface TimerOutput {
  * piece to swap.
  */
 class RelayHoldOutput(private val gpio: IGpioProvider, private val port: Int = 0) : TimerOutput {
-    override suspend fun start(durationMs: Long) = gpio.holdRelayOutput(port, durationMs)
+    override suspend fun start(durationMs: Long, priceCents: Int) = gpio.holdRelayOutput(port, durationMs)
     override fun stop() { gpio.releaseHold(port) }
 }
 
 /** Technician demo mode: runs the customer flow end to end, drives nothing. */
 object DemoOutput : TimerOutput {
-    override suspend fun start(durationMs: Long) = true
+    override suspend fun start(durationMs: Long, priceCents: Int) = true
     override fun stop() {}
 }

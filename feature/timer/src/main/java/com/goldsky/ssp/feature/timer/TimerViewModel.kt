@@ -212,7 +212,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         val pkg = s.packages.find { it.productId == productId } ?: return false
         returnHomeJob?.cancel()
         val issuedAt = SystemClock.elapsedRealtime()
-        if (!startOutput(pkg.durationMs, "REMOTE_$commandId", pkg.productId)) return false
+        if (!startOutput(pkg.durationMs, pkg.priceCents, "REMOTE_$commandId", pkg.productId)) return false
         runSession(pkg, pkg.durationMs - (SystemClock.elapsedRealtime() - issuedAt), pkg.durationMs)
         TtsManager.speak("Service started by the operator. Your ${pkg.name.lowercase()} is on.")
         return true
@@ -232,7 +232,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         // confirm window / cloud write -- measured on a Q3mini, starting it
         // late left the screen showing 0:02 after the relay had already dropped.
         val issuedAt = SystemClock.elapsedRealtime()
-        if (startOutput(pkg.durationMs, ecrRefNum, pkg.productId)) {
+        if (startOutput(pkg.durationMs, pkg.priceCents, ecrRefNum, pkg.productId)) {
             runSession(pkg, pkg.durationMs - (SystemClock.elapsedRealtime() - issuedAt), pkg.durationMs)
             TtsManager.speak("Payment approved. Your ${pkg.name.lowercase()} is on.")
             // startOutput only returns true once the board accepted the hold
@@ -252,15 +252,22 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
      * runs on its own IO coroutine: a false within the first moments is a real
      * rejection; still running after that means the board accepted it.
      */
-    private suspend fun startOutput(durationMs: Long, ecrRefNum: String, productId: String): Boolean {
+    private suspend fun startOutput(durationMs: Long, priceCents: Int, ecrRefNum: String, productId: String): Boolean {
         store.save(SessionStore.Active(ecrRefNum, productId, System.currentTimeMillis() + durationMs, durationMs))
         val out = output
         holdRejected = false
+        var confirmed = false
         val hold = viewModelScope.launch(Dispatchers.IO) {
-            val ok = out.start(durationMs)
-            if (!ok) holdRejected = true
+            val ok = out.start(durationMs, priceCents)
+            if (!ok) {
+                holdRejected = true
+                // Failed after the confirm window (e.g. pulse 3 of 8 in coin
+                // mode): the session already started, so someone must look.
+                if (confirmed) DiagnosticManager.reportError(deviceSn, "TIMER_OUTPUT_PARTIAL", severity = "CRITICAL", trace = "$ecrRefNum $priceCents cents")
+            }
         }
         withTimeoutOrNull(START_CONFIRM_WINDOW_MS) { hold.join() }
+        confirmed = true
         if (holdRejected) {
             store.clear()
             return false
@@ -341,7 +348,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             val out = realOutput
             store.save(saved)
             holdRejected = false
-            launch(Dispatchers.IO) { if (!out.start(remaining)) holdRejected = true }
+            launch(Dispatchers.IO) { if (!out.resume(remaining)) holdRejected = true }
             runSession(pkg, remaining, saved.totalMs)
             // A crash can land before onPaid's status write, leaving a PAID row
             // with no hardware status (CMP: "no hardware record").

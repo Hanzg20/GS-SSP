@@ -373,6 +373,9 @@ fun TechScreen(
     selfTest: PaymentSelfTestViewModel.State,
     onRunSelfTest: () -> Unit,
     onSettle: () -> Unit,
+    outputSettings: OutputSettings,
+    onOutputChange: (OutputSettings) -> Unit,
+    onTestOutput: () -> Unit,
     holdTest: @Composable () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().background(Bg)) {
@@ -392,7 +395,53 @@ fun TechScreen(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
         )
         PaymentSelfTestPanel(selfTest, onRunSelfTest, onSettle)
+        OutputSettingsPanel(outputSettings, onOutputChange, onTestOutput)
         Box(Modifier.weight(1f)) { holdTest() }
+    }
+}
+
+/**
+ * How customer sessions drive the machine -- picked on site to match the
+ * wiring (relay hold, PIN1 level hold, or coin-acceptor pulses). Saved on
+ * the terminal; the next session uses it.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OutputSettingsPanel(s: OutputSettings, onChange: (OutputSettings) -> Unit, onTest: () -> Unit) {
+    @Composable
+    fun Pick(text: String, selected: Boolean, onClick: () -> Unit) =
+        FilterChip(selected = selected, onClick = onClick, label = { Text(text, fontSize = 11.sp) }, modifier = Modifier.padding(end = 4.dp))
+
+    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(Surface, RoundedCornerShape(10.dp)).padding(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("输出方式", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Button(
+                onClick = onTest,
+                colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = Bg),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+            ) { Text("试运行", fontSize = 12.sp) }
+        }
+        Row { OutputMode.entries.forEach { m -> Pick(m.label, s.mode == m) { onChange(s.copy(mode = m)) } } }
+        Text(s.mode.hint, color = TextLo, fontSize = 10.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("端口", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+            listOf(0, 1).forEach { p -> Pick("port $p", s.port == p) { onChange(s.copy(port = p)) } }
+            if (s.mode != OutputMode.RELAY_HOLD) {
+                Text("voltage", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(start = 6.dp, end = 4.dp))
+                listOf(0, 1).forEach { v -> Pick("$v", s.voltage == v) { onChange(s.copy(voltage = v)) } }
+            }
+        }
+        if (s.mode == OutputMode.COIN_PULSES) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("每脉冲", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+                listOf(25, 100, 200).forEach { c -> Pick("$" + "%.2f".format(c / 100.0), s.centsPerPulse == c) { onChange(s.copy(centsPerPulse = c)) } }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("脉宽", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+                listOf(50L, 100L, 200L, 500L).forEach { w -> Pick("${w}ms", s.pulseWidthMs == w) { onChange(s.copy(pulseWidthMs = w)) } }
+            }
+            Text("例：$2 套餐 → ${s.pulsesFor(200)} 个脉冲", color = TextLo, fontSize = 10.sp)
+        }
     }
 }
 
