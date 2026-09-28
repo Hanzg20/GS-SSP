@@ -48,7 +48,7 @@
          with a WizarPOS-issued certificate. Without the declaration reboot()
          was refused even with the WizarPOS cert (2026-09-28). -->
     <uses-permission android:name="android.permission.CLOUDPOS_REBOOT" />
-    <uses-permission android:name="android.permission.CLOUDPOS_SET_DEFAULT_LAUNCHER" />
+    <uses-permission android:name="android.permission.CLOUDPOS_DEFAULT_LAUNCHER" />
     <uses-permission android:name="android.permission.CLOUDPOS_MCUCTL" />
 
     <!-- Required for POSLink AIDL to bind BroadPOS, and for the CloudPOS
