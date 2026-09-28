@@ -55,7 +55,7 @@ object PendingResolver {
                 is IPaymentProvider.QueryResult.Approved -> {
                     // Charged, never served: give the money back.
                     val amount = r.amountCents ?: order.amountCents
-                    val (ok, method) = reverse(provider, ref, amount)
+                    val (ok, method) = reverse(provider, ref)
                     if (ok) {
                         TransactionRepository.updatePaymentStatus(context, ref, if (method == "REFUND") "REFUNDED" else "VOIDED")
                         DiagnosticManager.reportError(sn, "PENDING_APPROVED_REVERSED", severity = "WARNING", trace = "$ref $amount cents via $method")
@@ -63,7 +63,10 @@ object PendingResolver {
                     } else {
                         // Stop re-trying the reversal on every start; a person must look.
                         TransactionRepository.updatePaymentStatus(context, ref, "PAID")
-                        DiagnosticManager.reportError(sn, "PENDING_APPROVED_REVERSAL_FAILED", severity = "CRITICAL", trace = "$ref $amount cents")
+                        DiagnosticManager.reportError(
+                            sn, "PENDING_APPROVED_REVERSAL_FAILED", severity = "CRITICAL",
+                            trace = "$ref $amount cents, $method -- refund it in the WizarPOS merchant portal (no card needed)"
+                        )
                         unresolved++
                     }
                 }
@@ -88,9 +91,21 @@ object PendingResolver {
         return withTimeoutOrNull(CALL_TIMEOUT_MS) { done.await() } ?: IPaymentProvider.QueryResult.Error("query timed out")
     }
 
-    private suspend fun reverse(provider: IPaymentProvider, ref: String, amountCents: Int): Pair<Boolean, String> {
+    /**
+     * VOID only, never the REFUND fallback: nobody is at the kiosk for these
+     * rows, and after settlement a socket-mode Refund needs the card tapped
+     * (WizarPOS, 2026-09-28) -- it would park PAYWizard's card screen on an
+     * unattended terminal. A void that fails (usually: already settled) is
+     * refunded card-free in the WizarPOS merchant portal instead; the
+     * CRITICAL alert below says so.
+     */
+    private suspend fun reverse(provider: IPaymentProvider, ref: String): Pair<Boolean, String> {
         val done = CompletableDeferred<Pair<Boolean, String>>()
-        provider.voidOrRefund(ref, amountCents) { ok, method -> done.complete(ok to method) }
+        provider.voidTransaction(ref, object : IPaymentProvider.PaymentCallback {
+            override fun onSuccess(authCode: String, refNum: String, entryMode: String) { done.complete(true to "VOID") }
+            override fun onFailure(errorMsg: String, isHardwareFault: Boolean) { done.complete(false to "VOID_FAILED: $errorMsg") }
+            override fun onProgress(message: String) {}
+        })
         return withTimeoutOrNull(CALL_TIMEOUT_MS * 2) { done.await() } ?: (false to "TIMEOUT")
     }
 

@@ -17,11 +17,11 @@ import nodemailer from "npm:nodemailer@6.9.14";
 
 // Same plain-words explanations CMP shows (DeviceAlertsPanel).
 const DESCRIPTIONS: Record<string, string> = {
-  VOID_AND_REFUND_FAILED: "出货失败且自动撤销/退款均失败：客户已扣款，需人工退款",
+  VOID_AND_REFUND_FAILED: "出货失败且自动撤销/退款均失败：客户已扣款，请在慧银商户后台退款（免刷卡）",
   HARDWARE_PULSE_FAIL: "洗车出货失败（已尝试自动撤销）",
   HARDWARE_PARTIAL_DISPENSE: "洗车只出了部分脉冲：客户服务不足额，需人工处理",
   TIMER_OUTPUT_START_FAIL: "按时服务未能启动（已尝试自动撤销）",
-  PENDING_APPROVED_REVERSAL_FAILED: "崩溃遗留的已扣款交易自动撤销失败：需人工退款",
+  PENDING_APPROVED_REVERSAL_FAILED: "崩溃遗留的已扣款交易自动撤销失败（多为已结算）：请在慧银商户后台退款（免刷卡）",
   PENDING_UNRESOLVED: "交易状态超过 24 小时无法确认：需人工核对",
   BATCH_CLOSE_GAVE_UP: "每日结算连续失败：资金未结算，需人工处理",
   CARD_READER_FAULT: "读卡/支付服务故障：终端无法刷卡",
