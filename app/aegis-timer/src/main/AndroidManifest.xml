@@ -67,7 +67,7 @@
         android:name=".AegisTimerApplication"
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
-        android:label="GoldSky Aegis Timer"
+        android:label="Aegis Timer"
         android:roundIcon="@drawable/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SSP">
