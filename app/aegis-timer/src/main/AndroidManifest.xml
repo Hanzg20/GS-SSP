@@ -30,6 +30,12 @@
     <uses-permission android:name="android.permission.CLOUDPOS_MCUCTL" />
     <uses-permission android:name="android.permission.CLOUDPOS_SERIAL" />
     <uses-permission android:name="android.permission.CLOUDPOS_VIRTUAL_SERIAL_PORT" />
+    <!-- WizarPOS system extension (WizarViewAgentAssistant): its
+         checkPermission requires the caller to declare these AND be signed
+         with a WizarPOS-issued certificate. Without the declaration reboot()
+         was refused even with the WizarPOS cert (2026-09-28). -->
+    <uses-permission android:name="android.permission.CLOUDPOS_REBOOT" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SET_DEFAULT_LAUNCHER" />
 
     <!-- Package visibility for the payment apps/services the providers bind
          (see aegis-wash's manifest for the on-device evidence). -->
