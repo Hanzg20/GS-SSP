@@ -1837,26 +1837,17 @@ class MainActivity : BaseAdActivity() {
             btn.isEnabled = false
             btn.text = "SETTLING..."
             
-            val provider = PaymentProviderFactory.getPaymentProvider(this, hardwareVendor)
-            provider.closeBatch(object : com.goldsky.ssp.payment.hardware.IPaymentProvider.PaymentCallback {
-                override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                    runOnUiThread {
-                        btn.isEnabled = true
-                        btn.text = "CLOSE BATCH"
-                        Toast.makeText(this@MainActivity, "Batch Success: $authCode", Toast.LENGTH_LONG).show()
-                        DiagnosticManager.recordMaintenance(deviceSn, "MANUAL_BATCH_CLOSE")
-                    }
-                }
-
-                override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
-                    runOnUiThread {
-                        btn.isEnabled = true
-                        btn.text = "CLOSE BATCH"
-                        Toast.makeText(this@MainActivity, "Batch Fail: $errorMsg", Toast.LENGTH_LONG).show()
-                    }
-                }
-                override fun onProgress(message: String) {}
-            })
+            // Same SettlementManager path as the 03:30 daily job and Timer's
+            // "settle now": shared lock (no double settle), batch totals in the
+            // BATCH_CLOSE record, alert on failure. This button used to call
+            // closeBatch directly and record an empty MANUAL_BATCH_CLOSE.
+            CoroutineScope(Dispatchers.Main).launch {
+                val o = SettlementManager.settle(this@MainActivity, "MANUAL")
+                btn.isEnabled = true
+                btn.text = "CLOSE BATCH"
+                val msg = if (o.ok) "Batch closed" + (o.totals?.let { ": ${it.summary()}" } ?: "") else "Batch failed: ${o.message}"
+                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+            }
         }
 
         dialog.findViewById<Button>(R.id.btn_op_check).setOnClickListener {
