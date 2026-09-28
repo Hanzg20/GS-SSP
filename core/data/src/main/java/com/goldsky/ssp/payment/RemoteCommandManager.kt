@@ -48,6 +48,11 @@ object RemoteCommandManager {
     private var commandListener: CommandListener? = null
 
     fun startListening(context: Context, sn: String, vendor: String, listener: CommandListener) {
+        // One subscriber per process: a second Activity instance (seen on the
+        // Q3mini when HOME and another launch both opened the kiosk) must not
+        // add a second collector, or every command -- START_SERVICE included
+        // -- would run twice.
+        listenerJob?.cancel()
         commandListener = listener
         val client = SupabaseClientProvider.client
         
