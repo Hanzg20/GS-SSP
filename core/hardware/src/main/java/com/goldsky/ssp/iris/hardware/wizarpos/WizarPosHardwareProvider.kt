@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import com.cloudpos.POSTerminal
 import com.cloudpos.advance.ext.POSTerminalAdvance
+import com.cloudpos.advance.ext.system.ISystemDevice
 import com.goldsky.ssp.core.hardware.BuildConfig
 import com.goldsky.ssp.payment.hardware.*
 import com.goldsky.ssp.payment.wizarpos.WizarPosPaymentProvider
@@ -154,18 +155,58 @@ class WizarPosHardwareProvider : IHardwareProvider {
      * body, so every remote REBOOT reported SUCCESS and nothing happened.
      */
     override fun reboot(): Boolean {
-        val ctx = context ?: return false.also { Log.e(TAG, "Reboot failed: provider not initialised") }
+        val system = openSystemDevice("Reboot") ?: return false
         return try {
-            val system = POSTerminalAdvance.getInstance().systemDevice
-            if (!system.isOpened && !system.open(ctx)) {
-                Log.e(TAG, "Reboot failed: could not open WizarPOS system device")
-                return false
-            }
             Log.w(TAG, "Hardware REBOOT via WizarPOS ISystemDevice")
             system.reboot()
         } catch (e: Exception) {
             Log.e(TAG, "Reboot failed: ${e.message}")
             false
+        }
+    }
+
+    /**
+     * Needs CLOUDPOS_SET_DEFAULT_LAUNCHER declared + a WizarPOS-signed APK.
+     * NOT called at startup: on bay5 (2026-09-28) the call succeeded, yet HOME
+     * still showed the chooser and the next boot opened the chooser instead
+     * of WizarPOS's launcher -- the supported kiosk path is an open question
+     * with WizarPOS.
+     */
+    override fun setDefaultLauncher(packageName: String): Boolean {
+        val system = openSystemDevice("setDefaultLauncher") ?: return false
+        // A bare package name was accepted but left the HOME chooser in place
+        // (2026-09-28), so pass the app's own HOME activity as package/class.
+        val target = homeComponentOf(packageName) ?: packageName
+        return try {
+            system.setDefaultLauncher(target)
+            Log.i(TAG, "Default launcher set to $target")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "setDefaultLauncher($target) failed: ${e.message}")
+            false
+        }
+    }
+
+    private fun homeComponentOf(packageName: String): String? {
+        val ctx = context ?: return null
+        val home = android.content.Intent(android.content.Intent.ACTION_MAIN)
+            .addCategory(android.content.Intent.CATEGORY_HOME)
+            .setPackage(packageName)
+        val info = ctx.packageManager.queryIntentActivities(home, 0).firstOrNull()?.activityInfo ?: return null
+        return android.content.ComponentName(info.packageName, info.name).flattenToString()
+    }
+
+    private fun openSystemDevice(action: String): ISystemDevice? {
+        val ctx = context ?: return null.also { Log.e(TAG, "$action failed: provider not initialised") }
+        return try {
+            val system = POSTerminalAdvance.getInstance().systemDevice
+            if (!system.isOpened && !system.open(ctx)) {
+                Log.e(TAG, "$action failed: could not open WizarPOS system device")
+                null
+            } else system
+        } catch (e: Exception) {
+            Log.e(TAG, "$action failed: ${e.message}")
+            null
         }
     }
 

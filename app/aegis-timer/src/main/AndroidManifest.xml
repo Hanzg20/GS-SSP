@@ -36,6 +36,10 @@
          was refused even with the WizarPOS cert (2026-09-28). -->
     <uses-permission android:name="android.permission.CLOUDPOS_REBOOT" />
     <uses-permission android:name="android.permission.CLOUDPOS_DEFAULT_LAUNCHER" />
+    <!-- WizarViewAgentAssistant.setDefaultLauncher checks for this name (its
+         error: "NO PERMISSION: ...CLOUDPOS_SET_DEFAULT_LAUNCHER") although the
+         system defines CLOUDPOS_DEFAULT_LAUNCHER; declare both. -->
+    <uses-permission android:name="android.permission.CLOUDPOS_SET_DEFAULT_LAUNCHER" />
 
     <!-- Package visibility for the payment apps/services the providers bind
          (see aegis-wash's manifest for the on-device evidence). -->

@@ -81,6 +81,13 @@ interface IHardwareProvider {
     fun reboot(): Boolean
 
     /**
+     * Makes [packageName] the terminal's default HOME, so the kiosk is what
+     * comes back after boot or a Home press. Only vendors with a system API
+     * for it implement this; false = not done.
+     */
+    fun setDefaultLauncher(packageName: String): Boolean = false
+
+    /**
      * Checks the physical security status (Tamper).
      * @return true if tampered, false if secure.
      */
