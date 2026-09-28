@@ -88,6 +88,25 @@
             </intent-filter>
         </activity>
 
+        <!-- Idle ad screen, shared with aegis-wash (core/ui AdActivity). -->
+        <activity
+            android:name="com.goldsky.ssp.ui.AdActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SSP.Fullscreen"
+            android:configChanges="orientation|keyboardHidden|screenSize" />
+
+        <!-- AdActivity plays downloaded ads through this (${applicationId}.fileprovider). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"

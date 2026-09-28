@@ -52,6 +52,13 @@ class MainActivity : ComponentActivity() {
     private val selfTestVm: PaymentSelfTestViewModel by viewModels()
     private val outputSettings by lazy { OutputSettingsStore(this) }
     private var deviceSn = ""
+
+    // Hoisted so the idle-ad timer can tell when the technician panel or the
+    // PIN pad is open (never cover those with ads).
+    private val showPinState = mutableStateOf(false)
+    private val techState = mutableStateOf(false)
+    private val adHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val adRunnable = Runnable { launchAdsIfIdle() }
     private var watchdogJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -97,8 +104,8 @@ class MainActivity : ComponentActivity() {
         })
         ShadowManager.startSync(this, deviceSn)
         // Heartbeat, offline transaction replay, daily batch close, storage
-        // cleaning -- same jobs wash schedules, minus ad sync (no ad screen here).
-        AdManager.init(this, syncAds = false)
+        // cleaning and ad sync -- same jobs wash schedules.
+        AdManager.init(this)
         startWatchdog(hardware)
         // Card sales left PENDING by a crash: reverse the approved ones,
         // decline the rest. Only while idle on Home, never mid-sale.
@@ -112,8 +119,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val s by timerVm.state.collectAsState()
             val selfTest by selfTestVm.state.collectAsState()
-            var showPin by remember { mutableStateOf(false) }
-            var tech by remember { mutableStateOf(false) }
+            var showPin by showPinState
+            var tech by techState
             var outSettings by remember { mutableStateOf(outputSettings.load()) }
             BackHandler(enabled = true) { if (tech) tech = false } // kiosk: back never leaves the app
 
@@ -155,6 +162,37 @@ class MainActivity : ComponentActivity() {
             val ok = ConfigurableOutput(gpio) { s }.start(5_000, s.centsPerPulse)
             Log.i(TAG, "Output test ${s.mode} port=${s.port}: ok=$ok")
         }
+    }
+
+    // ---- idle ad screen (same rule as wash's BaseAdActivity) ----------------
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent?): Boolean {
+        resetAdTimer()
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resetAdTimer()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        adHandler.removeCallbacks(adRunnable)
+    }
+
+    private fun resetAdTimer() {
+        adHandler.removeCallbacks(adRunnable)
+        adHandler.postDelayed(adRunnable, AD_IDLE_MS)
+    }
+
+    /** Only from the idle package screen -- never mid-payment, mid-session or in the technician panel. */
+    private fun launchAdsIfIdle() {
+        if (!timerVm.canEnterTechMode || techState.value || showPinState.value) {
+            resetAdTimer()
+            return
+        }
+        startActivity(Intent(this, com.goldsky.ssp.ui.AdActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
     }
 
     /** Offline-first: cached org config right away, then refresh once the device's identity is synced. */
@@ -239,5 +277,7 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val TAG = "AegisTimer"
+        /** Same idle time as wash (BaseAdActivity). */
+        const val AD_IDLE_MS = 180_000L
     }
 }
