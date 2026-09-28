@@ -176,6 +176,7 @@ class MainActivity : BaseAdActivity() {
         initHardwareControl()
         AdManager.init(this)
 
+        LauncherClaim.ensureDefault(this, hardwareVendor)
         RemoteCommandManager.startListening(this, deviceSn, hardwareVendor, object : RemoteCommandManager.CommandListener {
             override fun onSyncRequested() {
                 loadInitialConfig(DeviceRepository.getPersistedOrgId())

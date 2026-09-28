@@ -65,6 +65,11 @@
          installed on-device; AppsFilter logs showed the interaction as
          BLOCKED). -->
     <queries>
+        <!-- LauncherClaim reads the current default HOME. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
         <intent>
             <action android:name="com.pax.us.std.poslink.aidl" />
         </intent>

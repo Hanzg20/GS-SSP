@@ -22,6 +22,7 @@ import com.goldsky.ssp.payment.ConfigManager
 import com.goldsky.ssp.payment.DeviceAccessManager
 import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.payment.DiagnosticManager
+import com.goldsky.ssp.payment.LauncherClaim
 import com.goldsky.ssp.payment.PaymentProviderFactory
 import com.goldsky.ssp.payment.PendingResolver
 import com.goldsky.ssp.payment.RemoteCommandManager
@@ -85,6 +86,7 @@ class MainActivity : ComponentActivity() {
         timerVm.setDeviceSn(deviceSn)
         syncIdentityAndConfig()
 
+        LauncherClaim.ensureDefault(this, vendor)
         RemoteCommandManager.startListening(this, deviceSn, vendor, object : RemoteCommandManager.CommandListener {
             override fun onSyncRequested() = loadConfig(DeviceRepository.getPersistedOrgId())
             // A LOCK mid-session lets the paid session finish; it only blocks new sales.

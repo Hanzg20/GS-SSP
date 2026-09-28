@@ -166,11 +166,11 @@ class WizarPosHardwareProvider : IHardwareProvider {
     }
 
     /**
-     * Needs CLOUDPOS_SET_DEFAULT_LAUNCHER declared + a WizarPOS-signed APK.
-     * NOT called at startup: on bay5 (2026-09-28) the call succeeded, yet HOME
-     * still showed the chooser and the next boot opened the chooser instead
-     * of WizarPOS's launcher -- the supported kiosk path is an open question
-     * with WizarPOS.
+     * Needs CLOUDPOS_SET_DEFAULT_LAUNCHER declared + a WizarPOS-signed APK,
+     * and the app's HOME activity must carry HOME + DEFAULT (WizarPOS). Called
+     * via core/data LauncherClaim only when we aren't already the default.
+     * Works together with OPC in background mode (TMS: ProtocolType=DEFAULT,
+     * UiRunMode=2) -- verified on bay5 2026-09-28.
      */
     override fun setDefaultLauncher(packageName: String): Boolean {
         val system = openSystemDevice("setDefaultLauncher") ?: return false
