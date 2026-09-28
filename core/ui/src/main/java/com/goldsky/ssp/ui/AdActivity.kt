@@ -250,7 +250,9 @@ class AdActivity : BaseAdActivity() {
     private fun getExtension(url: String): String = if (url.contains(".mp4")) ".mp4" else if (url.contains(".jpg")) ".jpg" else ".png"
 
     private fun setupPromptAnimation() {
-        ObjectAnimator.ofFloat(tvPrompt, View.ALPHA, 1.0f, 0.2f).apply {
+        // 1.0 <-> 0.6, not down to 0.2: the pill is the screen's call to
+        // action and nearly vanished over bright video at the low end.
+        ObjectAnimator.ofFloat(tvPrompt, View.ALPHA, 1.0f, 0.6f).apply {
             duration = 1000
             repeatCount = ValueAnimator.INFINITE
             repeatMode = ValueAnimator.REVERSE
