@@ -266,7 +266,7 @@
         android:layout_height="0dp"
         android:layout_marginStart="24dp"
         android:layout_marginEnd="24dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginBottom="24dp"
         android:background="@drawable/bg_vip_banner"
         android:clickable="true"
         android:focusable="true"
@@ -358,20 +358,23 @@
          control (scan belt/price grid/VIP banner all sit well above it), so
          repeated taps here can't be mistaken for a real button the way
          tapping tv_title repeatedly risks fat-fingering the scan belt right
-         below it. Padding gives a comfortable touch target without changing
-         where the tiny version text itself visually sits. -->
+         below it. It sits in the strip under the VIP banner (whose
+         marginBottom reserves that strip) so it never overlaps the banner. -->
     <TextView
         android:id="@+id/tv_app_version"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
-        android:layout_marginBottom="4dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginBottom="2dp"
         android:clickable="true"
         android:focusable="true"
-        android:padding="12dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
         android:text="v1.0.0"
-        android:textColor="@color/text_faint"
-        android:textSize="8sp"
+        android:textColor="@color/text_muted"
+        android:textSize="12sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 

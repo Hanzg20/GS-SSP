@@ -204,8 +204,14 @@ class MainActivity : BaseAdActivity() {
         startWatchdog()
 
         // Update version display
-        findViewById<TextView>(R.id.tv_app_version)?.text = "v${BuildConfig.VERSION_NAME}"
+        findViewById<TextView>(R.id.tv_app_version)?.text = "v${installedVersion()}"
     }
+
+    // The installed APK's versionName (from app/<app>/build.gradle ext.appVersion).
+    // This library module's own BuildConfig.VERSION_NAME is a fixed "1.0.0-wash"
+    // and showed 1.0.0 on screen and in CMP after the 1.0.1 release.
+    private fun installedVersion(): String =
+        runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
 
     private fun initHardwareControl() {
         // Now managed via HardwareProvider in HAL
@@ -245,7 +251,7 @@ class MainActivity : BaseAdActivity() {
         // reassignment happening server-side between launches.
         CoroutineScope(Dispatchers.Main).launch {
             SupabaseClientProvider.ensureAuthenticated()
-            com.goldsky.ssp.payment.DeviceRepository.registerDevice(deviceSn, BuildConfig.VERSION_NAME)
+            com.goldsky.ssp.payment.DeviceRepository.registerDevice(deviceSn, installedVersion())
             val identity = com.goldsky.ssp.payment.DeviceRepository.syncDeviceIdentity(deviceSn)
             DeviceAccessManager.applyActiveState(identity?.is_active)
             performHealthCheck()

@@ -16,7 +16,6 @@ android {
         // directly instead -- only used for on-screen "vX.Y (wash)"-style
         // diagnostics text, not for any branching logic.
         buildConfigField "String", "FLAVOR", "\"wash\""
-        buildConfigField "String", "VERSION_NAME", "\"1.0.0-wash\""
     }
 
     buildFeatures {
