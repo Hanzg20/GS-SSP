@@ -16,14 +16,43 @@ import java.nio.ByteOrder
 object WizarPosSocketClient {
     private const val TAG = "WizarPosSocket"
     private const val HOST = "127.0.0.1"
-    private const val PORT = 6666
+    // OPC's listening port depends on how the terminal was configured: 6031 is
+    // WizarPOS's standard value (OPC_DEMO default, the TMS OPC template), while
+    // bay5 was set up locally on 6666. Try both, in this order, so a terminal
+    // works whichever one its activation or a later TMS push leaves it on.
+    private val PORTS = listOf(6031, 6666)
     private const val CONNECT_TIMEOUT_MS = 5000
     // Must outlast PAYWizard's own transaction timeout (180 s, "timeOut: 180 s" in its
     // log): at 60 s we gave up and recorded DECLINED, then the terminal approved the
     // card a few seconds later -- charged, but untracked and never dispensed.
     private const val READ_TIMEOUT_MS = 200_000
-    
+
     private var sequenceNumber = 1
+
+    // Port of the last successful connection, tried first next time.
+    @Volatile private var lastGoodPort: Int? = null
+
+    /**
+     * Connects to the first port that accepts. Falls through only on a failed
+     * connect -- nothing has been sent yet, so trying the next port can never
+     * submit a transaction twice.
+     */
+    private fun connect(): Socket? {
+        val order = lastGoodPort?.let { listOf(it) + (PORTS - it) } ?: PORTS
+        for (port in order) {
+            val socket = Socket()
+            try {
+                socket.connect(InetSocketAddress(HOST, port), CONNECT_TIMEOUT_MS)
+                if (lastGoodPort != port) Log.i(TAG, "PAYWizard service found on port $port")
+                lastGoodPort = port
+                return socket
+            } catch (e: Exception) {
+                Log.w(TAG, "No PAYWizard service on $HOST:$port (${e.message})")
+                try { socket.close() } catch (_: Exception) {}
+            }
+        }
+        return null
+    }
 
     /**
      * Sends a request (String or ByteArray) using P3 framing.
@@ -31,9 +60,11 @@ object WizarPosSocketClient {
     suspend fun sendRequest(payload: Any, ctrlPath: Byte = WizarPosP3Protocol.CTRL_FROM_CASHIER): ByteArray? = withContext(Dispatchers.IO) {
         var socket: Socket? = null
         try {
-            Log.d(TAG, "Connecting to Localhost PAYWizard Service ($HOST:$PORT)...")
-            socket = Socket()
-            socket.connect(InetSocketAddress(HOST, PORT), CONNECT_TIMEOUT_MS)
+            Log.d(TAG, "Connecting to Localhost PAYWizard Service ($HOST:$PORTS)...")
+            socket = connect() ?: run {
+                Log.e(TAG, "Connection Refused. Is PAYWizard running on one of $PORTS?")
+                return@withContext null
+            }
             socket.soTimeout = READ_TIMEOUT_MS
             Log.d(TAG, "Socket Connected. Preparing P3 Frame.")
 
@@ -57,9 +88,6 @@ object WizarPosSocketClient {
             Log.i(TAG, "<< [RECV] P3 Response (${responseBytes?.size} bytes)")
 
             responseBytes
-        } catch (e: java.net.ConnectException) {
-            Log.e(TAG, "Connection Refused. Is PAYWizard running on port $PORT?")
-            null
         } catch (e: Exception) {
             Log.e(TAG, "P3 Socket Communication Failure: ${e.message}")
             null

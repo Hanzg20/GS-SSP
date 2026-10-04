@@ -17,7 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * WizarPOS Payment Provider implementation.
- * Integrates with PAYWizard app via Local Socket (127.0.0.1:6666).
+ * Integrates with PAYWizard app via Local Socket (127.0.0.1, port 6031 or 6666).
  * Aligned with WIZARPOSPaymentAppIntegrationProtocolV2.3.13 and P3 Protocol.
  */
 class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProvider {
