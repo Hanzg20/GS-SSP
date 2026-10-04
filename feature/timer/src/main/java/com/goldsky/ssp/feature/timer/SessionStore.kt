@@ -8,10 +8,10 @@ import android.content.Context
  * time they already paid for. Wall-clock based on purpose: elapsedRealtime
  * resets on reboot.
  */
-class SessionStore(context: Context) {
+class SessionStore(context: Context, name: String = "timer_session") {
     data class Active(val ecrRefNum: String, val productId: String, val endAtWallMs: Long, val totalMs: Long)
 
-    private val prefs = context.applicationContext.getSharedPreferences("timer_session", Context.MODE_PRIVATE)
+    private val prefs = context.applicationContext.getSharedPreferences(name, Context.MODE_PRIVATE)
 
     fun save(s: Active) {
         prefs.edit()

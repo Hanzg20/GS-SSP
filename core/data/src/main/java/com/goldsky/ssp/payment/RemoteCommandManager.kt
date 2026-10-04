@@ -65,6 +65,10 @@ object RemoteCommandManager {
          * Q3mini drives a port nothing is wired to.
          */
         suspend fun onStartServiceRequested(productId: String?, startHex: String?, commandId: String): Boolean? = null
+
+        /** Same, with the side a dual-bay terminal should run it on (payload "bay": "1"/"2", null if not sent). */
+        suspend fun onStartServiceRequested(productId: String?, startHex: String?, commandId: String, bay: String?): Boolean? =
+            onStartServiceRequested(productId, startHex, commandId)
     }
 
     private var commandListener: CommandListener? = null
@@ -273,8 +277,9 @@ object RemoteCommandManager {
                     "START_SERVICE" -> {
                         val hex = deviceCommand.payload?.get("start_hex")?.jsonPrimitive?.contentOrNull
                         val productId = deviceCommand.payload?.get("product_id")?.jsonPrimitive?.contentOrNull
+                        val bay = deviceCommand.payload?.get("bay")?.jsonPrimitive?.contentOrNull
                         val handled = withContext(Dispatchers.Main) {
-                            commandListener?.onStartServiceRequested(productId, hex, deviceCommand.id)
+                            commandListener?.onStartServiceRequested(productId, hex, deviceCommand.id, bay)
                         }
                         if (handled != null) {
                             Log.w(TAG, "Remote START_SERVICE product=$productId -> ${if (handled) "started" else "refused"}")

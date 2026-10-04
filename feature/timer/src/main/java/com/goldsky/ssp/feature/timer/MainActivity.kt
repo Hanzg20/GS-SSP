@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
     private val selfTestVm: PaymentSelfTestViewModel by viewModels()
     private val outputSettings by lazy { OutputSettingsStore(this) }
     private var deviceSn = ""
+    private var startedDual = false
 
     // Hoisted so the idle-ad timer can tell when the technician panel or the
     // PIN pad is open (never cover those with ads).
@@ -81,10 +82,17 @@ class MainActivity : ComponentActivity() {
         val gpio = HardwareFactory.getGpioProvider(this, vendor)
         holdVm.attach(gpio, vendor)
         val payment = PaymentProviderFactory.getPaymentProvider(this, vendor)
+        // Fixed for this process: switching single/dual in the technician
+        // panel restarts the app (see onTechExit).
+        val dual = outputSettings.dualBay
+        startedDual = dual
+        val bayOutputs = Bay.entries.associateWith { bay -> ConfigurableOutput(gpio) { outputSettings.load(bay) } }
         timerVm.attach(
             payment = payment,
             output = ConfigurableOutput(gpio) { outputSettings.load() },
             hardwareOk = { hardware.isOperational() },
+            dual = dual,
+            bayOutput = { bayOutputs.getValue(it) },
         )
 
         deviceSn = runCatching { hardware.getSerialNumber(this) }
@@ -99,8 +107,8 @@ class MainActivity : ComponentActivity() {
             override fun onSyncRequested() = loadConfig(DeviceRepository.getPersistedOrgId())
             // A LOCK mid-session lets the paid session finish; it only blocks new sales.
             override fun onLockRequested(locked: Boolean) = timerVm.setLocked(DeviceAccessManager.isLocked())
-            override suspend fun onStartServiceRequested(productId: String?, startHex: String?, commandId: String) =
-                timerVm.startRemoteSession(productId, commandId)
+            override suspend fun onStartServiceRequested(productId: String?, startHex: String?, commandId: String, bay: String?) =
+                timerVm.startRemoteSession(productId, commandId, bay)
         })
         ShadowManager.startSync(this, deviceSn)
         // Heartbeat, offline transaction replay, daily batch close, storage
@@ -122,13 +130,15 @@ class MainActivity : ComponentActivity() {
             var showPin by showPinState
             var tech by techState
             var outSettings by remember { mutableStateOf(outputSettings.load()) }
+            var dualSetting by remember { mutableStateOf(outputSettings.dualBay) }
+            var bayOutSettings by remember { mutableStateOf(Bay.entries.associateWith { outputSettings.load(it) }) }
             BackHandler(enabled = true) { if (tech) tech = false } // kiosk: back never leaves the app
 
             if (tech) {
                 TechScreen(
                     demoMode = s.demoMode,
                     onDemoChange = timerVm::setDemoMode,
-                    onExit = { holdVm.forceOff(); tech = false },
+                    onExit = { holdVm.forceOff(); tech = false; onTechExit() },
                     selfTest = selfTest,
                     onRunSelfTest = { selfTestVm.run(payment, deviceSn) },
                     onSettle = { selfTestVm.settle() },
@@ -136,6 +146,11 @@ class MainActivity : ComponentActivity() {
                     onOutputChange = { outputSettings.save(it); outSettings = it },
                     onTestOutput = { testOutput(gpio) },
                     holdTest = { HoldTestScreen(holdVm) },
+                    dualBay = dualSetting,
+                    onDualChange = { outputSettings.dualBay = it; dualSetting = it },
+                    baySettings = bayOutSettings,
+                    onBayChange = { bay, v -> outputSettings.save(bay, v); bayOutSettings = bayOutSettings + (bay to v) },
+                    onTestBay = { testBay(gpio, it) },
                 )
             } else {
                 TimerApp(
@@ -153,6 +168,30 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** Dual-bay technician test: one pulse on that side. */
+    private fun testBay(gpio: com.goldsky.ssp.payment.hardware.IGpioProvider, bay: Bay) {
+        val s = outputSettings.load(bay)
+        lifecycleScope.launch(Dispatchers.IO) {
+            val ok = ConfigurableOutput(gpio) { s }.start(5_000, s.centsPerPulse)
+            Log.i(TAG, "Bay test ${bay.code} port=${s.port}: ok=$ok")
+        }
+    }
+
+    /**
+     * Single/dual changed in the technician panel: restart so the customer
+     * flow is rebuilt for it (same relaunch the crash handler uses). A side
+     * still running keeps going -- its timer board times it.
+     */
+    private fun onTechExit() {
+        if (outputSettings.dualBay == startedDual) return
+        Log.i(TAG, "Dual-bay setting changed to ${outputSettings.dualBay}, restarting")
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        )
+        exitProcess(0)
     }
 
     /** Technician "试运行": 5 s in the hold modes, one pulse's worth in coin mode. */
@@ -188,7 +227,7 @@ class MainActivity : ComponentActivity() {
 
     /** Only from the idle package screen -- never mid-payment, mid-session or in the technician panel. */
     private fun launchAdsIfIdle() {
-        if (!timerVm.canEnterTechMode || techState.value || showPinState.value) {
+        if (!timerVm.idleForAds || techState.value || showPinState.value) {
             resetAdTimer()
             return
         }

@@ -2929,3 +2929,8 @@ WITH CHECK (public.has_permission_for_org('org.manage', org_id));
 -- does need to add/remove their own locations (opening/closing a store),
 -- not just edit an existing one's address.
 -- =============================================================================
+
+-- Dual-bay Aegis Timer (2026-10-04), applied live: docs/migrations/2026-10-04_transactions_service_bay.sql
+ALTER TABLE public.transactions
+    ADD COLUMN IF NOT EXISTS service_bay TEXT
+    CHECK (service_bay IS NULL OR service_bay IN ('1', '2')); -- numbered units: 1 = PIN1, 2 = PIN2

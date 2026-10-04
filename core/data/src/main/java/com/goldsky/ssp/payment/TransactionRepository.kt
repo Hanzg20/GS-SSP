@@ -36,7 +36,9 @@ data class TransactionRecord(
     // EMV AID / first 6 PAN digits of a card payment, see CardTypeClassifier
     val card_aid: String? = null,
     val card_bin: String? = null,
-    val card_brand: String? = null
+    val card_brand: String? = null,
+    // Dual-bay Aegis Timer: unit '1'/'2' (docs/migrations/2026-10-04_transactions_service_bay.sql)
+    val service_bay: String? = null
 )
 
 /**

@@ -12,6 +12,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -54,7 +56,7 @@ private val TextLo = Color(0xFF8A97AD)
 fun TimerApp(
     s: TimerViewModel.UiState,
     version: String,
-    onSelect: (TimerPackage) -> Unit,
+    onSelect: (TimerPackage, Bay?) -> Unit,
     onCancelPayment: () -> Unit,
     onTechTrigger: () -> Unit,
 ) {
@@ -66,8 +68,15 @@ fun TimerApp(
             label = "screen",
         ) { screen ->
             when (screen) {
-                Screen.Home -> HomeScreen(s, version, onSelect, onTechTrigger)
+                Screen.Home ->
+                    if (s.dual) DualHomeScreen(s, version, onSelect, onTechTrigger)
+                    else HomeScreen(s, version, { onSelect(it, null) }, onTechTrigger)
                 is Screen.Paying -> PayingScreen(screen, s.demoMode, onCancelPayment)
+                is Screen.BayStarted -> ResultScreen(
+                    Emerald, "✓",
+                    if (screen.extended) "${screen.pkg.name} ${screen.bay.number}: time added" else "${screen.pkg.name} ${screen.bay.number} is on",
+                    "+${formatDuration(screen.pkg.durationSec)}\nThe countdown is on the main screen.",
+                )
                 is Screen.Running -> RunningScreen(screen, s.now)
                 is Screen.Finished -> ResultScreen(Emerald, "✓", "Time's up", "Thank you — see you next time!")
                 is Screen.Declined -> when (screen.reason) {
@@ -181,6 +190,146 @@ private fun HomeScreen(
     }
 }
 
+/**
+ * Dual-bay Home: one column per numbered unit, each with its own status and
+ * the same packages. Buying for a running unit adds time.
+ */
+@Composable
+private fun DualHomeScreen(
+    s: TimerViewModel.UiState,
+    version: String,
+    onSelect: (TimerPackage, Bay?) -> Unit,
+    onTechTrigger: () -> Unit,
+) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(s.title, color = TextHi, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f))
+            Box(Modifier.size(10.dp).clip(CircleShape).background(if (s.healthy) Emerald else Coral))
+        }
+        s.subtitle?.takeIf { it.isNotBlank() }?.let {
+            Spacer(Modifier.height(4.dp))
+            TickerText(it, color = TextHi, fontSize = 16.sp)
+        }
+        Spacer(Modifier.height(8.dp))
+        val productName = s.packages.map { it.name }.distinct().singleOrNull() ?: "Self-Service"
+        Text("Choose the number shown on your ${productName.lowercase()}".let { if (productName == "Self-Service") "Choose your unit" else it }, color = TextLo, fontSize = 14.sp)
+        Spacer(Modifier.height(8.dp))
+
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (s.packages.isEmpty()) {
+                Text("Loading…", color = TextLo, modifier = Modifier.align(Alignment.Center))
+            } else {
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Bay.entries.forEach { bay ->
+                        BayColumn(bay, productName, s.bays[bay], s.now, s.packages, enabled = !s.locked, modifier = Modifier.weight(1f).fillMaxHeight()) {
+                            onSelect(it, bay)
+                        }
+                    }
+                }
+            }
+            if (s.locked) {
+                Column(
+                    Modifier.matchParentSize().background(Bg.copy(alpha = 0.92f), RoundedCornerShape(18.dp)),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                ) {
+                    Text("Temporarily out of service", color = TextHi, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("Sorry for the inconvenience", color = TextLo, fontSize = 13.sp)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("💳  Credit · Debit · Tap to pay", color = TextLo, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            TripleTapText(version, onTechTrigger)
+        }
+    }
+}
+
+@Composable
+private fun BayColumn(
+    bay: Bay,
+    productName: String,
+    run: TimerViewModel.BayRun?,
+    now: Long,
+    packages: List<TimerPackage>,
+    enabled: Boolean,
+    modifier: Modifier,
+    onSelect: (TimerPackage) -> Unit,
+) {
+    val remaining = run?.remaining(now) ?: 0L
+    val running = run != null && remaining > 0
+    val accent = when {
+        !running -> SurfaceHi
+        remaining <= 30_000 -> Amber
+        else -> Emerald
+    }
+    Column(
+        modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Surface)
+            .border(2.dp, accent, RoundedCornerShape(16.dp))
+            .padding(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            bay.title(productName),
+            color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, maxLines = 1,
+        )
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            BayRing(running, remaining, run?.totalMs ?: 0L, accent)
+        }
+        packages.take(3).forEach { pkg ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (enabled) Amber else SurfaceHi)
+                    .clickable(enabled = enabled) { onSelect(pkg) }
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(formatPrice(pkg.priceCents), color = Bg, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    (if (running) "+" else "") + formatDuration(pkg.durationSec),
+                    color = Bg, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A unit's countdown: ring draining with the remaining time, clock in the
+ * middle -- the single-unit RunningScreen's look, sized to fit a column.
+ * Idle: an empty track with "Available".
+ */
+@Composable
+private fun BayRing(running: Boolean, remaining: Long, totalMs: Long, color: Color) {
+    val fraction = if (!running || totalMs <= 0) 0f else (remaining.toFloat() / totalMs).coerceIn(0f, 1f)
+    val animated by animateFloatAsState(fraction, tween(250, easing = LinearEasing), label = "bayRing")
+    BoxWithConstraints(contentAlignment = Alignment.Center) {
+        val size = minOf(maxWidth, maxHeight, 150.dp)
+        Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize().padding(4.dp)) {
+                val stroke = 11.dp.toPx()
+                drawArc(SurfaceHi, 0f, 360f, false, style = Stroke(stroke))
+                if (running) drawArc(color, -90f, 360f * animated, false, style = Stroke(stroke, cap = StrokeCap.Round))
+            }
+            if (running) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(formatClock(remaining), color = TextHi, fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Text("IN USE", color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                }
+            } else {
+                Text("Available", color = TextLo, fontSize = 15.sp)
+            }
+        }
+    }
+}
+
 // No "best value"-style badges: per-minute pricing isn't monotonic across
 // packages ($2/4min is cheaper per minute than $3/5min), so any such claim
 // would have to be computed, and a wrong one misleads paying customers.
@@ -214,7 +363,7 @@ private fun TripleTapText(version: String, onTriggered: () -> Unit) {
     var count by remember { mutableIntStateOf(0) }
     var last by remember { mutableLongStateOf(0L) }
     Text(
-        "v$version", color = TextLo.copy(alpha = 0.6f), fontSize = 11.sp,
+        "v$version", color = TextLo, fontSize = 12.sp,
         modifier = Modifier
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                 val now = System.currentTimeMillis()
@@ -237,6 +386,13 @@ private fun PayingScreen(p: Screen.Paying, demo: Boolean, onCancel: () -> Unit) 
         Modifier.fillMaxSize().padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        p.bay?.let { bay ->
+            Text(
+                bay.title(p.pkg.name), color = Bg, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
+                modifier = Modifier.background(Amber, RoundedCornerShape(8.dp)).padding(horizontal = 14.dp, vertical = 2.dp),
+            )
+            Spacer(Modifier.height(6.dp))
+        }
         Text("${formatPrice(p.pkg.priceCents)}  ·  ${formatDuration(p.pkg.durationSec)}", color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Text(p.pkg.name, color = TextLo, fontSize = 14.sp)
         Spacer(Modifier.weight(1f))
@@ -377,6 +533,11 @@ fun TechScreen(
     onOutputChange: (OutputSettings) -> Unit,
     onTestOutput: () -> Unit,
     holdTest: @Composable () -> Unit,
+    dualBay: Boolean = false,
+    onDualChange: (Boolean) -> Unit = {},
+    baySettings: Map<Bay, OutputSettings> = emptyMap(),
+    onBayChange: (Bay, OutputSettings) -> Unit = { _, _ -> },
+    onTestBay: (Bay) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().background(Bg)) {
         Row(
@@ -395,8 +556,26 @@ fun TechScreen(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
         )
         PaymentSelfTestPanel(selfTest, onRunSelfTest, onSettle)
-        OutputSettingsPanel(outputSettings, onOutputChange, onTestOutput)
-        Box(Modifier.weight(1f)) { holdTest() }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("一拖二（1 号 / 2 号独立计时）", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("1 号 PIN1、2 号 PIN2，各自投币脉冲；切换后退出技术员模式时应用自动重启生效", color = TextLo, fontSize = 10.sp)
+            }
+            Switch(checked = dualBay, onCheckedChange = onDualChange, modifier = Modifier.scale(0.8f))
+        }
+        if (dualBay) {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                Bay.entries.forEach { bay ->
+                    BayOutputPanel(bay, baySettings[bay] ?: OutputSettings(OutputMode.COIN_PULSES, bay.defaultPort), { onBayChange(bay, it) }) { onTestBay(bay) }
+                }
+            }
+        } else {
+            OutputSettingsPanel(outputSettings, onOutputChange, onTestOutput)
+            Box(Modifier.weight(1f)) { holdTest() }
+        }
     }
 }
 
@@ -442,6 +621,41 @@ private fun OutputSettingsPanel(s: OutputSettings, onChange: (OutputSettings) ->
             }
             Text("例：$2 套餐 → ${s.pulsesFor(200)} 个脉冲", color = TextLo, fontSize = 10.sp)
         }
+    }
+}
+
+/** One side of a dual-bay terminal: coin pulses only. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BayOutputPanel(bay: Bay, s: OutputSettings, onChange: (OutputSettings) -> Unit, onTest: () -> Unit) {
+    @Composable
+    fun Pick(text: String, selected: Boolean, onClick: () -> Unit) =
+        FilterChip(selected = selected, onClick = onClick, label = { Text(text, fontSize = 11.sp) }, modifier = Modifier.padding(end = 4.dp))
+
+    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(Surface, RoundedCornerShape(10.dp)).padding(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("${bay.number} 号（默认 PIN${bay.defaultPort + 1}）", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Button(
+                onClick = onTest,
+                colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = Bg),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+            ) { Text("发 1 个脉冲", fontSize = 12.sp) }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("端口", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+            listOf(0 to "PIN1", 1 to "PIN2").forEach { (p, name) -> Pick(name, s.port == p) { onChange(s.copy(port = p)) } }
+            Text("voltage", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(start = 6.dp, end = 4.dp))
+            listOf(0, 1).forEach { v -> Pick("$v", s.voltage == v) { onChange(s.copy(voltage = v)) } }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("每脉冲", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+            listOf(25, 100, 200).forEach { c -> Pick("$" + "%.2f".format(c / 100.0), s.centsPerPulse == c) { onChange(s.copy(centsPerPulse = c)) } }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("脉宽", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+            listOf(50L, 100L, 200L, 500L).forEach { w -> Pick("${w}ms", s.pulseWidthMs == w) { onChange(s.copy(pulseWidthMs = w)) } }
+        }
+        Text("例：$2 套餐 → ${s.pulsesFor(200)} 个脉冲", color = TextLo, fontSize = 10.sp)
     }
 }
 

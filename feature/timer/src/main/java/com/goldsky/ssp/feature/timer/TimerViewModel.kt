@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Aegis Timer customer flow: pick a package -> card -> output held ON for
@@ -41,7 +42,10 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
 
     sealed interface Screen {
         object Home : Screen
-        data class Paying(val pkg: TimerPackage, val message: String) : Screen
+        /** [bay] is null on a single-bay terminal. */
+        data class Paying(val pkg: TimerPackage, val message: String, val bay: Bay? = null) : Screen
+        /** Dual-bay: payment done, pulses accepted; back to Home (which shows the countdown) shortly. */
+        data class BayStarted(val bay: Bay, val pkg: TimerPackage, val extended: Boolean) : Screen
         data class Running(val pkg: TimerPackage, val startedAt: Long, val totalMs: Long) : Screen
         data class Finished(val pkg: TimerPackage) : Screen
         /** Customer-facing outcome only; the raw provider message goes to the log and the transaction row. */
@@ -59,14 +63,29 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         val healthy: Boolean = true,
         val demoMode: Boolean = false,
         val now: Long = SystemClock.elapsedRealtime(),
+        /** Dual-bay terminal (technician setting): Home shows one column per numbered unit. */
+        val dual: Boolean = false,
+        /** Dual-bay: the sides currently running. */
+        val bays: Map<Bay, BayRun> = emptyMap(),
     )
+
+    /**
+     * A running side. The machine's own timer board does the timing (coin
+     * pulses); this only drives the on-screen countdown.
+     * [endsAt] is SystemClock.elapsedRealtime().
+     */
+    data class BayRun(val endsAt: Long, val totalMs: Long) {
+        fun remaining(now: Long) = (endsAt - now).coerceAtLeast(0)
+    }
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private val store = SessionStore(app)
+    private val bayStores = Bay.entries.associateWith { SessionStore(app, "timer_session_${it.code}") }
     private lateinit var payment: IPaymentProvider
     private lateinit var realOutput: TimerOutput
+    private lateinit var realBayOutput: (Bay) -> TimerOutput
     private var deviceSn = ""
     private var hardwareOk: () -> Boolean = { true }
     private var attached = false
@@ -76,23 +95,38 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     private var returnHomeJob: Job? = null
 
     private val output: TimerOutput get() = if (_state.value.demoMode) DemoOutput else realOutput
+    private fun bayOutput(bay: Bay): TimerOutput = if (_state.value.demoMode) DemoOutput else realBayOutput(bay)
 
-    fun attach(payment: IPaymentProvider, output: TimerOutput, hardwareOk: () -> Boolean) {
+    /**
+     * [dual] and [bayOutput] come from the technician's output settings;
+     * changing dual/single restarts the app (see MainActivity), so they are
+     * fixed for this ViewModel's life.
+     */
+    fun attach(
+        payment: IPaymentProvider,
+        output: TimerOutput,
+        hardwareOk: () -> Boolean,
+        dual: Boolean = false,
+        bayOutput: (Bay) -> TimerOutput = { output },
+    ) {
         this.payment = payment
         this.realOutput = output
+        this.realBayOutput = bayOutput
         this.hardwareOk = hardwareOk
         if (attached) return
         attached = true
+        _state.update { it.copy(dual = dual) }
         // UI clock + periodic health refresh.
         viewModelScope.launch {
             var tick = 0
             while (isActive) {
                 _state.update { it.copy(now = SystemClock.elapsedRealtime()) }
+                expireBays()
                 if (tick++ % 25 == 0) refreshHealth()
                 delay(200)
             }
         }
-        recoverInterruptedSession()
+        if (dual) recoverBays() else recoverInterruptedSession()
     }
 
     fun setDeviceSn(sn: String) { deviceSn = sn }
@@ -119,29 +153,36 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     fun setLocked(locked: Boolean) = _state.update { it.copy(locked = locked) }
 
     fun setDemoMode(on: Boolean) {
-        if (_state.value.screen !is Screen.Home) return
+        if (_state.value.screen !is Screen.Home || _state.value.bays.isNotEmpty()) return
         _state.update { it.copy(demoMode = on) }
     }
 
     val canEnterTechMode: Boolean get() = _state.value.screen is Screen.Home
 
+    /** Idle ads only when nothing is on screen worth watching -- not over a dual-bay countdown. */
+    val idleForAds: Boolean get() = _state.value.screen is Screen.Home && _state.value.bays.isEmpty()
+
     // ---- customer flow -------------------------------------------------
 
-    fun select(pkg: TimerPackage) {
+    /** [bay] is required on a dual-bay terminal and ignored on a single-bay one. */
+    fun select(pkg: TimerPackage, bay: Bay? = null) {
         val s = _state.value
         if (s.screen !is Screen.Home || s.locked || !attached) return
+        val side = if (s.dual) bay ?: return else null
+        // Single-bay: Home is never shown mid-session. Dual-bay: buying for a
+        // running side adds time (the timer board adds a coin's worth).
         returnHomeJob?.cancel()
         if (s.demoMode) {
-            _state.update { it.copy(screen = Screen.Paying(pkg, "DEMO — no card needed")) }
+            _state.update { it.copy(screen = Screen.Paying(pkg, "DEMO — no card needed", side)) }
             viewModelScope.launch {
                 delay(1800)
-                onPaid(pkg, ecrRefNum = "DEMO_${System.currentTimeMillis()}", bankRef = "", entryMode = "DEMO")
+                onPaid(pkg, ecrRefNum = "DEMO_${System.currentTimeMillis()}", bankRef = "", entryMode = "DEMO", bay = side)
             }
             return
         }
 
         val ecrRefNum = "TIMER_${System.currentTimeMillis()}"
-        _state.update { it.copy(screen = Screen.Paying(pkg, "Tap, insert or swipe your card")) }
+        _state.update { it.copy(screen = Screen.Paying(pkg, "Tap, insert or swipe your card", side)) }
         TtsManager.speak("Please present your card")
         viewModelScope.launch {
             // PENDING before the bank call, same as wash: a crash between
@@ -155,6 +196,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     ecr_ref_num = ecrRefNum,
                     payment_method = "CREDIT_CARD",
                     product_id = pkg.productId,
+                    service_bay = side?.code,
                 )
             )
             payment.startSale(pkg.priceCents, ecrRefNum, object : IPaymentProvider.PaymentCallback {
@@ -163,7 +205,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                     // Deliberately ignores whether the customer hit Cancel in
                     // the meantime: money moved, so they get their time.
-                    viewModelScope.launch { onPaid(pkg, ecrRefNum, refNum, entryMode) }
+                    viewModelScope.launch { onPaid(pkg, ecrRefNum, refNum, entryMode, side) }
                 }
 
                 override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
@@ -206,10 +248,19 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
      * CMP remote start: one free session of [productId] through the same hold
      * path a paid session uses. Refused unless the kiosk is idle on Home.
      */
-    suspend fun startRemoteSession(productId: String?, commandId: String): Boolean {
+    suspend fun startRemoteSession(productId: String?, commandId: String, bayCode: String? = null): Boolean {
         val s = _state.value
         if (s.screen !is Screen.Home || !attached) return false
         val pkg = s.packages.find { it.productId == productId } ?: return false
+        if (s.dual) {
+            // Which side must be explicit: guessing would run the wrong hose.
+            val bay = Bay.fromCode(bayCode) ?: return false
+            returnHomeJob?.cancel()
+            if (!startBay(bay, pkg, "REMOTE_$commandId")) return false
+            showThenHome(Screen.BayStarted(bay, pkg, extended = false), BAY_STARTED_MS)
+            TtsManager.speak("${pkg.name} ${bay.number} started by the operator")
+            return true
+        }
         returnHomeJob?.cancel()
         val issuedAt = SystemClock.elapsedRealtime()
         if (!startOutput(pkg.durationMs, pkg.priceCents, "REMOTE_$commandId", pkg.productId)) return false
@@ -218,7 +269,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
-    private suspend fun onPaid(pkg: TimerPackage, ecrRefNum: String, bankRef: String, entryMode: String) {
+    private suspend fun onPaid(pkg: TimerPackage, ecrRefNum: String, bankRef: String, entryMode: String, bay: Bay? = null) {
         val demo = _state.value.demoMode
         if (!demo) {
             val card = pendingCardInfo.also { pendingCardInfo = null }
@@ -227,6 +278,20 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 paymentMethod = card?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid) },
                 cardAid = card?.aid, cardBin = card?.bin, cardBrand = card?.brand,
             )
+        }
+        if (bay != null) {
+            val extended = _state.value.bays.containsKey(bay)
+            if (startBay(bay, pkg, ecrRefNum)) {
+                if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "ACK_RECEIVED")
+                showThenHome(Screen.BayStarted(bay, pkg, extended), BAY_STARTED_MS)
+                TtsManager.speak(
+                    if (extended) "Payment approved. Time added to ${pkg.name} ${bay.number}."
+                    else "Payment approved. ${pkg.name} ${bay.number} is on."
+                )
+            } else {
+                onStartFailed(pkg, ecrRefNum, bankRef, demo)
+            }
+            return
         }
         // The countdown runs from when the hold was issued, not from after the
         // confirm window / cloud write -- measured on a Q3mini, starting it
@@ -361,6 +426,75 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- dual-bay -----------------------------------------------------------
+
+    /**
+     * Sends [pkg]'s coin pulses to [bay] and adds its time to that side's
+     * countdown (a running side gets extended -- its timer board adds the
+     * coins' worth). Same crash-safety order as [startOutput]: the side's
+     * record is on disk before the pulses go out, and is put back as it was
+     * if the board rejects them.
+     */
+    private suspend fun startBay(bay: Bay, pkg: TimerPackage, ecrRefNum: String): Boolean {
+        val bayStore = bayStores.getValue(bay)
+        val before = bayStore.load()
+        val now = SystemClock.elapsedRealtime()
+        val current = _state.value.bays[bay]
+        val totalMs = (current?.remaining(now) ?: 0L) + pkg.durationMs
+        bayStore.save(SessionStore.Active(ecrRefNum, pkg.productId, System.currentTimeMillis() + totalMs, totalMs))
+
+        val out = bayOutput(bay)
+        val rejected = AtomicBoolean(false)
+        val confirmed = AtomicBoolean(false)
+        val pulses = viewModelScope.launch(Dispatchers.IO) {
+            if (!out.start(pkg.durationMs, pkg.priceCents)) {
+                rejected.set(true)
+                if (confirmed.get()) DiagnosticManager.reportError(deviceSn, "TIMER_OUTPUT_PARTIAL", severity = "CRITICAL", trace = "$ecrRefNum bay=${bay.code} ${pkg.priceCents} cents")
+            }
+        }
+        withTimeoutOrNull(START_CONFIRM_WINDOW_MS) { pulses.join() }
+        confirmed.set(true)
+        if (rejected.get()) {
+            if (before != null && current != null) bayStore.save(before) else bayStore.clear()
+            DiagnosticManager.reportError(deviceSn, "TIMER_OUTPUT_START_FAIL", severity = "CRITICAL", trace = "$ecrRefNum bay=${bay.code}")
+            return false
+        }
+        _state.update { it.copy(bays = it.bays + (bay to BayRun(now + totalMs, totalMs))) }
+        return true
+    }
+
+    /** Clears sides whose time ran out. The machine stops itself; this is display only. */
+    private fun expireBays() {
+        val now = SystemClock.elapsedRealtime()
+        val done = _state.value.bays.filterValues { it.remaining(now) <= 0 }.keys
+        if (done.isEmpty()) return
+        done.forEach { bayStores.getValue(it).clear() }
+        _state.update { it.copy(bays = it.bays - done) }
+        val name = _state.value.packages.firstOrNull()?.name ?: "Number"
+        done.forEach { TtsManager.speak("Time is up on $name ${it.number}. Thank you!") }
+    }
+
+    /**
+     * App restarted mid-session: put the countdowns back. Nothing is sent to
+     * the board -- each side's timer board is already timing the coins it got,
+     * and resending pulses would hand out free time.
+     */
+    private fun recoverBays() {
+        val nowWall = System.currentTimeMillis()
+        val now = SystemClock.elapsedRealtime()
+        val restored = Bay.entries.mapNotNull { bay ->
+            val saved = bayStores.getValue(bay).load() ?: return@mapNotNull null
+            val remaining = saved.endAtWallMs - nowWall
+            if (remaining <= 0) {
+                bayStores.getValue(bay).clear()
+                null
+            } else {
+                bay to BayRun(now + remaining, saved.totalMs)
+            }
+        }.toMap()
+        if (restored.isNotEmpty()) _state.update { it.copy(bays = restored) }
+    }
+
     private fun showThenHome(screen: Screen, afterMs: Long) {
         _state.update { it.copy(screen = screen) }
         returnHomeJob?.cancel()
@@ -398,5 +532,6 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         private const val WARN_BEFORE_END_MS = 30_000L
         private const val START_CONFIRM_WINDOW_MS = 1_500L
         private const val MIN_RESUME_MS = 5_000L
+        private const val BAY_STARTED_MS = 4_000L
     }
 }

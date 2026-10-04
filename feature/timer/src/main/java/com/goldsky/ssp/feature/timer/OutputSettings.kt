@@ -3,6 +3,8 @@ package com.goldsky.ssp.feature.timer
 import android.content.Context
 import android.util.Log
 import com.goldsky.ssp.payment.hardware.IGpioProvider
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * How this terminal drives the machine it's wired to. Set by the technician
@@ -28,28 +30,70 @@ data class OutputSettings(
     fun pulsesFor(priceCents: Int): Int = (priceCents / centsPerPulse.coerceAtLeast(1)).coerceAtLeast(1)
 }
 
+/**
+ * One unit of a dual-bay terminal (2026-10-04: the Eagleson vacuum has two
+ * hoses, each with its own coin acceptor and timer board). Numbered, not
+ * left/right: the terminal replaces one of the two original card readers, so
+ * "left" would depend on where the customer stands -- the number is labelled
+ * on the hose. [code] is what transactions.service_bay and the CMP
+ * remote-start payload carry. Unit 1 is wired to PIN1 (Pulse 1, portNum 0),
+ * unit 2 to PIN2 (Pulse 2, portNum 1).
+ */
+enum class Bay(val code: String, val number: Int, val defaultPort: Int) {
+    ONE("1", 1, 0),
+    TWO("2", 2, 1);
+
+    /** "VACUUM 1" -- the product name from the merchant's packages plus the unit number. */
+    fun title(productName: String) = "${productName.uppercase()} $number"
+
+    companion object {
+        fun fromCode(code: String?): Bay? = entries.firstOrNull { it.code.equals(code, ignoreCase = true) }
+    }
+}
+
+/**
+ * Single-bay settings keep their original keys (existing terminals keep their
+ * setup). Dual-bay sides have their own keys and are always coin pulses: the
+ * relay circuit (PIN6/7) exists once, and level hold can't be extended.
+ */
 class OutputSettingsStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("timer_output", Context.MODE_PRIVATE)
 
-    fun load() = OutputSettings(
-        mode = runCatching { OutputMode.valueOf(prefs.getString(KEY_MODE, null) ?: "") }.getOrDefault(OutputMode.RELAY_HOLD),
-        port = prefs.getInt(KEY_PORT, 0),
-        voltage = prefs.getInt(KEY_VOLTAGE, 0),
-        centsPerPulse = prefs.getInt(KEY_CENTS, 100),
-        pulseWidthMs = prefs.getLong(KEY_WIDTH, 100),
+    var dualBay: Boolean
+        get() = prefs.getBoolean(KEY_DUAL, false)
+        set(value) { prefs.edit().putBoolean(KEY_DUAL, value).apply() }
+
+    fun load() = load("", OutputSettings())
+
+    fun load(bay: Bay) = load(prefixOf(bay), OutputSettings(mode = OutputMode.COIN_PULSES, port = bay.defaultPort))
+        .copy(mode = OutputMode.COIN_PULSES)
+
+    fun save(s: OutputSettings) = save("", s)
+
+    fun save(bay: Bay, s: OutputSettings) = save(prefixOf(bay), s.copy(mode = OutputMode.COIN_PULSES))
+
+    private fun load(prefix: String, d: OutputSettings) = OutputSettings(
+        mode = runCatching { OutputMode.valueOf(prefs.getString(prefix + KEY_MODE, null) ?: "") }.getOrDefault(d.mode),
+        port = prefs.getInt(prefix + KEY_PORT, d.port),
+        voltage = prefs.getInt(prefix + KEY_VOLTAGE, d.voltage),
+        centsPerPulse = prefs.getInt(prefix + KEY_CENTS, d.centsPerPulse),
+        pulseWidthMs = prefs.getLong(prefix + KEY_WIDTH, d.pulseWidthMs),
     )
 
-    fun save(s: OutputSettings) {
+    private fun save(prefix: String, s: OutputSettings) {
         prefs.edit()
-            .putString(KEY_MODE, s.mode.name)
-            .putInt(KEY_PORT, s.port)
-            .putInt(KEY_VOLTAGE, s.voltage)
-            .putInt(KEY_CENTS, s.centsPerPulse)
-            .putLong(KEY_WIDTH, s.pulseWidthMs)
+            .putString(prefix + KEY_MODE, s.mode.name)
+            .putInt(prefix + KEY_PORT, s.port)
+            .putInt(prefix + KEY_VOLTAGE, s.voltage)
+            .putInt(prefix + KEY_CENTS, s.centsPerPulse)
+            .putLong(prefix + KEY_WIDTH, s.pulseWidthMs)
             .apply()
     }
 
+    private fun prefixOf(bay: Bay) = "bay_${bay.code}_"
+
     private companion object {
+        const val KEY_DUAL = "dual_bay"
         const val KEY_MODE = "mode"
         const val KEY_PORT = "port"
         const val KEY_VOLTAGE = "voltage"
@@ -75,7 +119,9 @@ class ConfigurableOutput(
             OutputMode.COIN_PULSES -> {
                 val n = s.pulsesFor(priceCents)
                 Log.i(TAG, "Coin pulses: $n x ${s.pulseWidthMs}ms for $priceCents cents on port ${s.port}")
-                (1..n).all { gpio.triggerLogicPulse(s.port, s.voltage, s.pulseWidthMs, s.pulseWidthMs) }
+                // One pulse train at a time across both bays: each pulse is a
+                // blocking SDK call on the same Digit IO board.
+                pulseLock.withLock { (1..n).all { gpio.triggerLogicPulse(s.port, s.voltage, s.pulseWidthMs, s.pulseWidthMs) } }
             }
         }
     }
@@ -94,5 +140,8 @@ class ConfigurableOutput(
         if (settings().mode == OutputMode.RELAY_HOLD) gpio.releaseHold(settings().port)
     }
 
-    private companion object { const val TAG = "TimerOutput" }
+    private companion object {
+        const val TAG = "TimerOutput"
+        val pulseLock = Mutex()
+    }
 }
