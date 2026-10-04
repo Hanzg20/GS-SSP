@@ -203,21 +203,21 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Floating Interactive Prompt: pill badge (prompt_bg) rather than bare
-         floating text, so it reads as a deliberate call-to-action distinct
+    <!-- Floating Interactive Prompt: translucent amber pill (prompt_tap_bg)
+         with dark navy text, so it reads as a deliberate call-to-action distinct
          from both the ad content behind it and the announcement card above. -->
     <TextView
         android:id="@+id/tv_ad_prompt"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="48dp"
-        android:background="@drawable/prompt_bg"
+        android:background="@drawable/prompt_tap_bg"
         android:paddingStart="28dp"
         android:paddingEnd="28dp"
         android:paddingTop="12dp"
         android:paddingBottom="12dp"
         android:text="@string/ad_prompt"
-        android:textColor="@color/goldsky_gold_start"
+        android:textColor="@color/text_dark"
         android:textSize="24sp"
         android:textStyle="bold"
         android:letterSpacing="0.08"

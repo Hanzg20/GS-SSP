@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ad screen "TAP TO PAY" pill: translucent amber so the ad still shows
+     through, solid amber edge. Separate from prompt_bg (dark pill), which the
+     logo badge and scan feedback keep using. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#B3FFB800" />
+    <corners android:radius="24dp" />
+    <stroke
+        android:width="2dp"
+        android:color="@color/goldsky_gold_start" />
+</shape>
