@@ -11,7 +11,7 @@ if (localPropertiesFile.exists()) {
     localProperties.load(new FileInputStream(localPropertiesFile))
 }
 
-ext.appVersion = "1.0.6"
+ext.appVersion = "1.1.0"
 
 android {
     namespace 'com.goldsky.ssp.aegis.wash'

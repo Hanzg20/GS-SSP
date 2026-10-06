@@ -38,7 +38,10 @@ data class TransactionRecord(
     val card_bin: String? = null,
     val card_brand: String? = null,
     // Dual-bay Aegis Timer: unit '1'/'2' (docs/migrations/2026-10-04_transactions_service_bay.sql)
-    val service_bay: String? = null
+    val service_bay: String? = null,
+    // "VIP_LOAD" for money loaded onto a VIP card; null = the column default
+    // 'SERVICE' (docs/migrations/2026-10-06_vip_terminal_load.sql)
+    val txn_kind: String? = null
 )
 
 /**

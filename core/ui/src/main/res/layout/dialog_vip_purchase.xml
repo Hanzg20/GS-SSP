@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- VIP card purchase / top-up at the terminal (VipPurchaseFlow). One screen
+     reconfigured per step: choose, phone, scan, pay, result. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/tv_vp_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textColor="@color/gold_accent"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tv_vp_message"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:lineSpacingExtra="2dp"
+        android:textColor="@color/text_light"
+        android:textSize="15sp" />
+
+    <ImageView
+        android:id="@+id/img_vp_qr"
+        android:layout_width="170dp"
+        android:layout_height="170dp"
+        android:layout_marginTop="10dp"
+        android:background="#FFFFFF"
+        android:contentDescription="@string/vip_member_code"
+        android:padding="4dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tv_vp_code"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:fontFamily="monospace"
+        android:letterSpacing="0.2"
+        android:textColor="@color/text_light"
+        android:textSize="30sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <EditText
+        android:id="@+id/et_vp_input"
+        android:layout_width="260dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:importantForAutofill="no"
+        android:textColor="@color/text_light"
+        android:textColorHint="@color/text_muted"
+        android:textSize="22sp"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/btn_vp_primary"
+        android:layout_width="260dp"
+        android:layout_height="56dp"
+        android:layout_marginTop="16dp"
+        android:backgroundTint="@color/gold_accent"
+        android:textColor="@color/text_dark"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <Button
+        android:id="@+id/btn_vp_secondary"
+        android:layout_width="260dp"
+        android:layout_height="56dp"
+        android:layout_marginTop="8dp"
+        android:backgroundTint="@color/bg_card_selected"
+        android:textColor="@color/text_light"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <Button
+        android:id="@+id/btn_vp_cancel"
+        style="?android:attr/borderlessButtonStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/vip_cancel"
+        android:textColor="@color/text_muted" />
+</LinearLayout>

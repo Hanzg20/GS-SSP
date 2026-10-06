@@ -2934,3 +2934,7 @@ WITH CHECK (public.has_permission_for_org('org.manage', org_id));
 ALTER TABLE public.transactions
     ADD COLUMN IF NOT EXISTS service_bay TEXT
     CHECK (service_bay IS NULL OR service_bay IN ('1', '2')); -- numbered units: 1 = PIN1, 2 = PIN2
+
+-- VIP cards sold/topped up at the terminal (2026-10-06), applied live:
+-- docs/migrations/2026-10-06_vip_terminal_load.sql (vip_load_plans, transactions.txn_kind,
+-- vip_card_ledger LOAD/BONUS + source_ref, get_vip_load_plans(), device_vip_load()).
