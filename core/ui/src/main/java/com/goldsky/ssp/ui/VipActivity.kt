@@ -10,7 +10,6 @@ import android.view.ViewOutlineProvider
 import android.widget.Button
 import android.widget.ImageView
 import com.goldsky.ssp.core.ui.R
-import com.goldsky.ssp.common.QrUtils
 
 class VipActivity : BaseAdActivity() {
 
@@ -53,11 +52,6 @@ class VipActivity : BaseAdActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_vip)
-
-        val imgQr = findViewById<ImageView>(R.id.img_vip_qr)
-        val vipUrl = "https://goldsky.com/vip"
-        val qrBitmap = QrUtils.generateQrCode(vipUrl, 250, 250)
-        imgQr.setImageBitmap(qrBitmap)
 
         // Round the card preview's corners to match the rest of the app's
         // card aesthetic (same 16dp radius as bg_glass_card). img_vip_card

@@ -155,35 +155,53 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Buy QR: bigger now that it has its own column instead of a
-             squeezed full-width strip. -->
+        <!-- How to buy / how to use. Replaced the "scan to buy" QR
+             (2026-10-06): it pointed at a placeholder URL and nothing can be
+             bought from the terminal yet; cards are issued and topped up
+             by staff (CMP) until terminal sales exist. -->
         <LinearLayout
-            android:id="@+id/layout_buy_qr"
+            android:id="@+id/layout_vip_guide"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:gravity="center"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_glass_card"
             android:orientation="vertical"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp">
-
-            <ImageView
-                android:id="@+id/img_vip_qr"
-                android:layout_width="150dp"
-                android:layout_height="150dp"
-                android:background="#FFFFFF"
-                android:contentDescription="@string/vip_scan_buy"
-                android:padding="2dp" />
+            android:padding="10dp">
 
             <TextView
-                android:id="@+id/tv_vip_qr_hint"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="@string/vip_scan_buy"
+                android:text="@string/vip_guide_buy_title"
                 android:textColor="@color/gold_accent"
                 android:textSize="13sp"
                 android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/vip_guide_buy_body"
+                android:textColor="@color/text_light"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/vip_guide_use_title"
+                android:textColor="@color/gold_accent"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:lineSpacingExtra="2dp"
+                android:text="@string/vip_guide_use_body"
+                android:textColor="@color/text_light"
+                android:textSize="12sp" />
         </LinearLayout>
     </LinearLayout>
 

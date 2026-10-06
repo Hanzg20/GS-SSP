@@ -42,7 +42,10 @@
     <string name="vip_feature_1">24/7 Self-Serve</string>
     <string name="vip_feature_2">Warm Water &amp; High Pressure</string>
     <string name="vip_feature_3">No Expiry</string>
-    <string name="vip_scan_buy">SCAN TO BUY VIP CARD NOW</string>
+    <string name="vip_guide_buy_title">HOW TO GET A CARD</string>
+    <string name="vip_guide_buy_body">Ask our attendant to buy a VIP card or top up your balance.</string>
+    <string name="vip_guide_use_title">HOW TO USE</string>
+    <string name="vip_guide_use_body">1. On the main screen, hold your member QR code up to the camera.\n2. Choose your wash.\n3. It is paid from your balance — your remaining balance is shown on screen.</string>
 
     <string name="prompt_pay_title">Waiting for Payment</string>
     <string name="prompt_pay_subtitle">Amount Due: %s</string>
