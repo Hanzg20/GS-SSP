@@ -1,5 +1,7 @@
 package com.goldsky.ssp.feature.wash
 
+import com.goldsky.ssp.payment.TestSale
+
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
@@ -205,6 +207,15 @@ class MainActivity : BaseAdActivity() {
 
         // Update version display
         findViewById<TextView>(R.id.tv_app_version)?.text = "v${installedVersion()}"
+
+        findViewById<TextView>(R.id.tv_test_banner)?.let { banner ->
+            CoroutineScope(Dispatchers.Main).launch {
+                TestSale.armed.collect { armed ->
+                    banner.visibility = if (armed != null) View.VISIBLE else View.GONE
+                    armed?.let { banner.text = "TEST MODE · next card sale ${TestSale.format(it.cents)}" }
+                }
+            }
+        }
     }
 
     // The installed APK's versionName (from app/<app>/build.gradle ext.appVersion).
@@ -862,6 +873,7 @@ class MainActivity : BaseAdActivity() {
         val pbTimeout = dialog.findViewById<ProgressBar>(R.id.pb_pay_timeout)
         
         tvSubtitle.text = getString(R.string.prompt_pay_subtitle, "$${priceInCents / 100}")
+        if (isCard) TestSale.peek()?.let { tvSubtitle.text = getString(R.string.prompt_pay_subtitle, TestSale.format(it) + " (TEST)") }
 
         if (isCard) {
             if (hardwareVendor.uppercase() == "WIZARPOS") {
@@ -1143,10 +1155,14 @@ class MainActivity : BaseAdActivity() {
     }
 
     private fun initCardPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null) {
+        // Technician small real test: charge the armed amount, wash the full
+        // package (pulseAmountCents below), everything else unchanged.
+        val testCents = TestSale.consume()
+        val chargeCents = testCents ?: priceInCents
         // Unique per attempt -- also serves as the transactions.ecr_ref_num
         // for the PENDING row below (UNIQUE constraint), so a fixed constant
         // here would collide across repeated simulated attempts.
-        val txRefNum = "CARD_" + System.currentTimeMillis()
+        val txRefNum = (if (testCents != null) TestSale.REF_PREFIX else "CARD_") + System.currentTimeMillis()
         paymentInFlight = true
 
         CoroutineScope(Dispatchers.Main).launch {
@@ -1160,7 +1176,7 @@ class MainActivity : BaseAdActivity() {
                 this@MainActivity,
                 TransactionRecord(
                     device_sn = deviceSn,
-                    amount = priceInCents,
+                    amount = chargeCents,
                     payment_status = "PENDING",
                     ecr_ref_num = txRefNum,
                     payment_method = "CREDIT_CARD",
@@ -1170,15 +1186,15 @@ class MainActivity : BaseAdActivity() {
 
             if (isSimulationMode) {
                 delay(3000)
-                startFinalizationSequence(priceInCents, startHex, "MOCK_REF_123", dialog, txRefNum, entryMode = "SIMULATED")
+                startFinalizationSequence(chargeCents, startHex, "MOCK_REF_123", dialog, txRefNum, entryMode = "SIMULATED", pulseAmountCents = priceInCents)
             } else {
                 val provider = PaymentProviderFactory.getPaymentProvider(this@MainActivity, hardwareVendor)
-                provider.startSale(priceInCents, txRefNum, object : com.goldsky.ssp.payment.hardware.IPaymentProvider.PaymentCallback {
+                provider.startSale(chargeCents, txRefNum, object : com.goldsky.ssp.payment.hardware.IPaymentProvider.PaymentCallback {
                     override fun onCardInfo(info: com.goldsky.ssp.payment.hardware.IPaymentProvider.CardInfo) {
                         pendingCardInfo = info
                     }
                     override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                        startFinalizationSequence(priceInCents, startHex, refNum, dialog, txRefNum, entryMode = entryMode)
+                        startFinalizationSequence(chargeCents, startHex, refNum, dialog, txRefNum, entryMode = entryMode, pulseAmountCents = priceInCents)
                     }
                     override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                         paymentInFlight = false
@@ -1834,6 +1850,25 @@ class MainActivity : BaseAdActivity() {
                         "Upload Failed: ${result.reason}"
                 }
                 Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+            }
+        }
+
+        // Small real test: arm the next card sale at a small amount (full
+        // customer flow, full wash). Tap cycles OFF -> $0.10 -> $0.50 -> $1.00 -> OFF.
+        dialog.findViewById<Button>(R.id.btn_op_test_sale)?.let { btn ->
+            fun label() { btn.text = TestSale.peek()?.let { "TEST SALE ${TestSale.format(it)} ARMED" } ?: "TEST SALE: OFF" }
+            label()
+            btn.setOnClickListener {
+                applyClickFeedback(it)
+                val amounts = TestSale.AMOUNTS
+                val next = when (val cur = TestSale.peek()) {
+                    null -> amounts.first()
+                    amounts.last() -> null
+                    else -> amounts[amounts.indexOf(cur) + 1]
+                }
+                if (next == null) TestSale.disarm() else TestSale.arm(next)
+                label()
+                if (next != null) Toast.makeText(this, "Next card sale charges ${TestSale.format(next)} and runs the full package", Toast.LENGTH_LONG).show()
             }
         }
 

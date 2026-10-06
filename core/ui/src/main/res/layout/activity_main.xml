@@ -378,4 +378,26 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
+    <!-- Technician small real test armed (TestSale): shown over the home
+         screen so nobody mistakes the next sale's price for a real one. -->
+    <TextView
+        android:id="@+id/tv_test_banner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/prompt_tap_bg"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:text="TEST MODE"
+        android:textColor="@color/text_dark"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        android:elevation="8dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

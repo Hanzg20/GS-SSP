@@ -13,6 +13,7 @@ import com.goldsky.ssp.payment.ConfigManager
 import com.goldsky.ssp.payment.DeviceAccessManager
 import com.goldsky.ssp.payment.DiagnosticManager
 import com.goldsky.ssp.payment.TransactionRecord
+import com.goldsky.ssp.payment.TestSale
 import com.goldsky.ssp.payment.TransactionRepository
 import com.goldsky.ssp.payment.hardware.IPaymentProvider
 import kotlinx.coroutines.Dispatchers
@@ -42,8 +43,8 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
 
     sealed interface Screen {
         object Home : Screen
-        /** [bay] is null on a single-bay terminal. */
-        data class Paying(val pkg: TimerPackage, val message: String, val bay: Bay? = null) : Screen
+        /** [bay] is null on a single-bay terminal; [chargeCents] differs from the package price only for a technician test sale. */
+        data class Paying(val pkg: TimerPackage, val message: String, val bay: Bay? = null, val chargeCents: Int = pkg.priceCents) : Screen
         /** Dual-bay: payment done, pulses accepted; back to Home (which shows the countdown) shortly. */
         data class BayStarted(val bay: Bay, val pkg: TimerPackage, val extended: Boolean) : Screen
         data class Running(val pkg: TimerPackage, val startedAt: Long, val totalMs: Long) : Screen
@@ -181,8 +182,12 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
 
-        val ecrRefNum = "TIMER_${System.currentTimeMillis()}"
-        _state.update { it.copy(screen = Screen.Paying(pkg, "Tap, insert or swipe your card", side)) }
+        // Technician small real test (TestSale): charge the armed amount, run
+        // the full package -- pulses/time below follow pkg, not the charge.
+        val testCents = TestSale.consume()
+        val chargeCents = testCents ?: pkg.priceCents
+        val ecrRefNum = (if (testCents != null) TestSale.REF_PREFIX else "TIMER_") + System.currentTimeMillis()
+        _state.update { it.copy(screen = Screen.Paying(pkg, "Tap, insert or swipe your card", side, chargeCents)) }
         TtsManager.speak("Please present your card")
         viewModelScope.launch {
             // PENDING before the bank call, same as wash: a crash between
@@ -191,7 +196,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 getApplication(),
                 TransactionRecord(
                     device_sn = deviceSn,
-                    amount = pkg.priceCents,
+                    amount = chargeCents,
                     payment_status = "PENDING",
                     ecr_ref_num = ecrRefNum,
                     payment_method = "CREDIT_CARD",
@@ -199,13 +204,13 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     service_bay = side?.code,
                 )
             )
-            payment.startSale(pkg.priceCents, ecrRefNum, object : IPaymentProvider.PaymentCallback {
+            payment.startSale(chargeCents, ecrRefNum, object : IPaymentProvider.PaymentCallback {
                 override fun onCardInfo(info: IPaymentProvider.CardInfo) { pendingCardInfo = info }
 
                 override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                     // Deliberately ignores whether the customer hit Cancel in
                     // the meantime: money moved, so they get their time.
-                    viewModelScope.launch { onPaid(pkg, ecrRefNum, refNum, entryMode, side) }
+                    viewModelScope.launch { onPaid(pkg, ecrRefNum, refNum, entryMode, side, chargeCents) }
                 }
 
                 override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
@@ -269,7 +274,10 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
-    private suspend fun onPaid(pkg: TimerPackage, ecrRefNum: String, bankRef: String, entryMode: String, bay: Bay? = null) {
+    private suspend fun onPaid(
+        pkg: TimerPackage, ecrRefNum: String, bankRef: String, entryMode: String,
+        bay: Bay? = null, chargeCents: Int = pkg.priceCents,
+    ) {
         val demo = _state.value.demoMode
         if (!demo) {
             val card = pendingCardInfo.also { pendingCardInfo = null }
@@ -289,7 +297,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     else "Payment approved. ${pkg.name} ${bay.number} is on."
                 )
             } else {
-                onStartFailed(pkg, ecrRefNum, bankRef, demo)
+                onStartFailed(pkg, ecrRefNum, bankRef, demo, chargeCents)
             }
             return
         }
@@ -307,7 +315,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             // compensation)".
             if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "ACK_RECEIVED")
         } else {
-            onStartFailed(pkg, ecrRefNum, bankRef, demo)
+            onStartFailed(pkg, ecrRefNum, bankRef, demo, chargeCents)
         }
     }
 
@@ -365,7 +373,8 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun onStartFailed(pkg: TimerPackage, ecrRefNum: String, bankRef: String, demo: Boolean) {
+    /** [chargeCents]: what the card was actually charged -- the reversal must match it (a test sale charges less than the package). */
+    private suspend fun onStartFailed(pkg: TimerPackage, ecrRefNum: String, bankRef: String, demo: Boolean, chargeCents: Int = pkg.priceCents) {
         _state.update { it.copy(screen = Screen.StartFailed(refunded = null)) }
         TtsManager.speak("Sorry, the machine could not start. Your payment is being reversed.")
         if (demo) {
@@ -378,7 +387,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             showThenHome(Screen.StartFailed(refunded = false), 8000)
             return
         }
-        payment.voidOrRefund(bankRef, pkg.priceCents) { success, method ->
+        payment.voidOrRefund(bankRef, chargeCents) { success, method ->
             viewModelScope.launch {
                 if (success) {
                     TransactionRepository.updatePaymentStatus(getApplication(), ecrRefNum, if (method == "REFUND") "REFUNDED" else "VOIDED")

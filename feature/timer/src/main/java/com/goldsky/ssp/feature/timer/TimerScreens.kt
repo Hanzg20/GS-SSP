@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.goldsky.ssp.feature.timer.TimerViewModel.Screen
+import com.goldsky.ssp.payment.TestSale
 
 // Unattended-kiosk palette (see .cursorrules): navy base, amber/emerald accents.
 private val Bg = Color(0xFF121824)
@@ -93,6 +94,14 @@ fun TimerApp(
                     },
                 )
             }
+        }
+        val testArmed by TestSale.armed.collectAsState()
+        testArmed?.let {
+            Text(
+                "TEST MODE · next card sale ${TestSale.format(it.cents)}", color = Bg, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 2.dp)
+                    .background(Amber.copy(alpha = 0.85f), RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 1.dp),
+            )
         }
         if (s.demoMode) {
             Text(
@@ -393,7 +402,11 @@ private fun PayingScreen(p: Screen.Paying, demo: Boolean, onCancel: () -> Unit) 
             )
             Spacer(Modifier.height(6.dp))
         }
-        Text("${formatPrice(p.pkg.priceCents)}  ·  ${formatDuration(p.pkg.durationSec)}", color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(
+            (if (p.chargeCents != p.pkg.priceCents) "TEST ${TestSale.format(p.chargeCents)}" else formatPrice(p.pkg.priceCents)) +
+                "  ·  ${formatDuration(p.pkg.durationSec)}",
+            color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+        )
         Text(p.pkg.name, color = TextLo, fontSize = 14.sp)
         Spacer(Modifier.weight(1f))
         Box(Modifier.size(150.dp).scale(pulse), contentAlignment = Alignment.Center) {
@@ -659,6 +672,7 @@ private fun BayOutputPanel(bay: Bay, s: OutputSettings, onChange: (OutputSetting
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () -> Unit, onSettle: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(Surface, RoundedCornerShape(10.dp)).padding(8.dp)) {
@@ -677,6 +691,21 @@ private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () ->
                 onClick = onSettle, enabled = !s.running,
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
             ) { Text("立即结算", fontSize = 13.sp, color = TextHi) }
+        }
+        val armed by TestSale.armed.collectAsState()
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("小额真实测试", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("下一笔刷卡按此金额收款，其余完全按真实流程（设备照常运行）", color = TextLo, fontSize = 10.sp)
+            }
+            TestSale.AMOUNTS.forEach { c ->
+                FilterChip(
+                    selected = armed?.cents == c,
+                    onClick = { if (armed?.cents == c) TestSale.disarm() else TestSale.arm(c) },
+                    label = { Text(TestSale.format(c), fontSize = 11.sp) },
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
         }
         s.lines.takeLast(3).forEach { Text(it, color = TextLo, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 2) }
     }

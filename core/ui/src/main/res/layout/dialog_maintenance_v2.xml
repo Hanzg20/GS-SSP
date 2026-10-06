@@ -384,12 +384,23 @@
             android:textStyle="bold" />
 
         <Button
+            android:id="@+id/btn_op_test_sale"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="TEST SALE: OFF"
+            android:backgroundTint="@color/goldsky_gold_start"
+            android:textColor="@color/text_dark"
+            android:textStyle="bold" />
+
+        <Button
             android:id="@+id/btn_op_check"
             android:layout_width="0dp"
             android:layout_height="80dp"
             android:layout_margin="4dp"
             android:layout_columnWeight="1"
-            android:layout_columnSpan="3"
+            android:layout_columnSpan="2"
             android:text="FULL SYSTEM SELF-DIAGNOSTIC"
             android:backgroundTint="@color/tech_pill_bg"
             android:textColor="@color/tech_cyan"
