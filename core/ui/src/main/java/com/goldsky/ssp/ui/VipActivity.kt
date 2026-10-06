@@ -1,32 +1,31 @@
 package com.goldsky.ssp.ui
 
-import android.graphics.Outline
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewOutlineProvider
 import android.widget.Button
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.graphics.Typeface
-import android.view.Gravity
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.goldsky.ssp.core.ui.R
+import com.goldsky.ssp.payment.ConfigManager
 import com.goldsky.ssp.payment.VipLoadPlan
 import com.goldsky.ssp.payment.VipLoadRepository
 import kotlinx.coroutines.launch
-import com.goldsky.ssp.core.ui.R
 
+/**
+ * VIP membership page: the digital pass, its benefits, and the merchant's
+ * load plans as tiles that start a purchase / top-up (VipPurchaseFlow).
+ * Offline or no plans: the how-to guide instead of tiles.
+ */
 class VipActivity : BaseAdActivity() {
 
     companion object {
         // Shorter and separate from BaseAdActivity's own 3-minute ad-idle
-        // timer -- this page has nothing for an idle customer to be shown
-        // (no ad content makes sense mid-VIP-purchase), so it just backs out
-        // to the price selection screen instead of waiting for the ad timer.
+        // timer -- an idle customer here just goes back to the wash screen.
         private const val VIP_IDLE_TIMEOUT_MS = 60000L
     }
 
@@ -66,31 +65,10 @@ class VipActivity : BaseAdActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_vip)
 
-        // Round the card preview's corners to match the rest of the app's
-        // card aesthetic (same 16dp radius as bg_glass_card). img_vip_card
-        // uses fitCenter (the full source photo, nothing cropped off), so it
-        // doesn't necessarily fill layout_card_bg's whole box -- both views
-        // share the same bounds and need the same outline, or the letterbox
-        // fill behind a narrower image would show square corners poking out.
-        val cardRadiusPx = 16f * resources.displayMetrics.density
-        val roundedCornerOutline = object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(0, 0, view.width, view.height, cardRadiusPx)
-            }
-        }
-        findViewById<View>(R.id.layout_card_bg).apply {
-            clipToOutline = true
-            outlineProvider = roundedCornerOutline
-        }
-        findViewById<ImageView>(R.id.img_vip_card).apply {
-            clipToOutline = true
-            outlineProvider = roundedCornerOutline
-        }
+        findViewById<VipCardView>(R.id.vip_card_face).brandName = brandName()
 
-        // The layout's BACK button was never wired up -- combined with
-        // BaseAdActivity's immersive full-screen kiosk flags (nav bar
-        // hidden), this screen was a dead end with no way back to the wash
-        // home screen. Found live on-device 2026-08-29.
+        // The BACK button was once left unwired -- with the kiosk's hidden
+        // nav bar that made this page a dead end (found on-device 2026-08-29).
         findViewById<Button>(R.id.btn_back_main).setOnClickListener {
             if (!purchaseActive) finish()
         }
@@ -98,48 +76,55 @@ class VipActivity : BaseAdActivity() {
         loadPlans()
     }
 
-    /**
-     * Replaces the layout's static tier rows with the merchant's load plans
-     * (CMP, vip_load_plans) and makes them buyable. Offline / no plans: the
-     * static rows stay as information and the guide keeps "ask the attendant".
-     */
+    /** The merchant name for the pass: the configured brand name without a "Welcome to" greeting. */
+    private fun brandName(): String =
+        ConfigManager.getConfig()?.branding?.brand_name
+            ?.replace(Regex("""^\s*welcome\s+to\s+""", RegexOption.IGNORE_CASE), "")
+            ?.trim()
+            ?.takeUnless { it.isBlank() || it == "GS-SSP" } ?: "VIP CLUB"
+
+    /** Fills the right column with the merchant's plans (CMP, vip_load_plans); keeps the guide if there are none. */
     private fun loadPlans() {
         lifecycleScope.launch {
             val plans = VipLoadRepository.getPlans()?.take(3)
             if (plans.isNullOrEmpty()) return@launch
             val container = findViewById<LinearLayout>(R.id.layout_tiers)
-            val template = container.getChildAt(0) as? LinearLayout ?: return@launch
-            val rowParams = template.layoutParams
             container.removeAllViews()
-            plans.forEach { plan ->
-                val row = LinearLayout(this@VipActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER
-                    background = template.background?.constantState?.newDrawable()
-                    elevation = template.elevation
-                    setPadding(template.paddingLeft, template.paddingTop, template.paddingRight, template.paddingBottom)
-                    isClickable = true
-                    setOnClickListener {
-                        if (!purchaseActive) VipPurchaseFlow(this@VipActivity, plan) { active ->
-                            purchaseActive = active
-                            resetIdleTimer()
-                        }.start()
-                    }
-                }
-                row.addView(label(getString(R.string.vip_plan_load, VipLoadPlan.money(plan.amount_cents)), R.color.text_light, 14f))
-                row.addView(label("→", R.color.text_muted, 14f).apply { setPadding(12, 0, 12, 0) })
-                row.addView(label(getString(R.string.vip_plan_total, VipLoadPlan.money(plan.totalCents)), R.color.gold_accent, 17f))
-                container.addView(row, LinearLayout.LayoutParams(rowParams))
-            }
-            findViewById<TextView>(R.id.tv_vip_guide_buy)?.setText(R.string.vip_guide_buy_body_terminal)
+            val best = bestValue(plans)
+            plans.forEach { plan -> container.addView(tile(container, plan, plan == best)) }
+            container.visibility = View.VISIBLE
+            findViewById<View>(R.id.layout_vip_guide).visibility = View.GONE
         }
     }
 
-    private fun label(text: String, color: Int, sizeSp: Float) = TextView(this).apply {
-        this.text = text
-        setTextColor(ContextCompat.getColor(this@VipActivity, color))
-        textSize = sizeSp
-        maxLines = 1
-        setTypeface(typeface, Typeface.BOLD)
+    private fun tile(parent: LinearLayout, plan: VipLoadPlan, best: Boolean): View {
+        val v = LayoutInflater.from(this).inflate(R.layout.item_vip_plan, parent, false)
+        v.findViewById<TextView>(R.id.tv_plan_pay).text = VipLoadPlan.money(plan.amount_cents)
+        v.findViewById<TextView>(R.id.tv_plan_get).text = getString(R.string.vip_tile_get, VipLoadPlan.money(plan.totalCents))
+        v.findViewById<TextView>(R.id.tv_plan_bonus).apply {
+            val pct = bonusPercent(plan)
+            if (pct > 0) text = getString(R.string.vip_tile_bonus, pct) else visibility = View.GONE
+        }
+        if (best) {
+            v.setBackgroundResource(R.drawable.bg_vip_tile_best)
+            v.findViewById<View>(R.id.tv_plan_best).visibility = View.VISIBLE
+        }
+        v.setOnClickListener {
+            if (!purchaseActive) VipPurchaseFlow(this, plan, brandName()) { active ->
+                purchaseActive = active
+                resetIdleTimer()
+            }.start()
+        }
+        return v
+    }
+
+    private fun bonusPercent(plan: VipLoadPlan) = plan.bonus_cents * 100 / plan.amount_cents
+
+    /** The single plan with the highest bonus ratio; none if tied or no bonus at all. */
+    private fun bestValue(plans: List<VipLoadPlan>): VipLoadPlan? {
+        val top = plans.maxByOrNull { it.bonus_cents.toDouble() / it.amount_cents } ?: return null
+        val topRatio = top.bonus_cents.toDouble() / top.amount_cents
+        if (topRatio <= 0 || plans.count { it.bonus_cents.toDouble() / it.amount_cents == topRatio } > 1) return null
+        return top
     }
 }

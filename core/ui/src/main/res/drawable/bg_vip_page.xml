@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- VIP pages: near-black with a faint warm glow from the top. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="270"
+        android:endColor="#050506"
+        android:startColor="#17150F"
+        android:type="linear" />
+</shape>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contactless payment mark (four arcs), gold. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="56dp" android:height="56dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:strokeColor="#FFB800" android:strokeWidth="1.8" android:strokeLineCap="round"
+        android:pathData="M6.5,9.5 C7.5,11 7.5,13 6.5,14.5" />
+    <path android:strokeColor="#FFB800" android:strokeWidth="1.8" android:strokeLineCap="round"
+        android:pathData="M10,7.5 C12,10.3 12,13.7 10,16.5" />
+    <path android:strokeColor="#FFB800" android:strokeWidth="1.8" android:strokeLineCap="round"
+        android:pathData="M13.5,5.5 C16.5,9.5 16.5,14.5 13.5,18.5" />
+    <path android:strokeColor="#FFB800" android:strokeWidth="1.8" android:strokeLineCap="round"
+        android:pathData="M17,3.5 C21,9 21,15 17,20.5" />
+</vector>

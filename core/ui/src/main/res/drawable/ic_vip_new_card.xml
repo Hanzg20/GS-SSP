@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- New digital card: phone with a plus. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp" android:height="40dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFB800"
+        android:pathData="M15,1H7C5.9,1 5,1.9 5,3v18c0,1.1 0.9,2 2,2h8c1.1,0 2,-0.9 2,-2V3C17,1.9 16.1,1 15,1zM15,19H7V5h8V19z" />
+    <path android:fillColor="#FFB800"
+        android:pathData="M10.25,8.5h1.5v2.75h2.75v1.5h-2.75v2.75h-1.5v-2.75H7.5v-1.5h2.75z" />
+</vector>

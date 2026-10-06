@@ -1,93 +1,254 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- VIP card purchase / top-up at the terminal (VipPurchaseFlow). One screen
-     reconfigured per step: choose, phone, scan, pay, result. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- VIP purchase / top-up (VipPurchaseFlow), redesigned 2026-10-06: one
+     panel, a 3-step progress bar, and one content block per step (options,
+     keypad, code field, payment, progress, result icon, the digital pass). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
-    android:gravity="center"
-    android:orientation="vertical"
-    android:padding="24dp">
+    android:background="@drawable/bg_vip_page">
 
-    <TextView
-        android:id="@+id/tv_vp_title"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:textColor="@color/gold_accent"
-        android:textSize="22sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/tv_vp_message"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:gravity="center"
-        android:lineSpacingExtra="2dp"
-        android:textColor="@color/text_light"
-        android:textSize="15sp" />
+        android:layout_gravity="center"
+        android:layout_margin="12dp"
+        android:background="@drawable/bg_vip_panel"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingStart="18dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="14dp">
 
-    <ImageView
-        android:id="@+id/img_vp_qr"
-        android:layout_width="170dp"
-        android:layout_height="170dp"
-        android:layout_marginTop="10dp"
-        android:background="#FFFFFF"
-        android:contentDescription="@string/vip_member_code"
-        android:padding="4dp"
-        android:visibility="gone" />
+        <!-- Header: step bars + label, close. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-    <TextView
-        android:id="@+id/tv_vp_code"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:fontFamily="monospace"
-        android:letterSpacing="0.2"
-        android:textColor="@color/text_light"
-        android:textSize="30sp"
-        android:textStyle="bold"
-        android:visibility="gone" />
+            <View android:id="@+id/vp_step1" android:layout_width="22dp" android:layout_height="4dp" android:background="@drawable/bg_vip_step_on" />
+            <View android:id="@+id/vp_step2" android:layout_width="22dp" android:layout_height="4dp" android:layout_marginStart="4dp" android:background="@drawable/bg_vip_step_off" />
+            <View android:id="@+id/vp_step3" android:layout_width="22dp" android:layout_height="4dp" android:layout_marginStart="4dp" android:background="@drawable/bg_vip_step_off" />
 
-    <EditText
-        android:id="@+id/et_vp_input"
-        android:layout_width="260dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:gravity="center"
-        android:importantForAutofill="no"
-        android:textColor="@color/text_light"
-        android:textColorHint="@color/text_muted"
-        android:textSize="22sp"
-        android:visibility="gone" />
+            <TextView
+                android:id="@+id/tv_vp_step"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:letterSpacing="0.15"
+                android:textColor="@color/text_muted"
+                android:textSize="10sp"
+                android:textStyle="bold" />
 
-    <Button
-        android:id="@+id/btn_vp_primary"
-        android:layout_width="260dp"
-        android:layout_height="56dp"
-        android:layout_marginTop="16dp"
-        android:backgroundTint="@color/gold_accent"
-        android:textColor="@color/text_dark"
-        android:textSize="16sp"
-        android:textStyle="bold" />
+            <TextView
+                android:id="@+id/btn_vp_cancel"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:contentDescription="@string/vip_cancel"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="✕"
+                android:textColor="@color/text_muted"
+                android:textSize="18sp" />
+        </LinearLayout>
 
-    <Button
-        android:id="@+id/btn_vp_secondary"
-        android:layout_width="260dp"
-        android:layout_height="56dp"
-        android:layout_marginTop="8dp"
-        android:backgroundTint="@color/bg_card_selected"
-        android:textColor="@color/text_light"
-        android:textSize="16sp"
-        android:textStyle="bold" />
+        <TextView
+            android:id="@+id/tv_vp_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:textColor="@color/text_light"
+            android:textSize="21sp"
+            android:textStyle="bold" />
 
-    <Button
-        android:id="@+id/btn_vp_cancel"
-        style="?android:attr/borderlessButtonStyle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="@string/vip_cancel"
-        android:textColor="@color/text_muted" />
-</LinearLayout>
+        <TextView
+            android:id="@+id/tv_vp_message"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center"
+            android:lineSpacingExtra="2dp"
+            android:textColor="@color/text_muted"
+            android:textSize="13sp" />
+
+        <!-- Step 1: two choices. -->
+        <LinearLayout
+            android:id="@+id/layout_vp_options"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/opt_vp_new"
+                style="@style/VipOption"
+                android:layout_marginEnd="6dp">
+                <ImageView android:layout_width="40dp" android:layout_height="40dp" android:contentDescription="@null" android:src="@drawable/ic_vip_new_card" />
+                <TextView style="@style/VipOptionTitle" android:text="@string/vip_opt_new_title" />
+                <TextView style="@style/VipOptionSub" android:text="@string/vip_opt_new_sub" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/opt_vp_topup"
+                style="@style/VipOption"
+                android:layout_marginStart="6dp">
+                <ImageView android:layout_width="40dp" android:layout_height="40dp" android:contentDescription="@null" android:src="@drawable/ic_vip_topup" />
+                <TextView style="@style/VipOptionTitle" android:text="@string/vip_opt_topup_title" />
+                <TextView style="@style/VipOptionSub" android:text="@string/vip_opt_topup_sub" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Phone number / member code field. -->
+        <EditText
+            android:id="@+id/et_vp_input"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_vip_field"
+            android:gravity="center"
+            android:importantForAutofill="no"
+            android:letterSpacing="0.1"
+            android:textColor="@color/text_light"
+            android:textColorHint="#5A5A64"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <!-- Phone keypad (no system keyboard over the kiosk screen). -->
+        <LinearLayout
+            android:id="@+id/layout_vp_keypad"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                <TextView style="@style/VipKey" android:text="1" />
+                <TextView style="@style/VipKey" android:text="2" />
+                <TextView style="@style/VipKey" android:text="3" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                <TextView style="@style/VipKey" android:text="4" />
+                <TextView style="@style/VipKey" android:text="5" />
+                <TextView style="@style/VipKey" android:text="6" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                <TextView style="@style/VipKey" android:text="7" />
+                <TextView style="@style/VipKey" android:text="8" />
+                <TextView style="@style/VipKey" android:text="9" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                <TextView style="@style/VipKey" android:text="" android:clickable="false" android:background="@null" />
+                <TextView style="@style/VipKey" android:text="0" />
+                <TextView style="@style/VipKey" android:tag="del" android:text="⌫" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Payment: amount + contactless ripple. -->
+        <LinearLayout
+            android:id="@+id/layout_vp_pay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tv_vp_amount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textColor="@color/gold_accent"
+                android:textSize="48sp"
+                android:textStyle="bold" />
+
+            <FrameLayout
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:layout_marginTop="4dp">
+                <View android:id="@+id/vp_ripple1" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/bg_vip_ripple" />
+                <View android:id="@+id/vp_ripple2" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/bg_vip_ripple" />
+                <ImageView
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_vip_contactless" />
+            </FrameLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:drawableStart="@drawable/ic_vip_lock"
+                android:drawablePadding="4dp"
+                android:gravity="center_vertical"
+                android:text="@string/vip_secure"
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/pb_vp"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginTop="16dp"
+            android:indeterminateTint="@color/gold_accent"
+            android:visibility="gone" />
+
+        <ImageView
+            android:id="@+id/img_vp_icon"
+            android:layout_width="76dp"
+            android:layout_height="76dp"
+            android:layout_marginTop="12dp"
+            android:contentDescription="@null"
+            android:visibility="gone" />
+
+        <!-- New card: the customer's own digital pass. -->
+        <com.goldsky.ssp.ui.VipCardView
+            android:id="@+id/vp_pass"
+            android:layout_width="200dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:elevation="10dp"
+            android:visibility="gone" />
+
+        <!-- Actions. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_vp_secondary"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:textColor="@color/text_light"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                app:strokeColor="#4A4A54"
+                xmlns:app="http://schemas.android.com/apk/res-auto" />
+
+            <Button
+                android:id="@+id/btn_vp_primary"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:backgroundTint="@color/gold_accent"
+                android:textColor="@color/text_dark"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>
