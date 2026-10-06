@@ -1718,6 +1718,12 @@ BEGIN
       daily_spent_date = CURRENT_DATE
   WHERE card_uid = p_card_uid;
 
+  -- Card history (vip_card_ledger: docs/migrations/2026-09-20_vip_card_ledger.sql).
+  -- Missing from this copy until 2026-10-06; re-creating the function from
+  -- here on 2026-09-22 silently dropped it live. Keep it.
+  INSERT INTO public.vip_card_ledger (card_uid, org_id, kind, amount_cents, balance_before_cents, balance_after_cents)
+  VALUES (p_card_uid, v_org_id, 'DEDUCT', p_amount_cents, v_balance_cents, v_balance_cents - p_amount_cents);
+
   RETURN json_build_object('success', true, 'new_balance_cents', v_balance_cents - p_amount_cents);
 END;
 $$;
