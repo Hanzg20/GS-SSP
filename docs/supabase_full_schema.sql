@@ -2944,3 +2944,7 @@ ALTER TABLE public.transactions
 -- VIP cards sold/topped up at the terminal (2026-10-06), applied live:
 -- docs/migrations/2026-10-06_vip_terminal_load.sql (vip_load_plans, transactions.txn_kind,
 -- vip_card_ledger LOAD/BONUS + source_ref, get_vip_load_plans(), device_vip_load()).
+
+-- Staff balance changes in VIP card history (2026-10-06), applied live:
+-- docs/migrations/2026-10-06_vip_ledger_staff_changes.sql (OPENING / ADMIN_TOPUP
+-- entries + actor_profile_id; admin_create_vip_card and admin_topup_vip_card write them).
