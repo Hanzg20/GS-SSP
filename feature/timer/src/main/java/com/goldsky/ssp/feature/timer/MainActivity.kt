@@ -241,7 +241,8 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             SupabaseClientProvider.ensureAuthenticated()
             val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
-            DeviceRepository.registerDevice(deviceSn, version)
+            // Tells CMP whether remote start needs a unit (1 / 2) for this terminal.
+            DeviceRepository.registerDevice(deviceSn, version, serviceUnits = if (outputSettings.dualBay) 2 else 1)
             val identity = DeviceRepository.syncDeviceIdentity(deviceSn)
             DeviceAccessManager.applyActiveState(identity?.is_active)
             timerVm.setLocked(DeviceAccessManager.isLocked())

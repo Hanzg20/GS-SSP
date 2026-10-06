@@ -2948,3 +2948,4 @@ ALTER TABLE public.transactions
 -- Staff balance changes in VIP card history (2026-10-06), applied live:
 -- docs/migrations/2026-10-06_vip_ledger_staff_changes.sql (OPENING / ADMIN_TOPUP
 -- entries + actor_profile_id; admin_create_vip_card and admin_topup_vip_card write them).
+-- devices.service_units (2026-10-06), applied live: docs/migrations/2026-10-06_devices_service_units.sql

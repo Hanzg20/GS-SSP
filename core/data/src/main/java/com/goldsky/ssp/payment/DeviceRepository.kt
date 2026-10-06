@@ -14,7 +14,11 @@ data class DeviceRegistration(
     val sn: String,
     val app_version: String,
     val status: String = "ONLINE",
-    val last_seen: String? = null
+    val last_seen: String? = null,
+    // Independently sold units this terminal drives (Aegis Timer: 1 or 2,
+    // docs/migrations/2026-10-06_devices_service_units.sql). Null is left out
+    // of the upsert, so apps that don't report it never overwrite it.
+    val service_units: Int? = null
 )
 
 @Serializable
@@ -232,11 +236,11 @@ object DeviceRepository {
         }
     }
 
-    suspend fun registerDevice(sn: String, appVersion: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun registerDevice(sn: String, appVersion: String, serviceUnits: Int? = null): Boolean = withContext(Dispatchers.IO) {
         try {
             authenticateDevice()
 
-            val registration = DeviceRegistration(sn, appVersion)
+            val registration = DeviceRegistration(sn, appVersion, service_units = serviceUnits)
             retryWithBackoff(times = 3) {
                 SupabaseClientProvider.client.postgrest["devices"].upsert(registration, onConflict = "sn")
             }
