@@ -213,7 +213,7 @@
         <!-- New card: the customer's own digital pass. -->
         <com.goldsky.ssp.ui.VipCardView
             android:id="@+id/vp_pass"
-            android:layout_width="200dp"
+            android:layout_width="290dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:elevation="10dp"

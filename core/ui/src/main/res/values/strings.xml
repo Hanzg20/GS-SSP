@@ -56,6 +56,7 @@
     <string name="vip_step_details">STEP 2 OF 3 · DETAILS</string>
     <string name="vip_step_pay">STEP 3 OF 3 · PAY</string>
     <string name="vip_step_done">ALL DONE</string>
+    <string name="vip_step_photo">YOUR VIP CARD · TAKE A PHOTO</string>
     <string name="vip_pay_heading">Total to pay</string>
     <string name="vip_done_new_hint">Take a photo of your card. Scan its code on the main screen to pay for a wash.</string>
     <string name="vip_done_topup_hint">Your new balance</string>

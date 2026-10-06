@@ -53,7 +53,7 @@ class VipCardView @JvmOverloads constructor(
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
         // ISO/IEC 7810 ID-1 ratio for the face; a taller pass for the QR.
-        val ratio = if (mode == Mode.FACE) 1f / 1.586f else 1.12f
+        val ratio = if (mode == Mode.FACE) 1f / 1.586f else 1.08f
         val wanted = (w * ratio).toInt()
         val h = when (MeasureSpec.getMode(heightMeasureSpec)) {
             MeasureSpec.EXACTLY -> MeasureSpec.getSize(heightMeasureSpec)
@@ -91,7 +91,14 @@ class VipCardView @JvmOverloads constructor(
         paint.style = Paint.Style.FILL
         paint.shader = null
 
-        if (mode == Mode.FACE) drawFace(canvas, w, h) else drawPass(canvas, w, h)
+        if (mode == Mode.FACE) {
+            drawFace(canvas, w, h)
+        } else {
+            val save = canvas.save()
+            canvas.clipPath(android.graphics.Path().apply { addRoundRect(card, r, r, android.graphics.Path.Direction.CW) })
+            drawPass(canvas, w, h)
+            canvas.restoreToCount(save)
+        }
     }
 
     private fun drawFace(canvas: Canvas, w: Float, h: Float) {
@@ -152,52 +159,86 @@ class VipCardView @JvmOverloads constructor(
         canvas.drawText(fit("NO EXPIRY", w * 0.4f), pad, vipBase, text)
     }
 
+    /**
+     * The customer's own card, made to be photographed: brand + VIP on top,
+     * then -- like an Apple Wallet pass -- the QR code and the member code on
+     * a pure white panel (black on white is what a phone camera and a later
+     * scan read best), balance at the bottom.
+     */
     private fun drawPass(canvas: Canvas, w: Float, h: Float) {
-        val pad = w * 0.06f
+        val pad = w * 0.05f
+        drawFinish(canvas, w, h)
+
         // Header: merchant name left, gold VIP right.
         text.shader = null
         text.typeface = bold
-        text.color = Color.argb(225, 255, 255, 255)
+        text.color = Color.argb(230, 255, 255, 255)
         text.letterSpacing = 0.08f
-        val headerBase = pad + w * 0.055f
+        val headerBase = pad + w * 0.045f
         val name = brandName.uppercase()
-        text.textSize = w * 0.055f
-        while (text.measureText(name) > w * 0.6f && text.textSize > w * 0.035f) text.textSize *= 0.92f
-        canvas.drawText(fit(name, w * 0.6f), pad, headerBase, text)
-        text.textSize = w * 0.085f
+        text.textSize = w * 0.045f
+        while (text.measureText(name) > w * 0.62f && text.textSize > w * 0.032f) text.textSize *= 0.92f
+        canvas.drawText(fit(name, w * 0.62f), pad, headerBase, text)
+        text.textSize = w * 0.07f
+        text.letterSpacing = 0.04f
         val vipW = text.measureText("VIP")
         text.shader = LinearGradient(0f, headerBase - text.textSize, 0f, headerBase, gold1, gold3, Shader.TileMode.CLAMP)
-        canvas.drawText("VIP", w - pad - vipW, headerBase + w * 0.01f, text)
+        canvas.drawText("VIP", w - pad - vipW, headerBase + w * 0.012f, text)
         text.shader = null
 
-        // QR on a white tile.
-        val qrSize = minOf(w * 0.56f, h * 0.52f)
-        val qrLeft = (w - qrSize) / 2
-        val qrTop = headerBase + h * 0.06f
+        // White code panel: QR + member code.
+        val panelTop = headerBase + h * 0.03f
+        val panelBottom = h - pad - w * 0.075f
+        val panel = RectF(pad, panelTop, w - pad, panelBottom)
+        paint.style = Paint.Style.FILL
         paint.color = Color.WHITE
-        val tile = RectF(qrLeft - qrSize * 0.06f, qrTop - qrSize * 0.06f, qrLeft + qrSize * 1.06f, qrTop + qrSize * 1.06f)
-        canvas.drawRoundRect(tile, qrSize * 0.06f, qrSize * 0.06f, paint)
-        qrBitmap?.let { canvas.drawBitmap(it, null, RectF(qrLeft, qrTop, qrLeft + qrSize, qrTop + qrSize), paint) }
+        canvas.drawRoundRect(panel, w * 0.035f, w * 0.035f, paint)
 
-        // Member code, spaced like a card number.
+        val codeSize = w * 0.095f
+        val qrSize = minOf(panel.width() * 0.82f, panel.height() - codeSize * 1.6f)
+        val qrLeft = panel.centerX() - qrSize / 2
+        val qrTop = panel.top + panel.height() * 0.035f
+        qrBitmap?.let {
+            // Nearest-neighbour: keeps every module edge sharp when scaled.
+            val crisp = Paint().apply { isFilterBitmap = false; isAntiAlias = false }
+            canvas.drawBitmap(it, null, RectF(qrLeft, qrTop, qrLeft + qrSize, qrTop + qrSize), crisp)
+        }
         text.typeface = mono
-        text.color = Color.WHITE
-        text.textSize = w * 0.085f
-        text.letterSpacing = 0.25f
-        val codeBase = tile.bottom + h * 0.11f
-        canvas.drawText(memberCode, (w - text.measureText(memberCode)) / 2, codeBase, text)
+        text.color = Color.parseColor("#0B0B0F")
+        text.textSize = codeSize
+        text.letterSpacing = 0.22f
+        val codeW = text.measureText(memberCode)
+        val codeBase = minOf(qrTop + qrSize + codeSize * 1.05f, panel.bottom - codeSize * 0.35f)
+        canvas.drawText(memberCode, panel.centerX() - codeW / 2 + codeSize * 0.11f, codeBase, text)
 
-        // Balance, bottom: label left, amount right in gold.
+        // Footer: balance.
         text.typeface = bold
         text.letterSpacing = 0.2f
-        text.textSize = w * 0.04f
-        text.color = Color.argb(160, 255, 255, 255)
-        val bottomBase = h - pad
+        text.textSize = w * 0.034f
+        text.color = Color.argb(170, 255, 255, 255)
+        val bottomBase = h - pad * 0.9f
         canvas.drawText("BALANCE", pad, bottomBase, text)
         text.letterSpacing = 0f
-        text.textSize = w * 0.075f
+        text.textSize = w * 0.06f
         text.color = gold2
         canvas.drawText(balanceText, w - pad - text.measureText(balanceText), bottomBase, text)
+    }
+
+    /** Brushed-metal hairlines and a glossy top highlight, for a real-card look. */
+    private fun drawFinish(canvas: Canvas, w: Float, h: Float) {
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 0.6f * density
+        paint.shader = null
+        paint.color = Color.argb(10, 255, 255, 255)
+        var x = -h
+        while (x < w) {
+            canvas.drawLine(x, h, x + h, 0f, paint)
+            x += 3.5f * density
+        }
+        paint.style = Paint.Style.FILL
+        paint.shader = LinearGradient(0f, 0f, 0f, h * 0.45f, Color.argb(34, 255, 255, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(card, minOf(w, h) * 0.07f, minOf(w, h) * 0.07f, paint)
+        paint.shader = null
     }
 
     /** A stylised QR mark in gold: three finder squares and a few modules. */

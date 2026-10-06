@@ -280,8 +280,12 @@ class VipPurchaseFlow(
 
     private fun newCard(r: VipLoadResult.Loaded) {
         TtsManager.speak("Your VIP card is ready. Please take a photo of your member code.")
-        screen(Step.DONE, activity.getString(R.string.vip_done_new_title), activity.getString(R.string.vip_done_new_hint),
+        // No message line: the room goes to the card, the photo hint to the step label.
+        screen(Step.DONE, activity.getString(R.string.vip_done_new_title), "",
             primary = activity.getString(R.string.vip_done) to { close() }, closable = false)
+        stepLabel.text = activity.getString(R.string.vip_step_photo)
+        // The card itself says it all; its height goes to the QR code.
+        title.visibility = View.GONE
         pass.apply {
             mode = VipCardView.Mode.PASS
             brandName = this@VipPurchaseFlow.brandName
@@ -329,6 +333,7 @@ class VipPurchaseFlow(
         handler.removeCallbacks(autoClose)
         stopRipple()
         title.text = heading
+        title.visibility = View.VISIBLE
         message.text = text
         message.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
         message.setTextColor(activity.getColor(if (errorTone) R.color.coral_red else R.color.text_muted))
