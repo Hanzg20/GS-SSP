@@ -161,9 +161,9 @@ class VipCardView @JvmOverloads constructor(
 
     /**
      * The customer's own card, made to be photographed: brand + VIP on top,
-     * then -- like an Apple Wallet pass -- the QR code and the member code on
-     * a pure white panel (black on white is what a phone camera and a later
-     * scan read best), balance at the bottom.
+     * a pure white square holding only the QR code (black on white is what a
+     * phone camera and a later scan read best), and below it the member code
+     * in large white type beside the balance.
      */
     private fun drawPass(canvas: Canvas, w: Float, h: Float) {
         val pad = w * 0.05f
@@ -186,41 +186,44 @@ class VipCardView @JvmOverloads constructor(
         canvas.drawText("VIP", w - pad - vipW, headerBase + w * 0.012f, text)
         text.shader = null
 
-        // White code panel: QR + member code.
+        // Bottom row (two columns): MEMBER CODE + the code, BALANCE + amount.
+        val bottomBase = h - pad * 0.9f
+        val codeSize = w * 0.085f
+        val labelSize = w * 0.03f
+        val labelBase = bottomBase - codeSize - w * 0.012f
+
+        // White square: only the QR code, as large as the space allows.
         val panelTop = headerBase + h * 0.03f
-        val panelBottom = h - pad - w * 0.075f
-        val panel = RectF(pad, panelTop, w - pad, panelBottom)
+        val side = minOf(w - 2 * pad, labelBase - labelSize - h * 0.03f - panelTop)
+        val panel = RectF((w - side) / 2, panelTop, (w + side) / 2, panelTop + side)
         paint.style = Paint.Style.FILL
         paint.color = Color.WHITE
-        canvas.drawRoundRect(panel, w * 0.035f, w * 0.035f, paint)
-
-        val codeSize = w * 0.095f
-        val qrSize = minOf(panel.width() * 0.82f, panel.height() - codeSize * 1.6f)
-        val qrLeft = panel.centerX() - qrSize / 2
-        val qrTop = panel.top + panel.height() * 0.035f
+        canvas.drawRoundRect(panel, w * 0.03f, w * 0.03f, paint)
+        val quiet = side * 0.045f
         qrBitmap?.let {
             // Nearest-neighbour: keeps every module edge sharp when scaled.
             val crisp = Paint().apply { isFilterBitmap = false; isAntiAlias = false }
-            canvas.drawBitmap(it, null, RectF(qrLeft, qrTop, qrLeft + qrSize, qrTop + qrSize), crisp)
+            canvas.drawBitmap(it, null, RectF(panel.left + quiet, panel.top + quiet, panel.right - quiet, panel.bottom - quiet), crisp)
         }
-        text.typeface = mono
-        text.color = Color.parseColor("#0B0B0F")
-        text.textSize = codeSize
-        text.letterSpacing = 0.22f
-        val codeW = text.measureText(memberCode)
-        val codeBase = minOf(qrTop + qrSize + codeSize * 1.05f, panel.bottom - codeSize * 0.35f)
-        canvas.drawText(memberCode, panel.centerX() - codeW / 2 + codeSize * 0.11f, codeBase, text)
 
-        // Footer: balance.
         text.typeface = bold
         text.letterSpacing = 0.2f
-        text.textSize = w * 0.034f
+        text.textSize = labelSize
         text.color = Color.argb(170, 255, 255, 255)
-        val bottomBase = h - pad * 0.9f
-        canvas.drawText("BALANCE", pad, bottomBase, text)
+        canvas.drawText("MEMBER CODE", pad, labelBase, text)
+        val balanceLabelW = text.measureText("BALANCE")
+        canvas.drawText("BALANCE", w - pad - balanceLabelW, labelBase, text)
+
+        text.typeface = mono
+        text.color = Color.WHITE
+        text.textSize = codeSize
+        text.letterSpacing = 0.18f
+        canvas.drawText(memberCode, pad, bottomBase, text)
+
+        text.typeface = bold
         text.letterSpacing = 0f
-        text.textSize = w * 0.06f
         text.color = gold2
+        text.textSize = codeSize * 0.92f
         canvas.drawText(balanceText, w - pad - text.measureText(balanceText), bottomBase, text)
     }
 
