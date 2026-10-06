@@ -21,7 +21,11 @@ import androidx.lifecycle.lifecycleScope
 import com.goldsky.ssp.common.QrUtils
 import com.goldsky.ssp.common.TtsManager
 import com.goldsky.ssp.core.ui.R
+import android.graphics.drawable.BitmapDrawable
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.goldsky.ssp.payment.CardTypeClassifier
+import com.goldsky.ssp.payment.ConfigManager
 import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.payment.DiagnosticManager
 import com.goldsky.ssp.payment.PaymentProviderFactory
@@ -291,9 +295,10 @@ class VipPurchaseFlow(
             brandName = this@VipPurchaseFlow.brandName
             memberCode = r.qrCode ?: ""
             balanceText = money(r.balanceCents)
-            qrBitmap = r.qrCode?.let { QrUtils.generateQrCode(it, 360, 360) }
+            qrBitmap = r.qrCode?.let { QrUtils.generateQrCode(it, 360, 360, forLogo = true) }
             visibility = View.VISIBLE
         }
+        loadLogo()
         handler.postDelayed(autoClose, RESULT_WITH_CODE_MS)
     }
 
@@ -308,6 +313,18 @@ class VipPurchaseFlow(
         payBlock.visibility = View.VISIBLE
         payExtras(false)
         handler.postDelayed(autoClose, RESULT_MS)
+    }
+
+    /** Merchant logo (CMP branding) for the centre of the pass QR; the pass shows without it if it can't load. */
+    private fun loadLogo() {
+        val url = ConfigManager.getConfig()?.branding?.logo_url?.takeIf { it.isNotBlank() } ?: return
+        activity.lifecycleScope.launch {
+            val result = runCatching {
+                activity.imageLoader.execute(ImageRequest.Builder(activity).data(url).allowHardware(false).build())
+            }.getOrNull()
+            val bmp = (result?.drawable as? BitmapDrawable)?.bitmap
+            if (bmp != null) pass.logo = bmp else Log.w(TAG, "Merchant logo not loaded for the pass: $url")
+        }
     }
 
     private fun failure(heading: String, text: String) {

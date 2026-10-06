@@ -38,6 +38,9 @@ class VipCardView @JvmOverloads constructor(
         set(value) { field = value; invalidate() }
     var balanceText: String = ""
         set(value) { field = value; invalidate() }
+    /** Merchant logo for the centre of the QR code (PASS); the QR must use high error correction. */
+    var logo: Bitmap? = null
+        set(value) { field = value; invalidate() }
 
     private val density = resources.displayMetrics.density
     private val card = RectF()
@@ -205,6 +208,7 @@ class VipCardView @JvmOverloads constructor(
             val crisp = Paint().apply { isFilterBitmap = false; isAntiAlias = false }
             canvas.drawBitmap(it, null, RectF(panel.left + quiet, panel.top + quiet, panel.right - quiet, panel.bottom - quiet), crisp)
         }
+        logo?.let { drawCenterLogo(canvas, it, panel, side) }
 
         text.typeface = bold
         text.letterSpacing = 0.2f
@@ -225,6 +229,31 @@ class VipCardView @JvmOverloads constructor(
         text.color = gold2
         text.textSize = codeSize * 0.92f
         canvas.drawText(balanceText, w - pad - text.measureText(balanceText), bottomBase, text)
+    }
+
+    /**
+     * Merchant logo on a white rounded tile in the middle of the QR code --
+     * ~22% of its width, inside what error-correction level H recovers.
+     */
+    private fun drawCenterLogo(canvas: Canvas, bmp: Bitmap, panel: RectF, side: Float) {
+        val tile = side * 0.24f
+        val cx = panel.centerX()
+        val cy = panel.centerY()
+        val box = RectF(cx - tile / 2, cy - tile / 2, cx + tile / 2, cy + tile / 2)
+        paint.style = Paint.Style.FILL
+        paint.shader = null
+        paint.color = Color.WHITE
+        canvas.drawRoundRect(box, tile * 0.18f, tile * 0.18f, paint)
+        // Fit the logo inside the tile, keeping its aspect ratio.
+        val inner = tile * 0.82f
+        val scale = minOf(inner / bmp.width, inner / bmp.height)
+        val lw = bmp.width * scale
+        val lh = bmp.height * scale
+        val dst = RectF(cx - lw / 2, cy - lh / 2, cx + lw / 2, cy + lh / 2)
+        val save = canvas.save()
+        canvas.clipPath(android.graphics.Path().apply { addRoundRect(dst, tile * 0.12f, tile * 0.12f, android.graphics.Path.Direction.CW) })
+        canvas.drawBitmap(bmp, null, dst, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+        canvas.restoreToCount(save)
     }
 
     /** Brushed-metal hairlines and a glossy top highlight, for a real-card look. */
