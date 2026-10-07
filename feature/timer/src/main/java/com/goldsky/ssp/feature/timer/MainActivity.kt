@@ -159,6 +159,10 @@ class MainActivity : ComponentActivity() {
                     onSelect = timerVm::select,
                     onCancelPayment = timerVm::cancelPayment,
                     onTechTrigger = { if (timerVm.canEnterTechMode) showPin = true },
+                    onScan = { startScan(vendor) },
+                    onClearPending = timerVm::clearPending,
+                    onConfirm = timerVm::confirm,
+                    onCancelConfirm = timerVm::cancelConfirm,
                 )
             }
             if (showPin) {
@@ -168,6 +172,32 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // ---- coupon / VIP member code scan (same scanner wash uses) -------------
+
+    private var scanner: com.goldsky.ssp.payment.hardware.IScannerProvider? = null
+    private val scanHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val scanTimeout = Runnable { stopScan() }
+
+    /** Opens the WizarPOS scanner (its own camera page); gives up after SCAN_TIMEOUT_MS. */
+    private fun startScan(vendor: String) {
+        stopScan()
+        val s = runCatching { HardwareFactory.getScannerProvider(this, vendor) }.getOrNull() ?: return
+        scanner = s
+        scanHandler.postDelayed(scanTimeout, SCAN_TIMEOUT_MS)
+        s.startScan(object : com.goldsky.ssp.payment.hardware.IScannerProvider.ScanCallback {
+            override fun onScanSuccess(result: String) {
+                runOnUiThread { stopScan(); timerVm.onScanned(result) }
+            }
+            override fun onScanFailure(errorMsg: String) { Log.d(TAG, "Scan: $errorMsg") }
+        })
+    }
+
+    private fun stopScan() {
+        scanHandler.removeCallbacks(scanTimeout)
+        scanner?.let { runCatching { it.stopScan() } }
+        scanner = null
     }
 
     /** Dual-bay technician test: one pulse on that side. */
@@ -319,5 +349,6 @@ class MainActivity : ComponentActivity() {
         const val TAG = "AegisTimer"
         /** Same idle time as wash (BaseAdActivity). */
         const val AD_IDLE_MS = 180_000L
+        const val SCAN_TIMEOUT_MS = 30_000L
     }
 }

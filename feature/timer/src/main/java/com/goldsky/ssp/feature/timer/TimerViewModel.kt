@@ -13,7 +13,12 @@ import com.goldsky.ssp.payment.ConfigManager
 import com.goldsky.ssp.payment.DeviceAccessManager
 import com.goldsky.ssp.payment.DiagnosticManager
 import com.goldsky.ssp.payment.TransactionRecord
+import com.goldsky.ssp.payment.CouponPeekResult
+import com.goldsky.ssp.payment.CouponRedeemResult
+import com.goldsky.ssp.payment.CouponRepository
 import com.goldsky.ssp.payment.TestSale
+import com.goldsky.ssp.payment.VipDeductResult
+import com.goldsky.ssp.payment.VipRepository
 import com.goldsky.ssp.payment.TransactionRepository
 import com.goldsky.ssp.payment.hardware.IPaymentProvider
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +58,19 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         data class Declined(val reason: DeclineReason) : Screen
         /** [refunded] null while the reversal is still in flight. */
         data class StartFailed(val refunded: Boolean?) : Screen
+        /** A scanned VIP code / coupon is about to pay for [pkg]; [chargeCents] is what is left to pay by card (0 = nothing). */
+        data class Confirm(val pkg: TimerPackage, val bay: Bay?, val pending: Pending, val chargeCents: Int) : Screen
+        /** Waiting on the server (VIP deduction / coupon redemption). */
+        data class Working(val message: String) : Screen
+    }
+
+    /**
+     * A code scanned on Home, waiting for the customer to pick a package
+     * (same two kinds as wash: a 6-character VIP member code, or a coupon).
+     */
+    sealed interface Pending {
+        data class Vip(val cardUid: String, val memberCode: String, val balanceCents: Int) : Pending
+        data class Coupon(val code: String, val type: String, val value: Int, val applicableProductId: String?, val expiresAt: String?) : Pending
     }
 
     data class UiState(
@@ -68,6 +86,10 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         val dual: Boolean = false,
         /** Dual-bay: the sides currently running. */
         val bays: Map<Bay, BayRun> = emptyMap(),
+        /** Scanned VIP code / coupon waiting for a package. */
+        val pending: Pending? = null,
+        /** Short customer message (scan result, code not valid here, ...). */
+        val notice: String? = null,
     )
 
     /**
@@ -173,6 +195,20 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         // Single-bay: Home is never shown mid-session. Dual-bay: buying for a
         // running side adds time (the timer board adds a coin's worth).
         returnHomeJob?.cancel()
+        s.pending?.let { pending ->
+            when (pending) {
+                is Pending.Vip -> _state.update { it.copy(screen = Screen.Confirm(pkg, side, pending, 0)) }
+                is Pending.Coupon -> {
+                    if (pending.applicableProductId != null && pending.applicableProductId != pkg.productId) {
+                        val target = s.packages.firstOrNull { it.productId == pending.applicableProductId }
+                        notice(if (target != null) "This coupon is for the ${formatPrice(target.priceCents)} package" else "This coupon can't be used here")
+                        return
+                    }
+                    _state.update { it.copy(screen = Screen.Confirm(pkg, side, pending, couponPrice(pkg.priceCents, pending))) }
+                }
+            }
+            return
+        }
         if (s.demoMode) {
             _state.update { it.copy(screen = Screen.Paying(pkg, "DEMO — no card needed", side)) }
             viewModelScope.launch {
@@ -182,10 +218,20 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
 
+        cardSale(pkg, side, pkg.priceCents)
+    }
+
+    /**
+     * Card payment of [amountCents] for [pkg] (the package price, or what a
+     * coupon leaves to pay). [afterApproved] runs once the card is approved,
+     * before the machine starts -- a discount coupon is consumed there, so a
+     * declined card never uses it up. Time / pulses always follow [pkg].
+     */
+    private fun cardSale(pkg: TimerPackage, side: Bay?, amountCents: Int, afterApproved: (suspend () -> Unit)? = null) {
         // Technician small real test (TestSale): charge the armed amount, run
         // the full package -- pulses/time below follow pkg, not the charge.
         val testCents = TestSale.consume()
-        val chargeCents = testCents ?: pkg.priceCents
+        val chargeCents = testCents ?: amountCents
         val ecrRefNum = (if (testCents != null) TestSale.REF_PREFIX else "TIMER_") + System.currentTimeMillis()
         _state.update { it.copy(screen = Screen.Paying(pkg, "Tap, insert or swipe your card", side, chargeCents)) }
         TtsManager.speak("Please present your card")
@@ -210,7 +256,10 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                     // Deliberately ignores whether the customer hit Cancel in
                     // the meantime: money moved, so they get their time.
-                    viewModelScope.launch { onPaid(pkg, ecrRefNum, refNum, entryMode, side, chargeCents) }
+                    viewModelScope.launch {
+                        afterApproved?.invoke()
+                        onPaid(pkg, ecrRefNum, refNum, entryMode, side, chargeCents)
+                    }
                 }
 
                 override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
@@ -235,6 +284,174 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 }
             })
         }
+    }
+
+    // ---- scanned VIP code / coupon ---------------------------------------------
+
+    private var pendingExpiry: Job? = null
+    private var noticeJob: Job? = null
+
+    /**
+     * A code from the scanner. 6 letters/digits = VIP member code, anything
+     * else = coupon -- the same routing wash uses. Nothing is spent here:
+     * the VIP balance and the coupon are only used after the customer picks
+     * a package and confirms.
+     */
+    fun onScanned(raw: String) {
+        val code = raw.trim()
+        if (code.isEmpty() || _state.value.screen !is Screen.Home) return
+        viewModelScope.launch {
+            if (Regex("^[A-Za-z0-9]{6}$").matches(code)) {
+                val uid = VipRepository.resolveCardUidByQrCode(code)
+                val card = uid?.let { VipRepository.getVipCard(it) }
+                when {
+                    uid == null || card == null -> notice("Member code not recognized")
+                    !card.is_active -> notice("This VIP card is deactivated. Please contact the attendant.")
+                    else -> setPending(Pending.Vip(uid, code.uppercase(), card.balance_cents))
+                }
+                return@launch
+            }
+            when (val peek = CouponRepository.peekCoupon(code, deviceSn)) {
+                is CouponPeekResult.Success -> {
+                    val forHere = peek.applicableProductId == null || _state.value.packages.any { it.productId == peek.applicableProductId }
+                    if (forHere) setPending(Pending.Coupon(code, peek.type, peek.value, peek.applicableProductId, peek.expiresAt))
+                    else notice("This coupon can't be used here")
+                }
+                else -> notice("This code can't be used. Please see the attendant.")
+            }
+        }
+    }
+
+    fun clearPending() {
+        pendingExpiry?.cancel()
+        _state.update { it.copy(pending = null) }
+    }
+
+    fun cancelConfirm() {
+        if (_state.value.screen is Screen.Confirm) _state.update { it.copy(screen = Screen.Home) }
+    }
+
+    /** The customer confirmed the Confirm screen. */
+    fun confirm() {
+        val c = _state.value.screen as? Screen.Confirm ?: return
+        clearPending()
+        when (val pending = c.pending) {
+            is Pending.Vip -> payWithVip(c.pkg, c.bay, pending)
+            is Pending.Coupon ->
+                if (c.chargeCents <= 0) redeemFree(c.pkg, c.bay, pending)
+                else cardSale(c.pkg, c.bay, c.chargeCents) {
+                    // Paid by card already: use the coupon up now. A lost race
+                    // (used elsewhere meanwhile) still runs -- they paid.
+                    if (CouponRepository.redeemCoupon(pending.code, deviceSn) !is CouponRedeemResult.Success) {
+                        DiagnosticManager.reportError(deviceSn, "COUPON_REDEEM_AFTER_PAY_FAILED", severity = "WARNING", trace = "code=${pending.code}")
+                    }
+                }
+        }
+    }
+
+    private fun payWithVip(pkg: TimerPackage, bay: Bay?, vip: Pending.Vip) {
+        _state.update { it.copy(screen = Screen.Working("Paying from your VIP balance…")) }
+        viewModelScope.launch {
+            when (val r = VipRepository.deductBalance(vip.cardUid, pkg.priceCents)) {
+                is VipDeductResult.Success -> {
+                    val ref = "VIP_${vip.cardUid}_${System.currentTimeMillis()}"
+                    TransactionRepository.recordTransaction(
+                        getApplication(),
+                        TransactionRecord(
+                            device_sn = deviceSn, amount = pkg.priceCents, payment_status = "PAID", ecr_ref_num = ref,
+                            payment_method = "VIP_CARD", product_id = pkg.productId, service_bay = bay?.code,
+                            vip_card_uid = vip.cardUid, entry_mode = "QR_SCAN",
+                        ),
+                    )
+                    startPaidService(pkg, bay, ref, "VIP balance", "Paid from your VIP balance.")
+                }
+                is VipDeductResult.Rejected -> {
+                    val msg = when (r.reason) {
+                        "insufficient_balance" -> "Not enough VIP balance (${formatPrice(vip.balanceCents)}). Please pay by card or top up."
+                        "daily_limit_exceeded" -> "This card's daily limit is reached."
+                        else -> "This VIP card can't be used. Please see the attendant."
+                    }
+                    _state.update { it.copy(screen = Screen.Home) }
+                    notice(msg)
+                }
+                else -> { _state.update { it.copy(screen = Screen.Home) }; notice("Network problem. Please try again.") }
+            }
+        }
+    }
+
+    private fun redeemFree(pkg: TimerPackage, bay: Bay?, coupon: Pending.Coupon) {
+        _state.update { it.copy(screen = Screen.Working("Applying your coupon…")) }
+        viewModelScope.launch {
+            when (CouponRepository.redeemCoupon(coupon.code, deviceSn)) {
+                is CouponRedeemResult.Success -> {
+                    val ref = "COUPON_${System.currentTimeMillis()}"
+                    TransactionRepository.recordTransaction(
+                        getApplication(),
+                        TransactionRecord(
+                            device_sn = deviceSn, amount = 0, payment_status = "PAID", ecr_ref_num = ref,
+                            payment_method = "COUPON", product_id = pkg.productId, service_bay = bay?.code, entry_mode = "QR_SCAN",
+                        ),
+                    )
+                    startPaidService(pkg, bay, ref, "coupon ${coupon.code}", "Your coupon covers it.")
+                }
+                else -> { _state.update { it.copy(screen = Screen.Home) }; notice("This coupon can't be used. Please see the attendant.") }
+            }
+        }
+    }
+
+    /**
+     * Starts [pkg] after a VIP / free-coupon payment (already recorded PAID).
+     * Neither can be reversed from the terminal, so a machine that won't start
+     * raises a CRITICAL alert for staff to compensate in CMP.
+     */
+    private suspend fun startPaidService(pkg: TimerPackage, bay: Bay?, ref: String, paidWith: String, spoken: String) {
+        val started = if (bay != null) {
+            val extended = _state.value.bays.containsKey(bay)
+            startBay(bay, pkg, ref).also { ok -> if (ok) showThenHome(Screen.BayStarted(bay, pkg, extended), BAY_STARTED_MS) }
+        } else {
+            val issuedAt = SystemClock.elapsedRealtime()
+            startOutput(pkg.durationMs, pkg.priceCents, ref, pkg.productId).also { ok ->
+                if (ok) runSession(pkg, pkg.durationMs - (SystemClock.elapsedRealtime() - issuedAt), pkg.durationMs)
+            }
+        }
+        if (started) {
+            TransactionRepository.updateHardwareStatus(getApplication(), ref, "ACK_RECEIVED")
+            TtsManager.speak("$spoken Your ${pkg.name.lowercase()} is on.")
+        } else {
+            TransactionRepository.updateHardwareStatus(getApplication(), ref, "HARDWARE_ERROR")
+            DiagnosticManager.reportError(
+                deviceSn, "TIMER_PREPAID_NOT_STARTED", severity = "CRITICAL",
+                trace = "$ref paid with $paidWith (${pkg.priceCents}c) but the machine did not start -- compensate in CMP (VIP top-up / new coupon)",
+            )
+            showThenHome(Screen.StartFailed(refunded = false), 8000)
+        }
+    }
+
+    private fun setPending(p: Pending) {
+        pendingExpiry?.cancel()
+        _state.update { it.copy(pending = p, notice = null) }
+        TtsManager.speak(if (p is Pending.Vip) "VIP card recognized. Please choose your time." else "Coupon recognized. Please choose your time.")
+        pendingExpiry = viewModelScope.launch {
+            delay(PENDING_MS)
+            _state.update { if (it.pending == p) it.copy(pending = null) else it }
+        }
+    }
+
+    private fun notice(text: String) {
+        noticeJob?.cancel()
+        _state.update { it.copy(notice = text) }
+        noticeJob = viewModelScope.launch {
+            delay(NOTICE_MS)
+            _state.update { if (it.notice == text) it.copy(notice = null) else it }
+        }
+    }
+
+    /** Same formula as wash (docs/coupon_redemption_integration.md §3.2): never below 0. */
+    private fun couponPrice(priceCents: Int, c: Pending.Coupon): Int = when (c.type) {
+        "PERCENT_OFF" -> priceCents - (priceCents * c.value / 100)
+        "FIXED_OFF" -> maxOf(0, priceCents - c.value)
+        "FREE_WASH" -> 0
+        else -> priceCents
     }
 
     fun cancelPayment() {
@@ -542,5 +759,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         private const val START_CONFIRM_WINDOW_MS = 1_500L
         private const val MIN_RESUME_MS = 5_000L
         private const val BAY_STARTED_MS = 4_000L
+        private const val PENDING_MS = 90_000L
+        private const val NOTICE_MS = 5_000L
     }
 }

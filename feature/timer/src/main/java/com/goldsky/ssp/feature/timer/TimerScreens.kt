@@ -60,6 +60,10 @@ fun TimerApp(
     onSelect: (TimerPackage, Bay?) -> Unit,
     onCancelPayment: () -> Unit,
     onTechTrigger: () -> Unit,
+    onScan: () -> Unit = {},
+    onClearPending: () -> Unit = {},
+    onConfirm: () -> Unit = {},
+    onCancelConfirm: () -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().background(Bg)) {
         AnimatedContent(
@@ -70,8 +74,10 @@ fun TimerApp(
         ) { screen ->
             when (screen) {
                 Screen.Home ->
-                    if (s.dual) DualHomeScreen(s, version, onSelect, onTechTrigger)
-                    else HomeScreen(s, version, { onSelect(it, null) }, onTechTrigger)
+                    if (s.dual) DualHomeScreen(s, version, onSelect, onTechTrigger, onScan)
+                    else HomeScreen(s, version, { onSelect(it, null) }, onTechTrigger, onScan)
+                is Screen.Confirm -> ConfirmScreen(screen, onConfirm, onCancelConfirm)
+                is Screen.Working -> WorkingScreen(screen.message)
                 is Screen.Paying -> PayingScreen(screen, s.demoMode, onCancelPayment)
                 is Screen.BayStarted -> ResultScreen(
                     Emerald, "✓",
@@ -93,6 +99,18 @@ fun TimerApp(
                         false -> "We couldn't reverse the payment automatically.\nPlease contact the attendant."
                     },
                 )
+            }
+        }
+        if (s.screen is Screen.Home) {
+            Column(Modifier.align(Alignment.TopCenter).padding(top = 6.dp, start = 12.dp, end = 12.dp)) {
+                s.pending?.let { PendingBanner(it, onClearPending) }
+                s.notice?.let {
+                    Text(
+                        it, color = TextHi, fontSize = 13.sp, textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                            .background(Coral.copy(alpha = 0.92f), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
             }
         }
         val testArmed by TestSale.armed.collectAsState()
@@ -151,6 +169,7 @@ private fun HomeScreen(
     version: String,
     onSelect: (TimerPackage) -> Unit,
     onTechTrigger: () -> Unit,
+    onScan: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -193,7 +212,8 @@ private fun HomeScreen(
 
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("💳  Credit · Debit · Tap to pay", color = TextLo, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            ScanButton(onScan)
+            Text("  💳 Card · Tap", color = TextLo, fontSize = 12.sp, modifier = Modifier.weight(1f))
             TripleTapText(version, onTechTrigger)
         }
     }
@@ -209,6 +229,7 @@ private fun DualHomeScreen(
     version: String,
     onSelect: (TimerPackage, Bay?) -> Unit,
     onTechTrigger: () -> Unit,
+    onScan: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -249,7 +270,8 @@ private fun DualHomeScreen(
 
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("💳  Credit · Debit · Tap to pay", color = TextLo, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            ScanButton(onScan)
+            Text("  💳 Card · Tap", color = TextLo, fontSize = 12.sp, modifier = Modifier.weight(1f))
             TripleTapText(version, onTechTrigger)
         }
     }
@@ -708,6 +730,105 @@ private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () ->
             }
         }
         s.lines.takeLast(3).forEach { Text(it, color = TextLo, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 2) }
+    }
+}
+
+// ---- scanned VIP code / coupon --------------------------------------------
+
+/** Opens the scanner for a coupon or a VIP member code (the WizarPOS scanner shows its own camera page). */
+@Composable
+private fun ScanButton(onScan: () -> Unit) {
+    Row(
+        Modifier.clip(RoundedCornerShape(20.dp)).border(1.5.dp, Amber, RoundedCornerShape(20.dp))
+            .clickable(onClick = onScan).padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("▣", color = Amber, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text("  Coupon / VIP code", color = Amber, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun PendingBanner(p: TimerViewModel.Pending, onClear: () -> Unit) {
+    val text = when (p) {
+        is TimerViewModel.Pending.Vip -> "VIP ${p.memberCode} · balance ${formatPrice(p.balanceCents)} — choose your time"
+        is TimerViewModel.Pending.Coupon -> "Coupon ${couponLabel(p)} — choose your time"
+    }
+    Row(
+        Modifier.fillMaxWidth().background(Amber, RoundedCornerShape(10.dp)).padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text, color = Bg, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 2)
+        Text("✕", color = Bg, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onClear).padding(horizontal = 10.dp))
+    }
+}
+
+private fun couponLabel(c: TimerViewModel.Pending.Coupon) = when (c.type) {
+    "PERCENT_OFF" -> "${c.value}% OFF"
+    "FIXED_OFF" -> "${formatPrice(c.value)} OFF"
+    "FREE_WASH" -> "FREE"
+    else -> c.code
+}
+
+/** Confirm before a VIP balance or a coupon is used (nothing is spent until here). */
+@Composable
+private fun ConfirmScreen(c: Screen.Confirm, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    val vip = c.pending as? TimerViewModel.Pending.Vip
+    val coupon = c.pending as? TimerViewModel.Pending.Coupon
+    Column(
+        Modifier.fillMaxSize().padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Surface)
+                .border(1.dp, Amber.copy(alpha = 0.35f), RoundedCornerShape(22.dp)).padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(if (vip != null) "Pay with your VIP card?" else "Use this coupon?", color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            val unit = c.bay?.let { " · ${c.pkg.name} ${it.number}" } ?: ""
+            Text("${formatDuration(c.pkg.durationSec)} · ${formatPrice(c.pkg.priceCents)}$unit", color = TextLo, fontSize = 15.sp)
+            Spacer(Modifier.height(16.dp))
+            if (vip != null) {
+                Text(formatPrice(c.pkg.priceCents), color = Amber, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold)
+                Text("from your VIP balance", color = TextLo, fontSize = 14.sp)
+                Spacer(Modifier.height(6.dp))
+                val after = vip.balanceCents - c.pkg.priceCents
+                Text(
+                    if (after >= 0) "Balance ${formatPrice(vip.balanceCents)} → ${formatPrice(after)}" else "Balance ${formatPrice(vip.balanceCents)} is not enough",
+                    color = if (after >= 0) TextHi else Coral, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                )
+            } else if (coupon != null) {
+                Text(couponLabel(coupon), color = Emerald, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text(if (c.chargeCents <= 0) "FREE" else "Pay ${formatPrice(c.chargeCents)}", color = Amber, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold)
+                if (c.chargeCents > 0) Text("by card after you confirm", color = TextLo, fontSize = 14.sp)
+                coupon.expiresAt?.let { Text("Coupon expires ${it.replace("T", " ").take(10)}", color = TextLo, fontSize = 12.sp) }
+            }
+            Spacer(Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f).height(52.dp)) {
+                    Text("Cancel", color = TextHi, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+                Button(
+                    onClick = onConfirm,
+                    enabled = vip == null || vip.balanceCents >= c.pkg.priceCents,
+                    colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = Bg),
+                    modifier = Modifier.weight(1f).height(52.dp),
+                ) { Text("Confirm", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkingScreen(message: String) {
+    Column(
+        Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+    ) {
+        CircularProgressIndicator(color = Amber, modifier = Modifier.size(56.dp))
+        Spacer(Modifier.height(16.dp))
+        Text(message, color = TextHi, fontSize = 18.sp)
     }
 }
 
