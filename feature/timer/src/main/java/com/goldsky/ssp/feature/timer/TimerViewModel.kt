@@ -607,8 +607,12 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
 
     /** [chargeCents]: what the card was actually charged -- the reversal must match it (a test sale charges less than the package). */
     private suspend fun onStartFailed(pkg: TimerPackage, ecrRefNum: String, bankRef: String, demo: Boolean, chargeCents: Int = pkg.priceCents) {
-        _state.update { it.copy(screen = Screen.StartFailed(refunded = null)) }
-        TtsManager.speak("Sorry, the machine could not start. Your payment is being reversed.")
+        val autoReverse = com.goldsky.ssp.payment.RefundPolicy.AUTO_REVERSAL
+        _state.update { it.copy(screen = Screen.StartFailed(refunded = if (autoReverse) null else false)) }
+        TtsManager.speak(
+            if (autoReverse) "Sorry, the machine could not start. Your payment is being reversed."
+            else "Sorry, the machine could not start. Please contact the attendant."
+        )
         if (demo) {
             showThenHome(Screen.StartFailed(refunded = true), 6000)
             return
@@ -616,6 +620,12 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         DiagnosticManager.reportError(deviceSn, "TIMER_OUTPUT_START_FAIL", severity = "CRITICAL", trace = "product=${pkg.productId}")
         TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "HARDWARE_ERROR")
         if (bankRef.isEmpty()) {
+            showThenHome(Screen.StartFailed(refunded = false), 8000)
+            return
+        }
+        if (!autoReverse) {
+            // Stays PAID + HARDWARE_ERROR (CMP: compensation); a person refunds or compensates.
+            com.goldsky.ssp.payment.RefundPolicy.reportManualRefund(deviceSn, ecrRefNum, chargeCents, "timer output did not start, product=${pkg.productId}")
             showThenHome(Screen.StartFailed(refunded = false), 8000)
             return
         }

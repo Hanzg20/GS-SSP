@@ -1537,8 +1537,9 @@ class MainActivity : BaseAdActivity() {
                 popIcon(ivStatusIcon)
                 // Say what is actually happening: the reversal hasn't run yet
                 // (this used to announce "Refund fully processed" right here).
-                tvStatus?.text = getString(if (refNum.isNotEmpty()) R.string.status_error_reversing else R.string.status_error_contact)
-                TtsManager.speak(getString(if (refNum.isNotEmpty()) R.string.tts_error_reversing else R.string.status_error_contact))
+                val autoReverse = refNum.isNotEmpty() && com.goldsky.ssp.payment.RefundPolicy.AUTO_REVERSAL
+                tvStatus?.text = getString(if (autoReverse) R.string.status_error_reversing else R.string.status_error_contact)
+                TtsManager.speak(getString(if (autoReverse) R.string.tts_error_reversing else R.string.status_error_contact))
 
                 // Industrial Audit: Report hardware failure and trigger VOID
                 // (falling back to REFUND automatically if VOID is declined,
@@ -1548,8 +1549,13 @@ class MainActivity : BaseAdActivity() {
                 val failReason = (outcome as? DispenseOutcome.Failed)?.reason ?: "unknown"
                 DiagnosticManager.reportError(deviceSn, "HARDWARE_PULSE_FAIL", severity = "CRITICAL", trace = failReason)
                 TransactionRepository.updateHardwareStatus(this@MainActivity, ecrRefNum, "HARDWARE_ERROR")
+                if (refNum.isNotEmpty() && !autoReverse) {
+                    // Automatic reversal is off: stays PAID + HARDWARE_ERROR (CMP lists it
+                    // under compensation); a person refunds or compensates.
+                    com.goldsky.ssp.payment.RefundPolicy.reportManualRefund(deviceSn, ecrRefNum, amountCents, "wash did not start ($failReason)")
+                }
 
-                if (refNum.isNotEmpty()) {
+                if (autoReverse) {
                     val provider = PaymentProviderFactory.getPaymentProvider(this@MainActivity, hardwareVendor)
                     // Wait for the real outcome before telling the customer. A
                     // VOID answers in about a second; the REFUND fallback may

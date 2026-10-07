@@ -25,8 +25,6 @@ import kotlinx.coroutines.withTimeoutOrNull
  */
 object PendingResolver {
     private const val TAG = "PendingResolver"
-    /** Off for now: an approved stale sale is kept PAID and flagged for a person instead of voided. */
-    private const val AUTO_REVERSE = false
     private const val MIN_AGE_MS = 5 * 60_000L          // longer than any sale (card timeout <= ~3 min)
     private const val GIVE_UP_MS = 24 * 60 * 60_000L
     private const val CALL_TIMEOUT_MS = 90_000L
@@ -72,7 +70,7 @@ object PendingResolver {
                         continue
                     }
                     val amount = r.amountCents ?: order.amountCents
-                    if (!AUTO_REVERSE) {
+                    if (!RefundPolicy.AUTO_REVERSAL) {
                         // Automatic reversal is off (owner's call, 2026-10-07): the
                         // sale is kept PAID and a person decides -- compensate or
                         // refund in the merchant portal. CMP shows it under

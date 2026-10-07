@@ -96,7 +96,7 @@ fun TimerApp(
                     when (screen.refunded) {
                         null -> "Reversing your payment…\nIf the card reader asks, present your card again."
                         true -> "Your payment has been reversed.\nNo charge was made."
-                        false -> "We couldn't reverse the payment automatically.\nPlease contact the attendant."
+                        false -> "Please contact the attendant.\nYour payment will be refunded or compensated."
                     },
                 )
             }

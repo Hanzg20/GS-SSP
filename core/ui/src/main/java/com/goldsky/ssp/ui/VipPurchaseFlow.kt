@@ -24,6 +24,7 @@ import com.goldsky.ssp.core.ui.R
 import android.graphics.drawable.BitmapDrawable
 import coil.imageLoader
 import coil.request.ImageRequest
+import com.goldsky.ssp.payment.RefundPolicy
 import com.goldsky.ssp.payment.CardTypeClassifier
 import com.goldsky.ssp.payment.ConfigManager
 import com.goldsky.ssp.payment.DeviceRepository
@@ -262,6 +263,12 @@ class VipPurchaseFlow(
                 Log.e(TAG, "VIP load $ecrRefNum rejected: ${r.reason}; reversing")
                 DiagnosticManager.reportError(deviceSn, "VIP_LOAD_REJECTED", severity = "WARNING", trace = "$ecrRefNum ${r.reason}")
                 TransactionRepository.updateHardwareStatus(activity, ecrRefNum, "HARDWARE_ERROR")
+                if (!RefundPolicy.AUTO_REVERSAL) {
+                    // No automatic reversal for now: stays PAID, a person refunds it.
+                    RefundPolicy.reportManualRefund(deviceSn, ecrRefNum, chargeCents, "VIP top-up refused: ${r.reason}")
+                    failure(activity.getString(R.string.vip_not_completed), activity.getString(R.string.vip_see_attendant, ecrRefNum.takeLast(6)))
+                    return
+                }
                 busy(Step.PAY, activity.getString(R.string.vip_reversing))
                 PaymentProviderFactory.getPaymentProvider(activity, vendor).voidOrRefund(bankRef, chargeCents) { ok, method ->
                     activity.lifecycleScope.launch {
