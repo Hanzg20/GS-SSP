@@ -1,65 +1,86 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Coupon confirmation (and VIP insufficient-balance notice), restyled
+     2026-10-06 to the VIP purchase flow's panel: dark panel with a gold
+     edge, gold primary action, outlined secondary. View ids unchanged
+     (feature/wash MainActivity fills them). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
-    android:padding="32dp">
+    android:background="@drawable/bg_vip_page">
 
-    <TextView
-        android:id="@+id/tv_coupon_confirm_title"
-        android:layout_width="0dp"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="@string/coupon_confirm_title"
-        android:textColor="@color/text_light"
-        android:textSize="26sp"
-        android:textStyle="bold"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        android:layout_gravity="center"
+        android:layout_margin="14dp"
+        android:background="@drawable/bg_vip_panel"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="22dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="18dp">
 
-    <TextView
-        android:id="@+id/tv_coupon_confirm_message"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_marginTop="24dp"
-        android:gravity="center"
-        android:textColor="@color/text_light"
-        android:textSize="22sp"
-        app:layout_constraintBottom_toTopOf="@id/btn_coupon_confirm"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tv_coupon_confirm_title"
-        tools:text="Starter $4.00\nCoupon covers the full amount -- Free\nExpires 2026-12-31" />
+        <ImageView
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_vip_ticket" />
 
-    <Button
-        android:id="@+id/btn_coupon_cancel"
-        android:layout_width="0dp"
-        android:layout_height="72dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="8dp"
-        android:backgroundTint="@color/btn_neutral_bg"
-        android:text="@string/btn_cancel"
-        android:textColor="@color/coral_red"
-        android:textSize="20sp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/btn_coupon_confirm"
-        app:layout_constraintStart_toStartOf="parent" />
+        <TextView
+            android:id="@+id/tv_coupon_confirm_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:text="@string/coupon_confirm_title"
+            android:textColor="@color/text_light"
+            android:textSize="22sp"
+            android:textStyle="bold" />
 
-    <Button
-        android:id="@+id/btn_coupon_confirm"
-        android:layout_width="0dp"
-        android:layout_height="72dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginStart="8dp"
-        android:backgroundTint="@color/emerald_green"
-        android:text="@string/coupon_confirm_button"
-        android:textColor="@color/text_light"
-        android:textSize="20sp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/btn_coupon_cancel" />
+        <TextView
+            android:id="@+id/tv_coupon_confirm_message"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:textColor="@color/text_light"
+            android:textSize="17sp"
+            tools:text="Starter $4.00\nCoupon covers the full amount, Free\nExpires 2026-12-31" />
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_coupon_cancel"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="54dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:text="@string/btn_cancel"
+                android:textColor="@color/text_light"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                app:strokeColor="#4A4A54" />
+
+            <Button
+                android:id="@+id/btn_coupon_confirm"
+                android:layout_width="0dp"
+                android:layout_height="54dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:backgroundTint="@color/gold_accent"
+                android:text="@string/coupon_confirm_button"
+                android:textColor="@color/text_dark"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>
