@@ -82,6 +82,8 @@ class MainActivity : BaseAdActivity() {
         // 2026-09-19). 15s is enough time to position a code in front of the
         // camera without leaving a customer stuck on a dead scan screen.
         private const val SCAN_TIMEOUT_MS = 15000L
+        // A scanned VIP code / coupon waits this long for a wash to be chosen.
+        private const val PENDING_TIMEOUT_MS = 60_000L
     }
 
     private lateinit var layoutPackageSelection: ConstraintLayout
@@ -542,8 +544,10 @@ class MainActivity : BaseAdActivity() {
                                 // failure here must not block the flow, the deduct RPC
                                 // re-validates the card server-side anyway.
                                 val card = scannedCard
-                                val base = getString(R.string.toast_member_recognized)
-                                showScanFeedback(if (card != null) "${vipCardSummary(card)}\n$base" else base)
+                                showScanPending(
+                                    getString(R.string.pending_vip_title, scanned.uppercase(), card?.let { formatCents(it.balance_cents) } ?: ""),
+                                    getString(R.string.tts_pending_vip),
+                                )
                             } else {
                                 showScanFeedback(getString(R.string.toast_member_code_invalid))
                             }
@@ -568,7 +572,10 @@ class MainActivity : BaseAdActivity() {
                                         // Checked only; consumed when it pays (see pendingCoupon).
                                         pendingVipCardUid = null
                                         pendingCoupon = PendingCoupon(scanned, peek.type, peek.value)
-                                        showScanFeedback(getString(R.string.toast_coupon_applied))
+                                        showScanPending(
+                                            getString(R.string.pending_coupon_title, couponLabel(peek.type, peek.value)),
+                                            getString(R.string.tts_pending_coupon),
+                                        )
                                     } else {
                                         // Bound to a specific package (applicable_product_id set),
                                         // but nothing in the local catalog matches that id -- most
@@ -754,6 +761,65 @@ class MainActivity : BaseAdActivity() {
      * it doesn't stack -- exactly one scan result is ever pending at a time
      * (see pendingVipCardUid/pendingCoupon's own single-slot comment).
      */
+    private val pendingTimeout = Runnable {
+        pendingVipCardUid = null
+        pendingCoupon = null
+        hideScanPending()
+    }
+    private val pendingPulses = mutableListOf<android.animation.Animator>()
+
+    /**
+     * A scanned VIP code / coupon is waiting for a wash to be chosen: the scan
+     * belt turns gold with a check, the code (and balance) and "Tap a wash
+     * below", the package cards pulse, and the voice says it. Stays until a
+     * wash is chosen, X, or [PENDING_TIMEOUT_MS] -- the earlier 4.5 s text
+     * vanished and customers took the scan for "not working" (2026-10-07).
+     */
+    private fun showScanPending(title: String, spoken: String) {
+        findViewById<TextView>(R.id.tv_scan_feedback).visibility = View.GONE
+        findViewById<TextView>(R.id.tv_scan_pending_title).text = title
+        findViewById<View>(R.id.layout_scan_pending).apply {
+            visibility = View.VISIBLE
+            findViewById<View>(R.id.btn_scan_pending_clear).setOnClickListener {
+                pendingVipCardUid = null
+                pendingCoupon = null
+                hideScanPending()
+            }
+        }
+        TtsManager.speak(spoken)
+        pendingPulses.forEach { it.cancel() }
+        pendingPulses.clear()
+        val packages = findViewById<android.view.ViewGroup>(R.id.layout_package_selection)
+        for (i in 0 until packages.childCount) {
+            val card = packages.getChildAt(i)
+            if (card.visibility != View.VISIBLE || card.id == View.NO_ID) continue
+            pendingPulses += ObjectAnimator.ofPropertyValuesHolder(
+                card,
+                PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.05f, 1f),
+                PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.05f, 1f),
+            ).apply { duration = 1100; repeatCount = ValueAnimator.INFINITE; start() }
+        }
+        scanFeedbackHandler.removeCallbacks(pendingTimeout)
+        scanFeedbackHandler.postDelayed(pendingTimeout, PENDING_TIMEOUT_MS)
+        resetAdTimer()
+    }
+
+    private fun hideScanPending() {
+        scanFeedbackHandler.removeCallbacks(pendingTimeout)
+        findViewById<View>(R.id.layout_scan_pending).visibility = View.GONE
+        pendingPulses.forEach { it.cancel() }
+        pendingPulses.clear()
+        val packages = findViewById<android.view.ViewGroup>(R.id.layout_package_selection)
+        for (i in 0 until packages.childCount) packages.getChildAt(i).apply { scaleX = 1f; scaleY = 1f }
+    }
+
+    private fun couponLabel(type: String, value: Int): String = when (type) {
+        "PERCENT_OFF" -> "$value% OFF"
+        "FIXED_OFF" -> "${formatCents(value)} OFF"
+        "FREE_WASH" -> "FREE WASH"
+        else -> ""
+    }
+
     private fun showScanFeedback(message: String, durationMs: Long = 4500L) {
         val tv = findViewById<TextView>(R.id.tv_scan_feedback)
         tv.text = message
@@ -773,6 +839,7 @@ class MainActivity : BaseAdActivity() {
      * are the package's own (pre-discount) price and hardware command.
      */
     private fun startPackagePurchaseFlow(priceInCents: Int, startHex: String, productId: String? = null) {
+        hideScanPending()
         val vipUid = pendingVipCardUid
         if (vipUid != null) {
             pendingVipCardUid = null
