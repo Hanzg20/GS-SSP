@@ -40,4 +40,11 @@ class CardTypeClassifierTest {
         assertEquals(null, TransactionRepository.realAuthCode(""))
         assertEquals(null, TransactionRepository.realAuthCode(null))
     }
+
+    @Test fun duplicateInsertCountsAsRecorded() {
+        assertEquals(true, TransactionRepository.isAlreadyRecorded(
+            "duplicate key value violates unique constraint \"transactions_ecr_ref_num_key\""))
+        assertEquals(false, TransactionRepository.isAlreadyRecorded("Communication Timeout"))
+        assertEquals(false, TransactionRepository.isAlreadyRecorded(null))
+    }
 }

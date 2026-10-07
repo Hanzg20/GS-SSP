@@ -216,10 +216,22 @@ object TransactionRepository {
             Log.i(TAG, "Transaction recorded: ${record.ecr_ref_num}")
             true
         } catch (e: Exception) {
+            if (isAlreadyRecorded(e.message)) {
+                // The row is already in the cloud (an earlier attempt landed but
+                // its answer got lost). Done -- retrying it only kept a dead
+                // entry in the offline queue, which re-inserted a deleted test
+                // sale on bay5 (2026-10-07).
+                Log.i(TAG, "Transaction already recorded: ${record.ecr_ref_num}")
+                return@withContext true
+            }
             Log.e(TAG, "Error recording transaction: ${e.message}")
             false
         }
     }
+
+    /** Insert refused because this ecr_ref_num is already there (Postgres 23505 on its unique key). */
+    fun isAlreadyRecorded(message: String?): Boolean =
+        message != null && message.contains("transactions_ecr_ref_num_key")
 
     /**
      * UPDATE ... WHERE ecr_ref_num = ? that reports whether a row was actually
