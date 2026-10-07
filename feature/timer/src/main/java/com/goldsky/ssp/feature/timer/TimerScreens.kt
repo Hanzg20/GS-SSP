@@ -65,6 +65,8 @@ fun TimerApp(
     onConfirm: () -> Unit = {},
     onCancelConfirm: () -> Unit = {},
 ) {
+    // A scanned VIP code / coupon is waiting: the price buttons pulse.
+    CompositionLocalProvider(LocalPendingPulse provides (s.pending != null && s.screen is Screen.Home)) {
     Box(Modifier.fillMaxSize().background(Bg)) {
         AnimatedContent(
             targetState = s.screen,
@@ -128,6 +130,7 @@ fun TimerApp(
                     .background(Amber, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
             )
         }
+    }
     }
 }
 
@@ -315,6 +318,7 @@ private fun BayColumn(
                 Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp)
+                    .pendingPulse()
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (enabled) Amber else SurfaceHi)
                     .clickable(enabled = enabled) { onSelect(pkg) }
@@ -368,6 +372,7 @@ private fun BayRing(running: Boolean, remaining: Long, totalMs: Long, color: Col
 private fun PackageCard(pkg: TimerPackage, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Column(
         modifier
+            .pendingPulse()
             .clip(RoundedCornerShape(18.dp))
             .background(Surface)
             .border(2.dp, SurfaceHi, RoundedCornerShape(18.dp))
@@ -751,18 +756,38 @@ private fun ScanButton(onScan: () -> Unit) {
     }
 }
 
+private val LocalPendingPulse = compositionLocalOf { false }
+
+/** Gentle pulse on the price buttons while a scanned VIP code / coupon waits for a choice. */
+@Composable
+private fun Modifier.pendingPulse(): Modifier {
+    if (!LocalPendingPulse.current) return this
+    val t = rememberInfiniteTransition(label = "pendingPulse")
+    val k by t.animateFloat(1f, 1.05f, infiniteRepeatable(tween(550), RepeatMode.Reverse), label = "k")
+    return this.scale(k)
+}
+
+/**
+ * Two big lines with a check, like Wash: customers with little English
+ * missed the old one-line 13sp banner and thought the scan did nothing
+ * (2026-10-07).
+ */
 @Composable
 private fun PendingBanner(p: TimerViewModel.Pending, onClear: () -> Unit) {
-    val text = when (p) {
-        is TimerViewModel.Pending.Vip -> "VIP ${p.memberCode} · balance ${formatPrice(p.balanceCents)} — choose your time"
-        is TimerViewModel.Pending.Coupon -> "Coupon ${couponLabel(p)} — choose your time"
+    val title = when (p) {
+        is TimerViewModel.Pending.Vip -> "VIP ${p.memberCode}  ·  ${formatPrice(p.balanceCents)}"
+        is TimerViewModel.Pending.Coupon -> "Coupon ${couponLabel(p)}"
     }
     Row(
-        Modifier.fillMaxWidth().background(Amber, RoundedCornerShape(10.dp)).padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+        Modifier.fillMaxWidth().background(Amber, RoundedCornerShape(12.dp)).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text, color = Bg, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 2)
-        Text("✕", color = Bg, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onClear).padding(horizontal = 10.dp))
+        Text("✓", color = Bg, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+            Text(title, color = Bg, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+            Text("Tap a time below to pay  ↓", color = Bg, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
+        Text("✕", color = Bg, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onClear).padding(horizontal = 14.dp, vertical = 8.dp))
     }
 }
 
