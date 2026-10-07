@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.audiofx.LoudnessEnhancer
 import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
@@ -23,6 +24,19 @@ object TtsManager : DefaultLifecycleObserver {
     private var isInitialized = false
     private var currentLocale = Locale.US
     private var audioManager: AudioManager? = null
+
+    // Our own audio session for the engine's output, so a LoudnessEnhancer can
+    // lift it (the kiosk speaker is small and the stream sits at 12/15 on
+    // bay5). +6 dB: noticeably fuller without clipping on the Q3mini speaker.
+    private var sessionId: Int = AudioManager.ERROR
+    private var loudness: LoudnessEnhancer? = null
+    private const val LOUDNESS_GAIN_MB = 600
+
+    /**
+     * Fuller, lower Google voices first (a thin voice was the complaint,
+     * 2026-10-07); the best-quality voice for the locale otherwise.
+     */
+    private val PREFERRED_VOICES = listOf("en-us-x-iom-local", "en-us-x-tpd-local", "en-us-x-iol-local")
 
     // Same usage/content type on both the focus request AND the engine's own
     // output (via tts.setAudioAttributes below) -- a mismatch between the two
@@ -49,8 +63,11 @@ object TtsManager : DefaultLifecycleObserver {
                     // produced voice line like PAYWizard's -- a small boost
                     // to both gives the announcement more presence without
                     // sounding sped-up or unnatural.
-                    tts?.setPitch(1.08f)
-                    tts?.setSpeechRate(1.05f)
+                    // Natural pitch and pace: the earlier 1.08 / 1.05 boost made the
+                    // voice sound thinner, not stronger (owner, 2026-10-07).
+                    tts?.setPitch(1.0f)
+                    tts?.setSpeechRate(1.0f)
+                    attachLoudness()
                     configureVoice(currentLocale)
                     Log.i(TAG, "TTS Engine initialized successfully")
                 } else {
@@ -94,6 +111,23 @@ object TtsManager : DefaultLifecycleObserver {
         }
     }
 
+    private fun attachLoudness() {
+        val am = audioManager ?: return
+        try {
+            sessionId = am.generateAudioSessionId()
+            loudness = LoudnessEnhancer(sessionId).apply {
+                setTargetGain(LOUDNESS_GAIN_MB)
+                enabled = true
+            }
+            Log.i(TAG, "Loudness enhancer on session $sessionId (+${LOUDNESS_GAIN_MB / 100} dB)")
+        } catch (e: Exception) {
+            // Not every device exposes the effect: speak without it.
+            Log.w(TAG, "LoudnessEnhancer unavailable: ${e.message}")
+            loudness = null
+            sessionId = AudioManager.ERROR
+        }
+    }
+
     /**
      * The engine's auto-selected default voice for a locale is often a
      * lower-quality offline voice; prefer the highest-[Voice.getQuality]
@@ -105,9 +139,10 @@ object TtsManager : DefaultLifecycleObserver {
     private fun selectBestVoice(locale: Locale) {
         val engine = tts ?: return
         try {
-            val best = engine.voices
-                ?.filter { it.locale == locale && !it.isNetworkConnectionRequired }
-                ?.maxByOrNull { it.quality }
+            val offline = engine.voices?.filter { it.locale == locale && !it.isNetworkConnectionRequired }.orEmpty()
+            Log.i(TAG, "Voices for $locale: ${offline.joinToString { it.name }}")
+            val best = PREFERRED_VOICES.firstNotNullOfOrNull { name -> offline.firstOrNull { it.name == name } }
+                ?: offline.maxByOrNull { it.quality }
             if (best != null && best != engine.voice) {
                 engine.voice = best
                 Log.i(TAG, "Selected voice: ${best.name} (quality=${best.quality})")
@@ -148,6 +183,7 @@ object TtsManager : DefaultLifecycleObserver {
         // announcement plays as loud as the stream allows.
         val params = Bundle().apply {
             putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+            if (sessionId != AudioManager.ERROR) putInt(TextToSpeech.Engine.KEY_PARAM_SESSION_ID, sessionId)
         }
 
         // Use QUEUE_FLUSH to interrupt any previous guidance for better UX
@@ -184,6 +220,9 @@ object TtsManager : DefaultLifecycleObserver {
         Log.i(TAG, "Shutting down TTS engine")
         tts?.shutdown()
         tts = null
+        loudness?.release()
+        loudness = null
+        sessionId = AudioManager.ERROR
         isInitialized = false
         owner.lifecycle.removeObserver(this)
     }
