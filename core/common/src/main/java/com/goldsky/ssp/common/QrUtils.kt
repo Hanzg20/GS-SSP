@@ -25,7 +25,10 @@ object QrUtils {
             // to lock on still work) so the code renders as large and dense
             // as possible at a fixed pixel size, per on-site feedback that
             // the old margin made it harder to scan, not easier.
-            val hints = mutableMapOf<EncodeHintType, Any>(EncodeHintType.MARGIN to 1)
+            // The VIP pass (forLogo) gets 2 modules: customers photograph the
+            // terminal screen and a wider quiet zone helps the scanner lock on
+            // to that photo (simulated 2026-10-07, see VipCardView).
+            val hints = mutableMapOf<EncodeHintType, Any>(EncodeHintType.MARGIN to if (forLogo) 2 else 1)
             if (forLogo) hints[EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.H
             val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, width, height, hints)
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)

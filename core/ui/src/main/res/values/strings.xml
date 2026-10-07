@@ -124,6 +124,7 @@
     <string name="toast_pay_timeout">Payment timed out. Please try again.</string>
     <string name="toast_payment_processing_wait">Payment processing, please wait…</string>
     <string name="toast_member_recognized">Member recognized! Please select your wash package.</string>
+    <string name="vip_pass_help">Scan not working? Text %1$s with your member code</string>
     <string name="toast_vip_insufficient">Insufficient balance: %1$s (lowest package %2$s). Top up on the VIP page or pay by card.</string>
     <string name="toast_member_code_invalid">Member code not recognized</string>
     <string name="toast_coupon_applied">Coupon applied! Please select your wash package.</string>

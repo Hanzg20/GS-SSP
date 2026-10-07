@@ -309,6 +309,8 @@ class VipPurchaseFlow(
             memberCode = r.qrCode ?: ""
             balanceText = money(r.balanceCents)
             qrBitmap = r.qrCode?.let { QrUtils.generateQrCode(it, 360, 360, forLogo = true) }
+            helpText = ConfigManager.getConfig()?.branding?.support_phone?.takeIf { it.isNotBlank() }
+                ?.let { activity.getString(R.string.vip_pass_help, it) } ?: ""
             visibility = View.VISIBLE
         }
         loadLogo()

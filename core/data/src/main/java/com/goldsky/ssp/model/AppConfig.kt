@@ -27,6 +27,9 @@ data class Branding(
     val logo_url: String? = null,
     val brand_name: String = "GS-SSP",
     val primary_color_hex: String = "#FFB800",
+    // Customers text this number when the photo of their VIP pass won't scan
+    // (printed under the pass). organizations.support_phone, 2026-10-07.
+    val support_phone: String? = null,
     // A merchant-authored greeting (CMP's "Kiosk Marquee Announcement" field,
     // gs-ssp-cmp's ConfigPricingManager) -- added 2026-09-23 alongside fixing
     // the CMP publish payload's key names (was sending logoUrl/themeColor/

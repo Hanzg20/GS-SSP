@@ -41,6 +41,9 @@ class VipCardView @JvmOverloads constructor(
     /** Merchant logo for the centre of the QR code (PASS); the QR must use high error correction. */
     var logo: Bitmap? = null
         set(value) { field = value; invalidate() }
+    /** PASS: small line under the card, e.g. "Scan not working? Text ..." -- part of the customer's photo. */
+    var helpText: String = ""
+        set(value) { field = value; invalidate() }
 
     private val density = resources.displayMetrics.density
     private val card = RectF()
@@ -189,8 +192,10 @@ class VipCardView @JvmOverloads constructor(
         canvas.drawText("VIP", w - pad - vipW, headerBase + w * 0.012f, text)
         text.shader = null
 
-        // Bottom row (two columns): MEMBER CODE + the code, BALANCE + amount.
-        val bottomBase = h - pad * 0.9f
+        // Bottom row (two columns): MEMBER CODE + the code, BALANCE + amount;
+        // the help line (support phone) under it when there is one.
+        val helpSize = w * 0.032f
+        val bottomBase = h - pad * 0.9f - (if (helpText.isNotBlank()) helpSize * 1.7f else 0f)
         val codeSize = w * 0.085f
         val labelSize = w * 0.03f
         val labelBase = bottomBase - codeSize - w * 0.012f
@@ -202,7 +207,11 @@ class VipCardView @JvmOverloads constructor(
         paint.style = Paint.Style.FILL
         paint.color = Color.WHITE
         canvas.drawRoundRect(panel, w * 0.03f, w * 0.03f, paint)
-        val quiet = side * 0.045f
+        // Customers photograph this screen and show the photo to the scanner.
+        // Simulated against that (blur, tilt, glare, moire, JPEG; 2026-10-07):
+        // logo 24% + thin margin decoded 86.5%; logo 18% + ~4-module quiet
+        // zone 96.8% (no logo 99.2%).
+        val quiet = side * 0.06f
         qrBitmap?.let {
             // Nearest-neighbour: keeps every module edge sharp when scaled.
             val crisp = Paint().apply { isFilterBitmap = false; isAntiAlias = false }
@@ -229,14 +238,23 @@ class VipCardView @JvmOverloads constructor(
         text.color = gold2
         text.textSize = codeSize * 0.92f
         canvas.drawText(balanceText, w - pad - text.measureText(balanceText), bottomBase, text)
+
+        if (helpText.isNotBlank()) {
+            text.typeface = bold
+            text.letterSpacing = 0f
+            text.color = Color.argb(200, 255, 255, 255)
+            text.textSize = helpSize
+            while (text.measureText(helpText) > w - 2 * pad && text.textSize > w * 0.022f) text.textSize *= 0.94f
+            canvas.drawText(helpText, (w - text.measureText(helpText)) / 2, h - pad * 0.9f, text)
+        }
     }
 
     /**
      * Merchant logo on a white rounded tile in the middle of the QR code --
-     * ~22% of its width, inside what error-correction level H recovers.
+     * 18% of its width: 24% failed too often on photos of the screen.
      */
     private fun drawCenterLogo(canvas: Canvas, bmp: Bitmap, panel: RectF, side: Float) {
-        val tile = side * 0.24f
+        val tile = side * 0.18f
         val cx = panel.centerX()
         val cy = panel.centerY()
         val box = RectF(cx - tile / 2, cy - tile / 2, cx + tile / 2, cy + tile / 2)
