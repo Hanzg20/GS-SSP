@@ -27,16 +27,18 @@ object TtsManager : DefaultLifecycleObserver {
 
     // Our own audio session for the engine's output, so a LoudnessEnhancer can
     // lift it (the kiosk speaker is small and the stream sits at 12/15 on
-    // bay5). +6 dB: noticeably fuller without clipping on the Q3mini speaker.
+    // bay5). +6 dB clipped on the Q3mini speaker (2026-10-07); +2 dB is a
+    // gentle lift that stays clean.
     private var sessionId: Int = AudioManager.ERROR
     private var loudness: LoudnessEnhancer? = null
-    private const val LOUDNESS_GAIN_MB = 600
+    private const val LOUDNESS_GAIN_MB = 200
 
     /**
-     * Fuller, lower Google voices first (a thin voice was the complaint,
-     * 2026-10-07); the best-quality voice for the locale otherwise.
+     * Google's familiar standard US voice (sfg -- the one Android / Maps
+     * users know) first; the owner asked for a popular voice after trying a
+     * deeper male one (2026-10-07). Best-quality voice for the locale otherwise.
      */
-    private val PREFERRED_VOICES = listOf("en-us-x-iom-local", "en-us-x-tpd-local", "en-us-x-iol-local")
+    private val PREFERRED_VOICES = listOf("en-us-x-sfg-local", "en-us-x-tpf-local")
 
     // Same usage/content type on both the focus request AND the engine's own
     // output (via tts.setAudioAttributes below) -- a mismatch between the two
@@ -119,7 +121,7 @@ object TtsManager : DefaultLifecycleObserver {
                 setTargetGain(LOUDNESS_GAIN_MB)
                 enabled = true
             }
-            Log.i(TAG, "Loudness enhancer on session $sessionId (+${LOUDNESS_GAIN_MB / 100} dB)")
+            Log.i(TAG, "Loudness enhancer on session $sessionId (+${LOUDNESS_GAIN_MB / 100.0} dB)")
         } catch (e: Exception) {
             // Not every device exposes the effect: speak without it.
             Log.w(TAG, "LoudnessEnhancer unavailable: ${e.message}")
