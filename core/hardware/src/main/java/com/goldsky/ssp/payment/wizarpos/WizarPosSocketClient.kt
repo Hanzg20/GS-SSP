@@ -26,6 +26,11 @@ object WizarPosSocketClient {
     // log): at 60 s we gave up and recorded DECLINED, then the terminal approved the
     // card a few seconds later -- charged, but untracked and never dispensed.
     private const val READ_TIMEOUT_MS = 200_000
+    // The handshake is answered at once by a free PAYWizard. No answer means it
+    // is still busy with another sale (e.g. one whose app was killed mid-payment,
+    // bay5 2026-10-07): give up in seconds instead of holding the customer's
+    // screen for the full 200 s. Nothing has been charged at that point.
+    private const val HANDSHAKE_TIMEOUT_MS = 10_000
 
     private var sequenceNumber = 1
 
@@ -65,7 +70,7 @@ object WizarPosSocketClient {
                 Log.e(TAG, "Connection Refused. Is PAYWizard running on one of $PORTS?")
                 return@withContext null
             }
-            socket.soTimeout = READ_TIMEOUT_MS
+            socket.soTimeout = if (ctrlPath == WizarPosP3Protocol.CTRL_HANDSHAKE_REQ) HANDSHAKE_TIMEOUT_MS else READ_TIMEOUT_MS
             Log.d(TAG, "Socket Connected. Preparing P3 Frame.")
 
             val outputStream = socket.getOutputStream()

@@ -191,8 +191,14 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
             val randomBytes = ByteArray(4).apply { java.util.Random().nextBytes(this) }
             val handshakeRes = WizarPosSocketClient.sendRequest(randomBytes, WizarPosP3Protocol.CTRL_HANDSHAKE_REQ)
             
-            if (handshakeRes == null || !handshakeRes.contentEquals(randomBytes)) {
-                Log.w(TAG, "P3 Handshake failed or mismatch, attempting to proceed anyway...")
+            if (handshakeRes == null) {
+                // No answer: PAYWizard busy (or not running). Nothing sent yet,
+                // nothing charged -- fail now rather than wait 200 s on the sale.
+                Log.w(TAG, "P3 Handshake got no reply; not sending the sale")
+                callback.onFailure("Payment service busy (P3 handshake no reply)", true)
+                return
+            } else if (!handshakeRes.contentEquals(randomBytes)) {
+                Log.w(TAG, "P3 Handshake mismatch, attempting to proceed anyway...")
             } else {
                 Log.i(TAG, "P3 Handshake Successful")
             }
