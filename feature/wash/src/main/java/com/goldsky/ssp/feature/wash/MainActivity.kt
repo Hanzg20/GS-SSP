@@ -904,7 +904,7 @@ class MainActivity : BaseAdActivity() {
                     override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                         Log.e("MainActivity", "Card detection error: $errorMsg")
                         if (isHardwareFault) {
-                            DiagnosticManager.reportError(deviceSn, "IDTECH_HARDWARE_FAULT", severity = "CRITICAL", trace = errorMsg)
+                            DiagnosticManager.reportError(deviceSn, "CARD_READER_FAULT", severity = "CRITICAL", trace = errorMsg)
                         }
                     }
                     override fun onProgress(message: String) {
@@ -1234,7 +1234,7 @@ class MainActivity : BaseAdActivity() {
                             resetAdTimer()
                         }
                         if (isHardwareFault) {
-                            DiagnosticManager.reportError(deviceSn, "IDTECH_HARDWARE_FAULT", severity = "CRITICAL", trace = errorMsg)
+                            DiagnosticManager.reportError(deviceSn, "CARD_READER_FAULT", severity = "CRITICAL", trace = errorMsg)
                         }
                         CoroutineScope(Dispatchers.Main).launch {
                             val card = pendingCardInfo.also { pendingCardInfo = null }
