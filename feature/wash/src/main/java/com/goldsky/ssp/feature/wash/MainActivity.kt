@@ -892,10 +892,12 @@ class MainActivity : BaseAdActivity() {
 
         if (isCard) {
             if (hardwareVendor.uppercase() == "WIZARPOS") {
-                // WizarPOS: PAYWizard app handles its own fullscreen payment UI, status, and voice guidance.
-                // We should completely skip our own card guidance screen and voice announcements to avoid overlap.
+                // WizarPOS: PAYWizard shows its own fullscreen payment UI, so our card
+                // guidance screen stays hidden. It has no voice prompt with Nuvei
+                // SmartPay, though -- speak ours (same as Aegis Timer).
                 layoutCard.visibility = View.GONE
                 layoutQr.visibility = View.GONE
+                TtsManager.speak(getString(R.string.prompt_card_guide))
                 initCardPayment(priceInCents, startHex, dialog, productId, serviceCents, couponCode)
             } else {
                 layoutCard.visibility = View.VISIBLE

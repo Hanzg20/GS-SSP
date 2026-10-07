@@ -183,9 +183,9 @@ class VipPurchaseFlow(
     }
 
     private fun pay(cardUid: String?, phone: String?, currentBalanceCents: Int? = null) {
-        // Technician test: charges the test amount and runs the whole flow,
-        // but the server credits 0 for TEST_ sales -- test money never
-        // becomes VIP balance.
+        // Technician test: charges the test amount and runs the whole flow;
+        // the server credits the plan as if bought in full, so the card can
+        // be tested for spending too.
         val testCents = TestSale.consume()
         val chargeCents = testCents ?: plan.amount_cents
         val ecrRefNum = (if (testCents != null) TestSale.REF_PREFIX else "VLOAD_") + System.currentTimeMillis()
