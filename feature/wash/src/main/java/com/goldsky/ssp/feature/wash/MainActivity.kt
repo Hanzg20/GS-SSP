@@ -1212,7 +1212,7 @@ class MainActivity : BaseAdActivity() {
                     override fun onCancelled() { cancelled = true }
                     override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                         redeemPaidCoupon(couponCode)
-                        startFinalizationSequence(chargeCents, startHex, refNum, dialog, txRefNum, entryMode = entryMode, pulseAmountCents = serviceCents)
+                        startFinalizationSequence(chargeCents, startHex, refNum, dialog, txRefNum, entryMode = entryMode, pulseAmountCents = serviceCents, authCode = authCode)
                     }
                     override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                         paymentInFlight = false
@@ -1353,6 +1353,8 @@ class MainActivity : BaseAdActivity() {
         entryMode: String? = null,
         // VIP_CARD payments only: recorded on the transaction row so a card's spend can be traced.
         vipCardUid: String? = null,
+        // Card payments only: the bank authorization code, written with PAID.
+        authCode: String? = null,
         // Real tx_id from QrPaymentRepository.createSession/pollUntilPaid, set only
         // by the QR call site. Deliberately kept separate from refNum (rather than
         // passing it as refNum directly) because refNum.isEmpty() also gates the
@@ -1411,7 +1413,8 @@ class MainActivity : BaseAdActivity() {
                     paymentMethod = cardInfo?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid, it.brand) },
                     cardAid = cardInfo?.aid,
                     cardBin = cardInfo?.bin,
-                    cardBrand = cardInfo?.brand
+                    cardBrand = cardInfo?.brand,
+                    authCode = authCode
                 )
             } else {
                 TransactionRepository.recordTransaction(

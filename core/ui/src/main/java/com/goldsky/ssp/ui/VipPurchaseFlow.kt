@@ -219,6 +219,7 @@ class VipPurchaseFlow(
                             activity, ecrRefNum, "PAID", entryMode,
                             paymentMethod = card?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid, it.brand) },
                             cardAid = card?.aid, cardBin = card?.bin, cardBrand = card?.brand,
+                            authCode = authCode,
                         )
                         busy(Step.PAY, activity.getString(R.string.vip_loading))
                         credit(ecrRefNum, refNum, chargeCents, cardUid, phone)

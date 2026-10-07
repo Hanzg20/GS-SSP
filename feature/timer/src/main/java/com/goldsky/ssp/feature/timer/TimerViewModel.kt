@@ -260,7 +260,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     // the meantime: money moved, so they get their time.
                     viewModelScope.launch {
                         afterApproved?.invoke()
-                        onPaid(pkg, ecrRefNum, refNum, entryMode, side, chargeCents)
+                        onPaid(pkg, ecrRefNum, refNum, entryMode, side, chargeCents, authCode)
                     }
                 }
 
@@ -496,7 +496,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun onPaid(
         pkg: TimerPackage, ecrRefNum: String, bankRef: String, entryMode: String,
-        bay: Bay? = null, chargeCents: Int = pkg.priceCents,
+        bay: Bay? = null, chargeCents: Int = pkg.priceCents, authCode: String? = null,
     ) {
         val demo = _state.value.demoMode
         if (!demo) {
@@ -505,6 +505,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 getApplication(), ecrRefNum, "PAID", entryMode,
                 paymentMethod = card?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid, it.brand) },
                 cardAid = card?.aid, cardBin = card?.bin, cardBrand = card?.brand,
+                authCode = authCode,
             )
         }
         if (bay != null) {

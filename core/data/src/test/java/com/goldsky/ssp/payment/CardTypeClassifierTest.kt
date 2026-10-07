@@ -33,4 +33,11 @@ class CardTypeClassifierTest {
         assertEquals("CANCELLED", TransactionRepository.failedCardSaleStatus(cancelled = true))
         assertEquals("DECLINED", TransactionRepository.failedCardSaleStatus(cancelled = false))
     }
+
+    @Test fun realAuthCode() {
+        assertEquals("07582Z", TransactionRepository.realAuthCode(" 07582Z "))
+        assertEquals(null, TransactionRepository.realAuthCode("OK")) // provider stand-in
+        assertEquals(null, TransactionRepository.realAuthCode(""))
+        assertEquals(null, TransactionRepository.realAuthCode(null))
+    }
 }

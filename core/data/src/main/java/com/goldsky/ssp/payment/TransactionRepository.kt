@@ -118,7 +118,10 @@ object TransactionRepository {
         cardBin: String? = null,
         cardBrand: String? = null,
         // No card was read: clear the provisional CREDIT_CARD (type unknown).
-        clearPaymentMethod: Boolean = false
+        clearPaymentMethod: Boolean = false,
+        // Bank authorization code of an approved card sale (reconciliation /
+        // manual refunds). Not written since the PENDING-first flow (2026-09-01).
+        authCode: String? = null
     ): Boolean =
         withContext(Dispatchers.IO) {
             // Update local
@@ -132,14 +135,15 @@ object TransactionRepository {
                 Log.e(TAG, "Local payment status update failed: ${e.message}")
             }
 
-            val ok = updatePaymentStatusRemote(ecrRefNum, status, entryMode, paymentMethod, cardAid, cardBin, cardBrand, clearPaymentMethod)
+            val auth = realAuthCode(authCode)
+            val ok = updatePaymentStatusRemote(ecrRefNum, status, entryMode, paymentMethod, cardAid, cardBin, cardBrand, clearPaymentMethod, auth)
             if (!ok) {
                 OfflineQueueManager.enqueue(
                     context.filesDir,
                     PendingOp(
                         type = "update_status", ecrRefNum = ecrRefNum, status = status, entryMode = entryMode,
                         paymentMethod = paymentMethod, cardAid = cardAid, cardBin = cardBin, cardBrand = cardBrand,
-                        clearPaymentMethod = clearPaymentMethod
+                        clearPaymentMethod = clearPaymentMethod, authCode = auth
                     )
                 )
                 Log.w(TAG, "Payment status update queued offline: $ecrRefNum -> $status")
@@ -166,6 +170,9 @@ object TransactionRepository {
     )
 
     fun failedCardSaleStatus(cancelled: Boolean) = if (cancelled) "CANCELLED" else "DECLINED"
+
+    /** The provider's auth code, minus its "OK" stand-in for an approval that carried none. */
+    fun realAuthCode(raw: String?): String? = raw?.trim()?.takeIf { it.isNotEmpty() && it != "OK" && it != "null" }
 
     /**
      * Pulls all local orders for the Records UI.
@@ -259,7 +266,8 @@ object TransactionRepository {
         cardAid: String? = null,
         cardBin: String? = null,
         cardBrand: String? = null,
-        clearPaymentMethod: Boolean = false
+        clearPaymentMethod: Boolean = false,
+        authCode: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
         try {
             val updated = updateRows("payment_status", ecrRefNum) {
@@ -272,6 +280,7 @@ object TransactionRepository {
                 cardAid?.let { set("card_aid", it) }
                 cardBin?.let { set("card_bin", it) }
                 cardBrand?.let { set("card_brand", it) }
+                authCode?.let { set("auth_code", it) }
             }
             if (!updated) return@withContext false
             Log.i(TAG, "Payment status updated to $status for $ecrRefNum")
