@@ -34,11 +34,11 @@ object TtsManager : DefaultLifecycleObserver {
     private const val LOUDNESS_GAIN_MB = 200
 
     /**
-     * Google's familiar standard US voice (sfg -- the one Android / Maps
-     * users know) first; the owner asked for a popular voice after trying a
-     * deeper male one (2026-10-07). Best-quality voice for the locale otherwise.
+     * en-us-x-tpf: the owner's pick (2026-10-07), the closest local voice to
+     * Google Cloud's en-US-Wavenet-C. sfg as a fallback; best-quality voice
+     * for the locale otherwise.
      */
-    private val PREFERRED_VOICES = listOf("en-us-x-sfg-local", "en-us-x-tpf-local")
+    private val PREFERRED_VOICES = listOf("en-us-x-tpf-local", "en-us-x-sfg-local")
 
     // Same usage/content type on both the focus request AND the engine's own
     // output (via tts.setAudioAttributes below) -- a mismatch between the two
