@@ -22,10 +22,11 @@ object CardBrands {
      * The terminal's own brand when it sent one, else derived from the AID.
      * The WizarPOS emulator leaves CardBrand empty on purchases (it fills it
      * on reversals), and a real host may too -- the AID is always there for
-     * chip/contactless cards.
+     * chip/contactless cards. PAYWizard sends "UNKNOWN" when no card was
+     * read (cancel / timeout, 2026-10-07) -- that is no brand at all.
      */
     fun brand(reported: String?, aid: String?): String? =
-        reported?.trim()?.takeIf { it.isNotEmpty() && it != "null" }?.uppercase()
+        reported?.trim()?.uppercase()?.takeIf { it.isNotEmpty() && it !in NO_BRAND }
             ?: aid?.trim()?.uppercase()?.takeIf { it.length >= 10 }?.let { RID_BRANDS[it.take(10)] }
 
     /**
@@ -34,6 +35,8 @@ object CardBrands {
      * 0x91 contactless MSD, 0x95 chip (no CVV), 0x99 stored-value. Arrives
      * as a JSON number (decimal) or occasionally a "0x.." string.
      */
+    private val NO_BRAND = setOf("NULL", "UNKNOWN", "NONE")
+
     fun wizarPosEntryMode(raw: String?): String {
         val v = raw?.trim().orEmpty()
         val code = when {
@@ -47,7 +50,7 @@ object CardBrands {
             0x07 -> "CONTACTLESS"
             0x91 -> "CONTACTLESS_MSD"
             0x99 -> "STORED_VALUE"
-            null -> "UNKNOWN"
+            null, 0 -> "UNKNOWN" // 0: no card read (cancel / timeout)
             else -> "UNKNOWN_$code"
         }
     }

@@ -18,11 +18,15 @@ object CardTypeClassifier {
         "A0000000032010"    // Visa Electron
     )
 
-    fun paymentMethod(scheme: String?, aid: String?): String {
+    /** Brands that only exist as debit (Nuvei reports INTERAC with no EMV AID, 2026-10-07). */
+    private val DEBIT_BRANDS = setOf("INTERAC", "MAESTRO", "VISA ELECTRON")
+
+    fun paymentMethod(scheme: String?, aid: String?, brand: String? = null): String {
         when (scheme?.trim()?.lowercase()) {
             "debit" -> return "DEBIT_CARD"
             "credit" -> return "CREDIT_CARD"
         }
+        if (brand?.trim()?.uppercase() in DEBIT_BRANDS) return "DEBIT_CARD"
         val a = aid?.trim()?.uppercase()
         if (a != null && DEBIT_AID_PREFIXES.any { a.startsWith(it) }) return "DEBIT_CARD"
         return "CREDIT_CARD"

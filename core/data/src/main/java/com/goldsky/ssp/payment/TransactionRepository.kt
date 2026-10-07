@@ -116,7 +116,9 @@ object TransactionRepository {
         paymentMethod: String? = null,
         cardAid: String? = null,
         cardBin: String? = null,
-        cardBrand: String? = null
+        cardBrand: String? = null,
+        // No card was read: clear the provisional CREDIT_CARD (type unknown).
+        clearPaymentMethod: Boolean = false
     ): Boolean =
         withContext(Dispatchers.IO) {
             // Update local
@@ -130,19 +132,40 @@ object TransactionRepository {
                 Log.e(TAG, "Local payment status update failed: ${e.message}")
             }
 
-            val ok = updatePaymentStatusRemote(ecrRefNum, status, entryMode, paymentMethod, cardAid, cardBin, cardBrand)
+            val ok = updatePaymentStatusRemote(ecrRefNum, status, entryMode, paymentMethod, cardAid, cardBin, cardBrand, clearPaymentMethod)
             if (!ok) {
                 OfflineQueueManager.enqueue(
                     context.filesDir,
                     PendingOp(
                         type = "update_status", ecrRefNum = ecrRefNum, status = status, entryMode = entryMode,
-                        paymentMethod = paymentMethod, cardAid = cardAid, cardBin = cardBin, cardBrand = cardBrand
+                        paymentMethod = paymentMethod, cardAid = cardAid, cardBin = cardBin, cardBrand = cardBrand,
+                        clearPaymentMethod = clearPaymentMethod
                     )
                 )
                 Log.w(TAG, "Payment status update queued offline: $ecrRefNum -> $status")
             }
             ok
         }
+
+    /**
+     * Final write for a card sale that didn't go through: CANCELLED when the
+     * customer cancelled / timed out, DECLINED otherwise. With the card that
+     * was read (also on a decline) it records the real card; with none, the
+     * card type is unknown and payment_method is cleared.
+     */
+    suspend fun recordFailedCardSale(
+        context: Context,
+        ecrRefNum: String,
+        card: com.goldsky.ssp.payment.hardware.IPaymentProvider.CardInfo?,
+        cancelled: Boolean,
+    ): Boolean = updatePaymentStatus(
+        context, ecrRefNum, failedCardSaleStatus(cancelled), card?.entryMode,
+        paymentMethod = card?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid, it.brand) },
+        cardAid = card?.aid, cardBin = card?.bin, cardBrand = card?.brand,
+        clearPaymentMethod = card == null,
+    )
+
+    fun failedCardSaleStatus(cancelled: Boolean) = if (cancelled) "CANCELLED" else "DECLINED"
 
     /**
      * Pulls all local orders for the Records UI.
@@ -235,7 +258,8 @@ object TransactionRepository {
         paymentMethod: String? = null,
         cardAid: String? = null,
         cardBin: String? = null,
-        cardBrand: String? = null
+        cardBrand: String? = null,
+        clearPaymentMethod: Boolean = false
     ): Boolean = withContext(Dispatchers.IO) {
         try {
             val updated = updateRows("payment_status", ecrRefNum) {
@@ -243,7 +267,8 @@ object TransactionRepository {
                 // entryMode was accepted here but never written, so
                 // transactions.entry_mode stayed null for every terminal.
                 entryMode?.let { set("entry_mode", it) }
-                paymentMethod?.let { set("payment_method", it) }
+                if (paymentMethod != null) set("payment_method", paymentMethod)
+                else if (clearPaymentMethod) set<String?>("payment_method", null)
                 cardAid?.let { set("card_aid", it) }
                 cardBin?.let { set("card_bin", it) }
                 cardBrand?.let { set("card_brand", it) }

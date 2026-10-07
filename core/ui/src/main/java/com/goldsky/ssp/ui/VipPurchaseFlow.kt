@@ -197,6 +197,7 @@ class VipPurchaseFlow(
         TtsManager.speak("Please present your card")
         val provider = PaymentProviderFactory.getPaymentProvider(activity, vendor)
         var cardInfo: IPaymentProvider.CardInfo? = null
+        var cancelled = false
         activity.lifecycleScope.launch {
             // PENDING before the bank call, same rule as every other sale.
             TransactionRepository.recordTransaction(
@@ -209,13 +210,14 @@ class VipPurchaseFlow(
             )
             provider.startSale(chargeCents, ecrRefNum, object : IPaymentProvider.PaymentCallback {
                 override fun onCardInfo(info: IPaymentProvider.CardInfo) { cardInfo = info }
+                override fun onCancelled() { cancelled = true }
 
                 override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                     activity.lifecycleScope.launch {
                         val card = cardInfo
                         TransactionRepository.updatePaymentStatus(
                             activity, ecrRefNum, "PAID", entryMode,
-                            paymentMethod = card?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid) },
+                            paymentMethod = card?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid, it.brand) },
                             cardAid = card?.aid, cardBin = card?.bin, cardBrand = card?.brand,
                         )
                         busy(Step.PAY, activity.getString(R.string.vip_loading))
@@ -225,7 +227,7 @@ class VipPurchaseFlow(
 
                 override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                     activity.lifecycleScope.launch {
-                        TransactionRepository.updatePaymentStatus(activity, ecrRefNum, "DECLINED")
+                        TransactionRepository.recordFailedCardSale(activity, ecrRefNum, cardInfo, cancelled)
                     }
                     if (isHardwareFault) DiagnosticManager.reportError(deviceSn, "CARD_READER_FAULT", severity = "CRITICAL", trace = errorMsg)
                     Log.w(TAG, "VIP load sale $ecrRefNum not completed: $errorMsg")

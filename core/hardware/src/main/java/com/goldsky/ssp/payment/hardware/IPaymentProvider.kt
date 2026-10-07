@@ -12,11 +12,18 @@ interface IPaymentProvider {
      * id and [bin] the first 6 PAN digits -- kept so a card can be re-classified
      * later without re-reading it. Any field may be null.
      */
-    data class CardInfo(val scheme: String?, val brand: String?, val aid: String?, val bin: String?)
+    data class CardInfo(val scheme: String?, val brand: String?, val aid: String?, val bin: String?, val entryMode: String? = null)
 
     interface PaymentCallback {
-        /** Called before [onSuccess] by providers that can report card details. Default: ignore. */
+        /** Called before [onSuccess] -- and before [onFailure] when a card was read -- by providers that can report card details. Default: ignore. */
         fun onCardInfo(info: CardInfo) {}
+
+        /**
+         * Called before [onFailure] when the customer cancelled or let the
+         * payment screen time out (nothing was charged and the bank never
+         * refused anything), so callers can record CANCELLED, not DECLINED.
+         */
+        fun onCancelled() {}
 
         /**
          * [entryMode] records how the card was actually presented (e.g.

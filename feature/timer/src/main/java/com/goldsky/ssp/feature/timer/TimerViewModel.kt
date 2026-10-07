@@ -250,8 +250,10 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     service_bay = side?.code,
                 )
             )
+            var cancelled = false
             payment.startSale(chargeCents, ecrRefNum, object : IPaymentProvider.PaymentCallback {
                 override fun onCardInfo(info: IPaymentProvider.CardInfo) { pendingCardInfo = info }
+                override fun onCancelled() { cancelled = true }
 
                 override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                     // Deliberately ignores whether the customer hit Cancel in
@@ -264,7 +266,8 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
 
                 override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                     viewModelScope.launch {
-                        TransactionRepository.updatePaymentStatus(getApplication(), ecrRefNum, "DECLINED")
+                        val card = pendingCardInfo.also { pendingCardInfo = null }
+                        TransactionRepository.recordFailedCardSale(getApplication(), ecrRefNum, card, cancelled)
                     }
                     if (isHardwareFault) {
                         DiagnosticManager.reportError(deviceSn, "CARD_READER_FAULT", severity = "CRITICAL", trace = errorMsg)
@@ -500,7 +503,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             val card = pendingCardInfo.also { pendingCardInfo = null }
             TransactionRepository.updatePaymentStatus(
                 getApplication(), ecrRefNum, "PAID", entryMode,
-                paymentMethod = card?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid) },
+                paymentMethod = card?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid, it.brand) },
                 cardAid = card?.aid, cardBin = card?.bin, cardBrand = card?.brand,
             )
         }

@@ -71,7 +71,8 @@ object PendingResolver {
                     }
                 }
                 IPaymentProvider.QueryResult.NotFound -> {
-                    TransactionRepository.updatePaymentStatus(context, ref, "DECLINED")
+                    // PAYWizard has no such sale: no card was read, type unknown.
+                    TransactionRepository.updatePaymentStatus(context, ref, "DECLINED", clearPaymentMethod = true)
                     declined++
                 }
                 is IPaymentProvider.QueryResult.Error -> {

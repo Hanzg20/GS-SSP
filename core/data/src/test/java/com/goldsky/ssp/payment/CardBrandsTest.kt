@@ -35,7 +35,15 @@ class CardBrandsTest {
         assertEquals("CHIP", CardBrands.wizarPosEntryMode("149")) // 0x95
         assertEquals("SWIPE", CardBrands.wizarPosEntryMode("0x90"))
         assertEquals("STORED_VALUE", CardBrands.wizarPosEntryMode("153")) // 0x99
-        assertEquals("UNKNOWN_0", CardBrands.wizarPosEntryMode("0"))
+        assertEquals("UNKNOWN_3", CardBrands.wizarPosEntryMode("3"))
         assertEquals("UNKNOWN", CardBrands.wizarPosEntryMode(null))
+    }
+
+    @Test fun noCardReadIsNoBrand() {
+        // PAYWizard on cancel / timeout: CardBrand "UNKNOWN", EntryMode 0.
+        assertEquals(null, CardBrands.brand("UNKNOWN", null))
+        assertEquals(null, CardBrands.brand("unknown", ""))
+        assertEquals("INTERAC", CardBrands.brand("UNKNOWN", "A00000027710100100000001"))
+        assertEquals("UNKNOWN", CardBrands.wizarPosEntryMode("0"))
     }
 }

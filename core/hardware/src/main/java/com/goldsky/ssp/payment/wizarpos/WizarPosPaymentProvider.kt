@@ -24,6 +24,8 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
 
     companion object {
         private const val TAG = "WizarPosPayment"
+        /** PAYWizard RespCode for "cancelled by user" (cancel key or payment-screen timeout). */
+        const val RESP_CANCELLED = "-139"
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -211,19 +213,24 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                 val resultCode = root["RespCode"]?.jsonPrimitive?.content ?: "999"
                 val resultMsg = root["RespDesc"]?.jsonPrimitive?.content ?: "Unknown Error"
                 
+                // Empty/"null" strings mean the terminal didn't fill the field.
+                fun field(k: String) = root[k]?.jsonPrimitive?.content?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+                val entryMode = CardBrands.wizarPosEntryMode(field("EntryMode"))
+                val info = IPaymentProvider.CardInfo(
+                    scheme = field("TransScheme"),
+                    brand = CardBrands.brand(field("CardBrand"), field("EmvAid")),
+                    aid = field("EmvAid"),
+                    bin = field("CardNum")?.filter { it.isDigit() }?.take(6)?.takeIf { it.length == 6 },
+                    entryMode = entryMode,
+                )
+                // A card was read (declined too): report it, so a declined row
+                // shows the real card instead of the provisional CREDIT_CARD.
+                val cardRead = info.brand != null || info.aid != null || info.bin != null
+                if (cardRead) Log.i(TAG, "Card info: scheme=${info.scheme} brand=${info.brand} aid=${info.aid} bin=${info.bin} entry=$entryMode")
+
                 if (isSuccess) {
                     val authNo = root["AuthCode"]?.jsonPrimitive?.content ?: "OK"
                     val rrn = root["RRN"]?.jsonPrimitive?.content
-                    // Empty/"null" strings mean the terminal didn't fill the field.
-                    fun field(k: String) = root[k]?.jsonPrimitive?.content?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
-                    val info = IPaymentProvider.CardInfo(
-                        scheme = field("TransScheme"),
-                        brand = CardBrands.brand(field("CardBrand"), field("EmvAid")),
-                        aid = field("EmvAid"),
-                        bin = field("CardNum")?.filter { it.isDigit() }?.take(6)?.takeIf { it.length == 6 }
-                    )
-                    val entryMode = CardBrands.wizarPosEntryMode(field("EntryMode"))
-                    Log.i(TAG, "Card info: scheme=${info.scheme} brand=${info.brand} aid=${info.aid} bin=${info.bin} entry=$entryMode")
                     Log.i(TAG, "Approved: TransIndexCode=$originalRef RRN=$rrn")
                     if (request.TransType == "Purchase") {
                         saleIds[originalRef] = SaleIds(field("TraceNum"), field("InvoiceNum"), field("TransID"), rrn)
@@ -239,6 +246,9 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                     // transaction PAYWizard couldn't find.
                     callback.onSuccess(authNo, originalRef, entryMode)
                 } else {
+                    if (cardRead) callback.onCardInfo(info)
+                    // -139 "cancelled by user": cancel key or payment-screen timeout.
+                    if (resultCode == RESP_CANCELLED) callback.onCancelled()
                     callback.onFailure("Payment Error: $resultMsg ($resultCode)")
                 }
             } else {

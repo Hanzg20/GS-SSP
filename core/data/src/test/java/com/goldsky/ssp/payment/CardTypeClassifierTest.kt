@@ -20,4 +20,17 @@ class CardTypeClassifierTest {
         assertEquals("CREDIT_CARD", CardTypeClassifier.paymentMethod(null, "A000000333010102"))
         assertEquals("CREDIT_CARD", CardTypeClassifier.paymentMethod(null, null))
     }
+
+    @Test fun debitBrandWithoutAid() {
+        // Nuvei SmartPay: CardBrand INTERAC, EmvAid null (TIMER_1791374627643).
+        assertEquals("DEBIT_CARD", CardTypeClassifier.paymentMethod(null, null, "INTERAC"))
+        assertEquals("DEBIT_CARD", CardTypeClassifier.paymentMethod(null, null, "interac "))
+        assertEquals("CREDIT_CARD", CardTypeClassifier.paymentMethod(null, null, "MASTERCARD"))
+        assertEquals("CREDIT_CARD", CardTypeClassifier.paymentMethod("credit", null, "INTERAC"))
+    }
+
+    @Test fun failedSaleStatus() {
+        assertEquals("CANCELLED", TransactionRepository.failedCardSaleStatus(cancelled = true))
+        assertEquals("DECLINED", TransactionRepository.failedCardSaleStatus(cancelled = false))
+    }
 }

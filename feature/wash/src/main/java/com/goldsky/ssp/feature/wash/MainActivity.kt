@@ -128,7 +128,12 @@ class MainActivity : BaseAdActivity() {
     // Card details the terminal reported for the card payment in flight
     // (set in initCardPayment's callback, consumed once by startFinalizationSequence).
     private var pendingCardInfo: com.goldsky.ssp.payment.hardware.IPaymentProvider.CardInfo? = null
-    private var pendingCoupon: CouponRedeemResult.Success? = null
+    // A checked (peek_coupon), NOT yet consumed coupon waiting for a package.
+    // It is consumed (redeem_coupon) only when it actually pays: right before
+    // a free wash, or after the card / QR payment for the rest is approved --
+    // a declined card must never use the coupon up (same as Aegis Timer).
+    private data class PendingCoupon(val code: String, val type: String, val value: Int)
+    private var pendingCoupon: PendingCoupon? = null
 
     // Technician/Maintenance Variables
     private var logoClickCount = 0
@@ -549,16 +554,10 @@ class MainActivity : BaseAdActivity() {
                                         // pre-select and confirm) -- unchanged from the original
                                         // flow: consume now, let the customer pick a package
                                         // afterward, discount applied on top of it.
-                                        when (val redemption = CouponRepository.redeemCoupon(scanned, deviceSn)) {
-                                            is CouponRedeemResult.Success -> {
-                                                pendingVipCardUid = null
-                                                pendingCoupon = redemption
-                                                showScanFeedback(getString(R.string.toast_coupon_applied))
-                                            }
-                                            is CouponRedeemResult.Rejected, CouponRedeemResult.NetworkError -> {
-                                                showScanFeedback(getString(couponRejectionMessageRes(scanned)))
-                                            }
-                                        }
+                                        // Checked only; consumed when it pays (see pendingCoupon).
+                                        pendingVipCardUid = null
+                                        pendingCoupon = PendingCoupon(scanned, peek.type, peek.value)
+                                        showScanFeedback(getString(R.string.toast_coupon_applied))
                                     } else {
                                         // Bound to a specific package (applicable_product_id set),
                                         // but nothing in the local catalog matches that id -- most
@@ -714,19 +713,10 @@ class MainActivity : BaseAdActivity() {
         dialog.findViewById<Button>(R.id.btn_coupon_confirm).setOnClickListener {
             applyClickFeedback(it)
             dialog.dismiss()
-            CoroutineScope(Dispatchers.Main).launch {
-                when (val redemption = CouponRepository.redeemCoupon(code, deviceSn)) {
-                    is CouponRedeemResult.Success -> {
-                        pendingCoupon = redemption
-                        startPackagePurchaseFlow(originalPriceCents, serialHexOf(product), product.id)
-                    }
-                    is CouponRedeemResult.Rejected, CouponRedeemResult.NetworkError -> {
-                        // Consumed elsewhere in the gap between peek and confirm --
-                        // an existing, already-handled outcome (already_used), not new.
-                        showScanFeedback(getString(couponRejectionMessageRes(code)))
-                    }
-                }
-            }
+            // Not consumed yet: startPackagePurchaseFlow consumes it when it
+            // pays (before a free wash, or after the card payment for the rest).
+            pendingCoupon = PendingCoupon(code, peek.type, peek.value)
+            startPackagePurchaseFlow(originalPriceCents, serialHexOf(product), product.id)
         }
         dialog.findViewById<Button>(R.id.btn_coupon_cancel).setOnClickListener {
             applyClickFeedback(it)
@@ -786,9 +776,15 @@ class MainActivity : BaseAdActivity() {
                 else -> priceInCents
             }
             if (finalPriceCents <= 0) {
-                startFreeWashFlow(priceInCents, startHex, productId)
+                // Free wash: the coupon is the payment -- consume it first.
+                CoroutineScope(Dispatchers.Main).launch {
+                    when (CouponRepository.redeemCoupon(coupon.code, deviceSn)) {
+                        is CouponRedeemResult.Success -> startFreeWashFlow(priceInCents, startHex, productId)
+                        else -> showScanFeedback(getString(couponRejectionMessageRes(coupon.code)))
+                    }
+                }
             } else {
-                showPaymentDialog(finalPriceCents, startHex, productId, serviceCents = priceInCents)
+                showPaymentDialog(finalPriceCents, startHex, productId, serviceCents = priceInCents, couponCode = coupon.code)
             }
             return
         }
@@ -813,7 +809,7 @@ class MainActivity : BaseAdActivity() {
     // serviceCents: the package's own price -- what the wash delivers (pulses).
     // priceInCents: what the customer pays; lower only after a coupon or a
     // VIP tier discount, which must never shorten the wash itself.
-    private fun showPaymentDialog(priceInCents: Int, startHex: String, productId: String? = null, serviceCents: Int = priceInCents) {
+    private fun showPaymentDialog(priceInCents: Int, startHex: String, productId: String? = null, serviceCents: Int = priceInCents, couponCode: String? = null) {
         if (DeviceAccessManager.isLocked()) {
             Toast.makeText(this, "Terminal locked: ${DeviceAccessManager.lockReason()}", Toast.LENGTH_LONG).show()
             resetAdTimer()
@@ -824,12 +820,12 @@ class MainActivity : BaseAdActivity() {
             PaymentMethodMode.CARD_ONLY -> {
                 Log.i("SSP_TEST", "Direct CARD_ONLY path triggered")
                 stopAdTimer()
-                startPaymentFlow(true, priceInCents, startHex, productId, serviceCents)
+                startPaymentFlow(true, priceInCents, startHex, productId, serviceCents, couponCode)
                 return
             }
             PaymentMethodMode.SCAN_ONLY -> {
                 stopAdTimer()
-                startPaymentFlow(false, priceInCents, startHex, productId, serviceCents)
+                startPaymentFlow(false, priceInCents, startHex, productId, serviceCents, couponCode)
                 return
             }
             // Any other value (including ALL) falls through to the selection
@@ -846,13 +842,13 @@ class MainActivity : BaseAdActivity() {
             Log.i("SSP_TEST", "Card selected in dialog")
             applyClickFeedback(it)
             selectionDialog.dismiss()
-            startPaymentFlow(true, priceInCents, startHex, productId, serviceCents)
+            startPaymentFlow(true, priceInCents, startHex, productId, serviceCents, couponCode)
         }
 
         selectionDialog.findViewById<View>(R.id.btn_choice_scan).setOnClickListener {
             applyClickFeedback(it)
             selectionDialog.dismiss()
-            startPaymentFlow(false, priceInCents, startHex, productId, serviceCents)
+            startPaymentFlow(false, priceInCents, startHex, productId, serviceCents, couponCode)
         }
         
         selectionDialog.findViewById<Button>(R.id.btn_cancel_choice).setOnClickListener {
@@ -865,7 +861,7 @@ class MainActivity : BaseAdActivity() {
         selectionDialog.show()
     }
 
-    private fun startPaymentFlow(isCard: Boolean, priceInCents: Int, startHex: String, productId: String? = null, serviceCents: Int = priceInCents) {
+    private fun startPaymentFlow(isCard: Boolean, priceInCents: Int, startHex: String, productId: String? = null, serviceCents: Int = priceInCents, couponCode: String? = null) {
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         dialog.setContentView(R.layout.dialog_payment)
         paymentDialog = dialog
@@ -884,7 +880,7 @@ class MainActivity : BaseAdActivity() {
                 // We should completely skip our own card guidance screen and voice announcements to avoid overlap.
                 layoutCard.visibility = View.GONE
                 layoutQr.visibility = View.GONE
-                initCardPayment(priceInCents, startHex, dialog, productId, serviceCents)
+                initCardPayment(priceInCents, startHex, dialog, productId, serviceCents, couponCode)
             } else {
                 layoutCard.visibility = View.VISIBLE
                 layoutQr.visibility = View.GONE
@@ -902,7 +898,7 @@ class MainActivity : BaseAdActivity() {
                 val provider = PaymentProviderFactory.getPaymentProvider(this, hardwareVendor)
                 provider.startCardDetection(priceInCents, object : com.goldsky.ssp.payment.hardware.IPaymentProvider.PaymentCallback {
                     override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                        initCardPayment(priceInCents, startHex, dialog, productId, serviceCents)
+                        initCardPayment(priceInCents, startHex, dialog, productId, serviceCents, couponCode)
                     }
                     override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                         Log.e("MainActivity", "Card detection error: $errorMsg")
@@ -918,7 +914,7 @@ class MainActivity : BaseAdActivity() {
         } else {
             layoutCard.visibility = View.GONE
             layoutQr.visibility = View.VISIBLE
-            initQrPayment(priceInCents, startHex, dialog, productId, serviceCents)
+            initQrPayment(priceInCents, startHex, dialog, productId, serviceCents, couponCode)
         }
 
         dialog.findViewById<View>(R.id.btn_back_pay)?.setOnClickListener {
@@ -930,7 +926,7 @@ class MainActivity : BaseAdActivity() {
                 provider.cancelCurrentTransaction()
                 
                 dialog.dismiss()
-                showPaymentDialog(priceInCents, startHex, productId, serviceCents)
+                showPaymentDialog(priceInCents, startHex, productId, serviceCents, couponCode)
             }
         }
         dialog.findViewById<View>(R.id.btn_back_qr)?.setOnClickListener {
@@ -939,7 +935,7 @@ class MainActivity : BaseAdActivity() {
                 Toast.makeText(this@MainActivity, getString(R.string.toast_payment_processing_wait), Toast.LENGTH_SHORT).show()
             } else {
                 dialog.dismiss()
-                showPaymentDialog(priceInCents, startHex, productId, serviceCents)
+                showPaymentDialog(priceInCents, startHex, productId, serviceCents, couponCode)
             }
         }
 
@@ -1157,7 +1153,21 @@ class MainActivity : BaseAdActivity() {
         startFinalizationSequence(0, startHex, "", dialog, pulseAmountCents = originalPriceCents, productId = productId, paymentMethod = "COUPON")
     }
 
-    private fun initCardPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null, serviceCents: Int = priceInCents) {
+    /**
+     * Consumes a discount coupon once the rest has been paid. The wash runs
+     * either way -- the customer paid; a lost race (the coupon used on
+     * another terminal meanwhile) is only reported.
+     */
+    private fun redeemPaidCoupon(code: String?) {
+        if (code == null) return
+        CoroutineScope(Dispatchers.Main).launch {
+            if (CouponRepository.redeemCoupon(code, deviceSn) !is CouponRedeemResult.Success) {
+                DiagnosticManager.reportError(deviceSn, "COUPON_REDEEM_AFTER_PAY_FAILED", severity = "WARNING", trace = "code=$code")
+            }
+        }
+    }
+
+    private fun initCardPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null, serviceCents: Int = priceInCents, couponCode: String? = null) {
         // Technician small real test: charge the armed amount, wash the full
         // package (pulseAmountCents below), everything else unchanged.
         val testCents = TestSale.consume()
@@ -1189,14 +1199,18 @@ class MainActivity : BaseAdActivity() {
 
             if (isSimulationMode) {
                 delay(3000)
+                redeemPaidCoupon(couponCode)
                 startFinalizationSequence(chargeCents, startHex, "MOCK_REF_123", dialog, txRefNum, entryMode = "SIMULATED", pulseAmountCents = serviceCents)
             } else {
                 val provider = PaymentProviderFactory.getPaymentProvider(this@MainActivity, hardwareVendor)
+                var cancelled = false
                 provider.startSale(chargeCents, txRefNum, object : com.goldsky.ssp.payment.hardware.IPaymentProvider.PaymentCallback {
                     override fun onCardInfo(info: com.goldsky.ssp.payment.hardware.IPaymentProvider.CardInfo) {
                         pendingCardInfo = info
                     }
+                    override fun onCancelled() { cancelled = true }
                     override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
+                        redeemPaidCoupon(couponCode)
                         startFinalizationSequence(chargeCents, startHex, refNum, dialog, txRefNum, entryMode = entryMode, pulseAmountCents = serviceCents)
                     }
                     override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
@@ -1222,7 +1236,8 @@ class MainActivity : BaseAdActivity() {
                             DiagnosticManager.reportError(deviceSn, "IDTECH_HARDWARE_FAULT", severity = "CRITICAL", trace = errorMsg)
                         }
                         CoroutineScope(Dispatchers.Main).launch {
-                            TransactionRepository.updatePaymentStatus(this@MainActivity, txRefNum, "DECLINED")
+                            val card = pendingCardInfo.also { pendingCardInfo = null }
+                            TransactionRepository.recordFailedCardSale(this@MainActivity, txRefNum, card, cancelled)
                         }
                     }
                     override fun onProgress(message: String) {
@@ -1236,7 +1251,7 @@ class MainActivity : BaseAdActivity() {
         }
     }
 
-    private fun initQrPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null, serviceCents: Int = priceInCents) {
+    private fun initQrPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null, serviceCents: Int = priceInCents, couponCode: String? = null) {
         val qrImageView = dialog.findViewById<ImageView>(R.id.img_pay_qr)
         val txId = "TX_" + System.currentTimeMillis()
 
@@ -1290,6 +1305,7 @@ class MainActivity : BaseAdActivity() {
                 // comment below) -- needed so EdgeNexusRemoteAdapter can find the matching
                 // device_commands row. refNum stays "" as before (it gates the card
                 // void/refund path on hardware failure, which doesn't apply to QR).
+                redeemPaidCoupon(couponCode)
                 startFinalizationSequence(priceInCents, startHex, "", dialog, pulseAmountCents = serviceCents, productId = productId, paymentMethod = "QR_CODE", qrTxId = txId)
             } else {
                 // Polling gave up (customer never completed payment, or it's
@@ -1391,7 +1407,7 @@ class MainActivity : BaseAdActivity() {
                 pendingCardInfo = null
                 TransactionRepository.updatePaymentStatus(
                     this@MainActivity, pendingEcrRefNum, "PAID", entryMode,
-                    paymentMethod = cardInfo?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid) },
+                    paymentMethod = cardInfo?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid, it.brand) },
                     cardAid = cardInfo?.aid,
                     cardBin = cardInfo?.bin,
                     cardBrand = cardInfo?.brand
