@@ -788,7 +788,7 @@ class MainActivity : BaseAdActivity() {
             if (finalPriceCents <= 0) {
                 startFreeWashFlow(priceInCents, startHex, productId)
             } else {
-                showPaymentDialog(finalPriceCents, startHex, productId)
+                showPaymentDialog(finalPriceCents, startHex, productId, serviceCents = priceInCents)
             }
             return
         }
@@ -810,7 +810,10 @@ class MainActivity : BaseAdActivity() {
      * selection page is skipped entirely and the terminal goes straight into
      * that flow.
      */
-    private fun showPaymentDialog(priceInCents: Int, startHex: String, productId: String? = null) {
+    // serviceCents: the package's own price -- what the wash delivers (pulses).
+    // priceInCents: what the customer pays; lower only after a coupon or a
+    // VIP tier discount, which must never shorten the wash itself.
+    private fun showPaymentDialog(priceInCents: Int, startHex: String, productId: String? = null, serviceCents: Int = priceInCents) {
         if (DeviceAccessManager.isLocked()) {
             Toast.makeText(this, "Terminal locked: ${DeviceAccessManager.lockReason()}", Toast.LENGTH_LONG).show()
             resetAdTimer()
@@ -821,12 +824,12 @@ class MainActivity : BaseAdActivity() {
             PaymentMethodMode.CARD_ONLY -> {
                 Log.i("SSP_TEST", "Direct CARD_ONLY path triggered")
                 stopAdTimer()
-                startPaymentFlow(true, priceInCents, startHex, productId)
+                startPaymentFlow(true, priceInCents, startHex, productId, serviceCents)
                 return
             }
             PaymentMethodMode.SCAN_ONLY -> {
                 stopAdTimer()
-                startPaymentFlow(false, priceInCents, startHex, productId)
+                startPaymentFlow(false, priceInCents, startHex, productId, serviceCents)
                 return
             }
             // Any other value (including ALL) falls through to the selection
@@ -843,13 +846,13 @@ class MainActivity : BaseAdActivity() {
             Log.i("SSP_TEST", "Card selected in dialog")
             applyClickFeedback(it)
             selectionDialog.dismiss()
-            startPaymentFlow(true, priceInCents, startHex, productId)
+            startPaymentFlow(true, priceInCents, startHex, productId, serviceCents)
         }
 
         selectionDialog.findViewById<View>(R.id.btn_choice_scan).setOnClickListener {
             applyClickFeedback(it)
             selectionDialog.dismiss()
-            startPaymentFlow(false, priceInCents, startHex, productId)
+            startPaymentFlow(false, priceInCents, startHex, productId, serviceCents)
         }
         
         selectionDialog.findViewById<Button>(R.id.btn_cancel_choice).setOnClickListener {
@@ -862,7 +865,7 @@ class MainActivity : BaseAdActivity() {
         selectionDialog.show()
     }
 
-    private fun startPaymentFlow(isCard: Boolean, priceInCents: Int, startHex: String, productId: String? = null) {
+    private fun startPaymentFlow(isCard: Boolean, priceInCents: Int, startHex: String, productId: String? = null, serviceCents: Int = priceInCents) {
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         dialog.setContentView(R.layout.dialog_payment)
         paymentDialog = dialog
@@ -881,7 +884,7 @@ class MainActivity : BaseAdActivity() {
                 // We should completely skip our own card guidance screen and voice announcements to avoid overlap.
                 layoutCard.visibility = View.GONE
                 layoutQr.visibility = View.GONE
-                initCardPayment(priceInCents, startHex, dialog, productId)
+                initCardPayment(priceInCents, startHex, dialog, productId, serviceCents)
             } else {
                 layoutCard.visibility = View.VISIBLE
                 layoutQr.visibility = View.GONE
@@ -899,7 +902,7 @@ class MainActivity : BaseAdActivity() {
                 val provider = PaymentProviderFactory.getPaymentProvider(this, hardwareVendor)
                 provider.startCardDetection(priceInCents, object : com.goldsky.ssp.payment.hardware.IPaymentProvider.PaymentCallback {
                     override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                        initCardPayment(priceInCents, startHex, dialog, productId)
+                        initCardPayment(priceInCents, startHex, dialog, productId, serviceCents)
                     }
                     override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                         Log.e("MainActivity", "Card detection error: $errorMsg")
@@ -915,7 +918,7 @@ class MainActivity : BaseAdActivity() {
         } else {
             layoutCard.visibility = View.GONE
             layoutQr.visibility = View.VISIBLE
-            initQrPayment(priceInCents, startHex, dialog, productId)
+            initQrPayment(priceInCents, startHex, dialog, productId, serviceCents)
         }
 
         dialog.findViewById<View>(R.id.btn_back_pay)?.setOnClickListener {
@@ -927,7 +930,7 @@ class MainActivity : BaseAdActivity() {
                 provider.cancelCurrentTransaction()
                 
                 dialog.dismiss()
-                showPaymentDialog(priceInCents, startHex, productId)
+                showPaymentDialog(priceInCents, startHex, productId, serviceCents)
             }
         }
         dialog.findViewById<View>(R.id.btn_back_qr)?.setOnClickListener {
@@ -936,7 +939,7 @@ class MainActivity : BaseAdActivity() {
                 Toast.makeText(this@MainActivity, getString(R.string.toast_payment_processing_wait), Toast.LENGTH_SHORT).show()
             } else {
                 dialog.dismiss()
-                showPaymentDialog(priceInCents, startHex, productId)
+                showPaymentDialog(priceInCents, startHex, productId, serviceCents)
             }
         }
 
@@ -983,7 +986,7 @@ class MainActivity : BaseAdActivity() {
     private fun vipCardSummary(card: VipCard): String =
         "Card No. ${vipCardNumber(card)}  |  Balance: ${formatCents(card.balance_cents)}"
 
-    private fun initVipPayment(uid: String, priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null) {
+    private fun initVipPayment(uid: String, priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null, serviceCents: Int = priceInCents) {
         val layoutStatus = dialog.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
         val tvStatus = dialog.findViewById<TextView>(R.id.tv_status_msg)
 
@@ -1019,7 +1022,7 @@ class MainActivity : BaseAdActivity() {
                         "Remaining Balance: ${formatCents(result.newBalanceCents)}"
                     ).joinToString("\n")
                     delay(1500)
-                    startFinalizationSequence(finalPrice, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog, productId = productId, paymentMethod = "VIP_CARD", entryMode = "NFC_TAP", vipCardUid = uid)
+                    startFinalizationSequence(finalPrice, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog, pulseAmountCents = serviceCents, productId = productId, paymentMethod = "VIP_CARD", entryMode = "NFC_TAP", vipCardUid = uid)
                 }
                 is VipDeductResult.Rejected -> {
                     paymentInFlight = false
@@ -1035,13 +1038,13 @@ class MainActivity : BaseAdActivity() {
                         TtsManager.speak(getString(R.string.voice_vip_low_balance))
                     }
                     layoutStatus.visibility = View.GONE
-                    startPaymentFlow(true, priceInCents, startHex, productId)
+                    startPaymentFlow(true, priceInCents, startHex, productId, serviceCents)
                 }
                 VipDeductResult.NetworkError -> {
                     paymentInFlight = false
                     Toast.makeText(this@MainActivity, "Network error -- please tap your card again", Toast.LENGTH_LONG).show()
                     layoutStatus.visibility = View.GONE
-                    startPaymentFlow(true, priceInCents, startHex, productId)
+                    startPaymentFlow(true, priceInCents, startHex, productId, serviceCents)
                 }
             }
         }
@@ -1154,7 +1157,7 @@ class MainActivity : BaseAdActivity() {
         startFinalizationSequence(0, startHex, "", dialog, pulseAmountCents = originalPriceCents, productId = productId, paymentMethod = "COUPON")
     }
 
-    private fun initCardPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null) {
+    private fun initCardPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null, serviceCents: Int = priceInCents) {
         // Technician small real test: charge the armed amount, wash the full
         // package (pulseAmountCents below), everything else unchanged.
         val testCents = TestSale.consume()
@@ -1186,7 +1189,7 @@ class MainActivity : BaseAdActivity() {
 
             if (isSimulationMode) {
                 delay(3000)
-                startFinalizationSequence(chargeCents, startHex, "MOCK_REF_123", dialog, txRefNum, entryMode = "SIMULATED", pulseAmountCents = priceInCents)
+                startFinalizationSequence(chargeCents, startHex, "MOCK_REF_123", dialog, txRefNum, entryMode = "SIMULATED", pulseAmountCents = serviceCents)
             } else {
                 val provider = PaymentProviderFactory.getPaymentProvider(this@MainActivity, hardwareVendor)
                 provider.startSale(chargeCents, txRefNum, object : com.goldsky.ssp.payment.hardware.IPaymentProvider.PaymentCallback {
@@ -1194,7 +1197,7 @@ class MainActivity : BaseAdActivity() {
                         pendingCardInfo = info
                     }
                     override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                        startFinalizationSequence(chargeCents, startHex, refNum, dialog, txRefNum, entryMode = entryMode, pulseAmountCents = priceInCents)
+                        startFinalizationSequence(chargeCents, startHex, refNum, dialog, txRefNum, entryMode = entryMode, pulseAmountCents = serviceCents)
                     }
                     override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                         paymentInFlight = false
@@ -1233,7 +1236,7 @@ class MainActivity : BaseAdActivity() {
         }
     }
 
-    private fun initQrPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null) {
+    private fun initQrPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null, serviceCents: Int = priceInCents) {
         val qrImageView = dialog.findViewById<ImageView>(R.id.img_pay_qr)
         val txId = "TX_" + System.currentTimeMillis()
 
@@ -1287,7 +1290,7 @@ class MainActivity : BaseAdActivity() {
                 // comment below) -- needed so EdgeNexusRemoteAdapter can find the matching
                 // device_commands row. refNum stays "" as before (it gates the card
                 // void/refund path on hardware failure, which doesn't apply to QR).
-                startFinalizationSequence(priceInCents, startHex, "", dialog, productId = productId, paymentMethod = "QR_CODE", qrTxId = txId)
+                startFinalizationSequence(priceInCents, startHex, "", dialog, pulseAmountCents = serviceCents, productId = productId, paymentMethod = "QR_CODE", qrTxId = txId)
             } else {
                 // Polling gave up (customer never completed payment, or it's
                 // still processing beyond our 2-minute budget) -- previously
