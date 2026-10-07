@@ -1,5 +1,6 @@
 package com.goldsky.ssp.feature.timer
 
+import android.widget.Toast
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -103,6 +104,7 @@ class MainActivity : ComponentActivity() {
         syncIdentityAndConfig()
 
         LauncherClaim.ensureDefault(this, vendor)
+        com.goldsky.ssp.payment.AppSwitcher.claimHomeIfSwitched(this)
         RemoteCommandManager.startListening(this, deviceSn, vendor, object : RemoteCommandManager.CommandListener {
             override fun onSyncRequested() = loadConfig(DeviceRepository.getPersistedOrgId())
             // A LOCK mid-session lets the paid session finish; it only blocks new sales.
@@ -131,6 +133,7 @@ class MainActivity : ComponentActivity() {
             var tech by techState
             var outSettings by remember { mutableStateOf(outputSettings.load()) }
             var dualSetting by remember { mutableStateOf(outputSettings.dualBay) }
+            val switchTarget = remember { com.goldsky.ssp.payment.AppSwitcher.other(this@MainActivity) }
             var bayOutSettings by remember { mutableStateOf(Bay.entries.associateWith { outputSettings.load(it) }) }
             BackHandler(enabled = true) { if (tech) tech = false } // kiosk: back never leaves the app
 
@@ -151,6 +154,16 @@ class MainActivity : ComponentActivity() {
                     baySettings = bayOutSettings,
                     onBayChange = { bay, v -> outputSettings.save(bay, v); bayOutSettings = bayOutSettings + (bay to v) },
                     onTestBay = { testBay(gpio, it) },
+                    switchTarget = switchTarget?.second,
+                    onSwitchApp = {
+                        // Never end a running vacuum session (dual mode reaches tech from Home).
+                        if (!timerVm.idleForAds) {
+                            Toast.makeText(this@MainActivity, "有吸尘器正在计时，结束后再切换", Toast.LENGTH_LONG).show()
+                        } else {
+                            holdVm.forceOff()
+                            switchTarget?.let { com.goldsky.ssp.payment.AppSwitcher.switchTo(this@MainActivity, it.first) }
+                        }
+                    },
                 )
             } else {
                 TimerApp(

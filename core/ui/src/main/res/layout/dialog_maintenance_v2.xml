@@ -406,6 +406,18 @@
             android:textColor="@color/tech_cyan"
             app:strokeColor="@color/tech_cyan"
             app:strokeWidth="1dp" />
+
+        <Button
+            android:id="@+id/btn_op_switch_app"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="SWITCH APP"
+            android:backgroundTint="@color/goldsky_gold_start"
+            android:textColor="@color/text_dark"
+            android:textStyle="bold"
+            android:visibility="gone" />
     </GridLayout>
 
     <!-- Detailed Hardware Info Card -->

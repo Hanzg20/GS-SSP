@@ -184,6 +184,7 @@ class MainActivity : BaseAdActivity() {
         AdManager.init(this)
 
         LauncherClaim.ensureDefault(this, hardwareVendor)
+        com.goldsky.ssp.payment.AppSwitcher.claimHomeIfSwitched(this)
         RemoteCommandManager.startListening(this, deviceSn, hardwareVendor, object : RemoteCommandManager.CommandListener {
             override fun onSyncRequested() {
                 loadInitialConfig(DeviceRepository.getPersistedOrgId())
@@ -1874,6 +1875,17 @@ class MainActivity : BaseAdActivity() {
 
         // Small real test: arm the next card sale at a small amount (full
         // customer flow, full wash). Tap cycles OFF -> $0.10 -> $0.50 -> $1.00 -> OFF.
+        com.goldsky.ssp.payment.AppSwitcher.other(this)?.let { (pkg, name) ->
+            dialog.findViewById<Button>(R.id.btn_op_switch_app)?.apply {
+                visibility = View.VISIBLE
+                text = "SWITCH TO\n${name.uppercase()}"
+                setOnClickListener {
+                    applyClickFeedback(it)
+                    dialog.dismiss()
+                    com.goldsky.ssp.payment.AppSwitcher.switchTo(this@MainActivity, pkg)
+                }
+            }
+        }
         dialog.findViewById<Button>(R.id.btn_op_test_sale)?.let { btn ->
             fun label() { btn.text = TestSale.peek()?.let { "TEST SALE ${TestSale.format(it)} ARMED" } ?: "TEST SALE: OFF" }
             label()

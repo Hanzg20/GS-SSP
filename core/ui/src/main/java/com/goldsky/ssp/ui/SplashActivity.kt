@@ -44,6 +44,8 @@ class SplashActivity : AppCompatActivity() {
             // where to go. A common pattern is to use a specific Action.
             val mainIntent = Intent("com.goldsky.ssp.action.MAIN")
             mainIntent.`package` = packageName
+            // AppSwitcher's EXTRA_CLAIM_HOME has to reach MainActivity.
+            getIntent().extras?.let { mainIntent.putExtras(it) }
             
             if (mainIntent.resolveActivity(packageManager) != null) {
                 startActivity(mainIntent)

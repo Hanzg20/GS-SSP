@@ -573,6 +573,8 @@ fun TechScreen(
     baySettings: Map<Bay, OutputSettings> = emptyMap(),
     onBayChange: (Bay, OutputSettings) -> Unit = { _, _ -> },
     onTestBay: (Bay) -> Unit = {},
+    switchTarget: String? = null,
+    onSwitchApp: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().background(Bg)) {
         Row(
@@ -582,6 +584,7 @@ fun TechScreen(
             Text("技术员模式", color = TextHi, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Text("演示模式", color = TextLo, fontSize = 13.sp)
             Switch(checked = demoMode, onCheckedChange = onDemoChange, modifier = Modifier.padding(horizontal = 6.dp).scale(0.8f))
+            switchTarget?.let { TextButton(onClick = onSwitchApp) { Text("切换到 $it", color = Amber) } }
             TextButton(onClick = onExit) { Text("返回", color = Amber) }
         }
         Text(

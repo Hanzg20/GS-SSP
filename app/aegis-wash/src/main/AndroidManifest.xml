@@ -74,6 +74,8 @@
             <action android:name="com.pax.us.std.poslink.aidl" />
         </intent>
         <package android:name="com.cloudpos.scanserver" />
+        <!-- AppSwitcher: technician switch to the other Aegis app. -->
+        <package android:name="com.goldsky.ssp.aegis.timer" />
         <!-- WizarPosHoneywellScannerProvider binds this app's MainService
              directly to drive the bottom hardware scan engine. -->
         <package android:name="com.wizarpos.honeywell.scanner" />

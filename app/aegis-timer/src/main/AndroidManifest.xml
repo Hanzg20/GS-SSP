@@ -53,6 +53,8 @@
             <action android:name="com.pax.us.std.poslink.aidl" />
         </intent>
         <package android:name="com.cloudpos.scanserver" />
+        <!-- AppSwitcher: technician switch to the other Aegis app. -->
+        <package android:name="com.goldsky.ssp.aegis.wash" />
     </queries>
 
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
