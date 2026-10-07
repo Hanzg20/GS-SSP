@@ -1062,10 +1062,12 @@ class MainActivity : BaseAdActivity() {
 
     // display_card_number is what's printed on the card; card_uid is the NFC
     // serial and not human-legible, so it's only a last-resort fallback.
-    private fun vipCardNumber(card: VipCard): String = card.display_card_number ?: card.card_uid
+    // What the customer holds: the 6-character member code (printed number or
+    // internal uid only as a fallback -- the uid alone matched nothing they have).
+    private fun vipCardNumber(card: VipCard): String = card.qr_code ?: card.display_card_number ?: card.card_uid
 
     private fun vipCardSummary(card: VipCard): String =
-        "Card No. ${vipCardNumber(card)}  |  Balance: ${formatCents(card.balance_cents)}"
+        "Member Code ${vipCardNumber(card)}  |  Balance: ${formatCents(card.balance_cents)}"
 
     private fun initVipPayment(uid: String, priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null, serviceCents: Int = priceInCents) {
         val layoutStatus = dialog.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
@@ -1099,7 +1101,7 @@ class MainActivity : BaseAdActivity() {
                 is VipDeductResult.Success -> {
                     tvStatus.text = listOfNotNull(
                         "VIP Payment Successful!",
-                        card?.let { "Card No. ${vipCardNumber(it)}" },
+                        card?.let { "Member Code ${vipCardNumber(it)}" },
                         "Remaining Balance: ${formatCents(result.newBalanceCents)}"
                     ).joinToString("\n")
                     delay(1500)
@@ -1165,7 +1167,7 @@ class MainActivity : BaseAdActivity() {
 
     /** pendingVipCardUid is already cleared, so Back lands on package selection with no card bound. */
     private fun showVipUnavailableDialog(card: VipCard, priceInCents: Int) {
-        val no = "Card No. ${vipCardNumber(card)}"
+        val no = "Member Code ${vipCardNumber(card)}"
         val message = if (!card.is_active) {
             "$no\nThis VIP card has been deactivated.\nPlease use another payment method."
         } else {

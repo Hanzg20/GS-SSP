@@ -15,7 +15,9 @@ data class VipCard(
     val tier: String = "REGULAR", // "REGULAR", "GOLD", "PLATINUM"
     // Number printed on the physical card (vip_cards.display_card_number);
     // null when the card has none issued or the RPC predates this field.
-    val display_card_number: String? = null
+    val display_card_number: String? = null,
+    // The 6-character member code the customer holds (vip_cards.qr_code).
+    val qr_code: String? = null
 )
 
 @Serializable
@@ -31,7 +33,8 @@ private data class GetVipCardResult(
     val balance_cents: Int? = null,
     val is_active: Boolean? = null,
     val tier: String? = null,
-    val display_card_number: String? = null
+    val display_card_number: String? = null,
+    val qr_code: String? = null
 )
 
 @Serializable
@@ -124,7 +127,8 @@ object VipRepository {
                 // docs/supabase_full_schema.sql), so an old/un-migrated
                 // database degrades to today's behavior, not a crash.
                 tier = decoded.tier ?: "REGULAR",
-                display_card_number = decoded.display_card_number
+                display_card_number = decoded.display_card_number,
+                qr_code = decoded.qr_code
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch VIP card: ${e.message}")
