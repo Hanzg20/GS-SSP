@@ -47,4 +47,11 @@ class CardTypeClassifierTest {
         assertEquals(false, TransactionRepository.isAlreadyRecorded("Communication Timeout"))
         assertEquals(false, TransactionRepository.isAlreadyRecorded(null))
     }
+
+    @Test fun scannerStartFailure() {
+        assertEquals(true, DiagnosticManager.isScannerStartFailure("Hardware initialization failed: x", 5_000))
+        assertEquals(true, DiagnosticManager.isScannerStartFailure("Internal error: Unknown camera ID", 5_000))
+        assertEquals(true, DiagnosticManager.isScannerStartFailure("Scan error: -1", 40))   // camera page never showed
+        assertEquals(false, DiagnosticManager.isScannerStartFailure("Scan error: -1", 8_000)) // customer closed it
+    }
 }

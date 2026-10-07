@@ -53,6 +53,22 @@ object PendingResolver {
             val ref = order.ecrRefNum
             when (val r = query(provider, ref)) {
                 is IPaymentProvider.QueryResult.Approved -> {
+                    // Served after all? The machine confirmed the start (locally or
+                    // in the cloud), or the cloud already has it PAID: the local
+                    // PENDING is just stale. Reversing it would refund a service the
+                    // customer got -- seen twice: bay5 9/26, Wash 253 10/7 (a test
+                    // sale with ACK_RECEIVED and card details in the cloud, voided
+                    // 19 min later on the next app start).
+                    if (order.hardwareStatus in TransactionRepository.SERVED_HARDWARE ||
+                        TransactionRepository.cloudShowsPaidOrServed(ref) == true
+                    ) {
+                        TransactionRepository.updatePaymentStatus(context, ref, "PAID")
+                        DiagnosticManager.reportError(
+                            sn, "PENDING_LOCAL_STALE", severity = "WARNING",
+                            trace = "$ref approved and served; local row was still PENDING -- kept PAID, not reversed"
+                        )
+                        continue
+                    }
                     // Charged, never served: give the money back.
                     val amount = r.amountCents ?: order.amountCents
                     val (ok, method) = reverse(provider, ref)

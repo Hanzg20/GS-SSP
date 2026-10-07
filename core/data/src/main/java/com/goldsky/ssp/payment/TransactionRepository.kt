@@ -229,6 +229,30 @@ object TransactionRepository {
         }
     }
 
+    @Serializable
+    private data class StatusRow(val payment_status: String? = null, val hardware_status: String? = null)
+
+    /** Machine states that mean the customer got (at least part of) the service. */
+    val SERVED_HARDWARE = setOf("ACK_RECEIVED", "COMMAND_SENT_UNCONFIRMED", "PARTIAL_DISPENSE")
+
+    /**
+     * Whether the cloud row says this sale was paid or served. null when the
+     * cloud can't be reached (caller decides). Used before an automatic
+     * reversal: a local row left PENDING while the cloud already shows the
+     * sale served must not be refunded.
+     */
+    suspend fun cloudShowsPaidOrServed(ecrRefNum: String): Boolean? = withContext(Dispatchers.IO) {
+        try {
+            val row = SupabaseClientProvider.client.postgrest["transactions"]
+                .select { filter { eq("ecr_ref_num", ecrRefNum) } }
+                .decodeSingleOrNull<StatusRow>() ?: return@withContext false
+            row.payment_status == "PAID" || row.hardware_status in SERVED_HARDWARE
+        } catch (e: Exception) {
+            Log.w(TAG, "Cloud status check failed for $ecrRefNum: ${e.message}")
+            null
+        }
+    }
+
     /** Insert refused because this ecr_ref_num is already there (Postgres 23505 on its unique key). */
     fun isAlreadyRecorded(message: String?): Boolean =
         message != null && message.contains("transactions_ecr_ref_num_key")

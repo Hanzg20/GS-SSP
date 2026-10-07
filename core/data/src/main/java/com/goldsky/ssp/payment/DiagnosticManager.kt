@@ -62,6 +62,24 @@ object DiagnosticManager {
     }
 
     /**
+     * A scan that failed before the camera page could even show (the scanner
+     * didn't start) -- as opposed to the customer cancelling or no code being
+     * found. Production units have no adb, so the reason is reported as a
+     * SCANNER_FAULT alert for CMP (found on Wash 253, 2026-10-07).
+     */
+    fun isScannerStartFailure(errorMsg: String, elapsedMs: Long): Boolean =
+        errorMsg.startsWith("Hardware initialization failed") ||
+            errorMsg.startsWith("Internal error") ||
+            elapsedMs < SCANNER_START_FAIL_MS
+
+    /** Reports [errorMsg] when it's a scanner start failure; returns whether it was one. */
+    fun reportScanFailure(sn: String, errorMsg: String, elapsedMs: Long): Boolean {
+        if (!isScannerStartFailure(errorMsg, elapsedMs)) return false
+        reportError(sn, "SCANNER_FAULT", severity = "CRITICAL", trace = "$errorMsg (after ${elapsedMs}ms)")
+        return true
+    }
+
+    /**
      * Captures and uploads recent logcat entries to Supabase Storage.
      */
     suspend fun uploadLogs(sn: String, lineCount: Int = 2000): LogUploadResult = withContext(Dispatchers.IO) {
@@ -103,6 +121,8 @@ object DiagnosticManager {
     }
 
     private const val MIN_USEFUL_LOG_LINES = 10
+    /** A real scan session (camera page up) can't end faster than this. */
+    private const val SCANNER_START_FAIL_MS = 1_500L
 }
 
 /**

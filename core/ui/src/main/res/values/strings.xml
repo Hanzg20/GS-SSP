@@ -124,6 +124,7 @@
     <string name="toast_pay_timeout">Payment timed out. Please try again.</string>
     <string name="toast_payment_processing_wait">Payment processing, please wait…</string>
     <string name="toast_member_recognized">Member recognized! Please select your wash package.</string>
+    <string name="toast_vip_insufficient">Insufficient balance: %1$s (lowest package %2$s). Top up on the VIP page or pay by card.</string>
     <string name="toast_member_code_invalid">Member code not recognized</string>
     <string name="toast_coupon_applied">Coupon applied! Please select your wash package.</string>
     <string name="toast_coupon_invalid">This coupon can\'t be used, please see staff</string>
@@ -131,6 +132,7 @@
     <string name="toast_code_unrecognized">Unrecognized code — not issued by this location</string>
     <string name="toast_scan_failed">Couldn\'t read that code, please try again</string>
     <string name="toast_scan_timeout">No code detected, please try again</string>
+    <string name="toast_scanner_unavailable">Scanner unavailable right now. Please pay by card or contact staff.</string>
     <string name="coupon_confirm_title">Use this coupon?</string>
     <string name="coupon_confirm_button">Confirm</string>
     <string name="coupon_confirm_message_free">%1$s $%2$.2f\nCoupon covers the full amount — Free\n%3$s</string>

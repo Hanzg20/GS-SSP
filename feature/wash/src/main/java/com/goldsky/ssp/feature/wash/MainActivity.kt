@@ -507,6 +507,7 @@ class MainActivity : BaseAdActivity() {
         scanTimeoutRunnable = timeoutRunnable
         scanTimeoutHandler.postDelayed(timeoutRunnable, SCAN_TIMEOUT_MS)
 
+        val scanStartedAt = android.os.SystemClock.elapsedRealtime()
         scanner.startScan(object : com.goldsky.ssp.payment.hardware.IScannerProvider.ScanCallback {
             override fun onScanSuccess(result: String) {
                 scanTimeoutRunnable?.let { scanTimeoutHandler.removeCallbacks(it) }
@@ -525,13 +526,22 @@ class MainActivity : BaseAdActivity() {
                     if (Regex("^[A-Za-z0-9]{6}$").matches(scanned)) {
                         CoroutineScope(Dispatchers.Main).launch {
                             val cardUid = VipRepository.resolveCardUidByQrCode(scanned)
-                            if (cardUid != null) {
+                            // Can't cover even the cheapest package: say so now, not
+                            // after the customer has picked one.
+                            val lowest = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)
+                                ?.filter { it.price_cents > 0 }?.minOfOrNull { it.price_cents }
+                            val scannedCard = cardUid?.let { VipRepository.getVipCard(it) }
+                            if (scannedCard != null && lowest != null && scannedCard.balance_cents < lowest) {
+                                showScanFeedback(getString(R.string.toast_vip_insufficient,
+                                    "$" + String.format(java.util.Locale.US, "%.2f", scannedCard.balance_cents / 100.0),
+                                    "$" + String.format(java.util.Locale.US, "%.2f", lowest / 100.0)))
+                            } else if (cardUid != null) {
                                 pendingCoupon = null
                                 pendingVipCardUid = cardUid
                                 // Best-effort lookup for the card no./balance line; a
                                 // failure here must not block the flow, the deduct RPC
                                 // re-validates the card server-side anyway.
-                                val card = VipRepository.getVipCard(cardUid)
+                                val card = scannedCard
                                 val base = getString(R.string.toast_member_recognized)
                                 showScanFeedback(if (card != null) "${vipCardSummary(card)}\n$base" else base)
                             } else {
@@ -589,7 +599,12 @@ class MainActivity : BaseAdActivity() {
                     return
                 }
                 Log.w("MainActivity", "Coupon scan failed: $errorMsg")
-                runOnUiThread { showScanFeedback(getString(R.string.toast_scan_failed)) }
+                // Scanner never started: say so (not "couldn't read that code") and report why.
+                val elapsed = android.os.SystemClock.elapsedRealtime() - scanStartedAt
+                val startFailure = DiagnosticManager.reportScanFailure(deviceSn, errorMsg, elapsed)
+                runOnUiThread {
+                    showScanFeedback(getString(if (startFailure) R.string.toast_scanner_unavailable else R.string.toast_scan_failed))
+                }
             }
         })
     }

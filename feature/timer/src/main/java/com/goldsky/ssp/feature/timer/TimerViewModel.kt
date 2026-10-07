@@ -300,6 +300,8 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
      * the VIP balance and the coupon are only used after the customer picks
      * a package and confirms.
      */
+    private fun dollars(cents: Int) = "$" + String.format(java.util.Locale.US, "%.2f", cents / 100.0)
+
     fun onScanned(raw: String) {
         val code = raw.trim()
         if (code.isEmpty() || _state.value.screen !is Screen.Home) return
@@ -310,6 +312,12 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 when {
                     uid == null || card == null -> notice("Member code not recognized")
                     !card.is_active -> notice("This VIP card is deactivated. Please contact the attendant.")
+                    // Can't cover even the cheapest package: say so now.
+                    _state.value.packages.filter { it.priceCents > 0 }.minOfOrNull { it.priceCents }
+                        ?.let { card.balance_cents < it } == true -> {
+                        val lowest = _state.value.packages.filter { it.priceCents > 0 }.minOf { it.priceCents }
+                        notice("Insufficient balance: ${dollars(card.balance_cents)} (lowest ${dollars(lowest)}). Top up on the VIP page or pay by card.")
+                    }
                     else -> setPending(Pending.Vip(uid, code.uppercase(), card.balance_cents))
                 }
                 return@launch
@@ -439,6 +447,9 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { if (it.pending == p) it.copy(pending = null) else it }
         }
     }
+
+    /** Short message on the Home screen (e.g. the scanner didn't start). */
+    fun showNotice(text: String) = notice(text)
 
     private fun notice(text: String) {
         noticeJob?.cancel()

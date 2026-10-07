@@ -199,11 +199,18 @@ class MainActivity : ComponentActivity() {
         val s = runCatching { HardwareFactory.getScannerProvider(this, vendor) }.getOrNull() ?: return
         scanner = s
         scanHandler.postDelayed(scanTimeout, SCAN_TIMEOUT_MS)
+        val startedAt = android.os.SystemClock.elapsedRealtime()
         s.startScan(object : com.goldsky.ssp.payment.hardware.IScannerProvider.ScanCallback {
             override fun onScanSuccess(result: String) {
                 runOnUiThread { stopScan(); timerVm.onScanned(result) }
             }
-            override fun onScanFailure(errorMsg: String) { Log.d(TAG, "Scan: $errorMsg") }
+            override fun onScanFailure(errorMsg: String) {
+                Log.d(TAG, "Scan: $errorMsg")
+                val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
+                if (com.goldsky.ssp.payment.DiagnosticManager.reportScanFailure(deviceSn, errorMsg, elapsed)) {
+                    runOnUiThread { timerVm.showNotice(getString(com.goldsky.ssp.core.ui.R.string.toast_scanner_unavailable)) }
+                }
+            }
         })
     }
 

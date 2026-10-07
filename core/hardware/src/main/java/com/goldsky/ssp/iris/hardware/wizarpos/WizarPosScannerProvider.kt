@@ -36,23 +36,32 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
     // blocking part in the first place.
     private val ioExecutor = Executors.newSingleThreadExecutor()
 
+    /** Why the last open failed, for the failure message (production units have no adb). */
+    private var openError: String? = null
+
     private fun ensureOpened(): Boolean {
         if (scannerDevice == null) {
             try {
                 scannerDevice = POSTerminalAdvance.getInstance().getScannerDevice()
+                if (scannerDevice == null) openError = "getScannerDevice() returned null"
                 scannerDevice?.open(context)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to open WizarPOS scanner: ${e.message}")
+                openError = "${e.javaClass.simpleName}: ${e.message}"
+                scannerDevice = null
                 return false
             }
         }
-        return scannerDevice?.isOpened ?: false
+        val opened = scannerDevice?.isOpened ?: false
+        if (!opened && openError == null) openError = "open() returned but isOpened=false"
+        return opened
     }
 
     override fun startScan(callback: IScannerProvider.ScanCallback) {
         ioExecutor.execute {
             if (!ensureOpened()) {
-                mainHandler.post { callback.onScanFailure("Hardware initialization failed") }
+                val why = openError ?: "unknown"
+                mainHandler.post { callback.onScanFailure("Hardware initialization failed: $why") }
                 return@execute
             }
 

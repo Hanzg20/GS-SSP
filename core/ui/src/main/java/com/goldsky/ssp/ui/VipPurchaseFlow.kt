@@ -29,7 +29,6 @@ import com.goldsky.ssp.payment.ConfigManager
 import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.payment.DiagnosticManager
 import com.goldsky.ssp.payment.PaymentProviderFactory
-import com.goldsky.ssp.payment.TestSale
 import com.goldsky.ssp.payment.TransactionRecord
 import com.goldsky.ssp.payment.TransactionRepository
 import com.goldsky.ssp.payment.VipLoadPlan
@@ -182,16 +181,18 @@ class VipPurchaseFlow(
     }
 
     private fun pay(cardUid: String?, phone: String?, currentBalanceCents: Int? = null) {
-        val testCents = TestSale.consume()
-        val chargeCents = testCents ?: plan.amount_cents
-        val ecrRefNum = (if (testCents != null) TestSale.REF_PREFIX else "VLOAD_") + System.currentTimeMillis()
+        // Never the technician test amount: a $0.10 test must not turn into
+        // VIP balance (server refuses TEST_ loads too). An armed test stays
+        // armed for the next service sale.
+        val chargeCents = plan.amount_cents
+        val ecrRefNum = "VLOAD_" + System.currentTimeMillis()
         screen(
             Step.PAY, activity.getString(R.string.vip_pay_heading),
             activity.getString(R.string.vip_pay_message) +
                 (currentBalanceCents?.let { "\n" + activity.getString(R.string.vip_current_balance, money(it)) } ?: ""),
             closable = false,
         )
-        amount.text = (if (testCents != null) "TEST " else "") + money(chargeCents)
+        amount.text = money(chargeCents)
         payBlock.visibility = View.VISIBLE
         startRipple()
         TtsManager.speak("Please present your card")
