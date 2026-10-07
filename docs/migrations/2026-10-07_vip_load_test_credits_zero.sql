@@ -1,7 +1,6 @@
--- 2026-10-07: device_vip_load refuses technician test sales (TEST_ refs).
--- Previously a $0.10 test credited $0.10 to the card; test amounts must
--- never become VIP balance. The terminal (1.1.3 / 1.2.2) also no longer
--- applies the test amount to VIP purchases at all.
+-- 2026-10-07 (supersedes 2026-10-07_vip_load_no_test_sales): technician
+-- test sales (TEST_) run the whole VIP purchase flow for a few cents but
+-- credit 0 -- test money never becomes VIP balance.
 CREATE OR REPLACE FUNCTION public.device_vip_load(p_ecr_ref_num text, p_plan_id uuid, p_card_uid text DEFAULT NULL::text, p_mobile_phone text DEFAULT NULL::text)
  RETURNS json
  LANGUAGE plpgsql
@@ -53,16 +52,23 @@ BEGIN
   IF v_plan.id IS NULL THEN
     RETURN json_build_object('success', false, 'message', 'plan_not_found');
   END IF;
-  -- Technician test sales (TEST_, a few cents) never become VIP balance
-  -- (2026-10-07): the terminal reverses the charge on this rejection.
   IF p_ecr_ref_num LIKE 'TEST\_%' THEN
-    RETURN json_build_object('success', false, 'message', 'test_sale_not_allowed');
+    -- Technician small real test (a few cents): the whole flow runs (card
+    -- opened / topped up, pass shown) but test money never becomes VIP
+    -- balance (owner's rule, 2026-10-07). The LOAD row (0 cents) stays: it
+    -- is what makes a retry return this same card.
+    IF v_tx.amount <= 0 OR v_tx.amount > v_plan.amount_cents THEN
+      RETURN json_build_object('success', false, 'message', 'amount_mismatch');
+    END IF;
+    v_load := 0;
+    v_bonus := 0;
+  ELSE
+    IF v_tx.amount <> v_plan.amount_cents THEN
+      RETURN json_build_object('success', false, 'message', 'amount_mismatch');
+    END IF;
+    v_load := v_plan.amount_cents;
+    v_bonus := v_plan.bonus_cents;
   END IF;
-  IF v_tx.amount <> v_plan.amount_cents THEN
-    RETURN json_build_object('success', false, 'message', 'amount_mismatch');
-  END IF;
-  v_load := v_plan.amount_cents;
-  v_bonus := v_plan.bonus_cents;
   IF p_card_uid IS NULL THEN
     v_phone := NULLIF(regexp_replace(COALESCE(p_mobile_phone, ''), '[^0-9+]', '', 'g'), '');
     LOOP

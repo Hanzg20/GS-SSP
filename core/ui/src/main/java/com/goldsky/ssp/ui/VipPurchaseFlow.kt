@@ -25,6 +25,7 @@ import android.graphics.drawable.BitmapDrawable
 import coil.imageLoader
 import coil.request.ImageRequest
 import com.goldsky.ssp.payment.RefundPolicy
+import com.goldsky.ssp.payment.TestSale
 import com.goldsky.ssp.payment.CardTypeClassifier
 import com.goldsky.ssp.payment.ConfigManager
 import com.goldsky.ssp.payment.DeviceRepository
@@ -182,18 +183,19 @@ class VipPurchaseFlow(
     }
 
     private fun pay(cardUid: String?, phone: String?, currentBalanceCents: Int? = null) {
-        // Never the technician test amount: a $0.10 test must not turn into
-        // VIP balance (server refuses TEST_ loads too). An armed test stays
-        // armed for the next service sale.
-        val chargeCents = plan.amount_cents
-        val ecrRefNum = "VLOAD_" + System.currentTimeMillis()
+        // Technician test: charges the test amount and runs the whole flow,
+        // but the server credits 0 for TEST_ sales -- test money never
+        // becomes VIP balance.
+        val testCents = TestSale.consume()
+        val chargeCents = testCents ?: plan.amount_cents
+        val ecrRefNum = (if (testCents != null) TestSale.REF_PREFIX else "VLOAD_") + System.currentTimeMillis()
         screen(
             Step.PAY, activity.getString(R.string.vip_pay_heading),
             activity.getString(R.string.vip_pay_message) +
                 (currentBalanceCents?.let { "\n" + activity.getString(R.string.vip_current_balance, money(it)) } ?: ""),
             closable = false,
         )
-        amount.text = money(chargeCents)
+        amount.text = (if (testCents != null) "TEST " else "") + money(chargeCents)
         payBlock.visibility = View.VISIBLE
         startRipple()
         TtsManager.speak("Please present your card")
