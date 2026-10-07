@@ -209,8 +209,8 @@ class VipCardView @JvmOverloads constructor(
         canvas.drawRoundRect(panel, w * 0.03f, w * 0.03f, paint)
         // Customers photograph this screen and show the photo to the scanner.
         // Simulated against that (blur, tilt, glare, moire, JPEG; 2026-10-07):
-        // logo 24% + thin margin decoded 86.5%; logo 18% + ~4-module quiet
-        // zone 96.8% (no logo 99.2%).
+        // logo 24% + thin margin decoded 86.5%; with the wider quiet zone,
+        // logo 18% 95.3%, 12% 98.8%, none 99.2%.
         val quiet = side * 0.06f
         qrBitmap?.let {
             // Nearest-neighbour: keeps every module edge sharp when scaled.
@@ -251,10 +251,10 @@ class VipCardView @JvmOverloads constructor(
 
     /**
      * Merchant logo on a white rounded tile in the middle of the QR code --
-     * 18% of its width: 24% failed too often on photos of the screen.
+     * 12% of its width: larger logos failed too often on photos of the screen.
      */
     private fun drawCenterLogo(canvas: Canvas, bmp: Bitmap, panel: RectF, side: Float) {
-        val tile = side * 0.18f
+        val tile = side * 0.12f
         val cx = panel.centerX()
         val cy = panel.centerY()
         val box = RectF(cx - tile / 2, cy - tile / 2, cx + tile / 2, cy + tile / 2)
