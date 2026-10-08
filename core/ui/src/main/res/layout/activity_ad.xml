@@ -16,17 +16,25 @@
         android:background="@android:color/transparent" />
 
     <!-- Video ad, full screen: FillVideoView scales it to cover the 480x480
-         screen (like the image's centerCrop), centred; this layout clips the
-         overflow. It used to fit inside with black bars. -->
-    <com.goldsky.ssp.ui.FillVideoView
-        android:id="@+id/video_ad"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+         screen (like the image's centerCrop). A FrameLayout holds it because
+         it centres an oversized child (ConstraintLayout left it 35 px off,
+         2026-10-08) and clips the overflow. It used to fit with black bars. -->
+    <FrameLayout
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clipChildren="true"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        android:visibility="gone" />
+        app:layout_constraintTop_toTopOf="parent">
+
+        <com.goldsky.ssp.ui.FillVideoView
+            android:id="@+id/video_ad"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone" />
+    </FrameLayout>
 
     <!-- Fallback/Carousel Image View -->
     <ImageView

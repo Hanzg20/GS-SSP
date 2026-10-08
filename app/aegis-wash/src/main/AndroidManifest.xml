@@ -124,7 +124,7 @@
             android:name="com.goldsky.ssp.feature.wash.MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:screenOrientation="portrait"
+            android:screenOrientation="nosensor"
             android:configChanges="orientation|keyboardHidden|screenSize">
             <intent-filter>
                 <action android:name="com.goldsky.ssp.action.MAIN" />
@@ -142,7 +142,7 @@
         <activity
             android:name="com.goldsky.ssp.ui.SplashActivity"
             android:exported="true"
-            android:screenOrientation="portrait"
+            android:screenOrientation="nosensor"
             android:theme="@style/Theme.SSP.Fullscreen">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -155,14 +155,14 @@
         <activity
             android:name="com.goldsky.ssp.ui.AdActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+            android:screenOrientation="nosensor"
             android:theme="@style/Theme.SSP.Fullscreen"
             android:configChanges="orientation|keyboardHidden|screenSize" />
 
         <activity
             android:name="com.goldsky.ssp.ui.VipActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+            android:screenOrientation="nosensor"
             android:theme="@style/Theme.SSP.Fullscreen"
             android:configChanges="orientation|keyboardHidden|screenSize" />
 
