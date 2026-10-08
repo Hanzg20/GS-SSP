@@ -580,6 +580,7 @@ fun TechScreen(
     onTestBay: (Bay) -> Unit = {},
     switchTarget: String? = null,
     onSwitchApp: () -> Unit = {},
+    onPaymentTests: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().background(Bg)) {
         Row(
@@ -590,6 +591,7 @@ fun TechScreen(
             Text("演示模式", color = TextLo, fontSize = 13.sp)
             Switch(checked = demoMode, onCheckedChange = onDemoChange, modifier = Modifier.padding(horizontal = 6.dp).scale(0.8f))
             switchTarget?.let { TextButton(onClick = onSwitchApp) { Text("切换到 $it", color = Amber) } }
+            TextButton(onClick = onPaymentTests) { Text("支付用例", color = Amber) }
             TextButton(onClick = onExit) { Text("返回", color = Amber) }
         }
         Text(

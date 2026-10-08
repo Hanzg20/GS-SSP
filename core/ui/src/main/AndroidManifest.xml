@@ -4,5 +4,11 @@
 
     <application>
         <!-- Common activities like AdActivity can be declared here or merged -->
+        <!-- Technician payment test-case runner (UAT terminals only, see PaymentTestSuite). -->
+        <activity
+            android:name="com.goldsky.ssp.ui.PaymentTestActivity"
+            android:exported="false"
+            android:screenOrientation="nosensor"
+            android:theme="@style/Theme.SSP.Fullscreen" />
     </application>
 </manifest>

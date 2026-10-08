@@ -75,6 +75,23 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
     /** ISO 4217 numeric code for this terminal's region (CA -> CAD 124, else USD 840). */
     private fun currencyCode() = if (CoreConfig.region == "CA") "124" else "840"
 
+    /**
+     * Technician payment test runner (WizarPOS/Nuvei AIDL test cases): sends
+     * [fields] as given -- string values, CallerName/CurrencyCode added unless
+     * present -- after the P3 handshake, and returns PAYWizard's raw JSON
+     * answer, or null when PAYWizard didn't answer. No record is written and
+     * nothing is reversed: the runner owns the whole case.
+     */
+    suspend fun executeRaw(fields: Map<String, String>): String? = withContext(Dispatchers.IO) {
+        val nonce = ByteArray(4).apply { java.util.Random().nextBytes(this) }
+        WizarPosSocketClient.sendRequest(nonce, WizarPosP3Protocol.CTRL_HANDSHAKE_REQ) ?: return@withContext null
+        val all = mapOf("CallerName" to "GS-SSP", "CurrencyCode" to currencyCode()) + fields
+        val body = kotlinx.serialization.json.JsonObject(all.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) })
+        Log.i(TAG, "Test runner request: $body")
+        val bytes = WizarPosSocketClient.sendRequest(body.toString()) ?: return@withContext null
+        String(bytes, Charsets.UTF_8)
+    }
+
     override fun startSale(amountInCents: Int, ecrRefNum: String, callback: IPaymentProvider.PaymentCallback) {
         Log.i(TAG, "Starting PAYWizard SALE: $amountInCents cents")
         saleAmounts[ecrRefNum] = amountInCents

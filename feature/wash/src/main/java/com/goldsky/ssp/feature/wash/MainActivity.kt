@@ -1970,6 +1970,11 @@ class MainActivity : BaseAdActivity() {
 
         // Small real test: arm the next card sale at a small amount (full
         // customer flow, full wash). Tap cycles OFF -> $0.10 -> $0.50 -> $1.00 -> OFF.
+        dialog.findViewById<Button>(R.id.btn_op_payment_test)?.setOnClickListener {
+            applyClickFeedback(it)
+            dialog.dismiss()
+            startActivity(android.content.Intent(this, com.goldsky.ssp.ui.PaymentTestActivity::class.java))
+        }
         com.goldsky.ssp.payment.AppSwitcher.other(this)?.let { (pkg, name) ->
             dialog.findViewById<Button>(R.id.btn_op_switch_app)?.apply {
                 visibility = View.VISIBLE

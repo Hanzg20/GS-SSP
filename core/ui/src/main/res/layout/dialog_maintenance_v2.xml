@@ -418,6 +418,17 @@
             android:textColor="@color/text_dark"
             android:textStyle="bold"
             android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btn_op_payment_test"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="PAYMENT TEST CASES"
+            android:backgroundTint="@color/tech_pill_bg"
+            android:textColor="@color/tech_cyan"
+            android:textStyle="bold" />
     </GridLayout>
 
     <!-- Detailed Hardware Info Card -->

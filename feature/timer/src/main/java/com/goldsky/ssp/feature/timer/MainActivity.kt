@@ -155,6 +155,7 @@ class MainActivity : ComponentActivity() {
                     onBayChange = { bay, v -> outputSettings.save(bay, v); bayOutSettings = bayOutSettings + (bay to v) },
                     onTestBay = { testBay(gpio, it) },
                     switchTarget = switchTarget?.second,
+                    onPaymentTests = { startActivity(android.content.Intent(this@MainActivity, com.goldsky.ssp.ui.PaymentTestActivity::class.java)) },
                     onSwitchApp = {
                         // Never end a running vacuum session (dual mode reaches tech from Home).
                         if (!timerVm.idleForAds) {
