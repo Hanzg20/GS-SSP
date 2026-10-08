@@ -44,100 +44,32 @@
         app:layout_constraintTop_toTopOf="parent"
         android:visibility="visible" />
 
-    <!-- Fullscreen Text Announcement: deliberately distinct from the video/image
-         ad look (glass card panel + royal-blue "ANNOUNCEMENT" label + light,
-         non-bold body text) rather than the amber/bold styling used by the
-         promotional "touch to start" prompt below. -->
-    <LinearLayout
+    <!-- Text announcement (TEXT) as a pinned notice board, text ad (TEXT_AD)
+         as a backlit billboard (see SignboardView). Replaced the loose
+         glass-card / gold-text panels (owner: "too casual", 2026-10-07). -->
+    <com.goldsky.ssp.ui.SignboardView
         android:id="@+id/layout_announcement"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="56dp"
-        android:layout_marginEnd="56dp"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:background="@drawable/bg_glass_card"
-        android:padding="32dp"
+        android:layout_height="0dp"
+        android:layout_margin="24dp"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintDimensionRatio="1:1" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/ad_announcement_label"
-            android:textColor="@color/royal_blue"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.2" />
-
-        <TextView
-            android:id="@+id/tv_announcement"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:gravity="center"
-            android:textColor="@color/text_light"
-            android:textSize="28sp"
-            android:fontFamily="sans-serif-light"
-            android:breakStrategy="simple"
-            android:hyphenationFrequency="none"
-            tools:text="Store closes early at 6pm today for maintenance." />
-
-    </LinearLayout>
-
-    <!-- Fullscreen Promotional Text Ad (TEXT_AD): distinct from TEXT
-         (announcement), bold gold/amber promotional treatment matching the
-         video/image ad branding (prompt_bg pill + shadowed gold text), no
-         glass card, rather than the formal blue "ANNOUNCEMENT" notice look. -->
-    <LinearLayout
+    <com.goldsky.ssp.ui.SignboardView
         android:id="@+id/layout_text_ad"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="48dp"
-        android:layout_marginEnd="48dp"
-        android:orientation="vertical"
-        android:gravity="center"
+        android:layout_height="0dp"
+        android:layout_margin="24dp"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/prompt_bg"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
-            android:text="@string/ad_promo_label"
-            android:textColor="@color/goldsky_gold_start"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.2" />
-
-        <TextView
-            android:id="@+id/tv_text_ad"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:gravity="center"
-            android:textColor="@color/goldsky_gold_start"
-            android:textSize="36sp"
-            android:textStyle="bold"
-            android:shadowColor="@color/bg_dark"
-            android:shadowDx="2"
-            android:shadowDy="2"
-            android:shadowRadius="6"
-            android:breakStrategy="simple"
-            android:hyphenationFrequency="none"
-            tools:text="This weekend only: 20% off all wash packages!" />
-
-    </LinearLayout>
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintDimensionRatio="1:1" />
 
     <!-- Overlay Brand Slogan -->
     <LinearLayout

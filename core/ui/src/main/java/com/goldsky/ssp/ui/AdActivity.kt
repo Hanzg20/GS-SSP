@@ -29,10 +29,8 @@ class AdActivity : BaseAdActivity() {
 
     private lateinit var videoAd: VideoView
     private lateinit var imgAd: ImageView
-    private lateinit var announcementCard: View
-    private lateinit var tvAnnouncement: TextView
-    private lateinit var textAdCard: View
-    private lateinit var tvTextAd: TextView
+    private lateinit var announcementCard: SignboardView
+    private lateinit var textAdCard: SignboardView
     private lateinit var tvPrompt: TextView
     private lateinit var btnPause: ImageView
 
@@ -56,10 +54,8 @@ class AdActivity : BaseAdActivity() {
 
         videoAd = findViewById(R.id.video_ad)
         imgAd = findViewById(R.id.img_ad)
-        announcementCard = findViewById(R.id.layout_announcement)
-        tvAnnouncement = findViewById(R.id.tv_announcement)
-        textAdCard = findViewById(R.id.layout_text_ad)
-        tvTextAd = findViewById(R.id.tv_text_ad)
+        announcementCard = findViewById<SignboardView>(R.id.layout_announcement).apply { style = SignboardView.Style.NOTICE }
+        textAdCard = findViewById<SignboardView>(R.id.layout_text_ad).apply { style = SignboardView.Style.BILLBOARD }
         tvPrompt = findViewById(R.id.tv_ad_prompt)
         btnPause = findViewById(R.id.btn_pause_ad)
 
@@ -194,7 +190,7 @@ class AdActivity : BaseAdActivity() {
         textAdCard.visibility = View.GONE
         announcementCard.visibility = View.VISIBLE
         btnPause.visibility = View.VISIBLE
-        tvAnnouncement.text = text
+        announcementCard.text = text
         scheduleAdvance(8000L)
     }
 
@@ -205,7 +201,7 @@ class AdActivity : BaseAdActivity() {
         announcementCard.visibility = View.GONE
         textAdCard.visibility = View.VISIBLE
         btnPause.visibility = View.VISIBLE
-        tvTextAd.text = text
+        textAdCard.text = text
         scheduleAdvance(8000L)
     }
 
