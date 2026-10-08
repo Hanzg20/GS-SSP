@@ -1,6 +1,8 @@
 package com.goldsky.ssp.payment
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.util.Calendar
@@ -43,6 +45,14 @@ class SettlementManagerTest {
         assertNull(SettlementManager.parseTotals(null))
         assertNull(SettlementManager.parseTotals("""{"TransResult":false}"""))
         assertNull(SettlementManager.parseTotals("not json"))
+    }
+
+    @Test
+    fun noTransToSettleIsNotAFailure() {
+        assertTrue(SettlementManager.isNothingToSettle("""{"TransResult":false,"RespCode":"-201","RespDesc":"no trans to settle"}""", "x"))
+        assertTrue(SettlementManager.isNothingToSettle(null, "Payment Error: no trans to settle (-201)"))
+        assertFalse(SettlementManager.isNothingToSettle("""{"TransResult":false,"RespCode":"-139"}""", "Communication Timeout (P3)"))
+        assertFalse(SettlementManager.isNothingToSettle(null, "Communication Timeout (P3)"))
     }
 
     @Test

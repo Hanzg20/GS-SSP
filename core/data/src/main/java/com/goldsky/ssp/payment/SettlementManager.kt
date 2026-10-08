@@ -28,6 +28,8 @@ object SettlementManager {
     // Settle can take a while on a real host; PAYWizard's own limit is ~180s.
     private const val TIMEOUT_MS = 200_000L
 
+    private const val NOTHING_TO_SETTLE = "-201"
+
     data class Outcome(val ok: Boolean, val message: String, val totals: Totals?)
 
     /** BatchDetailInfo fields (protocol V2.3.x); amounts as PAYWizard sends them. */
@@ -62,7 +64,11 @@ object SettlementManager {
             }
 
             override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
-                done.complete(Outcome(false, errorMsg, parseTotals(raw)))
+                if (isNothingToSettle(raw, errorMsg)) {
+                    done.complete(Outcome(true, "Nothing to settle", parseTotals(raw)))
+                } else {
+                    done.complete(Outcome(false, errorMsg, parseTotals(raw)))
+                }
             }
 
             override fun onProgress(message: String) {
@@ -77,6 +83,17 @@ object SettlementManager {
             DiagnosticManager.reportError(sn, "BATCH_CLOSE_FAILED", severity = "ERROR", trace = "$trigger: ${outcome.message}")
         }
         outcome
+    }
+
+    /**
+     * PAYWizard's -201 "no trans to settle": the batch is already empty, e.g.
+     * Wash and Timer on one terminal both settle at 03:30 and the second finds
+     * nothing left (bay5, 2026-10-08). That is a settled state, not a failure
+     * to retry and alert on.
+     */
+    internal fun isNothingToSettle(raw: String?, errorMsg: String): Boolean {
+        val code = runCatching { json.parseToJsonElement(raw ?: "").jsonObject["RespCode"]?.jsonPrimitive?.contentOrNull }.getOrNull()
+        return code == NOTHING_TO_SETTLE || errorMsg.contains("($NOTHING_TO_SETTLE)")
     }
 
     internal fun parseTotals(raw: String?): Totals? = runCatching {
