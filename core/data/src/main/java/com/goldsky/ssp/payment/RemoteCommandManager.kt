@@ -234,6 +234,8 @@ object RemoteCommandManager {
                     "SYNC_CONFIG" -> {
                         Log.i(TAG, "Executing Remote SYNC_CONFIG...")
                         withContext(Dispatchers.Main) { commandListener?.onSyncRequested() }
+                        // Ads too: CMP sends this after a playlist / ad change.
+                        AdManager.syncNow(context)
                     }
                     "LOCK" -> {
                         Log.w(TAG, "Executing Remote LOCK...")

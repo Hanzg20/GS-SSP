@@ -166,6 +166,8 @@ class AdActivity : BaseAdActivity() {
         btnPause.visibility = View.VISIBLE
         val contentUri = if (preloadedType == "VIDEO" && preloadedUri != null) preloadedUri!! else FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
         videoAd.setVideoURI(contentUri)
+        // Full screen: tell the view the video's size so it can cover the screen.
+        videoAd.setOnPreparedListener { mp -> (videoAd as? FillVideoView)?.setVideoSize(mp.videoWidth, mp.videoHeight) }
         videoAd.setOnCompletionListener { playNext() }
         videoAd.setOnErrorListener { _, _, _ -> playNext(); true }
         videoAd.start()

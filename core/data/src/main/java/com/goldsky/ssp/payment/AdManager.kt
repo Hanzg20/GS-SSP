@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit
 object AdManager {
     private const val AD_PLAYLIST_CACHE = "ad_playlist.json"
     private const val AD_SYNC_WORK = "ad_sync_work"
+    private const val AD_SYNC_NOW_WORK = "ad_sync_now"
     private const val HEARTBEAT_WORK = "heartbeat_work"
     private const val TRANSACTION_REPLAY_WORK = "transaction_replay_work"
     private const val BATCH_CLOSE_WORK = "batch_close_work"
@@ -118,6 +119,18 @@ object AdManager {
             ExistingPeriodicWorkPolicy.KEEP,
             cleanRequest
         )
+    }
+
+    /**
+     * Sync the playlist now instead of at the next 2-hourly run -- on a CMP
+     * SYNC_CONFIG (sent after a playlist / ad change). Playlist edits used to
+     * wait up to 2 h (bay5 showed 2 of its 6 ads, 2026-10-07).
+     */
+    fun syncNow(context: Context) {
+        val request = androidx.work.OneTimeWorkRequestBuilder<AdSyncWorker>()
+            .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(AD_SYNC_NOW_WORK, androidx.work.ExistingWorkPolicy.REPLACE, request)
     }
 
     fun getAdsDir(context: Context): File {

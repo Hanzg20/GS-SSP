@@ -15,16 +15,13 @@
         android:focusable="true"
         android:background="@android:color/transparent" />
 
-    <!-- Looping video view. wrap_content (not 0dp) so the aspect-fitted
-         video is centered with even bars; at 0dp VideoView shrinks itself to
-         the video's aspect ratio but stays anchored top-left, which left a
-         portrait ad against the left edge on the 480x480 Q3mini. -->
-    <VideoView
+    <!-- Video ad, full screen: FillVideoView scales it to cover the 480x480
+         screen (like the image's centerCrop), centred; this layout clips the
+         overflow. It used to fit inside with black bars. -->
+    <com.goldsky.ssp.ui.FillVideoView
         android:id="@+id/video_ad"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        app:layout_constrainedWidth="true"
-        app:layout_constrainedHeight="true"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
