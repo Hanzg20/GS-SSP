@@ -180,10 +180,30 @@ class AdActivity : BaseAdActivity() {
         textAdCard.visibility = View.GONE
         imgAd.visibility = View.VISIBLE
         btnPause.visibility = View.VISIBLE
-        val contentUri = if (preloadedType != "VIDEO" && preloadedUri != null) preloadedUri!! else FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
-        imgAd.setImageURI(contentUri)
+        val bitmap = decodeForScreen(file)
+        if (bitmap == null) {
+            playNext()
+            return
+        }
+        imgAd.setImageBitmap(bitmap)
         scheduleAdvance(10000L)
     }
+
+    /**
+     * Decodes [file] subsampled to about the screen size. setImageURI decoded
+     * the full image: a camera-size picture is ~48 MB of pixels on a 480x480
+     * screen and can exceed the bitmap draw limit or the app's memory.
+     */
+    private fun decodeForScreen(file: File): android.graphics.Bitmap? = runCatching {
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+        val dm = resources.displayMetrics
+        val target = maxOf(dm.widthPixels, dm.heightPixels)
+        var sample = 1
+        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= target) sample *= 2
+        android.graphics.BitmapFactory.decodeFile(file.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+    }.getOrNull()
 
     private fun playText(text: String) {
         resetPauseState()
