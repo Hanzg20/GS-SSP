@@ -29,6 +29,9 @@ class AdActivity : BaseAdActivity() {
 
     private lateinit var videoAd: VideoView
     private lateinit var imgAd: ImageView
+    private lateinit var imgAdFit: ImageView
+    // Dims the blurred backdrop so the poster itself stands out.
+    private val BACKDROP_DIM = android.graphics.Color.argb(110, 0, 0, 0)
     private lateinit var announcementCard: SignboardView
     private lateinit var textAdCard: SignboardView
     private lateinit var tvPrompt: TextView
@@ -54,6 +57,7 @@ class AdActivity : BaseAdActivity() {
 
         videoAd = findViewById(R.id.video_ad)
         imgAd = findViewById(R.id.img_ad)
+        imgAdFit = findViewById(R.id.img_ad_fit)
         announcementCard = findViewById<SignboardView>(R.id.layout_announcement).apply { style = SignboardView.Style.NOTICE }
         textAdCard = findViewById<SignboardView>(R.id.layout_text_ad).apply { style = SignboardView.Style.BILLBOARD }
         tvPrompt = findViewById(R.id.tv_ad_prompt)
@@ -160,6 +164,7 @@ class AdActivity : BaseAdActivity() {
     private fun playVideo(file: File) {
         resetPauseState()
         imgAd.visibility = View.GONE
+        imgAdFit.visibility = View.GONE
         announcementCard.visibility = View.GONE
         textAdCard.visibility = View.GONE
         videoAd.visibility = View.VISIBLE
@@ -185,7 +190,10 @@ class AdActivity : BaseAdActivity() {
             playNext()
             return
         }
-        imgAd.setImageBitmap(bitmap)
+        imgAd.setImageBitmap(blurredBackdrop(bitmap))
+        imgAd.setColorFilter(BACKDROP_DIM)
+        imgAdFit.setImageBitmap(bitmap)
+        imgAdFit.visibility = View.VISIBLE
         scheduleAdvance(10000L)
     }
 
@@ -205,10 +213,22 @@ class AdActivity : BaseAdActivity() {
         android.graphics.BitmapFactory.decodeFile(file.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
     }.getOrNull()
 
+    /**
+     * A strong blur without RenderEffect (API 31+; the floor is 25): shrink
+     * to a few dozen pixels with filtering, then let centerCrop scale it up.
+     */
+    private fun blurredBackdrop(src: android.graphics.Bitmap): android.graphics.Bitmap {
+        val w = 24
+        val h = maxOf(1, Math.round(w * src.height / src.width.toFloat()))
+        val tiny = android.graphics.Bitmap.createScaledBitmap(src, w, h, true)
+        return android.graphics.Bitmap.createScaledBitmap(tiny, w * 8, h * 8, true)
+    }
+
     private fun playText(text: String) {
         resetPauseState()
         videoAd.visibility = View.GONE
         imgAd.visibility = View.GONE
+        imgAdFit.visibility = View.GONE
         textAdCard.visibility = View.GONE
         announcementCard.visibility = View.VISIBLE
         btnPause.visibility = View.VISIBLE
@@ -220,6 +240,7 @@ class AdActivity : BaseAdActivity() {
         resetPauseState()
         videoAd.visibility = View.GONE
         imgAd.visibility = View.GONE
+        imgAdFit.visibility = View.GONE
         announcementCard.visibility = View.GONE
         textAdCard.visibility = View.VISIBLE
         btnPause.visibility = View.VISIBLE
@@ -283,6 +304,8 @@ class AdActivity : BaseAdActivity() {
         announcementCard.visibility = View.GONE
         textAdCard.visibility = View.GONE
         imgAd.visibility = View.VISIBLE
+        imgAdFit.visibility = View.GONE
+        imgAd.clearColorFilter()
         imgAd.setImageResource(R.drawable.ad_placeholder)
         btnPause.visibility = View.GONE
     }

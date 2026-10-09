@@ -49,6 +49,20 @@
         app:layout_constraintTop_toTopOf="parent"
         android:visibility="visible" />
 
+    <!-- Image ads, shown whole (fitCenter) over a blurred, dimmed copy of
+         themselves in img_ad: a landscape poster cropped to the square
+         screen lost its headline and edges (owner, 2026-10-09). -->
+    <ImageView
+        android:id="@+id/img_ad_fit"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:scaleType="fitCenter"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        android:visibility="gone" />
+
     <!-- Text announcement (TEXT) as a pinned notice board, text ad (TEXT_AD)
          as a backlit billboard (see SignboardView). Replaced the loose
          glass-card / gold-text panels (owner: "too casual", 2026-10-07). -->
