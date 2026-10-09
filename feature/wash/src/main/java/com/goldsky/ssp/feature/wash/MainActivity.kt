@@ -186,6 +186,7 @@ class MainActivity : BaseAdActivity() {
         AdManager.init(this)
 
         LauncherClaim.ensureDefault(this, hardwareVendor)
+        com.goldsky.ssp.ui.BootFrontGuard.install(this)
         com.goldsky.ssp.payment.AppSwitcher.claimHomeIfSwitched(this)
         RemoteCommandManager.startListening(this, deviceSn, hardwareVendor, object : RemoteCommandManager.CommandListener {
             override fun onSyncRequested() {

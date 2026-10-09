@@ -104,6 +104,7 @@ class MainActivity : ComponentActivity() {
         syncIdentityAndConfig()
 
         LauncherClaim.ensureDefault(this, vendor)
+        com.goldsky.ssp.ui.BootFrontGuard.install(this)
         com.goldsky.ssp.payment.AppSwitcher.claimHomeIfSwitched(this)
         RemoteCommandManager.startListening(this, deviceSn, vendor, object : RemoteCommandManager.CommandListener {
             override fun onSyncRequested() = loadConfig(DeviceRepository.getPersistedOrgId())
@@ -257,6 +258,7 @@ class MainActivity : ComponentActivity() {
     // ---- idle ad screen (same rule as wash's BaseAdActivity) ----------------
 
     override fun dispatchTouchEvent(ev: android.view.MotionEvent?): Boolean {
+        com.goldsky.ssp.ui.BootFrontGuard.onTouch()
         resetAdTimer()
         return super.dispatchTouchEvent(ev)
     }

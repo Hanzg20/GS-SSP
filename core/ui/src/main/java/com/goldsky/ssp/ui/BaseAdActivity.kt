@@ -43,6 +43,7 @@ abstract class BaseAdActivity : AppCompatActivity() {
      * Intercepts all screen touch events to reset the inactivity timer.
      */
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        BootFrontGuard.onTouch()
         resetAdTimer()
         return super.dispatchTouchEvent(ev)
     }
