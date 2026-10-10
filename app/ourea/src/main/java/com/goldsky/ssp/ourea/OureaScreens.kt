@@ -48,7 +48,7 @@ import java.util.Calendar
 import java.util.Locale
 
 /** Which of the sidebar's wired-up destinations is currently showing. */
-enum class OureaDestination { CHECKOUT, INSIGHTS, PRODUCTS, TRANSACTIONS, SETTINGS }
+enum class OureaDestination { CHECKOUT, INSIGHTS, PRODUCTS, TRANSACTIONS, DAY_REPORT, SETTINGS }
 
 /**
  * Left icon rail modeled on the reference screenshots' sidebar. Only wired
@@ -84,7 +84,7 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
             SidebarIcon(Icons.Default.Inventory2, current == OureaDestination.PRODUCTS) { onSelect(OureaDestination.PRODUCTS) }
             Spacer(modifier = Modifier.height(20.dp))
         }
-        SidebarIcon(Icons.Default.History, current == OureaDestination.TRANSACTIONS) { onSelect(OureaDestination.TRANSACTIONS) }
+        SidebarIcon(Icons.Default.History, current == OureaDestination.TRANSACTIONS || current == OureaDestination.DAY_REPORT) { onSelect(OureaDestination.TRANSACTIONS) }
         Spacer(modifier = Modifier.weight(1f))
         if (isManager) SidebarIcon(Icons.Default.Settings, current == OureaDestination.SETTINGS) { onSelect(OureaDestination.SETTINGS) }
         Spacer(modifier = Modifier.height(20.dp))
@@ -129,10 +129,10 @@ fun OureaGradientButton(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
-                Icon(icon, null, tint = Color(0xFF231A00))
+                Icon(icon, null, tint = MaterialTheme.colorScheme.onPrimary)
                 Spacer(modifier = Modifier.width(10.dp))
             }
-            Text(text, color = Color(0xFF231A00), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(text, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
     }
 }
@@ -649,7 +649,7 @@ fun OureaCashDialog(totalCents: Int, onConfirm: (cashReceivedCents: Int) -> Unit
                         onClick = { onConfirm(receivedCents) },
                         enabled = receivedCents >= totalCents,
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = OureaGold, contentColor = Color(0xFF231A00))
+                        colors = ButtonDefaults.buttonColors(containerColor = OureaGold, contentColor = MaterialTheme.colorScheme.onPrimary)
                     ) { Text("Confirm") }
                 }
             }
@@ -701,7 +701,7 @@ fun OureaMemberDialog(onSubmit: (code: String) -> Unit, onDismiss: () -> Unit) {
                         onClick = { onSubmit(code) },
                         enabled = isValid,
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = OureaGold, contentColor = Color(0xFF231A00))
+                        colors = ButtonDefaults.buttonColors(containerColor = OureaGold, contentColor = MaterialTheme.colorScheme.onPrimary)
                     ) { Text("Charge") }
                 }
             }

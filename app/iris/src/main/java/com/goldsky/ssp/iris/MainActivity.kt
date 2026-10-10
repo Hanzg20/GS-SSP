@@ -29,6 +29,7 @@ import com.goldsky.ssp.model.SaleLine
 import com.goldsky.ssp.payment.*
 import com.goldsky.ssp.payment.hardware.*
 import com.goldsky.ssp.feature.retail.screens.*
+import com.goldsky.ssp.feature.retail.RefundFlow
 import com.goldsky.ssp.feature.retail.RetailRepository
 import com.goldsky.ssp.feature.retail.ui.TipSelectionDialog
 import com.goldsky.ssp.feature.retail.ui.apexPulseGlow
@@ -213,7 +214,8 @@ class MainActivity : ComponentActivity() {
                                     TransactionHistoryScreen(
                                         onlyStaffId = if (signedIn.isManager) null else signedIn.id,
                                         onRefund = { order, approver ->
-                                            refundSale(order, approver) { state ->
+                                            RefundFlow.start(this@MainActivity, paymentProvider, order, approver) { r ->
+                                                val state = r.toUi()
                                                 paymentStatus = state
                                                 if (state !is PaymentUiState.Processing) recordsReload++
                                             }
@@ -263,12 +265,16 @@ class MainActivity : ComponentActivity() {
                             is PaymentUiState.Processing -> PaymentProcessingDialog(state.message)
                             is PaymentUiState.Success -> PaymentResultDialog(true, "Approved: ${state.authCode}") { paymentStatus = PaymentUiState.Idle }
                             is PaymentUiState.Done -> PaymentResultDialog(true, state.message) { paymentStatus = PaymentUiState.Idle }
-                            is PaymentUiState.RefundNeedsCard -> RefundNeedsCardDialog(
+                            is PaymentUiState.RefundNeedsCard -> com.goldsky.ssp.feature.retail.RefundNeedsCardDialog(
                                 amountCents = state.order.amountCents,
-                                onCardTapped = { refundWithCard(state.order, state.approver) { paymentStatus = it; if (it !is PaymentUiState.Processing) recordsReload++ } },
+                                onCardTapped = {
+                                    RefundFlow.withCard(this@MainActivity, paymentProvider, state.order, state.approver) {
+                                        paymentStatus = it.toUi(); if (it !is RefundFlow.RefundState.Processing) recordsReload++
+                                    }
+                                },
                                 onRefundedInPortal = {
-                                    finishRefund(state.order, state.approver, "REFUNDED", "Refunded in WizarPOS merchant portal") {
-                                        paymentStatus = it; recordsReload++
+                                    RefundFlow.refundedInPortal(this@MainActivity, state.order, state.approver) {
+                                        paymentStatus = it.toUi(); recordsReload++
                                     }
                                 },
                                 onCancel = { paymentStatus = PaymentUiState.Idle }
@@ -353,75 +359,6 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val SAME_CODE_MS = 1500L
         const val IDLE_LOCK_MS = 5 * 60_000L
-    }
-
-    /**
-     * Whole-sale refund, approved by [approver] (a manager's PIN). Card: look
-     * the sale up first so PAYWizard has the original's IDs for a reversal
-     * (they're only cached in-process), then reverse it -- no card needed
-     * before the batch settles. Once settled, a socket-mode Refund needs the
-     * customer's card (WizarPOS, 2026-09-28 / 2026-10-10), so the cashier
-     * chooses (RefundNeedsCard). Cash: just recorded; the cashier hands the
-     * money back. Prints a refund slip either way.
-     */
-    private fun refundSale(order: com.goldsky.ssp.db.OrderEntity, approver: StaffMember, onState: (PaymentUiState) -> Unit) {
-        val ref = order.ecrRefNum
-        val amount = "%.2f".format(order.amountCents / 100.0)
-        if (order.paymentMethod == "CASH") {
-            finishRefund(order, approver, "REFUNDED", "Cash handed back: $$amount", onState)
-            return
-        }
-        onState(PaymentUiState.Processing("Reversing $$amount..."))
-        // Reversal only (no card needed, before settle). If it fails the
-        // cashier chooses: card refund with the customer's card, or the
-        // merchant portal -- never an automatic Refund that would just park
-        // PAYWizard's card screen.
-        paymentProvider.queryTransaction(ref) { _ ->
-            paymentProvider.voidTransaction(ref, object : IPaymentProvider.PaymentCallback {
-                override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                    runOnUiThread { finishRefund(order, approver, "VOIDED", "Card sale reversed", onState) }
-                }
-                override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
-                    android.util.Log.w("IrisRefund", "Reversal of $ref failed: $errorMsg")
-                    runOnUiThread { onState(PaymentUiState.RefundNeedsCard(order, approver)) }
-                }
-                override fun onProgress(message: String) {}
-            })
-        }
-    }
-
-    /** Socket-mode Refund: PAYWizard asks for the customer's card. */
-    private fun refundWithCard(order: com.goldsky.ssp.db.OrderEntity, approver: StaffMember, onState: (PaymentUiState) -> Unit) {
-        onState(PaymentUiState.Processing("Customer: tap or insert the card used for this sale"))
-        paymentProvider.refundTransaction(order.ecrRefNum, order.amountCents, object : IPaymentProvider.PaymentCallback {
-            override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                runOnUiThread { finishRefund(order, approver, "REFUNDED", "Refunded to card", onState) }
-            }
-            override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
-                runOnUiThread { onState(PaymentUiState.Error("Refund not done: $errorMsg")) }
-            }
-            override fun onProgress(message: String) {}
-        })
-    }
-
-    private fun finishRefund(order: com.goldsky.ssp.db.OrderEntity, approver: StaffMember, status: String, how: String, onState: (PaymentUiState) -> Unit) {
-        val ref = order.ecrRefNum
-        val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
-        val amount = "%.2f".format(order.amountCents / 100.0)
-        CoroutineScope(Dispatchers.IO).launch {
-                TransactionRepository.recordRefund(this@MainActivity, ref, status, approver.id, approver.name)
-                ReceiptPrinterManager.printReceipt(
-                    this@MainActivity,
-                    ReceiptPrinterManager.ReceiptData(
-                        subtotalCents = order.subtotalCents, taxCents = order.taxCents, tipCents = order.tipCents,
-                        amountCents = order.amountCents, refNum = ref, deviceSn = sn,
-                        banner = "      *** REFUND ***",
-                        footer = listOf(how, "Approved by: ${approver.name}")
-                    ),
-                    vendor = DeviceRepository.getPersistedHardwareVendor()
-                )
-                withContext(Dispatchers.Main) { onState(PaymentUiState.Done("Refunded $$amount. $how")) }
-        }
     }
 
     /**
@@ -741,6 +678,13 @@ fun IrisSystemHeader(staff: StaffMember, onLock: () -> Unit) {
     }
 }
 
+private fun RefundFlow.RefundState.toUi(): PaymentUiState = when (this) {
+    is RefundFlow.RefundState.Processing -> PaymentUiState.Processing(message)
+    is RefundFlow.RefundState.Done -> PaymentUiState.Done(message)
+    is RefundFlow.RefundState.Failed -> PaymentUiState.Error(message)
+    is RefundFlow.RefundState.NeedsCard -> PaymentUiState.RefundNeedsCard(order, approver)
+}
+
 sealed class PaymentUiState {
     object Idle : PaymentUiState()
     data class Success(val authCode: String) : PaymentUiState()
@@ -752,36 +696,6 @@ sealed class PaymentUiState {
     // Refund needs the customer's card; otherwise it's refunded in the WizarPOS
     // merchant portal and only recorded here.
     data class RefundNeedsCard(val order: com.goldsky.ssp.db.OrderEntity, val approver: StaffMember) : PaymentUiState()
-}
-
-@Composable
-fun RefundNeedsCardDialog(amountCents: Int, onCardTapped: () -> Unit, onRefundedInPortal: () -> Unit, onCancel: () -> Unit) {
-    val amount = "%.2f".format(amountCents / 100.0)
-
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text("Refund needs the card") },
-        text = {
-            Text(
-                "This sale couldn't be reversed -- it has most likely been settled already. " +
-                    "A refund of $$amount from this terminal needs the customer's card.\n\n" +
-                    "If the customer isn't here, refund it in the WizarPOS merchant portal (no card needed), then record it here."
-            )
-        },
-        confirmButton = {
-            Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
-                Button(
-                    onClick = onCardTapped,
-                    colors = ButtonDefaults.buttonColors()
-                ) { Text("CUSTOMER TAPS CARD", fontWeight = FontWeight.Bold) }
-                TextButton(onClick = onRefundedInPortal) { Text("ALREADY REFUNDED IN PORTAL", color = MaterialTheme.colorScheme.primary) }
-                TextButton(onClick = onCancel) { Text("CANCEL", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        titleContentColor = MaterialTheme.colorScheme.onSurface,
-        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-    )
 }
 
 @Composable

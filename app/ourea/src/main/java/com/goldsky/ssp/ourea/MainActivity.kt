@@ -98,7 +98,10 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            OureaTheme {
+            // Shared GoldSkyTheme, dark or light as picked in Settings; repaints on a switch.
+            val themeVersion by DeviceRepository.themeVersion.collectAsState()
+            val darkTheme = remember(themeVersion) { DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER }
+            OureaTheme(dark = darkTheme) { key(themeVersion) {
                 var staff by remember { mutableStateOf(StaffRepository.current) }
 
                 val signedIn = staff
@@ -114,6 +117,17 @@ class MainActivity : ComponentActivity() {
                     var showMemberDialog by remember { mutableStateOf(false) }
                     // Lines of the sale being paid (taken at checkout), for transaction_items and the receipt.
                     var saleLines by remember { mutableStateOf<List<com.goldsky.ssp.model.SaleLine>>(emptyList()) }
+                    // Refunds (shared RefundFlow): records reload after one; NeedsCard asks how to refund a settled card sale.
+                    var recordsReload by remember { mutableStateOf(0) }
+                    var refundNeedsCard by remember { mutableStateOf<com.goldsky.ssp.feature.retail.RefundFlow.RefundState.NeedsCard?>(null) }
+                    fun onRefundState(r: com.goldsky.ssp.feature.retail.RefundFlow.RefundState) {
+                        when (r) {
+                            is com.goldsky.ssp.feature.retail.RefundFlow.RefundState.Processing -> paymentStatus = OureaPaymentUiState.Processing(r.message)
+                            is com.goldsky.ssp.feature.retail.RefundFlow.RefundState.Done -> { paymentStatus = OureaPaymentUiState.Success(r.message); recordsReload++ }
+                            is com.goldsky.ssp.feature.retail.RefundFlow.RefundState.Failed -> { paymentStatus = OureaPaymentUiState.Error(r.message); recordsReload++ }
+                            is com.goldsky.ssp.feature.retail.RefundFlow.RefundState.NeedsCard -> { paymentStatus = OureaPaymentUiState.Idle; refundNeedsCard = r }
+                        }
+                    }
                     var qrState by remember { mutableStateOf<OureaQrUiState>(OureaQrUiState.Hidden) }
 
                     fun onPaymentSettled(state: OureaPaymentUiState) {
@@ -170,7 +184,15 @@ class MainActivity : ComponentActivity() {
                                 // Insights, products and Settings: managers only (their rail icons are hidden too).
                                 OureaDestination.INSIGHTS -> if (signedIn.isManager) OureaDashboardScreen()
                                 OureaDestination.PRODUCTS -> if (signedIn.isManager) OureaProductsScreen()
-                                OureaDestination.TRANSACTIONS -> TransactionHistoryScreen(onlyStaffId = if (signedIn.isManager) null else signedIn.id)
+                                OureaDestination.TRANSACTIONS -> TransactionHistoryScreen(
+                                    onlyStaffId = if (signedIn.isManager) null else signedIn.id,
+                                    onRefund = { order, approver ->
+                                        com.goldsky.ssp.feature.retail.RefundFlow.start(this@MainActivity, paymentProvider, order, approver, ::onRefundState)
+                                    },
+                                    onOpenDayReport = { destination = OureaDestination.DAY_REPORT },
+                                    reloadKey = recordsReload
+                                )
+                                OureaDestination.DAY_REPORT -> if (signedIn.isManager) com.goldsky.ssp.feature.retail.screens.DayReportScreen(onBack = { destination = OureaDestination.TRANSACTIONS })
                                 OureaDestination.SETTINGS -> if (signedIn.isManager) SettingsScreen()
                             }
                         }
@@ -185,6 +207,21 @@ class MainActivity : ComponentActivity() {
                                 confirmingPayment = Triple(subtotal, tax, tip)
                             },
                             onDismiss = { activeSaleData = null }
+                        )
+                    }
+
+                    refundNeedsCard?.let { need ->
+                        com.goldsky.ssp.feature.retail.RefundNeedsCardDialog(
+                            amountCents = need.order.amountCents,
+                            onCardTapped = {
+                                refundNeedsCard = null
+                                com.goldsky.ssp.feature.retail.RefundFlow.withCard(this@MainActivity, paymentProvider, need.order, need.approver, ::onRefundState)
+                            },
+                            onRefundedInPortal = {
+                                refundNeedsCard = null
+                                com.goldsky.ssp.feature.retail.RefundFlow.refundedInPortal(this@MainActivity, need.order, need.approver, ::onRefundState)
+                            },
+                            onCancel = { refundNeedsCard = null }
                         )
                     }
 
@@ -242,7 +279,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
-            }
+            } }
         }
     }
 
@@ -599,7 +636,7 @@ fun OureaPaymentResultDialog(isSuccess: Boolean, message: String, onDismiss: () 
         title = { Text(if (isSuccess) "Payment Success" else "Payment Failed") },
         text = { Text(message) },
         confirmButton = { Button(onClick = onDismiss) { Text("OK") } },
-        containerColor = if (isSuccess) Color(0xFF1B5E20) else Color(0xFFB71C1C),
+        containerColor = if (isSuccess) com.goldsky.ssp.ui.theme.SuccessSlab else com.goldsky.ssp.ui.theme.DangerSlab,
         titleContentColor = Color.White,
         textContentColor = Color.White
     )
