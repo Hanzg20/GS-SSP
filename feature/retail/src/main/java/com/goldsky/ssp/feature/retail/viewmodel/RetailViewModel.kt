@@ -50,8 +50,11 @@ class RetailViewModel : ViewModel() {
     private val _itemCount = MutableStateFlow(0)
     val itemCount: StateFlow<Int> = _itemCount.asStateFlow()
 
-    private val _lastScannedProductName = MutableStateFlow<String?>(null)
-    val lastScannedProductName: StateFlow<String?> = _lastScannedProductName.asStateFlow()
+    /** Latest scan for on-screen feedback; [seq] makes a repeat scan of the same code a new value. */
+    data class ScanFeedback(val barcode: String, val productName: String?, val seq: Long = System.nanoTime())
+
+    private val _lastScan = MutableStateFlow<ScanFeedback?>(null)
+    val lastScan: StateFlow<ScanFeedback?> = _lastScan.asStateFlow()
 
     private val _parkedOrders = MutableStateFlow<List<ParkedOrderEntity>>(emptyList())
     val parkedOrders: StateFlow<List<ParkedOrderEntity>> = _parkedOrders.asStateFlow()
@@ -139,10 +142,11 @@ class RetailViewModel : ViewModel() {
         if (product != null) {
             addItem(product)
             FeedbackManager.success(context)
-            _lastScannedProductName.value = product.name
+            _lastScan.value = ScanFeedback(barcode, product.name)
         } else {
             Log.w(TAG, "Unknown barcode scanned: $barcode")
             FeedbackManager.failure(context)
+            _lastScan.value = ScanFeedback(barcode, null)
         }
     }
 
@@ -174,7 +178,7 @@ class RetailViewModel : ViewModel() {
     fun clearCart() {
         _cart.clear()
         updateTotals()
-        _lastScannedProductName.value = null
+        _lastScan.value = null
     }
 
     private fun updateTotals() {
