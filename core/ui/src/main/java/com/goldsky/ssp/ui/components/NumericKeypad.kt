@@ -19,15 +19,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.goldsky.ssp.payment.DeviceRepository
 
-// Amber Palette (琥珀色彩图谱)
-val AmberGold = Color(0xFFFFB300)
-val AmberDarkGold = Color(0xFFFF8F00)
-val AmberLightGlow = Color(0xFFFFE082)
-val AmberDarkResinBg = Color(0xFF1F1508)
-val AmberSpecialResinBg = Color(0xFF2A1C0B)
-val AmberTextGold = Color(0xFFFFCA28)
 
 @Composable
 fun NumericKeypad(
@@ -37,7 +29,6 @@ fun NumericKeypad(
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     Column(
         modifier = modifier
@@ -66,7 +57,6 @@ fun NumericKeypad(
                             "OK" -> Icons.Default.Check
                             else -> null
                         },
-                        isCyber = isCyber,
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             when (item) {
@@ -85,7 +75,10 @@ fun NumericKeypad(
 }
 
 /**
- * Amber Glassmorphic Rounded Square Button (倒角方形琥珀质感按钮)
+ * One key. Colours come from the theme only (digits: raised neutral, back:
+ * muted, confirm: primary), so the keypad matches whatever theme hosts it --
+ * GoldSkyTheme on Iris, OureaTheme on Ourea -- instead of carrying its own
+ * amber palette.
  */
 @Composable
 private fun KeypadButton(
@@ -93,56 +86,31 @@ private fun KeypadButton(
     text: String,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
-    isCyber: Boolean = false,
     isSpecial: Boolean = false,
     isConfirm: Boolean = false
 ) {
-    val shape = RoundedCornerShape(16.dp)
-
-    val surfaceColor = when {
-        isConfirm -> if (isCyber) AmberGold else Color(0xFFFFA000)
-        isSpecial -> if (isCyber) AmberSpecialResinBg else Color(0xFFFFF3E0)
-        else -> if (isCyber) AmberDarkResinBg else Color(0xFFFFF8E1)
-    }
-
-    val borderColor = when {
-        isConfirm -> Color(0xFFFFECB3)
-        isCyber -> AmberGold.copy(alpha = 0.45f)
-        else -> Color(0xFFFFCA28).copy(alpha = 0.6f)
-    }
-
-    val contentColor = when {
-        isConfirm -> Color(0xFF1C1000) // Rich dark brown/black on gold
-        isSpecial -> if (isCyber) AmberGold else Color(0xFFE65100)
-        else -> if (isCyber) Color.White else Color(0xFF3E2723)
+    val scheme = MaterialTheme.colorScheme
+    val container = if (isConfirm) scheme.primary else scheme.secondaryContainer
+    val content = when {
+        isConfirm -> scheme.onPrimary
+        isSpecial -> scheme.onSurfaceVariant
+        else -> scheme.onSecondaryContainer
     }
 
     Surface(
         onClick = onClick,
         modifier = modifier.height(60.dp),
-        shape = shape,
-        color = surfaceColor,
-        border = BorderStroke(1.5.dp, borderColor),
-        tonalElevation = if (isConfirm) 8.dp else 3.dp,
-        shadowElevation = if (isConfirm) 6.dp else 1.dp
+        shape = RoundedCornerShape(16.dp),
+        color = container,
+        border = if (isConfirm) null else BorderStroke(1.dp, scheme.outline),
+        shadowElevation = if (isConfirm) 4.dp else 1.dp
     ) {
         Box(contentAlignment = Alignment.Center) {
             if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(26.dp),
-                    tint = contentColor
-                )
+                Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(26.dp), tint = content)
             } else {
-                Text(
-                    text = text,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = contentColor
-                )
+                Text(text = text, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = content)
             }
         }
     }
 }
-

@@ -99,7 +99,11 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            MaterialTheme {
+            // Dark (CYBER) / light (CLASSIC), picked in Settings; themeVersion
+            // changes on every switch so the whole tree repaints at once.
+            val themeVersion by DeviceRepository.themeVersion.collectAsState()
+            val darkTheme = remember(themeVersion) { DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER }
+            com.goldsky.ssp.ui.theme.GoldSkyTheme(dark = darkTheme) {
                 val navController = rememberNavController()
                 val retailViewModel: RetailViewModel = viewModel()
                 var paymentStatus by remember { mutableStateOf<PaymentUiState>(PaymentUiState.Idle) }
@@ -169,8 +173,6 @@ class MainActivity : ComponentActivity() {
                     CheckoutSale(order.subtotalCents, order.taxCents, order.lines, deliveryOrderId = order.id)
 
                 val signedIn = staff
-                // Dark (CYBER) and light (CLASSIC) are both kept; the user picks in Settings.
-                val themeVersion by DeviceRepository.themeVersion.collectAsState()
                 val isCyberTheme = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
                 val surfaceBg = if (isCyberTheme) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background
 
@@ -647,14 +649,14 @@ fun MainBottomNavigation(navController: NavHostController, isManager: Boolean) {
                     Icon(
                         Icons.Default.AutoAwesome,
                         contentDescription = null,
-                        tint = if (currentRoute == "insights") GoldSkyCyan else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        tint = if (currentRoute == "insights") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
             },
             label = {
                 Text(
                     text = "AI",
-                    color = if (currentRoute == "insights") GoldSkyCyan else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    color = if (currentRoute == "insights") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     fontWeight = if (currentRoute == "insights") FontWeight.Bold else FontWeight.Normal
                 )
             }
@@ -698,7 +700,7 @@ fun IrisSystemHeader(staff: StaffMember, onLock: () -> Unit) {
         ) {
             // Left: Staff Identity & Quick Lock
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp), tint = GoldSkyCyan)
+                Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(4.dp))
                 Text(staff.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, color = textColor)
                 Spacer(Modifier.width(4.dp))

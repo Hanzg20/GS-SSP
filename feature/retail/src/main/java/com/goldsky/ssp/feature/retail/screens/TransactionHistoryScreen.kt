@@ -130,7 +130,7 @@ fun TransactionHistoryScreen(
                                     Icon(
                                         if (tx.paymentMethod == "CASH") Icons.Default.Payments else Icons.Default.CreditCard,
                                         contentDescription = null,
-                                        tint = com.goldsky.ssp.feature.retail.ui.GoldSkyCyan
+                                        tint = MaterialTheme.colorScheme.primary
                                     )
                                     Spacer(Modifier.width(12.dp))
                                     Column {
