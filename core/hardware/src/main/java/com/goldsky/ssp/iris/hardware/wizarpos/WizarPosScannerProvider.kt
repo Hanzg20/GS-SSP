@@ -39,6 +39,12 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
     /** Why the last open failed, for the failure message (production units have no adb). */
     private var openError: String? = null
 
+    @Volatile private var previewWindow: android.graphics.Rect? = null
+
+    override fun setPreviewWindow(window: android.graphics.Rect?) {
+        previewWindow = window
+    }
+
     private fun ensureOpened(): Boolean {
         if (scannerDevice == null) {
             try {
@@ -83,6 +89,22 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
                 // KEY_CAMERA_INDEX, nothing else.
                 val param = ScanParameter()
                 param.set(ScanParameter.KEY_CAMERA_INDEX, 0)
+                // A preview window means the caller wants its own UI kept visible:
+                // "overlay" draws the preview over the app (the app stays resumed),
+                // where the default on the Q2 is a full-screen ScannerActivity that
+                // ignores the window keys. The window keys are in dp -- 537 "px"
+                // drew 1074 px tall at density 2.0 (real Q2, 2026-10-10). The close
+                // button is how the user ends a run of scans.
+                previewWindow?.let { w ->
+                    val density = context.resources.displayMetrics.density
+                    fun dp(px: Int) = (px / density).toInt()
+                    param.set(ScanParameter.KEY_SCAN_MODE, "overlay")
+                    param.set(ScanParameter.KEY_UI_WINDOW_LEFT, dp(w.left))
+                    param.set(ScanParameter.KEY_UI_WINDOW_TOP, dp(w.top))
+                    param.set(ScanParameter.KEY_UI_WINDOW_WIDTH, dp(w.width()))
+                    param.set(ScanParameter.KEY_UI_WINDOW_HEIGHT, dp(w.height()))
+                    param.set(ScanParameter.KEY_REQUIRE_CLOSE_BUTTON, true)
+                }
                 // foundBarcode() is meant to be one-shot per startScan(), but the
                 // stopScan() call below -- needed to release the device between
                 // scans -- makes the vendor SDK invoke this same callback again a

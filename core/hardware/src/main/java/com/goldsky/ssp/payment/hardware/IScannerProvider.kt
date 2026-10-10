@@ -24,4 +24,11 @@ interface IScannerProvider {
      * Controls the scanner's illumination LED.
      */
     fun setScannerLed(enabled: Boolean)
+
+    /**
+     * Confine a camera scanner's preview to this screen rectangle (pixels)
+     * instead of full screen, so the app's UI stays visible while scanning;
+     * null = full screen. No-op for scanners without an on-screen preview.
+     */
+    fun setPreviewWindow(window: android.graphics.Rect?) {}
 }

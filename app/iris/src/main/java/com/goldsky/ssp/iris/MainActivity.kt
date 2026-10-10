@@ -56,6 +56,7 @@ class MainActivity : ComponentActivity() {
         // started in a cold process without this Activity still find them.
         DeviceRepository.init(this)
         DeliveryOrderRepository.init(this)
+        onBackPressedDispatcher.addCallback(this, stopScanOnBack)
 
         RetailRepository.init(this)
 
@@ -161,7 +162,7 @@ class MainActivity : ComponentActivity() {
                                 composable("checkout") {
                                     CheckoutContainer(
                                         retailViewModel = retailViewModel,
-                                        onScan = { scanOnce(retailViewModel) },
+                                        onScan = { startScanSession(retailViewModel) },
                                         onCheckout = { checkout(it) },
                                         deliveryReload = deliveryReload,
                                         onCollectCard = { order -> withOpenOrder(order) { checkout(saleOf(order)) } },
@@ -223,19 +224,60 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // One scan per tap, not a continuous loop: on WizarPOS the scanner is the
-    // camera with a full-screen preview, so restarting it after every result
-    // kept that preview over the whole UI (seen on a real Q2 2026-10-09).
-    // Failures (incl. the user backing out of the preview) are silent.
-    private fun scanOnce(viewModel: RetailViewModel) {
+    // Scan session, started by the scan button: keeps scanning item after item
+    // until the user backs out of the preview (that ends the scan with a
+    // failure, which ends the session). The Q2 has no scan engine or trigger
+    // key -- the camera is the scanner -- so the preview is confined to the top
+    // of the screen, leaving the cart and the "Added: ..." banner visible.
+    // Not started on unlock: an always-on loop kept a full-screen preview over
+    // the whole UI (2026-10-09).
+    private val scanHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    @Volatile private var scanning = false
+    private var lastScan: Pair<String, Long>? = null
+
+    private fun startScanSession(viewModel: RetailViewModel) {
+        if (scanning) return
+        scanning = true
+        stopScanOnBack.isEnabled = true
+        val dm = resources.displayMetrics
+        scannerProvider.setPreviewWindow(android.graphics.Rect(0, 0, dm.widthPixels, (dm.heightPixels * 0.42f).toInt()))
+        scanNext(viewModel)
+    }
+
+    private fun scanNext(viewModel: RetailViewModel) {
         scannerProvider.startScan(object : IScannerProvider.ScanCallback {
             override fun onScanSuccess(barcode: String) {
-                viewModel.addByBarcode(this@MainActivity, barcode)
+                // The item is usually still in front of the camera when it reopens:
+                // the same code again within SAME_CODE_MS is that, not a second item.
+                val now = android.os.SystemClock.elapsedRealtime()
+                val prev = lastScan
+                if (prev == null || prev.first != barcode || now - prev.second > SAME_CODE_MS) {
+                    viewModel.addByBarcode(this@MainActivity, barcode)
+                }
+                lastScan = barcode to now
+                if (scanning) scanHandler.postDelayed({ if (scanning) scanNext(viewModel) }, 300)
             }
             override fun onScanFailure(error: String) {
-                android.util.Log.d("IrisScan", "Scan ended without a code: $error")
+                scanning = false
+                stopScanOnBack.isEnabled = false
+                android.util.Log.d("IrisScan", "Scan session ended: $error")
             }
         })
+    }
+
+    // The overlay preview doesn't take Back; while scanning, Back ends the run
+    // instead of navigating.
+    private val stopScanOnBack = object : androidx.activity.OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            scanning = false
+            isEnabled = false
+            scanHandler.removeCallbacksAndMessages(null)
+            scannerProvider.stopScan()
+        }
+    }
+
+    private companion object {
+        const val SAME_CODE_MS = 1500L
     }
 
     /**
