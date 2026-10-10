@@ -21,8 +21,9 @@ import kotlinx.coroutines.delay
 fun RetailStoreScreen(
     onCheckout: (Int) -> Unit = {},
     viewModel: RetailViewModel = viewModel(),
-    // One scan per tap. Null hides the button (no scanner on this shell).
-    onScan: (() -> Unit)? = null
+    // Starts a scan run, or stops it while [isScanning]. Null hides the button.
+    onScan: (() -> Unit)? = null,
+    isScanning: Boolean = false
 ) {
     val catalog by RetailRepository.catalog.collectAsState()
     val cart = viewModel.cart
@@ -90,7 +91,8 @@ fun RetailStoreScreen(
         BottomAppBar {
             if (onScan != null) {
                 IconButton(onClick = onScan) {
-                    Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan")
+                    if (isScanning) Icon(Icons.Default.Close, contentDescription = "Stop scanning", tint = MaterialTheme.colorScheme.error)
+                    else Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan")
                 }
             }
             Text("Total: $%.2f".format(total / 100.0), modifier = Modifier.padding(16.dp))

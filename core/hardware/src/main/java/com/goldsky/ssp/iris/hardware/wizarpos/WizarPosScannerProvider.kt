@@ -41,6 +41,12 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
 
     @Volatile private var previewWindow: android.graphics.Rect? = null
 
+    // Bumped by stopScan(). A startScan() queued on ioExecutor before a stop
+    // must not run after it: on the Q2 a stop pressed right after a scan
+    // landed between the next run's startScan() call and its execution, so
+    // the camera came straight back and the user couldn't get out (2026-10-10).
+    private val generation = java.util.concurrent.atomic.AtomicInteger()
+
     override fun setPreviewWindow(window: android.graphics.Rect?) {
         previewWindow = window
     }
@@ -64,7 +70,13 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
     }
 
     override fun startScan(callback: IScannerProvider.ScanCallback) {
+        val gen = generation.get()
         ioExecutor.execute {
+            if (gen != generation.get()) {
+                Log.d(TAG, "Dropping a start queued before stopScan()")
+                mainHandler.post { callback.onScanFailure("Stopped") }
+                return@execute
+            }
             if (!ensureOpened()) {
                 val why = openError ?: "unknown"
                 mainHandler.post { callback.onScanFailure("Hardware initialization failed: $why") }
@@ -148,6 +160,7 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
     }
 
     override fun stopScan() {
+        generation.incrementAndGet()
         ioExecutor.execute {
             try {
                 scannerDevice?.stopScan()

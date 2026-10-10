@@ -162,7 +162,8 @@ class MainActivity : ComponentActivity() {
                                 composable("checkout") {
                                     CheckoutContainer(
                                         retailViewModel = retailViewModel,
-                                        onScan = { startScanSession(retailViewModel) },
+                                        isScanning = scanning.value,
+                                        onScan = { if (scanning.value) stopScanSession() else startScanSession(retailViewModel) },
                                         onCheckout = { checkout(it) },
                                         deliveryReload = deliveryReload,
                                         onCollectCard = { order -> withOpenOrder(order) { checkout(saleOf(order)) } },
@@ -232,12 +233,13 @@ class MainActivity : ComponentActivity() {
     // Not started on unlock: an always-on loop kept a full-screen preview over
     // the whole UI (2026-10-09).
     private val scanHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    @Volatile private var scanning = false
+    // All touched on the main thread only (scanner callbacks are posted there).
+    private val scanning = mutableStateOf(false)
     private var lastScan: Pair<String, Long>? = null
 
     private fun startScanSession(viewModel: RetailViewModel) {
-        if (scanning) return
-        scanning = true
+        if (scanning.value) return
+        scanning.value = true
         stopScanOnBack.isEnabled = true
         val dm = resources.displayMetrics
         scannerProvider.setPreviewWindow(android.graphics.Rect(0, 0, dm.widthPixels, (dm.heightPixels * 0.42f).toInt()))
@@ -255,25 +257,33 @@ class MainActivity : ComponentActivity() {
                     viewModel.addByBarcode(this@MainActivity, barcode)
                 }
                 lastScan = barcode to now
-                if (scanning) scanHandler.postDelayed({ if (scanning) scanNext(viewModel) }, 300)
+                if (scanning.value) scanHandler.postDelayed({ if (scanning.value) scanNext(viewModel) }, 300)
             }
             override fun onScanFailure(error: String) {
-                scanning = false
+                scanning.value = false
                 stopScanOnBack.isEnabled = false
                 android.util.Log.d("IrisScan", "Scan session ended: $error")
             }
         })
     }
 
+    // Ends the run: the stop button, or Back. Back goes back to normal right
+    // away -- a stopped overlay scan never calls back (so waiting for that kept
+    // Back stuck on "stop" and the user couldn't leave, 2026-10-10), and the
+    // provider drops any start queued before the stop, so the camera can't
+    // reopen behind it.
+    private fun stopScanSession() {
+        android.util.Log.d("IrisScan", "Scan session stopped")
+        scanning.value = false
+        stopScanOnBack.isEnabled = false
+        scanHandler.removeCallbacksAndMessages(null)
+        scannerProvider.stopScan()
+    }
+
     // The overlay preview doesn't take Back; while scanning, Back ends the run
     // instead of navigating.
     private val stopScanOnBack = object : androidx.activity.OnBackPressedCallback(false) {
-        override fun handleOnBackPressed() {
-            scanning = false
-            isEnabled = false
-            scanHandler.removeCallbacksAndMessages(null)
-            scannerProvider.stopScan()
-        }
+        override fun handleOnBackPressed() = stopScanSession()
     }
 
     private companion object {
@@ -384,6 +394,7 @@ class MainActivity : ComponentActivity() {
 fun CheckoutContainer(
     retailViewModel: RetailViewModel,
     onScan: () -> Unit,
+    isScanning: Boolean,
     onCheckout: (CheckoutSale) -> Unit,
     deliveryReload: Int,
     onCollectCard: (DeliveryOrder) -> Unit,
@@ -419,7 +430,8 @@ fun CheckoutContainer(
                     else -> RetailStoreScreen(
                         onCheckout = { onCheckout(retailViewModel.checkoutSale()) },
                         viewModel = retailViewModel,
-                        onScan = onScan
+                        onScan = onScan,
+                        isScanning = isScanning
                     )
                 }
             }
