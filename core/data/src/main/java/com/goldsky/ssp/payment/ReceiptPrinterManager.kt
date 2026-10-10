@@ -66,6 +66,21 @@ object ReceiptPrinterManager {
         return out
     }
 
+    /** Prints [lines] as they are (reports), then feeds and cuts. */
+    fun printLines(context: Context, lines: List<String>, vendor: String): Boolean {
+        val printer = HardwareFactory.getPrinterProvider(context, vendor)
+        return try {
+            if (!printer.init()) return false
+            lines.forEach { printer.addText(it) }
+            printer.feedPaper(3)
+            printer.startPrint()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Report print failed: ${e.message}")
+            false
+        }
+    }
+
     /**
      * Prints a professional retail receipt with branding and tax breakdown.
      */
