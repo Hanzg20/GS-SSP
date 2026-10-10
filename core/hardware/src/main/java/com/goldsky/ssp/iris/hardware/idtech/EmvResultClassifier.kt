@@ -10,7 +10,7 @@ import com.idtechproducts.device.IDTEMVData
  * part most likely to regress if the SDK's constants are ever misread again
  * -- is a pure function unit tests can exercise without a real reader.
  */
-internal enum class EmvResultCategory {
+enum class EmvResultCategory {
     /** Kernel handshake still in progress; not a final outcome. */
     CONTINUE,
 
@@ -38,7 +38,7 @@ internal enum class EmvResultCategory {
  * Maps the SDK's own named `int` constants (verified via `javap` against the
  * vendored jar) to a category -- not guessed magic numbers.
  */
-internal fun classifyEmvResult(result: Int): EmvResultCategory = when (result) {
+fun classifyEmvResult(result: Int): EmvResultCategory = when (result) {
     IDTEMVData.START_TRANS_SUCCESS -> EmvResultCategory.CONTINUE
     IDTEMVData.GO_ONLINE, IDTEMVData.GO_ONLINE_CTLS -> EmvResultCategory.ONLINE_AUTH_REQUIRED
     IDTEMVData.APPROVED, IDTEMVData.APPROVED_OFFLINE -> EmvResultCategory.APPROVED
@@ -53,3 +53,4 @@ internal fun classifyEmvResult(result: Int): EmvResultCategory = when (result) {
     IDTEMVData.REQUEST_SIGNATURE, IDTEMVData.REQUEST_ONLINE_PIN -> EmvResultCategory.VERIFICATION_UNSUPPORTED
     else -> EmvResultCategory.UNKNOWN
 }
+
