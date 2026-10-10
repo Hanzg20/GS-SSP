@@ -15,7 +15,12 @@ import com.goldsky.ssp.feature.retail.ui.ModifierSelectionSheet
 import com.goldsky.ssp.feature.retail.RetailRepository
 
 @Composable
-fun RetailStoreScreen(onCheckout: (Int) -> Unit = {}, viewModel: RetailViewModel = viewModel()) {
+fun RetailStoreScreen(
+    onCheckout: (Int) -> Unit = {},
+    viewModel: RetailViewModel = viewModel(),
+    // One scan per tap. Null hides the button (no scanner on this shell).
+    onScan: (() -> Unit)? = null
+) {
     val catalog by RetailRepository.catalog.collectAsState()
     val cart = viewModel.cart
     val total by viewModel.totalCents.collectAsState()
@@ -35,6 +40,11 @@ fun RetailStoreScreen(onCheckout: (Int) -> Unit = {}, viewModel: RetailViewModel
         }
         
         BottomAppBar {
+            if (onScan != null) {
+                IconButton(onClick = onScan) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan")
+                }
+            }
             Text("Total: $${total / 100.0}", modifier = Modifier.padding(16.dp))
             Spacer(modifier = Modifier.weight(1f))
             Button(onClick = { if (total > 0) onCheckout(total) }, enabled = total > 0) {

@@ -28,7 +28,10 @@ android {
 
         buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
         buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
-        buildConfigField "boolean", "IS_MOCK", "true"
+        // false: IS_MOCK=true silently skipped the Supabase transaction write
+        // for a real, bank-approved sale on a WizarPOS Q2 (2026-10-09) -- same
+        // failure app/aegis-wash hit at a live site on 2026-09-19.
+        buildConfigField "boolean", "IS_MOCK", "false"
     }
 
     buildFeatures {

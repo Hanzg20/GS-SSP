@@ -6,7 +6,21 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Package visibility (targetSdk >= 30): without these the scanner
+         services are hidden from this app and binding fails with
+         "No such package: com.cloudpos.scanserver" even though it's
+         installed (seen on a real WizarPOS Q2 2026-10-09; same fix as
+         app/aegis-wash's manifest). -->
+    <queries>
+        <intent>
+            <action android:name="com.pax.us.std.poslink.aidl" />
+        </intent>
+        <package android:name="com.cloudpos.scanserver" />
+        <package android:name="com.wizarpos.honeywell.scanner" />
+    </queries>
+
     <application
+        android:name=".IrisApplication"
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
         android:label="GoldSky Iris"

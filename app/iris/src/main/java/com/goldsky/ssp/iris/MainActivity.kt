@@ -20,17 +20,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.goldsky.ssp.common.CoreConfig
 import com.goldsky.ssp.common.FeedbackManager
-import com.goldsky.ssp.common.HardwareConfig
 import com.goldsky.ssp.db.ExpenseEntity
 import com.goldsky.ssp.db.LocalDatabase
 import com.goldsky.ssp.payment.*
 import com.goldsky.ssp.payment.hardware.*
-import com.goldsky.ssp.iris.hardware.idtech.IdTechHardwareProvider
-import com.goldsky.ssp.iris.hardware.pax.PaxHardwareProvider
-import com.goldsky.ssp.iris.hardware.wizarpos.WizarPosHardwareProvider
-import com.goldsky.ssp.payment.wizarpos.WizarPosPaymentProvider
 import com.goldsky.ssp.feature.retail.screens.*
 import com.goldsky.ssp.feature.retail.RetailRepository
 import com.goldsky.ssp.feature.retail.ui.TipSelectionDialog
@@ -55,45 +49,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val detectedModel = com.goldsky.ssp.DeviceAdapter.getModel()
-        val recommendedVendor = com.goldsky.ssp.DeviceAdapter.getRecommendedVendor()
-        android.util.Log.i("SSP_INIT", "Detected Model: $detectedModel, Recommended Vendor: $recommendedVendor")
-
-        CoreConfig.isMock = BuildConfig.IS_MOCK
-        HardwareConfig.isMock = BuildConfig.IS_MOCK
-        // Must run before anything touches SupabaseClientProvider (DeviceRepository.init /
-        // RetailRepository.init below) -- its `client` is a `val` built eagerly from
-        // SupabaseConfig.URL/KEY on first access, which read these CoreConfig fields.
-        CoreConfig.supabaseUrl = BuildConfig.SUPABASE_URL
-        CoreConfig.supabaseKey = BuildConfig.SUPABASE_KEY
-
-        // Every vendor is registered into both factories up front (not just PAX)
-        // so any screen defaulting to HardwareFactory/PaymentProviderFactory's
-        // "IDTECH" default, or explicitly asking for WIZARPOS, doesn't hit the
-        // "No {hardware,payment} provider registered for vendor" throw at first
-        // real use. init() runs before getPaymentProvider() on purpose: Pax's
-        // getPaymentProvider() needs its context set by init() first, and
-        // WizarPos's payment provider captures `terminal` by value the first
-        // time getPaymentProvider() is called, which is null until init() runs.
-        val idTechProvider = IdTechHardwareProvider()
-        val paxProvider = PaxHardwareProvider()
-        val wizarPosProvider = WizarPosHardwareProvider()
-
-        idTechProvider.init(this)
-        paxProvider.init(this)
-        wizarPosProvider.init(this)
-
-        HardwareFactory.registerHardwareProvider("IDTECH", idTechProvider)
-        HardwareFactory.registerHardwareProvider("PAX", paxProvider)
-        HardwareFactory.registerHardwareProvider("WIZARPOS", wizarPosProvider)
-
-        PaymentProviderFactory.registerPaymentProvider("IDTECH", idTechProvider.getPaymentProvider())
-        PaymentProviderFactory.registerPaymentProvider("PAX", paxProvider.getPaymentProvider())
-        PaymentProviderFactory.registerPaymentProvider("WIZARPOS", wizarPosProvider.getPaymentProvider())
-
+        // Config + hardware/payment provider registration live in
+        // IrisApplication so WorkManager jobs (batch close, offline replay)
+        // started in a cold process without this Activity still find them.
         DeviceRepository.init(this)
 
         RetailRepository.init(this)
+
+        // Heartbeat, offline transaction replay, daily batch close, storage
+        // cleaning -- never scheduled here before, so a sale whose insert
+        // failed sat in the offline queue forever and the batch was never
+        // auto-settled (WizarPOS Q2, 2026-10-09). No ad screen in Iris.
+        AdManager.init(this, syncAds = false)
 
         // Every products/transactions/etc. RLS policy is scoped `TO authenticated`
         // AND to this device's org (via device_auth_map) -- see
@@ -136,10 +103,6 @@ class MainActivity : ComponentActivity() {
                 if (!isUnlocked) {
                     StaffPinLockScreen(onUnlock = { if (it == "1234") isUnlocked = true })
                 } else {
-                    LaunchedEffect(Unit) {
-                        startScannerLoop(retailViewModel)
-                    }
-
                     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                         Scaffold(
                             bottomBar = { MainBottomNavigation(navController) }
@@ -152,6 +115,7 @@ class MainActivity : ComponentActivity() {
                                 composable("checkout") {
                                     CheckoutContainer(
                                         retailViewModel = retailViewModel,
+                                        onScan = { scanOnce(retailViewModel) },
                                         onCheckout = { subtotal ->
                                             val taxRate = DeviceRepository.getTaxRate()
                                             val tax = (subtotal * taxRate / 100.0).toInt()
@@ -212,17 +176,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startScannerLoop(viewModel: RetailViewModel) {
+    // One scan per tap, not a continuous loop: on WizarPOS the scanner is the
+    // camera with a full-screen preview, so restarting it after every result
+    // kept that preview over the whole UI (seen on a real Q2 2026-10-09).
+    // Failures (incl. the user backing out of the preview) are silent.
+    private fun scanOnce(viewModel: RetailViewModel) {
         scannerProvider.startScan(object : IScannerProvider.ScanCallback {
             override fun onScanSuccess(barcode: String) {
                 viewModel.addByBarcode(this@MainActivity, barcode)
-                startScannerLoop(viewModel)
             }
             override fun onScanFailure(error: String) {
-                CoroutineScope(Dispatchers.Main).launch {
-                    delay(2000)
-                    startScannerLoop(viewModel)
-                }
+                android.util.Log.d("IrisScan", "Scan ended without a code: $error")
             }
         })
     }
@@ -291,7 +255,7 @@ class MainActivity : ComponentActivity() {
  * ever wired to the "checkout" route.
  */
 @Composable
-fun CheckoutContainer(retailViewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
+fun CheckoutContainer(retailViewModel: RetailViewModel, onScan: () -> Unit, onCheckout: (Int) -> Unit) {
     var selectedTab by remember { mutableStateOf(0) }
     val retailMode = remember { DeviceRepository.getPersistedRetailMode() }
 
@@ -311,7 +275,7 @@ fun CheckoutContainer(retailViewModel: RetailViewModel, onCheckout: (Int) -> Uni
                 when (retailMode) {
                     com.goldsky.ssp.model.RetailMode.RESTAURANT -> DineInScreen(onTableSelected = { onCheckout(5000) })
                     com.goldsky.ssp.model.RetailMode.DELIVERY -> DeliveryScreen(onCollect = { onCheckout(it) })
-                    else -> RetailStoreScreen(onCheckout = onCheckout, viewModel = retailViewModel)
+                    else -> RetailStoreScreen(onCheckout = onCheckout, viewModel = retailViewModel, onScan = onScan)
                 }
             }
         }
