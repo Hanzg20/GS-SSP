@@ -19,6 +19,7 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
 
     companion object {
         private const val TAG = "WizarPosScanner"
+        private const val MIN_RUN_MS = 1000L
     }
 
     private var scannerDevice: IScannerDevice? = null
@@ -41,11 +42,17 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
 
     @Volatile private var previewWindow: android.graphics.Rect? = null
 
-    // Bumped by stopScan(). A startScan() queued on ioExecutor before a stop
-    // must not run after it: on the Q2 a stop pressed right after a scan
-    // landed between the next run's startScan() call and its execution, so
-    // the camera came straight back and the user couldn't get out (2026-10-10).
-    private val generation = java.util.concurrent.atomic.AtomicInteger()
+    // Bumped by every startScan() and stopScan() call; a queued task only acts
+    // if no later call superseded it. Two Q2 races (2026-10-10):
+    // - a start queued just before a stop ran after it and reopened the camera;
+    // - the scan service handles a start asynchronously (its camera window
+    //   shows ~0.3-0.65 s after the request). A stop arriving before that is
+    //   processed first; the start then shows a window the service no longer
+    //   tracks, so no later stop closes it -- it stays until the service
+    //   crashes ~30 s later (ForegroundServiceDidNotStartInTimeException).
+    //   Hence a stop is held until MIN_RUN_MS after the last start.
+    private val requestSeq = java.util.concurrent.atomic.AtomicInteger()
+    @Volatile private var lastStartAt = 0L
 
     override fun setPreviewWindow(window: android.graphics.Rect?) {
         previewWindow = window
@@ -70,10 +77,11 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
     }
 
     override fun startScan(callback: IScannerProvider.ScanCallback) {
-        val gen = generation.get()
+        val seq = requestSeq.incrementAndGet()
+        lastStartAt = android.os.SystemClock.elapsedRealtime()
         ioExecutor.execute {
-            if (gen != generation.get()) {
-                Log.d(TAG, "Dropping a start queued before stopScan()")
+            if (seq != requestSeq.get()) {
+                Log.d(TAG, "Dropping start #$seq, superseded by #${requestSeq.get()}")
                 mainHandler.post { callback.onScanFailure("Stopped") }
                 return@execute
             }
@@ -160,15 +168,29 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
     }
 
     override fun stopScan() {
-        generation.incrementAndGet()
-        ioExecutor.execute {
-            try {
-                scannerDevice?.stopScan()
-                scannerDevice?.close()
-                scannerDevice = null
-            } catch (e: Exception) {
-                Log.e(TAG, "Stop scan error: ${e.message}")
-            }
+        val seq = requestSeq.incrementAndGet()
+        val wait = (lastStartAt + MIN_RUN_MS - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0)
+        // Only overlay mode (a preview window was set -- Iris) showed the
+        // orphaned-window race; full-screen callers (Wash, Timer) keep the
+        // immediate, in-order stop their stop-then-start sequences rely on.
+        if (previewWindow == null || wait == 0L) {
+            ioExecutor.execute { stopAndClose() }
+            return
+        }
+        Log.d(TAG, "stopScan #$seq held ${wait} ms until the last start has landed")
+        mainHandler.postDelayed({
+            // A start requested meanwhile supersedes this stop.
+            if (seq == requestSeq.get()) ioExecutor.execute { stopAndClose() }
+        }, wait)
+    }
+
+    private fun stopAndClose() {
+        try {
+            scannerDevice?.stopScan()
+            scannerDevice?.close()
+            scannerDevice = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Stop scan error: ${e.message}")
         }
     }
 
