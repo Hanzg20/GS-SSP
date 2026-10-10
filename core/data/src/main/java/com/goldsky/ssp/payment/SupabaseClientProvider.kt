@@ -13,6 +13,7 @@ import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import okhttp3.ConnectionPool
 import java.util.concurrent.TimeUnit
@@ -78,8 +79,18 @@ object SupabaseClientProvider {
      * repositories are used; Supabase-kt persists the resulting session, so
      * this is a no-op on subsequent app launches.
      */
-    suspend fun ensureAuthenticated() {
-        if (client.auth.currentSessionOrNull() != null) return
+    // One sign-in at a time: several start-up jobs (catalog, staff, replay,
+    // heartbeat) call this at once.
+    private val authMutex = kotlinx.coroutines.sync.Mutex()
+
+    suspend fun ensureAuthenticated() = authMutex.withLock {
+        // The saved session loads asynchronously; checking before it has means
+        // "no session" on every launch, and racing callers each signed in a new
+        // anonymous user -- one Q2 collected 47 in a day, and a write made
+        // while the session had just flipped to an unlinked one matched 0
+        // rows under RLS (failed sales stuck PENDING, 2026-10-10).
+        runCatching { client.auth.awaitInitialization() }
+        if (client.auth.currentSessionOrNull() != null) return@withLock
         try {
             client.auth.signInAnonymously()
             Log.i(TAG, "Signed in anonymously for postgrest/realtime access")
