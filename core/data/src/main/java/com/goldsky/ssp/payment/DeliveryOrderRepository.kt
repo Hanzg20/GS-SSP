@@ -51,6 +51,41 @@ data class DeliveryOrder(
  */
 object DeliveryOrderRepository {
     private const val TAG = "DeliveryOrders"
+    private const val PREFS = "delivery_orders"
+    private const val KEY_COLLECTED = "collected_pending"
+
+    private var appContext: Context? = null
+
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
+
+    /**
+     * Orders this terminal took money for whose PAID mark the cloud hasn't
+     * confirmed yet (offline, or the write failed and sits in the queue).
+     * Hidden from the list and refused for collection until the cloud stops
+     * listing them as OPEN -- otherwise the order reappears on the next
+     * reload and gets collected twice (D1001, 2026-10-10).
+     */
+    private fun collected(): Set<String> =
+        appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.getStringSet(KEY_COLLECTED, emptySet()) ?: emptySet()
+
+    private fun saveCollected(ids: Set<String>) {
+        appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()?.putStringSet(KEY_COLLECTED, ids)?.commit()
+    }
+
+    /** Call the moment money is taken, before any network write. */
+    fun markCollectedLocally(orderId: String) {
+        saveCollected(collected() + orderId)
+    }
+
+    fun isCollectedLocally(orderId: String): Boolean = orderId in collected()
+
+    /** [cloudOpen] = the OPEN list just fetched; anything collected here that's no longer in it is settled. */
+    internal fun visibleOpen(cloudOpen: List<DeliveryOrder>, collectedIds: Set<String>): Pair<List<DeliveryOrder>, Set<String>> {
+        val openIds = cloudOpen.map { it.id }.toSet()
+        return cloudOpen.filter { it.id !in collectedIds } to collectedIds.filter { it in openIds }.toSet()
+    }
 
     @Serializable
     private data class MarkPaidParams(val p_order_id: String, val p_ecr_ref_num: String, val p_payment_method: String)
@@ -61,15 +96,18 @@ object DeliveryOrderRepository {
     @Serializable
     private data class StatusRow(val status: String)
 
-    /** Open orders, oldest first; null when the cloud can't be reached. */
+    /** Open orders, oldest first, minus ones collected here; null when the cloud can't be reached. */
     suspend fun fetchOpen(): List<DeliveryOrder>? = withContext(Dispatchers.IO) {
         try {
-            SupabaseClientProvider.client.postgrest["delivery_orders"]
+            val cloud = SupabaseClientProvider.client.postgrest["delivery_orders"]
                 .select(Columns.raw("id, order_no, customer_name, customer_phone, address, note, status, assigned_device_sn, delivery_order_items(*)")) {
                     filter { eq("status", "OPEN") }
                     order("order_no", Order.ASCENDING)
                 }
                 .decodeList<DeliveryOrder>()
+            val (visible, stillPending) = visibleOpen(cloud, collected())
+            saveCollected(stillPending)
+            visible
         } catch (e: Exception) {
             Log.e(TAG, "Fetch open orders failed: ${e.message}")
             null
@@ -82,6 +120,7 @@ object DeliveryOrderRepository {
      * null when unreachable.
      */
     suspend fun fetchStatus(orderId: String): String? = withContext(Dispatchers.IO) {
+        if (isCollectedLocally(orderId)) return@withContext "COLLECTED"
         try {
             SupabaseClientProvider.client.postgrest["delivery_orders"]
                 .select(Columns.raw("status")) { filter { eq("id", orderId) } }
@@ -99,6 +138,7 @@ object DeliveryOrderRepository {
      */
     suspend fun markPaid(context: Context, orderId: String, ecrRefNum: String, paymentMethod: String): Boolean =
         withContext(Dispatchers.IO) {
+            markCollectedLocally(orderId)
             val ok = markPaidRemote(orderId, ecrRefNum, paymentMethod)
             if (ok == null) {
                 OfflineQueueManager.enqueue(

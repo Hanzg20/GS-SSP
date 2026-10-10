@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
         // IrisApplication so WorkManager jobs (batch close, offline replay)
         // started in a cold process without this Activity still find them.
         DeviceRepository.init(this)
+        DeliveryOrderRepository.init(this)
 
         RetailRepository.init(this)
 
@@ -110,7 +111,9 @@ class MainActivity : ComponentActivity() {
                         paymentStatus = it
                         if (it is PaymentUiState.Success) {
                             // A delivery collection leaves whatever is in the cart alone.
-                            if (sale.deliveryOrderId == null) retailViewModel.clearCart() else deliveryReload++
+                            val orderId = sale.deliveryOrderId
+                            if (orderId == null) retailViewModel.clearCart()
+                            else { DeliveryOrderRepository.markCollectedLocally(orderId); deliveryReload++ }
                             FeedbackManager.success(this@MainActivity)
                         }
                     }
@@ -130,7 +133,10 @@ class MainActivity : ComponentActivity() {
                             "OPEN" -> { paymentStatus = PaymentUiState.Idle; action() }
                             null -> paymentStatus = PaymentUiState.Error("Can't reach the server to check order D${order.order_no}. Try again.")
                             else -> {
-                                paymentStatus = PaymentUiState.Error("Order D${order.order_no} is ${status.lowercase()}, not collected.")
+                                paymentStatus = PaymentUiState.Error(
+                                    if (status == "COLLECTED") "Order D${order.order_no} was already collected on this terminal."
+                                    else "Order D${order.order_no} is ${status.lowercase()}, not collected."
+                                )
                                 deliveryReload++
                             }
                         }
@@ -161,6 +167,7 @@ class MainActivity : ComponentActivity() {
                                         onCollectCard = { order -> withOpenOrder(order) { checkout(saleOf(order)) } },
                                         onCollectCash = { order ->
                                             withOpenOrder(order) {
+                                                DeliveryOrderRepository.markCollectedLocally(order.id)
                                                 recordCashCollection(saleOf(order), order.order_no)
                                                 paymentStatus = PaymentUiState.Success("Cash received for D${order.order_no}")
                                                 deliveryReload++
