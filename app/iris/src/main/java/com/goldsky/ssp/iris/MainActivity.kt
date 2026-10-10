@@ -250,6 +250,16 @@ class MainActivity : ComponentActivity() {
                             is PaymentUiState.Processing -> PaymentProcessingDialog(state.message)
                             is PaymentUiState.Success -> PaymentResultDialog(true, "Approved: ${state.authCode}") { paymentStatus = PaymentUiState.Idle }
                             is PaymentUiState.Done -> PaymentResultDialog(true, state.message) { paymentStatus = PaymentUiState.Idle }
+                            is PaymentUiState.RefundNeedsCard -> RefundNeedsCardDialog(
+                                amountCents = state.order.amountCents,
+                                onCardTapped = { refundWithCard(state.order, state.approver) { paymentStatus = it; if (it !is PaymentUiState.Processing) recordsReload++ } },
+                                onRefundedInPortal = {
+                                    finishRefund(state.order, state.approver, "REFUNDED", "Refunded in WizarPOS merchant portal") {
+                                        paymentStatus = it; recordsReload++
+                                    }
+                                },
+                                onCancel = { paymentStatus = PaymentUiState.Idle }
+                            )
                             is PaymentUiState.Error -> PaymentResultDialog(false, state.message) { paymentStatus = PaymentUiState.Idle }
                             else -> {}
                         }
@@ -335,17 +345,57 @@ class MainActivity : ComponentActivity() {
     /**
      * Whole-sale refund, approved by [approver] (a manager's PIN). Card: look
      * the sale up first so PAYWizard has the original's IDs for a reversal
-     * (they're only cached in-process), then reverse it -- or refund it once
-     * the batch has settled (voidOrRefund falls back). Cash: just recorded;
-     * the cashier hands the money back. Prints a refund slip either way.
+     * (they're only cached in-process), then reverse it -- no card needed
+     * before the batch settles. Once settled, a socket-mode Refund needs the
+     * customer's card (WizarPOS, 2026-09-28 / 2026-10-10), so the cashier
+     * chooses (RefundNeedsCard). Cash: just recorded; the cashier hands the
+     * money back. Prints a refund slip either way.
      */
     private fun refundSale(order: com.goldsky.ssp.db.OrderEntity, approver: StaffMember, onState: (PaymentUiState) -> Unit) {
         val ref = order.ecrRefNum
+        val amount = "%.2f".format(order.amountCents / 100.0)
+        if (order.paymentMethod == "CASH") {
+            finishRefund(order, approver, "REFUNDED", "Cash handed back: $$amount", onState)
+            return
+        }
+        onState(PaymentUiState.Processing("Reversing $$amount..."))
+        // Reversal only (no card needed, before settle). If it fails the
+        // cashier chooses: card refund with the customer's card, or the
+        // merchant portal -- never an automatic Refund that would just park
+        // PAYWizard's card screen.
+        paymentProvider.queryTransaction(ref) { _ ->
+            paymentProvider.voidTransaction(ref, object : IPaymentProvider.PaymentCallback {
+                override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
+                    runOnUiThread { finishRefund(order, approver, "VOIDED", "Card sale reversed", onState) }
+                }
+                override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
+                    android.util.Log.w("IrisRefund", "Reversal of $ref failed: $errorMsg")
+                    runOnUiThread { onState(PaymentUiState.RefundNeedsCard(order, approver)) }
+                }
+                override fun onProgress(message: String) {}
+            })
+        }
+    }
+
+    /** Socket-mode Refund: PAYWizard asks for the customer's card. */
+    private fun refundWithCard(order: com.goldsky.ssp.db.OrderEntity, approver: StaffMember, onState: (PaymentUiState) -> Unit) {
+        onState(PaymentUiState.Processing("Customer: tap or insert the card used for this sale"))
+        paymentProvider.refundTransaction(order.ecrRefNum, order.amountCents, object : IPaymentProvider.PaymentCallback {
+            override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
+                runOnUiThread { finishRefund(order, approver, "REFUNDED", "Refunded to card", onState) }
+            }
+            override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
+                runOnUiThread { onState(PaymentUiState.Error("Refund not done: $errorMsg")) }
+            }
+            override fun onProgress(message: String) {}
+        })
+    }
+
+    private fun finishRefund(order: com.goldsky.ssp.db.OrderEntity, approver: StaffMember, status: String, how: String, onState: (PaymentUiState) -> Unit) {
+        val ref = order.ecrRefNum
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
         val amount = "%.2f".format(order.amountCents / 100.0)
-
-        fun finish(status: String, how: String) {
-            CoroutineScope(Dispatchers.IO).launch {
+        CoroutineScope(Dispatchers.IO).launch {
                 TransactionRepository.recordRefund(this@MainActivity, ref, status, approver.id, approver.name)
                 ReceiptPrinterManager.printReceipt(
                     this@MainActivity,
@@ -358,21 +408,6 @@ class MainActivity : ComponentActivity() {
                     vendor = DeviceRepository.getPersistedHardwareVendor()
                 )
                 withContext(Dispatchers.Main) { onState(PaymentUiState.Done("Refunded $$amount. $how")) }
-            }
-        }
-
-        if (order.paymentMethod == "CASH") {
-            finish("REFUNDED", "Cash handed back: $$amount")
-            return
-        }
-        onState(PaymentUiState.Processing("Refunding $$amount to the card..."))
-        paymentProvider.queryTransaction(ref) { _ ->
-            paymentProvider.voidOrRefund(ref, order.amountCents) { ok, method ->
-                runOnUiThread {
-                    if (ok) finish(if (method == "VOID") "VOIDED" else "REFUNDED", if (method == "VOID") "Card sale reversed" else "Refunded to card")
-                    else onState(PaymentUiState.Error("Refund failed -- nothing was refunded. Try again, or check PAYWizard."))
-                }
-            }
         }
     }
 
@@ -436,10 +471,23 @@ class MainActivity : ComponentActivity() {
 
         onStateChange(PaymentUiState.Processing("Processing $${"%.2f".format(total / 100.0)}..."))
 
+        var card: IPaymentProvider.CardInfo? = null
+        var cancelled = false
         paymentProvider.startSale(total, ref, object : IPaymentProvider.PaymentCallback {
+            override fun onCardInfo(info: IPaymentProvider.CardInfo) { card = info }
+            override fun onCancelled() { cancelled = true }
+
             override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                 CoroutineScope(Dispatchers.IO).launch {
-                    TransactionRepository.updatePaymentStatus(this@MainActivity, ref, "PAID", entryMode)
+                    // Same as Wash/Timer: the real card type, AID/BIN/brand and auth
+                    // code replace the provisional CREDIT_CARD.
+                    val c = card
+                    TransactionRepository.updatePaymentStatus(
+                        this@MainActivity, ref, "PAID", entryMode,
+                        paymentMethod = c?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid, it.brand) },
+                        cardAid = c?.aid, cardBin = c?.bin, cardBrand = c?.brand,
+                        authCode = authCode
+                    )
                     sale.deliveryOrderId?.let { DeliveryOrderRepository.markPaid(this@MainActivity, it, ref, "CARD") }
                     ReceiptPrinterManager.printReceipt(
                         this@MainActivity,
@@ -459,7 +507,10 @@ class MainActivity : ComponentActivity() {
             }
             override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                 CoroutineScope(Dispatchers.IO).launch {
-                    TransactionRepository.updatePaymentStatus(this@MainActivity, ref, "FAILED")
+                    // CANCELLED / DECLINED with the card that was read. This wrote
+                    // "FAILED", which payment_status doesn't allow: the row stayed
+                    // PENDING in the cloud and the write sat in the offline queue.
+                    TransactionRepository.recordFailedCardSale(this@MainActivity, ref, card, cancelled)
                 }
                 onStateChange(PaymentUiState.Error(errorMsg))
             }
@@ -613,6 +664,33 @@ sealed class PaymentUiState {
     data class Processing(val message: String) : PaymentUiState()
     // A non-sale outcome to confirm (e.g. a refund), shown as-is.
     data class Done(val message: String) : PaymentUiState()
+    // The card sale couldn't be reversed (usually: already settled). Socket-mode
+    // Refund needs the customer's card; otherwise it's refunded in the WizarPOS
+    // merchant portal and only recorded here.
+    data class RefundNeedsCard(val order: com.goldsky.ssp.db.OrderEntity, val approver: StaffMember) : PaymentUiState()
+}
+
+@Composable
+fun RefundNeedsCardDialog(amountCents: Int, onCardTapped: () -> Unit, onRefundedInPortal: () -> Unit, onCancel: () -> Unit) {
+    val amount = "%.2f".format(amountCents / 100.0)
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Refund needs the card") },
+        text = {
+            Text(
+                "This sale couldn't be reversed -- it has most likely been settled already. " +
+                    "A refund of $$amount from this terminal needs the customer's card.\n\n" +
+                    "If the customer isn't here, refund it in the WizarPOS merchant portal (no card needed), then record it here."
+            )
+        },
+        confirmButton = {
+            Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                Button(onClick = onCardTapped) { Text("CUSTOMER TAPS CARD") }
+                TextButton(onClick = onRefundedInPortal) { Text("ALREADY REFUNDED IN PORTAL") }
+                TextButton(onClick = onCancel) { Text("CANCEL") }
+            }
+        }
+    )
 }
 
 @Composable

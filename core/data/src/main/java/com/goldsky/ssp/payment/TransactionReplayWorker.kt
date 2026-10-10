@@ -51,7 +51,10 @@ class TransactionReplayWorker(appContext: Context, params: WorkerParameters) : C
                         val ref = op.ecrRefNum
                         val status = op.status
                         if (ref != null && status != null) {
-                            TransactionRepository.updatePaymentStatusRemote(ref, status, op.entryMode, op.paymentMethod, op.cardAid, op.cardBin, op.cardBrand, op.clearPaymentMethod, op.authCode)
+                            // Iris used to queue "FAILED", which payment_status doesn't
+                            // allow -- those rows sat PENDING forever. Land them as DECLINED.
+                            val landable = if (status == "FAILED") "DECLINED" else status
+                            TransactionRepository.updatePaymentStatusRemote(ref, landable, op.entryMode, op.paymentMethod, op.cardAid, op.cardBin, op.cardBrand, op.clearPaymentMethod, op.authCode)
                         } else {
                             true // malformed entry, drop it rather than retry forever
                         }
