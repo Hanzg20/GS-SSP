@@ -63,4 +63,21 @@ class DayReportTest {
         assertEquals(listOf("C"), r.refunds.map { it.ref })
         assertEquals(0, r.netCents)
     }
+
+    @Test
+    fun `timestamps parse as instants, so a Toronto evening sale stays in its local day`() {
+        val tz = java.util.TimeZone.getDefault()
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/Toronto"))
+            // 21:30 EDT on Oct 10 = 01:30 UTC on Oct 11
+            val ms = DayReportRepository.parseIsoMillis("2026-10-11T01:30:00.123456+00:00")!!
+            val (start, end) = DayReportRepository.dayBounds(
+                java.util.GregorianCalendar(2026, java.util.Calendar.OCTOBER, 10, 12, 0).timeInMillis)
+            assertEquals(true, ms in start until end)
+            assertEquals(1791682200123L, ms)
+            assertEquals(null, DayReportRepository.parseIsoMillis("not a time"))
+        } finally {
+            java.util.TimeZone.setDefault(tz)
+        }
+    }
 }

@@ -30,9 +30,12 @@ import com.goldsky.ssp.payment.hardware.*
 import com.goldsky.ssp.feature.retail.screens.*
 import com.goldsky.ssp.feature.retail.RetailRepository
 import com.goldsky.ssp.feature.retail.ui.TipSelectionDialog
+import com.goldsky.ssp.feature.retail.ui.apexPulseGlow
+import com.goldsky.ssp.feature.retail.ui.GoldSkyCyan
 import com.goldsky.ssp.feature.retail.viewmodel.RetailViewModel
 import com.goldsky.ssp.feature.apex.GoldSkyBlue
 import com.goldsky.ssp.feature.apex.InsightsScreen
+import androidx.compose.ui.draw.clip
 import kotlinx.coroutines.*
 
 class MainActivity : ComponentActivity() {
@@ -166,10 +169,15 @@ class MainActivity : ComponentActivity() {
                     CheckoutSale(order.subtotalCents, order.taxCents, order.lines, deliveryOrderId = order.id)
 
                 val signedIn = staff
+                // Dark (CYBER) and light (CLASSIC) are both kept; the user picks in Settings.
+                val themeVersion by DeviceRepository.themeVersion.collectAsState()
+                val isCyberTheme = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
+                val surfaceBg = if (isCyberTheme) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background
+
                 if (signedIn == null) {
                     StaffPinLockScreen(onSignedIn = { staff = it; lastInteractionAt = android.os.SystemClock.elapsedRealtime() })
                 } else {
-                    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    key(themeVersion) { Surface(modifier = Modifier.fillMaxSize(), color = surfaceBg) {
                         Scaffold(
                             topBar = { StaffBar(signedIn, onLock = { lock() }) },
                             bottomBar = { MainBottomNavigation(navController, isManager = signedIn.isManager) }
@@ -209,8 +217,12 @@ class MainActivity : ComponentActivity() {
                                                 if (state !is PaymentUiState.Processing) recordsReload++
                                             }
                                         },
+                                        onOpenDayReport = { navController.navigate("day_report") },
                                         reloadKey = recordsReload
                                     )
+                                }
+                                composable("day_report") {
+                                    DayReportScreen(onBack = { navController.popBackStack() })
                                 }
                                 composable("expenses") {
                                     ExpenseScreen(onScanReceipt = { navController.navigate("scan_receipt") })
@@ -263,7 +275,7 @@ class MainActivity : ComponentActivity() {
                             is PaymentUiState.Error -> PaymentResultDialog(false, state.message) { paymentStatus = PaymentUiState.Idle }
                             else -> {}
                         }
-                    }
+                    } }
                 }
             }
         }
@@ -551,12 +563,26 @@ fun CheckoutContainer(
     if (deliveryOnly && selectedTab != 2) selectedTab = 2
     val retailMode = remember { DeviceRepository.getPersistedRetailMode() }
 
+    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
+
     Column(modifier = Modifier.fillMaxSize()) {
-        if (!deliveryOnly) TabRow(selectedTabIndex = selectedTab) {
-            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("KEYPAD", fontWeight = FontWeight.Bold) })
-            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("LIBRARY", fontWeight = FontWeight.Bold) })
-            // Its own tab, not a mode: the same handheld does line-busting and delivery.
-            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("DELIVERY", fontWeight = FontWeight.Bold) })
+        if (!deliveryOnly) TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = if (isCyber) Color(0xFF151D30) else MaterialTheme.colorScheme.surface,
+            contentColor = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary
+        ) {
+            Tab(
+                selected = selectedTab == 0, onClick = { selectedTab = 0 },
+                text = { Text("KEYPAD", fontWeight = FontWeight.Bold, color = if (selectedTab == 0 && isCyber) GoldSkyCyan else if (isCyber) Color.LightGray else Color.Unspecified) }
+            )
+            Tab(
+                selected = selectedTab == 1, onClick = { selectedTab = 1 },
+                text = { Text("LIBRARY", fontWeight = FontWeight.Bold, color = if (selectedTab == 1 && isCyber) GoldSkyCyan else if (isCyber) Color.LightGray else Color.Unspecified) }
+            )
+            Tab(
+                selected = selectedTab == 2, onClick = { selectedTab = 2 },
+                text = { Text("DELIVERY", fontWeight = FontWeight.Bold, color = if (selectedTab == 2 && isCyber) GoldSkyCyan else if (isCyber) Color.LightGray else Color.Unspecified) }
+            )
         }
 
         Box(modifier = Modifier.weight(1f)) {
@@ -588,8 +614,11 @@ fun CheckoutContainer(
 fun MainBottomNavigation(navController: NavHostController, isManager: Boolean) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
-    NavigationBar {
+    NavigationBar(
+        containerColor = if (isCyber) Color(0xFF0F172A) else MaterialTheme.colorScheme.surface
+    ) {
         NavigationBarItem(
             selected = currentRoute == "checkout",
             onClick = { navController.navigate("checkout") { popUpTo(navController.graph.startDestinationId); launchSingleTop = true } },
@@ -606,16 +635,26 @@ fun MainBottomNavigation(navController: NavHostController, isManager: Boolean) {
             selected = currentRoute == "insights",
             onClick = { navController.navigate("insights") { launchSingleTop = true } },
             icon = {
-                Icon(
-                    Icons.Default.AutoAwesome,
-                    contentDescription = null,
-                    tint = if (currentRoute == "insights") GoldSkyBlue else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
+                Box(
+                    modifier = Modifier
+                        .padding(2.dp)
+                        .apexPulseGlow(
+                            enabled = currentRoute == "insights",
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            strokeWidth = 1.5.dp
+                        )
+                ) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = if (currentRoute == "insights") GoldSkyCyan else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
             },
             label = {
                 Text(
                     text = "AI",
-                    color = if (currentRoute == "insights") GoldSkyBlue else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    color = if (currentRoute == "insights") GoldSkyCyan else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     fontWeight = if (currentRoute == "insights") FontWeight.Bold else FontWeight.Normal
                 )
             }
@@ -635,23 +674,70 @@ fun MainBottomNavigation(navController: NavHostController, isManager: Boolean) {
     }
 }
 
-/** Who is signed in, and the button to lock / hand over to the next person. */
+/** Hardware-aware Iris Top Bar with Staff info, quick Lock and Hardware Health Badge */
 @Composable
 fun StaffBar(staff: StaffMember, onLock: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+    IrisSystemHeader(staff = staff, onLock = onLock)
+}
+
+@Composable
+fun IrisSystemHeader(staff: StaffMember, onLock: () -> Unit) {
+    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
+    val headerBg = if (isCyber) Color(0xFF151D30) else MaterialTheme.colorScheme.surfaceVariant
+    val textColor = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface
+
+    Surface(
+        color = headerBg,
+        tonalElevation = 2.dp
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(6.dp))
-            Text(staff.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.width(6.dp))
-            Text(when { staff.isManager -> "Manager"; staff.isDriver -> "Driver"; else -> "Cashier" }, style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Left: Staff Identity & Quick Lock
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp), tint = GoldSkyCyan)
+                Spacer(Modifier.width(4.dp))
+                Text(staff.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, color = textColor)
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = when { staff.isManager -> "Manager"; staff.isDriver -> "Driver"; else -> "Cashier" },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(4.dp))
+                IconButton(onClick = onLock, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Lock, contentDescription = "Lock", modifier = Modifier.size(16.dp), tint = Color(0xFFFF5252))
+                }
+            }
+
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = onLock) {
-                Icon(Icons.Default.Lock, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("LOCK")
+
+            // Right: battery level (read from the system, not decorative). Printer
+            // and key-health icons were removed: they showed a fixed "OK" whatever
+            // the real state, and key health is PAX-only.
+            val context = androidx.compose.ui.platform.LocalContext.current
+            var battery by remember { mutableStateOf<Int?>(null) }
+            LaunchedEffect(Unit) {
+                val bm = context.getSystemService(android.content.Context.BATTERY_SERVICE) as? android.os.BatteryManager
+                while (true) {
+                    battery = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 }
+                    kotlinx.coroutines.delay(60_000)
+                }
+            }
+            battery?.let { level ->
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Icon(
+                        if (level <= 15) Icons.Default.BatteryAlert else Icons.Default.BatteryStd,
+                        contentDescription = "Battery",
+                        modifier = Modifier.size(16.dp),
+                        tint = if (level <= 15) Color(0xFFFF5252) else if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text("$level%", style = MaterialTheme.typography.labelSmall,
+                        color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }
@@ -673,6 +759,8 @@ sealed class PaymentUiState {
 @Composable
 fun RefundNeedsCardDialog(amountCents: Int, onCardTapped: () -> Unit, onRefundedInPortal: () -> Unit, onCancel: () -> Unit) {
     val amount = "%.2f".format(amountCents / 100.0)
+    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
+
     AlertDialog(
         onDismissRequest = onCancel,
         title = { Text("Refund needs the card") },
@@ -685,29 +773,37 @@ fun RefundNeedsCardDialog(amountCents: Int, onCardTapped: () -> Unit, onRefunded
         },
         confirmButton = {
             Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
-                Button(onClick = onCardTapped) { Text("CUSTOMER TAPS CARD") }
-                TextButton(onClick = onRefundedInPortal) { Text("ALREADY REFUNDED IN PORTAL") }
-                TextButton(onClick = onCancel) { Text("CANCEL") }
+                Button(
+                    onClick = onCardTapped,
+                    colors = if (isCyber) ButtonDefaults.buttonColors(containerColor = GoldSkyCyan, contentColor = Color.Black) else ButtonDefaults.buttonColors()
+                ) { Text("CUSTOMER TAPS CARD", fontWeight = FontWeight.Bold) }
+                TextButton(onClick = onRefundedInPortal) { Text("ALREADY REFUNDED IN PORTAL", color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary) }
+                TextButton(onClick = onCancel) { Text("CANCEL", color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-        }
+        },
+        containerColor = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface,
+        titleContentColor = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface,
+        textContentColor = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant
     )
 }
 
 @Composable
 fun PaymentProcessingDialog(message: String) {
+    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
     Dialog(onDismissRequest = {}) {
         Surface(
             shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surface,
+            color = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface,
+            border = if (isCyber) androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF26354F)) else null,
             tonalElevation = 8.dp
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
             ) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                CircularProgressIndicator(color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(message, fontWeight = FontWeight.Bold)
+                Text(message, fontWeight = FontWeight.Bold, color = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface)
             }
         }
     }
@@ -720,10 +816,14 @@ fun PaymentResultDialog(isSuccess: Boolean, message: String, onDismiss: () -> Un
         title = { Text(if (isSuccess) "Payment Success" else "Payment Failed") },
         text = { Text(message) },
         confirmButton = {
-            Button(onClick = onDismiss) { Text("OK") }
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)
+            ) { Text("OK", fontWeight = FontWeight.Bold) }
         },
         containerColor = if (isSuccess) Color(0xFF1B5E20) else Color(0xFFB71C1C),
         titleContentColor = Color.White,
         textContentColor = Color.White
     )
 }
+

@@ -10,10 +10,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.payment.StaffMember
 import com.goldsky.ssp.payment.StaffRepository
 import com.goldsky.ssp.ui.components.NumericKeypad
@@ -36,6 +38,7 @@ fun ManagerApprovalDialog(
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var checking by remember { mutableStateOf(false) }
+    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     fun submit(entered: String) {
         checking = true
@@ -53,23 +56,46 @@ fun ManagerApprovalDialog(
     }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface,
+            border = if (isCyber) androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF26354F)) else null,
+            tonalElevation = 6.dp
+        ) {
             Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.AdminPanelSettings, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
+                Icon(
+                    Icons.Default.AdminPanelSettings, null,
+                    tint = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(40.dp)
+                )
                 Spacer(Modifier.height(8.dp))
-                Text("Manager approval", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                Text(action, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 4.dp))
+                Text(
+                    "Manager approval",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                    color = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    action,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     repeat(4) { i ->
-                        Box(Modifier.size(16.dp).clip(CircleShape).background(
-                            if (i < pin.length) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant))
+                        Box(
+                            Modifier.size(16.dp).clip(CircleShape).background(
+                                if (i < pin.length) (if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
+                                else (if (isCyber) Color(0xFF26354F) else MaterialTheme.colorScheme.outlineVariant)
+                            )
+                        )
                     }
                 }
                 Box(Modifier.height(36.dp), contentAlignment = Alignment.Center) {
                     when {
-                        checking -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        checking -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
                         error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
                     }
@@ -83,8 +109,9 @@ fun ManagerApprovalDialog(
                     onBackSpace = { if (pin.isNotEmpty()) pin = pin.dropLast(1) },
                     onConfirm = { if (pin.length == 4 && !checking) submit(pin) }
                 )
-                TextButton(onClick = onDismiss) { Text("CANCEL") }
+                TextButton(onClick = onDismiss) { Text("CANCEL", color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary) }
             }
         }
     }
 }
+

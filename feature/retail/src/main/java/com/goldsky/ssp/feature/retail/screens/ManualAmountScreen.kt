@@ -1,15 +1,18 @@
 package com.goldsky.ssp.feature.retail.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.ui.components.NumericKeypad
+import com.goldsky.ssp.feature.retail.ui.GoldSkyCyan
 
 /**
  * Shared screen for manual amount entry.
@@ -18,10 +21,12 @@ import com.goldsky.ssp.ui.components.NumericKeypad
 fun ManualAmountScreen(onInitiatePayment: (String) -> Unit) {
     var amount by remember { mutableStateOf("0.00") }
     val currency = remember { DeviceRepository.getCurrencySymbol() }
+    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(if (isCyber) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
@@ -34,13 +39,14 @@ fun ManualAmountScreen(onInitiatePayment: (String) -> Unit) {
             Text(
                 text = "ENTER AMOUNT ($currency)",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.secondary
+                color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.secondary,
+                fontWeight = FontWeight.Bold
             )
             Text(
                 text = "$$amount",
                 fontSize = 64.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
+                color = if (isCyber) Color.White else MaterialTheme.colorScheme.onBackground
             )
         }
 

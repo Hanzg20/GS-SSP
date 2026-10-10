@@ -11,9 +11,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.goldsky.ssp.feature.retail.ui.GoldSkyCyan
+import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.payment.StaffMember
 import com.goldsky.ssp.payment.StaffRepository
 import com.goldsky.ssp.ui.components.NumericKeypad
@@ -38,6 +41,7 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
     var syncing by remember { mutableStateOf(false) }
     var syncFailed by remember { mutableStateOf(false) }
     var staffCount by remember { mutableStateOf(StaffRepository.cached()?.size) }
+    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     fun refresh() {
         syncing = true
@@ -74,23 +78,35 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
         else -> null
     }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = if (isCyber) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background
+    ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(Icons.Default.Lock, null, modifier = Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
+            Icon(
+                Icons.Default.Lock, null,
+                modifier = Modifier.size(56.dp),
+                tint = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary
+            )
             Spacer(modifier = Modifier.height(16.dp))
-            Text("STAFF LOGIN", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onBackground)
+            Text(
+                "STAFF LOGIN",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (isCyber) Color.White else MaterialTheme.colorScheme.onBackground
+            )
             Spacer(modifier = Modifier.height(24.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 repeat(PIN_LENGTH) { i ->
                     Box(
                         Modifier.size(18.dp).clip(CircleShape).background(
-                            if (i < pin.length) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                            if (i < pin.length) (if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
+                            else (if (isCyber) Color(0xFF26354F) else MaterialTheme.colorScheme.outlineVariant)
                         )
                     )
                 }
@@ -98,17 +114,19 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
             Spacer(modifier = Modifier.height(12.dp))
             Box(Modifier.height(48.dp), contentAlignment = Alignment.Center) {
                 when {
-                    checking -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    checking -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
                     notice != null -> Text(notice, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyMedium)
                     error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                     syncFailed -> Text("Offline: using the saved staff list", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (staffCount == null || staffCount == 0) {
                 TextButton(onClick = { refresh() }, enabled = !syncing) {
-                    Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(6.dp)); Text("RETRY")
+                    Icon(Icons.Default.Refresh, null, tint = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(6.dp))
+                    Text("RETRY", color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
@@ -128,3 +146,4 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
         }
     }
 }
+

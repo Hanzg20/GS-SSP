@@ -55,6 +55,9 @@ object DeviceRepository {
     private const val KEY_TIPS_ENABLED = "tips_enabled"
     private const val KEY_NUVEI_APP_ID = "nuvei_app_id"
     private const val KEY_REGION = "region"
+    private const val KEY_THEME_STYLE = "theme_style"
+
+    enum class UiThemeStyle { CLASSIC, CYBER }
 
     private var appContext: Context? = null
     private var cachedToken: String? = null
@@ -173,6 +176,21 @@ object DeviceRepository {
     }
 
     fun getCurrencySymbol(): String = if (getRegion() == "CA") "$ CAD" else "$ USD"
+
+    // Bumped on every theme change; the UI keys its tree on it so a switch in
+    // Settings repaints every screen at once (they read getThemeStyle() directly).
+    private val _themeVersion = kotlinx.coroutines.flow.MutableStateFlow(0)
+    val themeVersion: kotlinx.coroutines.flow.StateFlow<Int> = _themeVersion
+
+    fun persistThemeStyle(style: UiThemeStyle) {
+        prefs()?.edit()?.putString(KEY_THEME_STYLE, style.name)?.apply()
+        _themeVersion.value++
+    }
+
+    fun getThemeStyle(): UiThemeStyle {
+        val name = prefs()?.getString(KEY_THEME_STYLE, UiThemeStyle.CYBER.name)
+        return runCatching { UiThemeStyle.valueOf(name ?: UiThemeStyle.CYBER.name) }.getOrDefault(UiThemeStyle.CYBER)
+    }
 
     private fun persistOrgId(orgId: String?) {
         if (orgId == null) return

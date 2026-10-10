@@ -1,6 +1,7 @@
 package com.goldsky.ssp.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -10,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -17,6 +19,15 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.goldsky.ssp.payment.DeviceRepository
+
+// Amber Palette (琥珀色彩图谱)
+val AmberGold = Color(0xFFFFB300)
+val AmberDarkGold = Color(0xFFFF8F00)
+val AmberLightGlow = Color(0xFFFFE082)
+val AmberDarkResinBg = Color(0xFF1F1508)
+val AmberSpecialResinBg = Color(0xFF2A1C0B)
+val AmberTextGold = Color(0xFFFFCA28)
 
 @Composable
 fun NumericKeypad(
@@ -26,6 +37,7 @@ fun NumericKeypad(
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
+    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     Column(
         modifier = modifier
@@ -54,6 +66,7 @@ fun NumericKeypad(
                             "OK" -> Icons.Default.Check
                             else -> null
                         },
+                        isCyber = isCyber,
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             when (item) {
@@ -71,43 +84,65 @@ fun NumericKeypad(
     }
 }
 
+/**
+ * Amber Glassmorphic Rounded Square Button (倒角方形琥珀质感按钮)
+ */
 @Composable
 private fun KeypadButton(
     onClick: () -> Unit,
     text: String,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
+    isCyber: Boolean = false,
     isSpecial: Boolean = false,
     isConfirm: Boolean = false
 ) {
+    val shape = RoundedCornerShape(16.dp)
+
+    val surfaceColor = when {
+        isConfirm -> if (isCyber) AmberGold else Color(0xFFFFA000)
+        isSpecial -> if (isCyber) AmberSpecialResinBg else Color(0xFFFFF3E0)
+        else -> if (isCyber) AmberDarkResinBg else Color(0xFFFFF8E1)
+    }
+
+    val borderColor = when {
+        isConfirm -> Color(0xFFFFECB3)
+        isCyber -> AmberGold.copy(alpha = 0.45f)
+        else -> Color(0xFFFFCA28).copy(alpha = 0.6f)
+    }
+
+    val contentColor = when {
+        isConfirm -> Color(0xFF1C1000) // Rich dark brown/black on gold
+        isSpecial -> if (isCyber) AmberGold else Color(0xFFE65100)
+        else -> if (isCyber) Color.White else Color(0xFF3E2723)
+    }
+
     Surface(
         onClick = onClick,
         modifier = modifier.height(60.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = when {
-            isConfirm -> MaterialTheme.colorScheme.primary
-            isSpecial -> MaterialTheme.colorScheme.secondary
-            else -> MaterialTheme.colorScheme.surface
-        },
-        border = if (!isConfirm) BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline) else BorderStroke(2.dp, Color.White.copy(alpha = 0.3f)),
-        tonalElevation = if (isConfirm) 12.dp else if (isSpecial) 6.dp else 1.dp
+        shape = shape,
+        color = surfaceColor,
+        border = BorderStroke(1.5.dp, borderColor),
+        tonalElevation = if (isConfirm) 8.dp else 3.dp,
+        shadowElevation = if (isConfirm) 6.dp else 1.dp
     ) {
         Box(contentAlignment = Alignment.Center) {
             if (icon != null) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    modifier = Modifier.size(28.dp),
-                    tint = if (isConfirm) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+                    modifier = Modifier.size(26.dp),
+                    tint = contentColor
                 )
             } else {
                 Text(
                     text = text,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Light,
-                    color = MaterialTheme.colorScheme.onSurface
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = contentColor
                 )
             }
         }
     }
 }
+
