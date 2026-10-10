@@ -152,9 +152,7 @@ class MainActivity : ComponentActivity() {
                                         OureaCheckoutScreen(
                                             viewModel = retailViewModel,
                                             onCheckout = { subtotal ->
-                                                val taxRate = DeviceRepository.getTaxRate()
-                                                val tax = (subtotal * taxRate / 100.0).toInt()
-                                                activeSaleData = subtotal to tax
+                                                activeSaleData = subtotal to retailViewModel.cartTaxCents()
                                             }
                                         )
                                     }

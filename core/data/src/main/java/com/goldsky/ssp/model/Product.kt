@@ -44,6 +44,13 @@ data class Product(
      * it can't be sold (there's no safe default length for paid time).
      */
     val durationSec: Int? get() = attributes?.get("duration_sec")?.jsonPrimitive?.intOrNull
+
+    /**
+     * Sales tax rate in basis points (0 = zero-rated, 1300 = Ontario HST),
+     * same `attributes` JSONB story as [category]. Null = not classified;
+     * callers fall back to the device's configured tax rate.
+     */
+    val taxRateBps: Int? get() = attributes?.get("tax_rate_bps")?.jsonPrimitive?.intOrNull
 }
 
 /**

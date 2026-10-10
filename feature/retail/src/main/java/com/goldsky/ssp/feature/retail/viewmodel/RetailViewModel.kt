@@ -181,6 +181,16 @@ class RetailViewModel : ViewModel() {
         _lastScan.value = null
     }
 
+    /**
+     * Tax on the current cart, per product rate (Product.taxRateBps), with the
+     * device's configured rate for products that aren't classified yet.
+     * Computed at checkout, not cached, so a Settings rate change applies.
+     */
+    fun cartTaxCents(): Int {
+        val fallback = com.goldsky.ssp.payment.SalesTax.deviceRateBps()
+        return com.goldsky.ssp.payment.SalesTax.cents(_cart.map { it.totalPriceCents to (it.product.taxRateBps ?: fallback) })
+    }
+
     private fun updateTotals() {
         _totalCents.value = _cart.sumOf { it.totalPriceCents }
         _itemCount.value = _cart.sumOf { it.quantity }

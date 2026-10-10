@@ -116,11 +116,7 @@ class MainActivity : ComponentActivity() {
                                     CheckoutContainer(
                                         retailViewModel = retailViewModel,
                                         onScan = { scanOnce(retailViewModel) },
-                                        onCheckout = { subtotal ->
-                                            val taxRate = DeviceRepository.getTaxRate()
-                                            val tax = (subtotal * taxRate / 100.0).toInt()
-                                            activeSaleData = subtotal to tax
-                                        }
+                                        onCheckout = { subtotal, tax -> activeSaleData = subtotal to tax }
                                     )
                                 }
                                 composable("insights") { InsightsScreen() }
@@ -255,7 +251,9 @@ class MainActivity : ComponentActivity() {
  * ever wired to the "checkout" route.
  */
 @Composable
-fun CheckoutContainer(retailViewModel: RetailViewModel, onScan: () -> Unit, onCheckout: (Int) -> Unit) {
+fun CheckoutContainer(retailViewModel: RetailViewModel, onScan: () -> Unit, onCheckout: (subtotal: Int, tax: Int) -> Unit) {
+    // Amounts with no product behind them (keypad, table, delivery) use the device rate.
+    val atDeviceRate = { cents: Int -> onCheckout(cents, SalesTax.cents(cents, SalesTax.deviceRateBps())) }
     var selectedTab by remember { mutableStateOf(0) }
     val retailMode = remember { DeviceRepository.getPersistedRetailMode() }
 
@@ -269,13 +267,17 @@ fun CheckoutContainer(retailViewModel: RetailViewModel, onScan: () -> Unit, onCh
             if (selectedTab == 0) {
                 ManualAmountScreen(onInitiatePayment = { amountStr ->
                     val cents = amountStr.replace(".", "").toIntOrNull() ?: 0
-                    if (cents > 0) onCheckout(cents)
+                    if (cents > 0) atDeviceRate(cents)
                 })
             } else {
                 when (retailMode) {
-                    com.goldsky.ssp.model.RetailMode.RESTAURANT -> DineInScreen(onTableSelected = { onCheckout(5000) })
-                    com.goldsky.ssp.model.RetailMode.DELIVERY -> DeliveryScreen(onCollect = { onCheckout(it) })
-                    else -> RetailStoreScreen(onCheckout = onCheckout, viewModel = retailViewModel, onScan = onScan)
+                    com.goldsky.ssp.model.RetailMode.RESTAURANT -> DineInScreen(onTableSelected = { atDeviceRate(5000) })
+                    com.goldsky.ssp.model.RetailMode.DELIVERY -> DeliveryScreen(onCollect = { atDeviceRate(it) })
+                    else -> RetailStoreScreen(
+                        onCheckout = { subtotal -> onCheckout(subtotal, retailViewModel.cartTaxCents()) },
+                        viewModel = retailViewModel,
+                        onScan = onScan
+                    )
                 }
             }
         }

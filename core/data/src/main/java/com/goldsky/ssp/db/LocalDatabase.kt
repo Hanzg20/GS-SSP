@@ -12,7 +12,9 @@ data class ProductEntity(
     val category: String,
     val isActive: Boolean = true,
     // null = "not tracked" (mirrors Product.stockQty), distinct from a real 0 (out of stock).
-    val stockQty: Int? = null
+    val stockQty: Int? = null,
+    // Mirrors Product.taxRateBps; null = fall back to the device tax rate.
+    val taxRateBps: Int? = null
 )
 
 @Entity(tableName = "local_orders")
@@ -108,7 +110,7 @@ interface ExpenseDao {
     fun delete(expense: ExpenseEntity)
 }
 
-@Database(entities = [ProductEntity::class, OrderEntity::class, ParkedOrderEntity::class, ExpenseEntity::class], version = 6, exportSchema = false)
+@Database(entities = [ProductEntity::class, OrderEntity::class, ParkedOrderEntity::class, ExpenseEntity::class], version = 7, exportSchema = false)
 abstract class LocalDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
     abstract fun orderDao(): OrderDao
@@ -119,6 +121,14 @@ abstract class LocalDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: LocalDatabase? = null
 
+        // Explicit so this upgrade doesn't fall through to the destructive
+        // fallback, which would also wipe local orders and parked carts.
+        private val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_products ADD COLUMN taxRateBps INTEGER")
+            }
+        }
+
         fun getInstance(context: Context): LocalDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -126,6 +136,7 @@ abstract class LocalDatabase : RoomDatabase() {
                     LocalDatabase::class.java,
                     "ssp_local_db"
                 )
+                .addMigrations(MIGRATION_6_7)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

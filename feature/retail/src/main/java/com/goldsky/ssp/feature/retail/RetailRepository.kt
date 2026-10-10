@@ -75,22 +75,23 @@ object RetailRepository {
     }
 
     /**
-     * Round-trips category + stock through attributes JSONB (see
+     * Round-trips category + stock + tax rate through attributes JSONB (see
      * Product.category/stockQty's doc comments) so the local-DB-first load
      * on cold start shows the same grouping/stock levels the cloud sync
      * will confirm moments later, instead of briefly dropping them.
      */
     private fun ProductEntity.toModel() = Product(
         id = id, name = name, price_cents = priceCents, vertical_type = "RETAIL", barcode = barcode,
-        attributes = if (category != "UNSET" || stockQty != null) buildJsonObject {
+        attributes = if (category != "UNSET" || stockQty != null || taxRateBps != null) buildJsonObject {
             if (category != "UNSET") put("category", JsonPrimitive(category))
             if (stockQty != null) put("stock_qty", JsonPrimitive(stockQty))
+            if (taxRateBps != null) put("tax_rate_bps", JsonPrimitive(taxRateBps))
         } else null
     )
 
     private fun Product.toEntity() = ProductEntity(
         id = id, name = name, priceCents = price_cents, barcode = barcode, category = category ?: "UNSET",
-        stockQty = stockQty
+        stockQty = stockQty, taxRateBps = taxRateBps
     )
 
     fun getProductByBarcode(barcode: String): Product? {
