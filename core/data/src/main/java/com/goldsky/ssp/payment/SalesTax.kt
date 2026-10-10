@@ -16,6 +16,16 @@ object SalesTax {
 
     fun cents(amountCents: Int, rateBps: Int): Int = cents(listOf(amountCents to rateBps))
 
+    /**
+     * Per-rate breakdown for the receipt: rateBps -> (taxable amount, tax),
+     * non-zero rates only, ascending. Sums to [cents] for the same lines.
+     */
+    fun byRate(lines: List<Pair<Int, Int>>): List<Triple<Int, Int, Int>> =
+        lines.filter { it.second > 0 }
+            .groupBy({ it.second }, { it.first })
+            .toSortedMap()
+            .map { (bps, amounts) -> Triple(bps, amounts.sum(), cents(amounts.sum(), bps)) }
+
     /** Device-level fallback rate (Settings stores a percent, e.g. 13.0). */
     fun deviceRateBps(): Int = (DeviceRepository.getTaxRate() * 100).roundToInt()
 

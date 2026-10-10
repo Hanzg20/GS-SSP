@@ -10,8 +10,10 @@ import java.io.File
 
 @Serializable
 data class PendingOp(
-    val type: String, // "insert" | "update_hw" | "update_status"
+    val type: String, // "insert" | "insert_items" | "update_hw" | "update_status"
     val record: TransactionRecord? = null,
+    // Only on "insert_items" ops (see TransactionRepository.recordItems).
+    val items: List<TransactionItem>? = null,
     val ecrRefNum: String? = null,
     val status: String? = null,
     // Only ever set on "update_status" ops (see TransactionRepository.updatePaymentStatus).

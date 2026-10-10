@@ -17,6 +17,8 @@ class TransactionReplayWorker(appContext: Context, params: WorkerParameters) : C
             OfflineQueueManager.drain(applicationContext.filesDir) { op ->
                 when (op.type) {
                     "insert" -> op.record?.let { TransactionRepository.recordTransactionRemote(it) } ?: true
+                    // Queued after its "insert", so the parent row lands first (FK on ecr_ref_num).
+                    "insert_items" -> op.items?.let { TransactionRepository.recordItemsRemote(it) } ?: true
                     "update_hw" -> {
                         val ref = op.ecrRefNum
                         val status = op.status

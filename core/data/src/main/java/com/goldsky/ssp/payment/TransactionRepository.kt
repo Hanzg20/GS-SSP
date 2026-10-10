@@ -44,6 +44,21 @@ data class TransactionRecord(
     val txn_kind: String? = null
 )
 
+/** One row of transaction_items (docs/migrations/2026-10-10_transaction_items.sql). */
+@Serializable
+data class TransactionItem(
+    val ecr_ref_num: String,
+    val device_sn: String,
+    val line_no: Int,
+    val product_id: String? = null,
+    val name: String,
+    val barcode: String? = null,
+    val quantity: Int,
+    val unit_price_cents: Int,
+    val line_total_cents: Int,
+    val tax_rate_bps: Int
+)
+
 /**
  * Handles recording financial transactions and hardware outcomes to Supabase.
  * Dual-write strategy: Local Room DB for instant Records UI & Resilience, 
@@ -78,6 +93,52 @@ object TransactionRepository {
             Log.w(TAG, "Transaction queued offline: ${record.ecr_ref_num}")
         }
         ok
+    }
+
+    /**
+     * Records a sale's lines. Call after [recordTransaction] for the same
+     * ecr_ref_num: the offline queue replays in order, and the items' FK
+     * needs the transaction row in the cloud first.
+     */
+    suspend fun recordItems(context: Context, ecrRefNum: String, deviceSn: String, lines: List<com.goldsky.ssp.model.SaleLine>): Boolean =
+        withContext(Dispatchers.IO) {
+            if (lines.isEmpty()) return@withContext true
+            val items = toItems(ecrRefNum, deviceSn, lines)
+            val ok = recordItemsRemote(items)
+            if (!ok) {
+                OfflineQueueManager.enqueue(context.filesDir, PendingOp(type = "insert_items", items = items))
+                Log.w(TAG, "Transaction items queued offline: $ecrRefNum")
+            }
+            ok
+        }
+
+    internal fun toItems(ecrRefNum: String, deviceSn: String, lines: List<com.goldsky.ssp.model.SaleLine>) =
+        lines.mapIndexed { i, l ->
+            TransactionItem(
+                ecr_ref_num = ecrRefNum, device_sn = deviceSn, line_no = i + 1,
+                // products.id is a UUID FK; anything else (bundled ids) is dropped, as for transactions.product_id.
+                product_id = l.productId?.takeIf { isUuid(it) },
+                name = l.name, barcode = l.barcode, quantity = l.quantity,
+                unit_price_cents = l.unitPriceCents, line_total_cents = l.lineTotalCents, tax_rate_bps = l.taxRateBps
+            )
+        }
+
+    /** Raw network write, no offline queueing. */
+    suspend fun recordItemsRemote(items: List<TransactionItem>): Boolean = withContext(Dispatchers.IO) {
+        if (CoreConfig.isMock) return@withContext true
+        try {
+            SupabaseClientProvider.client.postgrest["transaction_items"].insert(items)
+            Log.i(TAG, "Transaction items recorded: ${items.firstOrNull()?.ecr_ref_num} (${items.size})")
+            true
+        } catch (e: Exception) {
+            if (e.message?.contains("transaction_items_ref_line_key") == true) {
+                // An earlier attempt landed but its answer got lost.
+                Log.i(TAG, "Transaction items already recorded: ${items.firstOrNull()?.ecr_ref_num}")
+                return@withContext true
+            }
+            Log.e(TAG, "Error recording transaction items: ${e.message}")
+            false
+        }
     }
 
     /**

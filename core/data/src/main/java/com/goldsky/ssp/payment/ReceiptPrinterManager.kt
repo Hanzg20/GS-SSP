@@ -20,8 +20,47 @@ object ReceiptPrinterManager {
         val tipCents: Int? = null,
         val amountCents: Int,
         val refNum: String,
-        val deviceSn: String
+        val deviceSn: String,
+        // Sale lines; empty = totals-only receipt (wash, keypad-less callers).
+        val lines: List<com.goldsky.ssp.model.SaleLine> = emptyList()
     )
+
+    private const val WIDTH = 32
+
+    private fun money(cents: Int) = "%.2f".format(cents / 100.0)
+
+    /** [left] and [right] on one 32-column line; ASCII only (CJK is double width). */
+    internal fun row(left: String, right: String): String =
+        left + " ".repeat((WIDTH - left.length - right.length).coerceAtLeast(1)) + right
+
+    private fun rateLabel(bps: Int): String {
+        val pct = if (bps % 100 == 0) "${bps / 100}" else "%.2f".format(bps / 100.0).trimEnd('0')
+        return if (bps == 1300) "HST 13%" else "TAX $pct%"
+    }
+
+    /**
+     * Item block + tax breakdown. Name on its own line (it may be CJK, whose
+     * width the column math can't know), then "qty x price ... total" with a
+     * trailing H on taxed lines -- the usual Canadian receipt marking.
+     */
+    internal fun itemLines(lines: List<com.goldsky.ssp.model.SaleLine>): List<String> {
+        if (lines.isEmpty()) return emptyList()
+        val out = mutableListOf<String>()
+        for (l in lines) {
+            out += l.name
+            val mark = if (l.taxRateBps > 0) " H" else "  "
+            out += row("  ${l.quantity} x ${money(l.unitPriceCents)}", money(l.lineTotalCents) + mark)
+        }
+        out += "-".repeat(WIDTH)
+        val pairs = lines.map { it.lineTotalCents to it.taxRateBps }
+        for ((bps, base, tax) in SalesTax.byRate(pairs)) {
+            out += row("${rateLabel(bps)} on ${money(base)}", money(tax) + "  ")
+        }
+        val exempt = lines.filter { it.taxRateBps == 0 }.sumOf { it.lineTotalCents }
+        if (exempt > 0) out += row("Tax exempt items", money(exempt) + "  ")
+        if (lines.any { it.taxRateBps > 0 }) out += "H = taxable item"
+        return out
+    }
 
     /**
      * Prints a professional retail receipt with branding and tax breakdown.
@@ -49,7 +88,9 @@ object ReceiptPrinterManager {
             printer.addText("Ref: ${data.refNum.takeLast(12)}")
             printer.addText("Device: ${data.deviceSn.takeLast(8)}")
             printer.addText("--------------------------------")
-            
+            itemLines(data.lines).forEach { printer.addText(it) }
+            if (data.lines.isNotEmpty()) printer.addText("--------------------------------")
+
             val tax = data.taxCents ?: 0
             val tip = data.tipCents ?: 0
             val sub = data.subtotalCents ?: (data.amountCents - tax - tip)

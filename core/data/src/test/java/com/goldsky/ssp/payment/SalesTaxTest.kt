@@ -31,4 +31,11 @@ class SalesTaxTest {
         // Three 1.50 lines at 13%: per line 19.5 -> 20 each = 60; summed 4.50 * 13% = 58.5 -> 59
         assertEquals(59, SalesTax.cents(listOf(150 to 1300, 150 to 1300, 150 to 1300)))
     }
+
+    @Test
+    fun `byRate lists taxed rates only and sums to the total`() {
+        val lines = listOf(1299 to 0, 299 to 1300, 100 to 1300)
+        assertEquals(listOf(Triple(1300, 399, 52)), SalesTax.byRate(lines))
+        assertEquals(SalesTax.cents(lines), SalesTax.byRate(lines).sumOf { it.third })
+    }
 }

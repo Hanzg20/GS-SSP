@@ -23,6 +23,8 @@ import androidx.navigation.compose.rememberNavController
 import com.goldsky.ssp.common.FeedbackManager
 import com.goldsky.ssp.db.ExpenseEntity
 import com.goldsky.ssp.db.LocalDatabase
+import com.goldsky.ssp.model.CheckoutSale
+import com.goldsky.ssp.model.SaleLine
 import com.goldsky.ssp.payment.*
 import com.goldsky.ssp.payment.hardware.*
 import com.goldsky.ssp.feature.retail.screens.*
@@ -95,13 +97,13 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val retailViewModel: RetailViewModel = viewModel()
                 var paymentStatus by remember { mutableStateOf<PaymentUiState>(PaymentUiState.Idle) }
-                // subtotal to tax, staged while the tip dialog is up; the real
-                // sale only fires once the customer picks (or skips) a tip.
-                var activeSaleData by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+                // Staged while the tip dialog is up; the real sale only fires
+                // once the customer picks (or skips) a tip.
+                var activeSaleData by remember { mutableStateOf<CheckoutSale?>(null) }
                 var isUnlocked by remember { mutableStateOf(false) }
 
-                fun pay(subtotal: Int, tax: Int, tip: Int) {
-                    triggerPaymentFlow(subtotal, tax, tip) {
+                fun pay(sale: CheckoutSale, tip: Int) {
+                    triggerPaymentFlow(sale, tip) {
                         paymentStatus = it
                         if (it is PaymentUiState.Success) {
                             retailViewModel.clearCart()
@@ -126,10 +128,10 @@ class MainActivity : ComponentActivity() {
                                     CheckoutContainer(
                                         retailViewModel = retailViewModel,
                                         onScan = { scanOnce(retailViewModel) },
-                                        onCheckout = { subtotal, tax ->
+                                        onCheckout = { sale ->
                                             // No tip step unless the store asks for tips (off for retail).
-                                            if (DeviceRepository.isTipsEnabled()) activeSaleData = subtotal to tax
-                                            else pay(subtotal, tax, 0)
+                                            if (DeviceRepository.isTipsEnabled()) activeSaleData = sale
+                                            else pay(sale, 0)
                                         }
                                     )
                                 }
@@ -156,13 +158,13 @@ class MainActivity : ComponentActivity() {
                         }
 
                         // Detail overlays (drawn above the NavHost content, not routes of their own)
-                        activeSaleData?.let { (subtotal, tax) ->
+                        activeSaleData?.let { sale ->
                             TipSelectionDialog(
-                                subtotalCents = subtotal + tax,
+                                subtotalCents = sale.subtotalCents + sale.taxCents,
                                 onConfirm = { totalWithTip ->
-                                    val tip = totalWithTip - (subtotal + tax)
+                                    val tip = totalWithTip - (sale.subtotalCents + sale.taxCents)
                                     activeSaleData = null
-                                    pay(subtotal, tax, tip)
+                                    pay(sale, tip)
                                 },
                                 onDismiss = { activeSaleData = null }
                             )
@@ -195,7 +197,9 @@ class MainActivity : ComponentActivity() {
         })
     }
 
-    private fun triggerPaymentFlow(subtotal: Int, tax: Int, tip: Int, onStateChange: (PaymentUiState) -> Unit) {
+    private fun triggerPaymentFlow(sale: CheckoutSale, tip: Int, onStateChange: (PaymentUiState) -> Unit) {
+        val subtotal = sale.subtotalCents
+        val tax = sale.taxCents
         val total = subtotal + tax + tip
         val ref = "RET-" + System.currentTimeMillis()
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
@@ -213,6 +217,8 @@ class MainActivity : ComponentActivity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             TransactionRepository.recordTransaction(this@MainActivity, record)
+            // After the parent row: transaction_items references it.
+            TransactionRepository.recordItems(this@MainActivity, ref, sn, sale.lines)
         }
 
         onStateChange(PaymentUiState.Processing("Processing $${"%.2f".format(total / 100.0)}..."))
@@ -229,7 +235,8 @@ class MainActivity : ComponentActivity() {
                             tipCents = tip,
                             amountCents = total,
                             refNum = ref,
-                            deviceSn = sn
+                            deviceSn = sn,
+                            lines = sale.lines
                         ),
                         vendor = DeviceRepository.getPersistedHardwareVendor()
                     )
@@ -259,9 +266,12 @@ class MainActivity : ComponentActivity() {
  * ever wired to the "checkout" route.
  */
 @Composable
-fun CheckoutContainer(retailViewModel: RetailViewModel, onScan: () -> Unit, onCheckout: (subtotal: Int, tax: Int) -> Unit) {
-    // Amounts with no product behind them (keypad, table, delivery) use the device rate.
-    val atDeviceRate = { cents: Int -> onCheckout(cents, SalesTax.cents(cents, SalesTax.deviceRateBps())) }
+fun CheckoutContainer(retailViewModel: RetailViewModel, onScan: () -> Unit, onCheckout: (CheckoutSale) -> Unit) {
+    // Amounts with no product behind them (keypad, table, delivery): one line at the device rate.
+    fun atDeviceRate(name: String, cents: Int) {
+        val bps = SalesTax.deviceRateBps()
+        onCheckout(CheckoutSale(cents, SalesTax.cents(cents, bps), listOf(SaleLine(name, 1, cents, bps))))
+    }
     var selectedTab by remember { mutableStateOf(0) }
     val retailMode = remember { DeviceRepository.getPersistedRetailMode() }
 
@@ -275,14 +285,14 @@ fun CheckoutContainer(retailViewModel: RetailViewModel, onScan: () -> Unit, onCh
             if (selectedTab == 0) {
                 ManualAmountScreen(onInitiatePayment = { amountStr ->
                     val cents = amountStr.replace(".", "").toIntOrNull() ?: 0
-                    if (cents > 0) atDeviceRate(cents)
+                    if (cents > 0) atDeviceRate("Keypad amount", cents)
                 })
             } else {
                 when (retailMode) {
-                    com.goldsky.ssp.model.RetailMode.RESTAURANT -> DineInScreen(onTableSelected = { atDeviceRate(5000) })
-                    com.goldsky.ssp.model.RetailMode.DELIVERY -> DeliveryScreen(onCollect = { atDeviceRate(it) })
+                    com.goldsky.ssp.model.RetailMode.RESTAURANT -> DineInScreen(onTableSelected = { atDeviceRate("Table", 5000) })
+                    com.goldsky.ssp.model.RetailMode.DELIVERY -> DeliveryScreen(onCollect = { atDeviceRate("Delivery", it) })
                     else -> RetailStoreScreen(
-                        onCheckout = { subtotal -> onCheckout(subtotal, retailViewModel.cartTaxCents()) },
+                        onCheckout = { onCheckout(retailViewModel.checkoutSale()) },
                         viewModel = retailViewModel,
                         onScan = onScan
                     )
