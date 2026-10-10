@@ -177,6 +177,12 @@ object DeviceRepository {
 
     fun getCurrencySymbol(): String = if (getRegion() == "CA") "$ CAD" else "$ USD"
 
+    // Bumped after each successful identity sync: the device's org is known
+    // (and RLS passes) only from then on, so org-scoped lists fetched earlier
+    // -- the staff list on a first launch -- are fetched again.
+    private val _identityVersion = kotlinx.coroutines.flow.MutableStateFlow(0)
+    val identityVersion: kotlinx.coroutines.flow.StateFlow<Int> = _identityVersion
+
     // Bumped on every theme change; the UI keys its tree on it so a switch in
     // Settings repaints every screen at once (they read getThemeStyle() directly).
     private val _themeVersion = kotlinx.coroutines.flow.MutableStateFlow(0)
@@ -319,6 +325,7 @@ object DeviceRepository {
             // made, so a first-launch heartbeat sent before now was rejected:
             // send one now that it will pass (every shell runs this at start).
             appContext?.let { AdManager.onlineNow(it, force = true) }
+            _identityVersion.value++
             result
         } catch (e: Exception) {
             Log.w(TAG, "Device identity sync failed: ${e.message}")

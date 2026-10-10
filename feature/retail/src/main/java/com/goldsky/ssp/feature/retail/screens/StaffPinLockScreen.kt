@@ -50,7 +50,10 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
             syncing = false
         }
     }
-    LaunchedEffect(Unit) { refresh() }
+    // Again once the device is linked to its org: on a first launch the
+    // first fetch runs before that and comes back empty.
+    val identityVersion by DeviceRepository.identityVersion.collectAsState()
+    LaunchedEffect(identityVersion) { refresh() }
 
     fun submit(entered: String) {
         checking = true
