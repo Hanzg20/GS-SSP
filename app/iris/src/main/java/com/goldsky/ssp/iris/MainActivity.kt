@@ -121,6 +121,8 @@ class MainActivity : ComponentActivity() {
                 }
                 // Bumped after a delivery order is collected so the list reloads without it.
                 var deliveryReload by remember { mutableStateOf(0) }
+                // Bumped after a refund so Records shows the new status.
+                var recordsReload by remember { mutableStateOf(0) }
                 val scope = rememberCoroutineScope()
 
                 fun pay(sale: CheckoutSale, tip: Int) {
@@ -199,7 +201,16 @@ class MainActivity : ComponentActivity() {
                                 }
                                 composable("insights") { InsightsScreen() }
                                 composable("transactions") {
-                                    TransactionHistoryScreen(onlyStaffId = if (signedIn.isManager) null else signedIn.id)
+                                    TransactionHistoryScreen(
+                                        onlyStaffId = if (signedIn.isManager) null else signedIn.id,
+                                        onRefund = { order, approver ->
+                                            refundSale(order, approver) { state ->
+                                                paymentStatus = state
+                                                if (state !is PaymentUiState.Processing) recordsReload++
+                                            }
+                                        },
+                                        reloadKey = recordsReload
+                                    )
                                 }
                                 composable("expenses") {
                                     ExpenseScreen(onScanReceipt = { navController.navigate("scan_receipt") })
@@ -238,6 +249,7 @@ class MainActivity : ComponentActivity() {
                         when (val state = paymentStatus) {
                             is PaymentUiState.Processing -> PaymentProcessingDialog(state.message)
                             is PaymentUiState.Success -> PaymentResultDialog(true, "Approved: ${state.authCode}") { paymentStatus = PaymentUiState.Idle }
+                            is PaymentUiState.Done -> PaymentResultDialog(true, state.message) { paymentStatus = PaymentUiState.Idle }
                             is PaymentUiState.Error -> PaymentResultDialog(false, state.message) { paymentStatus = PaymentUiState.Idle }
                             else -> {}
                         }
@@ -318,6 +330,50 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val SAME_CODE_MS = 1500L
         const val IDLE_LOCK_MS = 5 * 60_000L
+    }
+
+    /**
+     * Whole-sale refund, approved by [approver] (a manager's PIN). Card: look
+     * the sale up first so PAYWizard has the original's IDs for a reversal
+     * (they're only cached in-process), then reverse it -- or refund it once
+     * the batch has settled (voidOrRefund falls back). Cash: just recorded;
+     * the cashier hands the money back. Prints a refund slip either way.
+     */
+    private fun refundSale(order: com.goldsky.ssp.db.OrderEntity, approver: StaffMember, onState: (PaymentUiState) -> Unit) {
+        val ref = order.ecrRefNum
+        val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
+        val amount = "%.2f".format(order.amountCents / 100.0)
+
+        fun finish(status: String, how: String) {
+            CoroutineScope(Dispatchers.IO).launch {
+                TransactionRepository.recordRefund(this@MainActivity, ref, status, approver.id, approver.name)
+                ReceiptPrinterManager.printReceipt(
+                    this@MainActivity,
+                    ReceiptPrinterManager.ReceiptData(
+                        subtotalCents = order.subtotalCents, taxCents = order.taxCents, tipCents = order.tipCents,
+                        amountCents = order.amountCents, refNum = ref, deviceSn = sn,
+                        banner = "      *** REFUND ***",
+                        footer = listOf(how, "Approved by: ${approver.name}")
+                    ),
+                    vendor = DeviceRepository.getPersistedHardwareVendor()
+                )
+                withContext(Dispatchers.Main) { onState(PaymentUiState.Done("Refunded $$amount. $how")) }
+            }
+        }
+
+        if (order.paymentMethod == "CASH") {
+            finish("REFUNDED", "Cash handed back: $$amount")
+            return
+        }
+        onState(PaymentUiState.Processing("Refunding $$amount to the card..."))
+        paymentProvider.queryTransaction(ref) { _ ->
+            paymentProvider.voidOrRefund(ref, order.amountCents) { ok, method ->
+                runOnUiThread {
+                    if (ok) finish(if (method == "VOID") "VOIDED" else "REFUNDED", if (method == "VOID") "Card sale reversed" else "Refunded to card")
+                    else onState(PaymentUiState.Error("Refund failed -- nothing was refunded. Try again, or check PAYWizard."))
+                }
+            }
+        }
     }
 
     /**
@@ -555,6 +611,8 @@ sealed class PaymentUiState {
     data class Success(val authCode: String) : PaymentUiState()
     data class Error(val message: String) : PaymentUiState()
     data class Processing(val message: String) : PaymentUiState()
+    // A non-sale outcome to confirm (e.g. a refund), shown as-is.
+    data class Done(val message: String) : PaymentUiState()
 }
 
 @Composable

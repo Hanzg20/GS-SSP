@@ -16,6 +16,10 @@ data class PendingOp(
     val items: List<TransactionItem>? = null,
     // Only on "delivery_paid" ops (see DeliveryOrderRepository.markPaid).
     val orderId: String? = null,
+    // Only on "refund" ops (see TransactionRepository.recordRefund).
+    val approverId: String? = null,
+    val approverName: String? = null,
+    val refundedAt: String? = null,
     val ecrRefNum: String? = null,
     val status: String? = null,
     // Only ever set on "update_status" ops (see TransactionRepository.updatePaymentStatus).

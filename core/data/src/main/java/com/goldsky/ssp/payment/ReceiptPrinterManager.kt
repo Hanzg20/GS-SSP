@@ -22,7 +22,11 @@ object ReceiptPrinterManager {
         val refNum: String,
         val deviceSn: String,
         // Sale lines; empty = totals-only receipt (wash, keypad-less callers).
-        val lines: List<com.goldsky.ssp.model.SaleLine> = emptyList()
+        val lines: List<com.goldsky.ssp.model.SaleLine> = emptyList(),
+        // Printed as a banner under the header, e.g. "*** REFUND ***".
+        val banner: String? = null,
+        // Extra lines after the totals (e.g. who approved a refund).
+        val footer: List<String> = emptyList()
     )
 
     private const val WIDTH = 32
@@ -88,6 +92,7 @@ object ReceiptPrinterManager {
             printer.addText("Ref: ${data.refNum.takeLast(12)}")
             printer.addText("Device: ${data.deviceSn.takeLast(8)}")
             printer.addText("--------------------------------")
+            data.banner?.let { printer.addText(it); printer.addText("--------------------------------") }
             itemLines(data.lines).forEach { printer.addText(it) }
             if (data.lines.isNotEmpty()) printer.addText("--------------------------------")
 
@@ -105,6 +110,8 @@ object ReceiptPrinterManager {
             printer.addText("--------------------------------")
             printer.addText("TOTAL:           $${"%.2f".format(data.amountCents / 100.0)}")
             printer.addText("--------------------------------")
+            data.footer.forEach { printer.addText(it) }
+            if (data.footer.isNotEmpty()) printer.addText("--------------------------------")
             printer.addText("    THANK YOU FOR SHOPPING!")
             
             printer.feedPaper(3)

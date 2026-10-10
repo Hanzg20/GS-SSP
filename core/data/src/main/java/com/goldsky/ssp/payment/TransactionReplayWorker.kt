@@ -29,6 +29,15 @@ class TransactionReplayWorker(appContext: Context, params: WorkerParameters) : C
                             true // malformed entry, drop it rather than retry forever
                         }
                     }
+                    "refund" -> {
+                        val ref = op.ecrRefNum
+                        val status = op.status
+                        if (ref != null && status != null) {
+                            TransactionRepository.recordRefundRemote(ref, status, op.approverId, op.approverName, op.refundedAt)
+                        } else {
+                            true // malformed entry, drop it rather than retry forever
+                        }
+                    }
                     "update_hw" -> {
                         val ref = op.ecrRefNum
                         val status = op.status

@@ -146,6 +146,64 @@ object TransactionRepository {
     }
 
     /**
+     * A whole sale given back: [status] VOIDED (card reversed before settle),
+     * REFUNDED (card refunded after settle, or cash handed back), with the
+     * manager who approved it. Local first, then the cloud (queued offline).
+     */
+    suspend fun recordRefund(context: Context, ecrRefNum: String, status: String, approverId: String?, approverName: String?): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val db = LocalDatabase.getInstance(context)
+                db.orderDao().getAll().find { it.ecrRefNum == ecrRefNum }?.let { db.orderDao().update(it.copy(status = status)) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Local refund update failed: ${e.message}")
+            }
+            // java.time needs API 26; minSdk is 25.
+            val at = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+                .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date())
+            val ok = recordRefundRemote(ecrRefNum, status, approverId, approverName, at)
+            if (!ok) {
+                OfflineQueueManager.enqueue(
+                    context.filesDir,
+                    PendingOp(type = "refund", ecrRefNum = ecrRefNum, status = status,
+                        approverId = approverId, approverName = approverName, refundedAt = at)
+                )
+                Log.w(TAG, "Refund queued offline: $ecrRefNum -> $status")
+            }
+            ok
+        }
+
+    suspend fun recordRefundRemote(ecrRefNum: String, status: String, approverId: String?, approverName: String?, refundedAt: String?): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val updated = updateRows("refund", ecrRefNum) {
+                    set("payment_status", status)
+                    refundedAt?.let { set("refunded_at", it) }
+                    approverId?.let { set("refund_approved_by_staff_id", it) }
+                    approverName?.let { set("refund_approved_by_name", it) }
+                }
+                if (updated) Log.i(TAG, "Refund recorded: $ecrRefNum -> $status (approved by $approverName)")
+                updated
+            } catch (e: Exception) {
+                Log.e(TAG, "Error recording refund: ${e.message}")
+                false
+            }
+        }
+
+    /** A sale's lines from the cloud (transaction_items); null when unreachable. */
+    suspend fun fetchItems(ecrRefNum: String): List<TransactionItem>? = withContext(Dispatchers.IO) {
+        try {
+            SupabaseClientProvider.client.postgrest["transaction_items"]
+                .select { filter { eq("ecr_ref_num", ecrRefNum) } }
+                .decodeList<TransactionItem>()
+                .sortedBy { it.line_no }
+        } catch (e: Exception) {
+            Log.w(TAG, "Fetch items failed for $ecrRefNum: ${e.message}")
+            null
+        }
+    }
+
+    /**
      * Updates hardware status locally and remotely.
      */
     suspend fun updateHardwareStatus(context: Context, ecrRefNum: String, status: String): Boolean =
