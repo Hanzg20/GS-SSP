@@ -21,6 +21,7 @@ data class StaffMember(
     val pin_iterations: Int
 ) {
     val isManager: Boolean get() = role == "MANAGER"
+    val isDriver: Boolean get() = role == "DRIVER"
 }
 
 /**

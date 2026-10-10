@@ -15,12 +15,17 @@ import com.goldsky.ssp.feature.retail.ReceiptPrinterManager
 import com.goldsky.ssp.feature.retail.ui.ReceiptDetailDialog
 
 @Composable
-fun TransactionHistoryScreen() {
+fun TransactionHistoryScreen(
+    // Set for non-managers: only the sales this person took (older rows with
+    // no staff recorded are hidden from them too).
+    onlyStaffId: String? = null
+) {
     val context = LocalContext.current
     var transactions by remember { mutableStateOf(emptyList<com.goldsky.ssp.db.OrderEntity>()) }
     
     LaunchedEffect(Unit) {
         transactions = TransactionRepository.getAllLocal(context)
+            .let { all -> if (onlyStaffId == null) all else all.filter { it.staffId == onlyStaffId } }
     }
 
     LazyColumn {

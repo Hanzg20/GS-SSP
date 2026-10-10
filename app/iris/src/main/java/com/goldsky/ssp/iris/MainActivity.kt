@@ -170,7 +170,7 @@ class MainActivity : ComponentActivity() {
                     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                         Scaffold(
                             topBar = { StaffBar(signedIn, onLock = { lock() }) },
-                            bottomBar = { MainBottomNavigation(navController, showSettings = signedIn.isManager) }
+                            bottomBar = { MainBottomNavigation(navController, isManager = signedIn.isManager) }
                         ) { padding ->
                             NavHost(
                                 navController = navController,
@@ -181,6 +181,7 @@ class MainActivity : ComponentActivity() {
                                     CheckoutContainer(
                                         retailViewModel = retailViewModel,
                                         isScanning = scanning.value,
+                                        deliveryOnly = signedIn.isDriver,
                                         onScan = { if (scanning.value) stopScanSession() else startScanSession(retailViewModel) },
                                         onCheckout = { checkout(it) },
                                         deliveryReload = deliveryReload,
@@ -197,7 +198,9 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                                 composable("insights") { InsightsScreen() }
-                                composable("transactions") { TransactionHistoryScreen() }
+                                composable("transactions") {
+                                    TransactionHistoryScreen(onlyStaffId = if (signedIn.isManager) null else signedIn.id)
+                                }
                                 composable("expenses") {
                                     ExpenseScreen(onScanReceipt = { navController.navigate("scan_receipt") })
                                 }
@@ -425,6 +428,8 @@ fun CheckoutContainer(
     retailViewModel: RetailViewModel,
     onScan: () -> Unit,
     isScanning: Boolean,
+    // Drivers: the DELIVERY tab only -- no keypad (arbitrary amounts) or library.
+    deliveryOnly: Boolean,
     onCheckout: (CheckoutSale) -> Unit,
     deliveryReload: Int,
     onCollectCard: (DeliveryOrder) -> Unit,
@@ -435,11 +440,12 @@ fun CheckoutContainer(
         val bps = SalesTax.deviceRateBps()
         onCheckout(CheckoutSale(cents, SalesTax.cents(cents, bps), listOf(SaleLine(name, 1, cents, bps))))
     }
-    var selectedTab by remember { mutableStateOf(0) }
+    var selectedTab by remember { mutableStateOf(if (deliveryOnly) 2 else 0) }
+    if (deliveryOnly && selectedTab != 2) selectedTab = 2
     val retailMode = remember { DeviceRepository.getPersistedRetailMode() }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = selectedTab) {
+        if (!deliveryOnly) TabRow(selectedTabIndex = selectedTab) {
             Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("KEYPAD", fontWeight = FontWeight.Bold) })
             Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("LIBRARY", fontWeight = FontWeight.Bold) })
             // Its own tab, not a mode: the same handheld does line-busting and delivery.
@@ -470,7 +476,9 @@ fun CheckoutContainer(
 }
 
 @Composable
-fun MainBottomNavigation(navController: NavHostController, showSettings: Boolean) {
+// Cashiers and drivers: Quick + Records (their own). Managers also get AI
+// insights, expenses and Settings.
+fun MainBottomNavigation(navController: NavHostController, isManager: Boolean) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
@@ -487,7 +495,7 @@ fun MainBottomNavigation(navController: NavHostController, showSettings: Boolean
             icon = { Icon(Icons.Default.ReceiptLong, null) },
             label = { Text("Records") }
         )
-        NavigationBarItem(
+        if (isManager) NavigationBarItem(
             selected = currentRoute == "insights",
             onClick = { navController.navigate("insights") { launchSingleTop = true } },
             icon = {
@@ -505,13 +513,13 @@ fun MainBottomNavigation(navController: NavHostController, showSettings: Boolean
                 )
             }
         )
-        NavigationBarItem(
+        if (isManager) NavigationBarItem(
             selected = currentRoute == "expenses",
             onClick = { navController.navigate("expenses") { launchSingleTop = true } },
             icon = { Icon(Icons.Default.Receipt, null) },
             label = { Text("Expenses") }
         )
-        if (showSettings) NavigationBarItem(
+        if (isManager) NavigationBarItem(
             selected = currentRoute == "settings",
             onClick = { navController.navigate("settings") { launchSingleTop = true } },
             icon = { Icon(Icons.Default.Settings, null) },
@@ -532,7 +540,7 @@ fun StaffBar(staff: StaffMember, onLock: () -> Unit) {
             Spacer(Modifier.width(6.dp))
             Text(staff.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.width(6.dp))
-            Text(if (staff.isManager) "Manager" else "Cashier", style = MaterialTheme.typography.labelSmall,
+            Text(when { staff.isManager -> "Manager"; staff.isDriver -> "Driver"; else -> "Cashier" }, style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
             TextButton(onClick = onLock) {
