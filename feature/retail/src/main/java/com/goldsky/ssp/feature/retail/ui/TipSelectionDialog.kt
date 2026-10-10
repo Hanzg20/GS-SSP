@@ -43,11 +43,11 @@ fun TipSelectionDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf(15, 18, 20).forEach { pct ->
+                    listOf(0, 15, 18, 20).forEach { pct ->
                         FilterChip(
                             selected = !isCustomMode && selectedPercentage == pct,
                             onClick = { isCustomMode = false; selectedPercentage = pct },
-                            label = { Text("$pct%") }
+                            label = { Text(if (pct == 0) "No tip" else "$pct%") }
                         )
                     }
                 }
@@ -57,11 +57,11 @@ fun TipSelectionDialog(
                 val tipCents = if (isCustomMode) {
                     customAmountStr.replace(".", "").toIntOrNull() ?: 0
                 } else {
-                    (subtotalCents * selectedPercentage / 100.0).toInt()
+                    Math.round(subtotalCents * selectedPercentage / 100.0).toInt()
                 }
                 val total = subtotalCents + tipCents
 
-                Text("TOTAL: $${total / 100.0}", fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                Text("TOTAL: $%.2f".format(total / 100.0), fontSize = 32.sp, fontWeight = FontWeight.Bold)
                 
                 Spacer(modifier = Modifier.height(24.dp))
                 

@@ -152,7 +152,10 @@ class MainActivity : ComponentActivity() {
                                         OureaCheckoutScreen(
                                             viewModel = retailViewModel,
                                             onCheckout = { subtotal ->
-                                                activeSaleData = subtotal to retailViewModel.cartTaxCents()
+                                                val tax = retailViewModel.cartTaxCents()
+                                                // No tip step unless the store asks for tips (off for retail).
+                                                if (DeviceRepository.isTipsEnabled()) activeSaleData = subtotal to tax
+                                                else confirmingPayment = Triple(subtotal, tax, 0)
                                             }
                                         )
                                     }

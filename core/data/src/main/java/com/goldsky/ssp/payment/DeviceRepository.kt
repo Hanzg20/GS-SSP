@@ -52,6 +52,7 @@ object DeviceRepository {
     private const val KEY_STORE_ADDR = "store_addr"
     private const val KEY_STORE_PHONE = "store_phone"
     private const val KEY_TAX_RATE = "tax_rate"
+    private const val KEY_TIPS_ENABLED = "tips_enabled"
     private const val KEY_NUVEI_APP_ID = "nuvei_app_id"
     private const val KEY_REGION = "region"
 
@@ -140,6 +141,19 @@ object DeviceRepository {
     }
 
     fun getTaxRate(): Float = prefs()?.getFloat(KEY_TAX_RATE, 0.0f) ?: 0.0f
+
+    fun persistTipsEnabled(enabled: Boolean) {
+        prefs()?.edit()?.putBoolean(KEY_TIPS_ENABLED, enabled)?.apply()
+    }
+
+    /**
+     * Whether checkout asks for a tip. Until set explicitly: on only for
+     * RESTAURANT mode -- a store sale (line-busting, delivery) has no tip step.
+     */
+    fun isTipsEnabled(): Boolean {
+        val default = getPersistedRetailMode() == com.goldsky.ssp.model.RetailMode.RESTAURANT
+        return prefs()?.getBoolean(KEY_TIPS_ENABLED, default) ?: default
+    }
 
     fun persistNuveiAppId(id: String) {
         prefs()?.edit()?.putString(KEY_NUVEI_APP_ID, id)?.apply()

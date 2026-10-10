@@ -32,7 +32,8 @@ fun SettingsScreen() {
     var storeName by remember { mutableStateOf(DeviceRepository.getStoreName()) }
     var storeAddr by remember { mutableStateOf(DeviceRepository.getStoreAddress()) }
     var storePhone by remember { mutableStateOf(DeviceRepository.getStorePhone()) }
-    var taxRate by remember { mutableStateOf(DeviceRepository.getTaxRate()) }
+    var taxRateText by remember { mutableStateOf(DeviceRepository.getTaxRate().let { if (it == 0f) "" else it.toString() }) }
+    var tipsEnabled by remember { mutableStateOf(DeviceRepository.isTipsEnabled()) }
 
     var selectedRegion by remember { mutableStateOf(DeviceRepository.getRegion()) }
     var nuveiAppId by remember { mutableStateOf(DeviceRepository.getNuveiAppId()) }
@@ -72,6 +73,27 @@ fun SettingsScreen() {
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+                    // Used for keypad amounts and products with no tax_rate_bps of their own.
+                    OutlinedTextField(
+                        value = taxRateText,
+                        onValueChange = { text ->
+                            taxRateText = text
+                            if (text.isBlank()) DeviceRepository.persistTaxRate(0f)
+                            else text.toFloatOrNull()?.takeIf { it in 0f..100f }?.let { DeviceRepository.persistTaxRate(it) }
+                        },
+                        label = { Text("Default tax rate (%)") },
+                        supportingText = { Text("For keypad amounts and products without their own rate") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Ask for tip", fontWeight = FontWeight.Bold)
+                            Text("Show the tip screen before payment", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(checked = tipsEnabled, onCheckedChange = { tipsEnabled = it; DeviceRepository.persistTipsEnabled(it) })
+                    }
                 }
             }
 

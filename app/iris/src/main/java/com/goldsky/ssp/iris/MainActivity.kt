@@ -100,6 +100,16 @@ class MainActivity : ComponentActivity() {
                 var activeSaleData by remember { mutableStateOf<Pair<Int, Int>?>(null) }
                 var isUnlocked by remember { mutableStateOf(false) }
 
+                fun pay(subtotal: Int, tax: Int, tip: Int) {
+                    triggerPaymentFlow(subtotal, tax, tip) {
+                        paymentStatus = it
+                        if (it is PaymentUiState.Success) {
+                            retailViewModel.clearCart()
+                            FeedbackManager.success(this@MainActivity)
+                        }
+                    }
+                }
+
                 if (!isUnlocked) {
                     StaffPinLockScreen(onUnlock = { if (it == "1234") isUnlocked = true })
                 } else {
@@ -116,7 +126,11 @@ class MainActivity : ComponentActivity() {
                                     CheckoutContainer(
                                         retailViewModel = retailViewModel,
                                         onScan = { scanOnce(retailViewModel) },
-                                        onCheckout = { subtotal, tax -> activeSaleData = subtotal to tax }
+                                        onCheckout = { subtotal, tax ->
+                                            // No tip step unless the store asks for tips (off for retail).
+                                            if (DeviceRepository.isTipsEnabled()) activeSaleData = subtotal to tax
+                                            else pay(subtotal, tax, 0)
+                                        }
                                     )
                                 }
                                 composable("insights") { InsightsScreen() }
@@ -148,13 +162,7 @@ class MainActivity : ComponentActivity() {
                                 onConfirm = { totalWithTip ->
                                     val tip = totalWithTip - (subtotal + tax)
                                     activeSaleData = null
-                                    triggerPaymentFlow(subtotal, tax, tip) {
-                                        paymentStatus = it
-                                        if (it is PaymentUiState.Success) {
-                                            retailViewModel.clearCart()
-                                            FeedbackManager.success(this@MainActivity)
-                                        }
-                                    }
+                                    pay(subtotal, tax, tip)
                                 },
                                 onDismiss = { activeSaleData = null }
                             )
