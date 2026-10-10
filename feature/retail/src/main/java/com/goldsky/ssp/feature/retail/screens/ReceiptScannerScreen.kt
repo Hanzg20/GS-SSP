@@ -151,7 +151,7 @@ fun ScannerOverlay() {
         
         // Gold Frame
         drawRect(
-            color = Color(0xFFD4AF37),
+            color = com.goldsky.ssp.ui.theme.ScanFrameGold,
             topLeft = Offset(left, top),
             size = Size(frameWidth, frameHeight),
             style = Stroke(width = 2.dp.toPx())

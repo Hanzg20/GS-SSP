@@ -26,14 +26,13 @@ fun TipSelectionDialog(
     var selectedPercentage by remember { mutableStateOf(18) }
     var customAmountStr by remember { mutableStateOf("0.00") }
     var isCustomMode by remember { mutableStateOf(false) }
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
-            color = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface,
+            color = MaterialTheme.colorScheme.surfaceVariant,
             tonalElevation = 6.dp,
-            border = BorderStroke(0.5.dp, if (isCyber) Color(0xFF26354F) else MaterialTheme.colorScheme.outline)
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
@@ -43,7 +42,7 @@ fun TipSelectionDialog(
                     "ADD A TIP?",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
-                    color = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 
@@ -73,7 +72,7 @@ fun TipSelectionDialog(
                     "TOTAL: $%.2f".format(total / 100.0),
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.primary
                 )
                 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -82,7 +81,7 @@ fun TipSelectionDialog(
                     onClick = { onConfirm(total) },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = if (isCyber) ButtonDefaults.buttonColors(containerColor = GoldSkyCyan, contentColor = Color.Black) else ButtonDefaults.buttonColors()
+                    colors = ButtonDefaults.buttonColors()
                 ) {
                     Text("AUTHORIZE", fontWeight = FontWeight.Bold)
                 }

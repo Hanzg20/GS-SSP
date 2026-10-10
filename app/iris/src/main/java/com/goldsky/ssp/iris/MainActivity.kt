@@ -1,6 +1,7 @@
 package com.goldsky.ssp.iris
 
 import android.os.Bundle
+import com.goldsky.ssp.ui.theme.GsTheme
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -33,7 +34,6 @@ import com.goldsky.ssp.feature.retail.ui.TipSelectionDialog
 import com.goldsky.ssp.feature.retail.ui.apexPulseGlow
 import com.goldsky.ssp.feature.retail.ui.GoldSkyCyan
 import com.goldsky.ssp.feature.retail.viewmodel.RetailViewModel
-import com.goldsky.ssp.feature.apex.GoldSkyBlue
 import com.goldsky.ssp.feature.apex.InsightsScreen
 import androidx.compose.ui.draw.clip
 import kotlinx.coroutines.*
@@ -173,8 +173,7 @@ class MainActivity : ComponentActivity() {
                     CheckoutSale(order.subtotalCents, order.taxCents, order.lines, deliveryOrderId = order.id)
 
                 val signedIn = staff
-                val isCyberTheme = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
-                val surfaceBg = if (isCyberTheme) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background
+                val surfaceBg = MaterialTheme.colorScheme.background
 
                 if (signedIn == null) {
                     StaffPinLockScreen(onSignedIn = { staff = it; lastInteractionAt = android.os.SystemClock.elapsedRealtime() })
@@ -565,25 +564,24 @@ fun CheckoutContainer(
     if (deliveryOnly && selectedTab != 2) selectedTab = 2
     val retailMode = remember { DeviceRepository.getPersistedRetailMode() }
 
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (!deliveryOnly) TabRow(
             selectedTabIndex = selectedTab,
-            containerColor = if (isCyber) Color(0xFF151D30) else MaterialTheme.colorScheme.surface,
-            contentColor = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary
         ) {
             Tab(
                 selected = selectedTab == 0, onClick = { selectedTab = 0 },
-                text = { Text("KEYPAD", fontWeight = FontWeight.Bold, color = if (selectedTab == 0 && isCyber) GoldSkyCyan else if (isCyber) Color.LightGray else Color.Unspecified) }
+                text = { Text("KEYPAD", fontWeight = FontWeight.Bold, color = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
             )
             Tab(
                 selected = selectedTab == 1, onClick = { selectedTab = 1 },
-                text = { Text("LIBRARY", fontWeight = FontWeight.Bold, color = if (selectedTab == 1 && isCyber) GoldSkyCyan else if (isCyber) Color.LightGray else Color.Unspecified) }
+                text = { Text("LIBRARY", fontWeight = FontWeight.Bold, color = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
             )
             Tab(
                 selected = selectedTab == 2, onClick = { selectedTab = 2 },
-                text = { Text("DELIVERY", fontWeight = FontWeight.Bold, color = if (selectedTab == 2 && isCyber) GoldSkyCyan else if (isCyber) Color.LightGray else Color.Unspecified) }
+                text = { Text("DELIVERY", fontWeight = FontWeight.Bold, color = if (selectedTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
             )
         }
 
@@ -616,10 +614,9 @@ fun CheckoutContainer(
 fun MainBottomNavigation(navController: NavHostController, isManager: Boolean) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     NavigationBar(
-        containerColor = if (isCyber) Color(0xFF0F172A) else MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         NavigationBarItem(
             selected = currentRoute == "checkout",
@@ -684,9 +681,8 @@ fun StaffBar(staff: StaffMember, onLock: () -> Unit) {
 
 @Composable
 fun IrisSystemHeader(staff: StaffMember, onLock: () -> Unit) {
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
-    val headerBg = if (isCyber) Color(0xFF151D30) else MaterialTheme.colorScheme.surfaceVariant
-    val textColor = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface
+    val headerBg = MaterialTheme.colorScheme.surface
+    val textColor = MaterialTheme.colorScheme.onSurface
 
     Surface(
         color = headerBg,
@@ -707,11 +703,11 @@ fun IrisSystemHeader(staff: StaffMember, onLock: () -> Unit) {
                 Text(
                     text = when { staff.isManager -> "Manager"; staff.isDriver -> "Driver"; else -> "Cashier" },
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onLock, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Lock, contentDescription = "Lock", modifier = Modifier.size(16.dp), tint = Color(0xFFFF5252))
+                    Icon(Icons.Default.Lock, contentDescription = "Lock", modifier = Modifier.size(16.dp), tint = GsTheme.colors.danger)
                 }
             }
 
@@ -735,10 +731,10 @@ fun IrisSystemHeader(staff: StaffMember, onLock: () -> Unit) {
                         if (level <= 15) Icons.Default.BatteryAlert else Icons.Default.BatteryStd,
                         contentDescription = "Battery",
                         modifier = Modifier.size(16.dp),
-                        tint = if (level <= 15) Color(0xFFFF5252) else if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (level <= 15) GsTheme.colors.danger else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text("$level%", style = MaterialTheme.typography.labelSmall,
-                        color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -761,7 +757,6 @@ sealed class PaymentUiState {
 @Composable
 fun RefundNeedsCardDialog(amountCents: Int, onCardTapped: () -> Unit, onRefundedInPortal: () -> Unit, onCancel: () -> Unit) {
     val amount = "%.2f".format(amountCents / 100.0)
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     AlertDialog(
         onDismissRequest = onCancel,
@@ -777,35 +772,34 @@ fun RefundNeedsCardDialog(amountCents: Int, onCardTapped: () -> Unit, onRefunded
             Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
                 Button(
                     onClick = onCardTapped,
-                    colors = if (isCyber) ButtonDefaults.buttonColors(containerColor = GoldSkyCyan, contentColor = Color.Black) else ButtonDefaults.buttonColors()
+                    colors = ButtonDefaults.buttonColors()
                 ) { Text("CUSTOMER TAPS CARD", fontWeight = FontWeight.Bold) }
-                TextButton(onClick = onRefundedInPortal) { Text("ALREADY REFUNDED IN PORTAL", color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary) }
-                TextButton(onClick = onCancel) { Text("CANCEL", color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant) }
+                TextButton(onClick = onRefundedInPortal) { Text("ALREADY REFUNDED IN PORTAL", color = MaterialTheme.colorScheme.primary) }
+                TextButton(onClick = onCancel) { Text("CANCEL", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         },
-        containerColor = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface,
-        titleContentColor = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface,
-        textContentColor = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
     )
 }
 
 @Composable
 fun PaymentProcessingDialog(message: String) {
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
     Dialog(onDismissRequest = {}) {
         Surface(
             shape = MaterialTheme.shapes.medium,
-            color = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface,
-            border = if (isCyber) androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF26354F)) else null,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
             tonalElevation = 8.dp
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
             ) {
-                CircularProgressIndicator(color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(message, fontWeight = FontWeight.Bold, color = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface)
+                Text(message, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             }
         }
     }
@@ -823,7 +817,7 @@ fun PaymentResultDialog(isSuccess: Boolean, message: String, onDismiss: () -> Un
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)
             ) { Text("OK", fontWeight = FontWeight.Bold) }
         },
-        containerColor = if (isSuccess) Color(0xFF1B5E20) else Color(0xFFB71C1C),
+        containerColor = if (isSuccess) com.goldsky.ssp.ui.theme.SuccessSlab else com.goldsky.ssp.ui.theme.DangerSlab,
         titleContentColor = Color.White,
         textContentColor = Color.White
     )

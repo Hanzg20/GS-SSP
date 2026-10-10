@@ -41,7 +41,6 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
     var syncing by remember { mutableStateOf(false) }
     var syncFailed by remember { mutableStateOf(false) }
     var staffCount by remember { mutableStateOf(StaffRepository.cached()?.size) }
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     fun refresh() {
         syncing = true
@@ -80,7 +79,7 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = if (isCyber) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background
+        color = MaterialTheme.colorScheme.background
     ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -90,14 +89,14 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
             Icon(
                 Icons.Default.Lock, null,
                 modifier = Modifier.size(56.dp),
-                tint = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary
+                tint = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 "STAFF LOGIN",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.ExtraBold,
-                color = if (isCyber) Color.White else MaterialTheme.colorScheme.onBackground
+                color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -105,8 +104,8 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
                 repeat(PIN_LENGTH) { i ->
                     Box(
                         Modifier.size(18.dp).clip(CircleShape).background(
-                            if (i < pin.length) (if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
-                            else (if (isCyber) Color(0xFF26354F) else MaterialTheme.colorScheme.outlineVariant)
+                            if (i < pin.length) (MaterialTheme.colorScheme.primary)
+                            else (MaterialTheme.colorScheme.outline)
                         )
                     )
                 }
@@ -114,19 +113,19 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
             Spacer(modifier = Modifier.height(12.dp))
             Box(Modifier.height(48.dp), contentAlignment = Alignment.Center) {
                 when {
-                    checking -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
+                    checking -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                     notice != null -> Text(notice, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyMedium)
                     error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                     syncFailed -> Text("Offline: using the saved staff list", style = MaterialTheme.typography.bodySmall,
-                        color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (staffCount == null || staffCount == 0) {
                 TextButton(onClick = { refresh() }, enabled = !syncing) {
-                    Icon(Icons.Default.Refresh, null, tint = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(6.dp))
-                    Text("RETRY", color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text("RETRY", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))

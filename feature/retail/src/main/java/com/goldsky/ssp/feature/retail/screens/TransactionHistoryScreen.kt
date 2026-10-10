@@ -1,6 +1,7 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.background
+import com.goldsky.ssp.ui.theme.GsTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -63,12 +64,11 @@ fun TransactionHistoryScreen(
         selected = selected?.let { s -> transactions.find { it.ecrRefNum == s.ecrRefNum } }
     }
 
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     Column(
         Modifier
             .fillMaxSize()
-            .background(if (isCyber) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         if (onOpenDayReport != null && onlyStaffId == null) {
             Surface(
@@ -76,8 +76,8 @@ fun TransactionHistoryScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 shape = MaterialTheme.shapes.medium,
-                color = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.primaryContainer,
-                border = if (isCyber) androidx.compose.foundation.BorderStroke(1.dp, com.goldsky.ssp.feature.retail.ui.GoldSkyCyan) else null,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
                 onClick = { onOpenDayReport() }
             ) {
                 Row(
@@ -89,19 +89,19 @@ fun TransactionHistoryScreen(
                         Icon(
                             Icons.Default.Assessment,
                             contentDescription = null,
-                            tint = if (isCyber) com.goldsky.ssp.feature.retail.ui.GoldSkyCyan else MaterialTheme.colorScheme.onPrimaryContainer
+                            tint = MaterialTheme.colorScheme.primary
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             "Day Settlement Report",
                             fontWeight = FontWeight.Bold,
-                            color = if (isCyber) Color.White else MaterialTheme.colorScheme.onPrimaryContainer
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                     Icon(
                         Icons.Default.ChevronRight,
                         contentDescription = null,
-                        tint = if (isCyber) com.goldsky.ssp.feature.retail.ui.GoldSkyCyan else MaterialTheme.colorScheme.onPrimaryContainer
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -109,47 +109,36 @@ fun TransactionHistoryScreen(
 
         if (transactions.isEmpty()) {
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Text("No sales yet", color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("No sales yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                 items(transactions, key = { it.ecrRefNum }) { tx ->
-                    if (isCyber) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { selected = tx },
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                            color = Color(0xFF162032),
-                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF26354F))
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { selected = tx },
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        if (tx.paymentMethod == "CASH") Icons.Default.Payments else Icons.Default.CreditCard,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    Spacer(Modifier.width(12.dp))
-                                    Column {
-                                        Text(money(tx.amountCents), fontWeight = FontWeight.Bold, color = Color.White)
-                                        Text("${timeFmt.format(Date(tx.createdAt))} · ${methodLabel(tx.paymentMethod)}", style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
-                                    }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    if (tx.paymentMethod == "CASH") Icons.Default.Payments else Icons.Default.CreditCard,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(money(tx.amountCents), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                    Text("${timeFmt.format(Date(tx.createdAt))} · ${methodLabel(tx.paymentMethod)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                StatusChip(tx.status)
                             }
+                            StatusChip(tx.status)
                         }
-                    } else {
-                        ListItem(
-                            modifier = Modifier.clickable { selected = tx },
-                            headlineContent = { Text(money(tx.amountCents), fontWeight = FontWeight.Bold) },
-                            supportingContent = { Text("${timeFmt.format(Date(tx.createdAt))} · ${methodLabel(tx.paymentMethod)}") },
-                            leadingContent = { Icon(if (tx.paymentMethod == "CASH") Icons.Default.Payments else Icons.Default.CreditCard, null) },
-                            trailingContent = { StatusChip(tx.status) }
-                        )
-                        Divider()
                     }
                 }
             }
@@ -169,11 +158,11 @@ fun TransactionHistoryScreen(
 @Composable
 private fun StatusChip(status: String) {
     val (label, color) = when (status) {
-        "PAID" -> "Paid" to Color(0xFF2E7D32)
-        "VOIDED" -> "Voided" to Color(0xFF6D4C41)
-        "REFUNDED" -> "Refunded" to Color(0xFF6D4C41)
-        "PENDING" -> "Pending" to Color(0xFFF9A825)
-        else -> status.lowercase().replaceFirstChar { it.uppercase() } to Color(0xFFC62828)
+        "PAID" -> "Paid" to GsTheme.colors.success
+        "VOIDED" -> "Voided" to MaterialTheme.colorScheme.onSurfaceVariant
+        "REFUNDED" -> "Refunded" to MaterialTheme.colorScheme.onSurfaceVariant
+        "PENDING" -> "Pending" to GsTheme.colors.warning
+        else -> status.lowercase().replaceFirstChar { it.uppercase() } to GsTheme.colors.danger
     }
     Text(label, color = color, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
 }
@@ -183,9 +172,8 @@ private fun SaleDetailDialog(tx: OrderEntity, canRefund: Boolean, onRefund: (Sta
     var items by remember { mutableStateOf<List<TransactionItem>?>(null) }
     var itemsFailed by remember { mutableStateOf(false) }
     var approving by remember { mutableStateOf(false) }
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
-    val textColor = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface
-    val subTextColor = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val subTextColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     LaunchedEffect(tx.ecrRefNum) {
         val r = TransactionRepository.fetchItems(tx.ecrRefNum)
@@ -195,8 +183,8 @@ private fun SaleDetailDialog(tx: OrderEntity, canRefund: Boolean, onRefund: (Sta
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
-            color = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface,
-            border = if (isCyber) androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF26354F)) else null,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
             tonalElevation = 6.dp
         ) {
             Column(Modifier.padding(20.dp).fillMaxWidth()) {
@@ -207,9 +195,9 @@ private fun SaleDetailDialog(tx: OrderEntity, canRefund: Boolean, onRefund: (Sta
                 }
                 Text("${timeFmt.format(Date(tx.createdAt))} · ${methodLabel(tx.paymentMethod)}", style = MaterialTheme.typography.bodySmall, color = subTextColor)
                 Text(tx.ecrRefNum, style = MaterialTheme.typography.labelSmall, color = subTextColor)
-                Divider(Modifier.padding(vertical = 10.dp), color = if (isCyber) Color(0xFF26354F) else MaterialTheme.colorScheme.outlineVariant)
+                Divider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outline)
                 when {
-                    items == null && !itemsFailed -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = if (isCyber) com.goldsky.ssp.feature.retail.ui.GoldSkyCyan else MaterialTheme.colorScheme.primary)
+                    items == null && !itemsFailed -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                     itemsFailed -> Text("Items unavailable offline", style = MaterialTheme.typography.bodySmall, color = subTextColor)
                     items!!.isEmpty() -> Text("No item detail for this sale", style = MaterialTheme.typography.bodySmall, color = subTextColor)
                     else -> items!!.forEach { i ->
@@ -231,8 +219,8 @@ private fun SaleDetailDialog(tx: OrderEntity, canRefund: Boolean, onRefund: (Sta
                         OutlinedButton(
                             onClick = { approving = true },
                             modifier = Modifier.weight(1f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252)),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5252))
+                            border = androidx.compose.foundation.BorderStroke(1.dp, GsTheme.colors.danger),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GsTheme.colors.danger)
                         ) {
                             Icon(Icons.Default.Undo, null); Spacer(Modifier.width(6.dp)); Text("REFUND", fontWeight = FontWeight.Bold)
                         }
@@ -240,7 +228,7 @@ private fun SaleDetailDialog(tx: OrderEntity, canRefund: Boolean, onRefund: (Sta
                     Button(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
-                        colors = if (isCyber) ButtonDefaults.buttonColors(containerColor = com.goldsky.ssp.feature.retail.ui.GoldSkyCyan, contentColor = Color.Black) else ButtonDefaults.buttonColors()
+                        colors = ButtonDefaults.buttonColors()
                     ) { Text("CLOSE", fontWeight = FontWeight.Bold) }
                 }
             }

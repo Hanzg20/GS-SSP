@@ -26,11 +26,10 @@ fun ModifierSelectionSheet(
 ) {
     val selectedModifiers = remember { mutableStateListOf<ProductModifier>() }
 
-    val isCyber = com.goldsky.ssp.payment.DeviceRepository.getThemeStyle() == com.goldsky.ssp.payment.DeviceRepository.UiThemeStyle.CYBER
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface,
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
         tonalElevation = 12.dp,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
     ) {
@@ -44,7 +43,7 @@ fun ModifierSelectionSheet(
                 text = "CUSTOMIZE ${product.name.uppercase()}",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.ExtraBold,
-                color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.primary,
                 letterSpacing = 1.sp
             )
             
@@ -59,7 +58,6 @@ fun ModifierSelectionSheet(
                     ModifierGroupSection(
                         group = group,
                         selected = selectedModifiers,
-                        isCyber = isCyber,
                         onToggle = { mod ->
                             if (selectedModifiers.contains(mod)) {
                                 selectedModifiers.remove(mod)
@@ -77,7 +75,7 @@ fun ModifierSelectionSheet(
                 onClick = { onConfirm(selectedModifiers.toList()) },
                 modifier = Modifier.fillMaxWidth().height(64.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = if (isCyber) ButtonDefaults.buttonColors(containerColor = GoldSkyCyan, contentColor = Color.Black) else ButtonDefaults.buttonColors()
+                colors = ButtonDefaults.buttonColors()
             ) {
                 val extraPrice = selectedModifiers.sumOf { it.price_cents }
                 Text(
@@ -94,14 +92,13 @@ fun ModifierSelectionSheet(
 private fun ModifierGroupSection(
     group: ModifierGroup,
     selected: List<ProductModifier>,
-    isCyber: Boolean = false,
     onToggle: (ProductModifier) -> Unit
 ) {
     Column {
         Text(
             text = group.name.uppercase(),
             style = MaterialTheme.typography.labelMedium,
-            color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(12.dp))
         

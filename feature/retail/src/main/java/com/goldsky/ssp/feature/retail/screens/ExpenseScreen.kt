@@ -36,7 +36,6 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
     val scope = rememberCoroutineScope()
     var expenses by remember { mutableStateOf<List<ExpenseEntity>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     LaunchedEffect(Unit) {
         scope.launch(Dispatchers.IO) {
@@ -49,21 +48,21 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
     }
 
     Scaffold(
-        containerColor = if (isCyber) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("EXPENSES", fontWeight = FontWeight.Black) },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = if (isCyber) Color(0xFF151D30) else MaterialTheme.colorScheme.background,
-                    titleContentColor = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.primary
                 )
             )
         },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onScanReceipt,
-                containerColor = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary,
-                contentColor = if (isCyber) Color.Black else MaterialTheme.colorScheme.onPrimary,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Icon(Icons.Default.CameraAlt, contentDescription = "Scan Receipt")
@@ -72,7 +71,7 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
     ) { padding ->
         if (isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         } else if (expenses.isEmpty()) {
             Column(
@@ -80,13 +79,13 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Icon(Icons.Default.Receipt, null, modifier = Modifier.size(64.dp), tint = if (isCyber) Color.Gray else MaterialTheme.colorScheme.outline)
+                Icon(Icons.Default.Receipt, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("No expenses recorded.", color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.outline)
+                Text("No expenses recorded.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(
                     onClick = { /* TODO: Manual Add */ },
                     modifier = Modifier.padding(top = 16.dp),
-                    colors = if (isCyber) ButtonDefaults.buttonColors(containerColor = GoldSkyCyan, contentColor = Color.Black) else ButtonDefaults.buttonColors()
+                    colors = ButtonDefaults.buttonColors()
                 ) {
                     Text("ADD MANUALLY", fontWeight = FontWeight.Bold)
                 }
@@ -98,7 +97,7 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
                 contentPadding = PaddingValues(vertical = 16.dp)
             ) {
                 items(expenses) { expense ->
-                    ExpenseCard(expense, isCyber = isCyber)
+                    ExpenseCard(expense)
                 }
             }
         }
@@ -106,7 +105,7 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
 }
 
 @Composable
-fun ExpenseCard(expense: ExpenseEntity, isCyber: Boolean = false) {
+fun ExpenseCard(expense: ExpenseEntity) {
     val dateStr = remember(expense.createdAt) {
         SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(Date(expense.createdAt))
     }
@@ -114,8 +113,8 @@ fun ExpenseCard(expense: ExpenseEntity, isCyber: Boolean = false) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        color = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface,
-        border = BorderStroke(0.5.dp, if (isCyber) Color(0xFF26354F) else MaterialTheme.colorScheme.outline),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
         tonalElevation = 2.dp
     ) {
         Row(
@@ -127,24 +126,24 @@ fun ExpenseCard(expense: ExpenseEntity, isCyber: Boolean = false) {
                 Text(
                     text = expense.vendor.uppercase(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.primary,
                     letterSpacing = 1.sp
                 )
                 Text(
                     text = "$${"%.2f".format(expense.amountCents / 100.0)}",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = "$dateStr • ${expense.category}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             
             if (expense.imageUrl != null) {
-                Icon(Icons.Default.CameraAlt, null, tint = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
+                Icon(Icons.Default.CameraAlt, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
             }
         }
     }

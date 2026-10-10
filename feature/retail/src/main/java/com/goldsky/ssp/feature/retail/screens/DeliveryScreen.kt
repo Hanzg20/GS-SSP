@@ -40,7 +40,6 @@ fun DeliveryScreen(
     var expandedId by remember { mutableStateOf<String?>(null) }
     var cashFor by remember { mutableStateOf<DeliveryOrder?>(null) }
     var refreshTick by remember { mutableStateOf(0) }
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     LaunchedEffect(reloadKey, refreshTick) {
         loading = true
@@ -53,7 +52,7 @@ fun DeliveryScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isCyber) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -63,12 +62,12 @@ fun DeliveryScreen(
                 orders?.let { "${it.size} open order${if (it.size == 1) "" else "s"}" } ?: "Delivery orders",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = if (isCyber) Color.White else MaterialTheme.colorScheme.onBackground,
+                color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.weight(1f)
             )
-            if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
+            if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
             IconButton(onClick = { refreshTick++ }, enabled = !loading) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.onBackground)
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.primary)
             }
         }
         if (failed) {
@@ -82,7 +81,7 @@ fun DeliveryScreen(
         val list = orders.orEmpty()
         if (!loading && list.isEmpty() && !failed) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No open delivery orders", color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("No open delivery orders", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         LazyColumn(
@@ -94,7 +93,6 @@ fun DeliveryScreen(
                 OrderCard(
                     order = order,
                     expanded = expandedId == order.id,
-                    isCyber = isCyber,
                     onToggle = { expandedId = if (expandedId == order.id) null else order.id },
                     onCard = { onCollectCard(order) },
                     onCash = { cashFor = order }
@@ -111,13 +109,13 @@ fun DeliveryScreen(
             confirmButton = {
                 Button(
                     onClick = { cashFor = null; onCollectCash(order) },
-                    colors = if (isCyber) ButtonDefaults.buttonColors(containerColor = GoldSkyCyan, contentColor = Color.Black) else ButtonDefaults.buttonColors()
+                    colors = ButtonDefaults.buttonColors()
                 ) { Text("CASH RECEIVED", fontWeight = FontWeight.Bold) }
             },
             dismissButton = { TextButton(onClick = { cashFor = null }) { Text("Cancel") } },
-            containerColor = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface,
-            titleContentColor = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface,
-            textContentColor = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -126,15 +124,14 @@ fun DeliveryScreen(
 private fun OrderCard(
     order: DeliveryOrder,
     expanded: Boolean,
-    isCyber: Boolean,
     onToggle: () -> Unit,
     onCard: () -> Unit,
     onCash: () -> Unit
 ) {
     val total = order.subtotalCents + order.taxCents
-    val cardBg = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface
-    val borderCol = if (isCyber) Color(0xFF26354F) else MaterialTheme.colorScheme.outline
-    val textColor = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface
+    val cardBg = MaterialTheme.colorScheme.surfaceVariant
+    val borderCol = MaterialTheme.colorScheme.outline
+    val textColor = MaterialTheme.colorScheme.onSurface
 
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
@@ -143,21 +140,21 @@ private fun OrderCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.LocalShipping, null, tint = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
+                Icon(Icons.Default.LocalShipping, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
                 Text("D${order.order_no}", fontWeight = FontWeight.Black, color = textColor, modifier = Modifier.weight(1f))
-                Text(money(total), fontWeight = FontWeight.Bold, color = if (isCyber) GoldSkyCyan else textColor, style = MaterialTheme.typography.titleMedium)
+                Text(money(total), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
             }
             Spacer(Modifier.height(6.dp))
             Text(order.customer_name, fontWeight = FontWeight.Bold, color = textColor)
-            Text(order.address, style = MaterialTheme.typography.bodyMedium, color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
-            order.customer_phone?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (isCyber) Color.Gray else MaterialTheme.colorScheme.onSurfaceVariant) }
+            Text(order.address, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            order.customer_phone?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             order.note?.takeIf { it.isNotBlank() }?.let {
-                Text("Note: $it", style = MaterialTheme.typography.bodySmall, color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.tertiary)
+                Text("Note: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
 
             if (expanded) {
-                Divider(Modifier.padding(vertical = 10.dp), color = if (isCyber) Color(0xFF26354F) else MaterialTheme.colorScheme.outlineVariant)
+                Divider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outline)
                 order.lines.forEach { l ->
                     Row {
                         Text("${l.quantity} × ${l.name}" + if (l.taxRateBps > 0) "  H" else "", color = textColor, modifier = Modifier.weight(1f))
@@ -165,7 +162,7 @@ private fun OrderCard(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                Row { Text("Tax", color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)); Text(money(order.taxCents), color = textColor) }
+                Row { Text("Tax", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)); Text(money(order.taxCents), color = textColor) }
                 Row {
                     Text("Total", fontWeight = FontWeight.Bold, color = textColor, modifier = Modifier.weight(1f))
                     Text(money(total), fontWeight = FontWeight.Bold, color = textColor)
@@ -175,23 +172,23 @@ private fun OrderCard(
                     Button(
                         onClick = onCard,
                         modifier = Modifier.weight(1f),
-                        colors = if (isCyber) ButtonDefaults.buttonColors(containerColor = GoldSkyCyan, contentColor = Color.Black) else ButtonDefaults.buttonColors()
+                        colors = ButtonDefaults.buttonColors()
                     ) {
                         Icon(Icons.Default.CreditCard, null); Spacer(Modifier.width(6.dp)); Text("CARD", fontWeight = FontWeight.Bold)
                     }
                     OutlinedButton(
                         onClick = onCash,
                         modifier = Modifier.weight(1f),
-                        border = if (isCyber) BorderStroke(1.dp, GoldSkyCyan) else null
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
                     ) {
-                        Icon(Icons.Default.Payments, null, tint = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary); Spacer(Modifier.width(6.dp)); Text("CASH", color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Payments, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(6.dp)); Text("CASH", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     }
                 }
             } else {
                 Text(
                     "${order.lines.sumOf { it.quantity }} item(s) · tap for details",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (isCyber) Color.Gray else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }

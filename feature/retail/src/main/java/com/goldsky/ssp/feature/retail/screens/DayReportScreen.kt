@@ -1,6 +1,7 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.layout.*
+import com.goldsky.ssp.ui.theme.GsTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -37,7 +38,6 @@ fun DayReportScreen(
     var isLoading by remember { mutableStateOf(true) }
     var report by remember { mutableStateOf<DayReport?>(null) }
     var isPrinting by remember { mutableStateOf(false) }
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     val dateFmt = remember { SimpleDateFormat("yyyy-MM-dd (EEE)", Locale.US) }
     val dayMillis = selectedCalendar.timeInMillis
@@ -69,15 +69,15 @@ fun DayReportScreen(
     }
 
     Scaffold(
-        containerColor = if (isCyber) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { Text("Day Settlement Report", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (isCyber) Color(0xFF151D30) else MaterialTheme.colorScheme.surfaceVariant,
-                    titleContentColor = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.onSurface,
-                    actionIconContentColor = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.onSurface
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.primary,
+                    navigationIconContentColor = MaterialTheme.colorScheme.primary,
+                    actionIconContentColor = MaterialTheme.colorScheme.primary
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -103,7 +103,7 @@ fun DayReportScreen(
                         }
                     ) {
                         if (isPrinting) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                         } else {
                             Icon(Icons.Default.Print, contentDescription = "Print Report")
                         }
@@ -131,14 +131,14 @@ fun DayReportScreen(
                     c.add(Calendar.DAY_OF_MONTH, -1)
                     selectedCalendar = c
                 }) {
-                    Icon(Icons.Default.ChevronLeft, "Previous Day", tint = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.onBackground)
+                    Icon(Icons.Default.ChevronLeft, "Previous Day", tint = MaterialTheme.colorScheme.primary)
                 }
 
                 Text(
                     text = dateFmt.format(selectedCalendar.time),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = if (isCyber) Color.White else MaterialTheme.colorScheme.onBackground
+                    color = MaterialTheme.colorScheme.onBackground
                 )
 
                 val isToday = DayReportRepository.dayBounds(dayMillis).second > System.currentTimeMillis()
@@ -147,7 +147,7 @@ fun DayReportScreen(
                     c.add(Calendar.DAY_OF_MONTH, 1)
                     selectedCalendar = c
                 }) {
-                    Icon(Icons.Default.ChevronRight, "Next Day", tint = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.onBackground)
+                    Icon(Icons.Default.ChevronRight, "Next Day", tint = MaterialTheme.colorScheme.primary)
                 }
             }
 
@@ -173,7 +173,7 @@ fun DayReportScreen(
             // 3. Content
             if (isLoading) {
                 Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary)
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             } else if (report == null) {
                 Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
@@ -185,32 +185,32 @@ fun DayReportScreen(
                 // Summary Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface),
-                    border = if (isCyber) androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF26354F)) else null
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("SUMMARY", style = MaterialTheme.typography.labelMedium, color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                        ReportRow("Sales (${r.sales.count} txns)", "$${"%.2f".format(r.sales.cents / 100.0)}", isCyber = isCyber)
-                        ReportRow("Refunds (${r.refunds.size} txns)", "-$${"%.2f".format(r.refundCents / 100.0)}", color = Color(0xFFFF5252), isCyber = isCyber)
-                        Divider(color = if (isCyber) Color(0xFF26354F) else MaterialTheme.colorScheme.outlineVariant)
-                        ReportRow("Net Sales", "$${"%.2f".format(r.netCents / 100.0)}", isBold = true, isCyber = isCyber)
-                        ReportRow("Expected Cash (Drawer)", "$${"%.2f".format(r.expectedCashCents / 100.0)}", isBold = true, color = Color(0xFF00E5FF), isCyber = isCyber)
+                        Text("SUMMARY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        ReportRow("Sales (${r.sales.count} txns)", "$${"%.2f".format(r.sales.cents / 100.0)}")
+                        ReportRow("Refunds (${r.refunds.size} txns)", "-$${"%.2f".format(r.refundCents / 100.0)}", color = GsTheme.colors.danger)
+                        Divider(color = MaterialTheme.colorScheme.outline)
+                        ReportRow("Net Sales", "$${"%.2f".format(r.netCents / 100.0)}", isBold = true)
+                        ReportRow("Expected Cash (Drawer)", "$${"%.2f".format(r.expectedCashCents / 100.0)}", isBold = true, color = GsTheme.colors.emphasis)
                     }
                 }
 
                 // Payment Method Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface),
-                    border = if (isCyber) androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF26354F)) else null
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("BY PAYMENT METHOD", style = MaterialTheme.typography.labelMedium, color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text("BY PAYMENT METHOD", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         if (r.byMethod.isEmpty()) {
-                            Text("No transactions", style = MaterialTheme.typography.bodyMedium, color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("No transactions", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             r.byMethod.forEach { (method, totals) ->
-                                ReportRow(method, "${totals.count} txns · $${"%.2f".format(totals.cents / 100.0)}", isCyber = isCyber)
+                                ReportRow(method, "${totals.count} txns · $${"%.2f".format(totals.cents / 100.0)}")
                             }
                         }
                     }
@@ -219,18 +219,18 @@ fun DayReportScreen(
                 // Staff Breakdown Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface),
-                    border = if (isCyber) androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF26354F)) else null
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("BY STAFF", style = MaterialTheme.typography.labelMedium, color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text("BY STAFF", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         if (r.byStaff.isEmpty()) {
-                            Text("No staff data", style = MaterialTheme.typography.bodyMedium, color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("No staff data", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             r.byStaff.forEach { (staff, totals) ->
-                                ReportRow("$staff (${totals.count})", money(totals.cents), isBold = true, isCyber = isCyber)
-                                ReportRow("   cash / card", "${money(totals.cashCents)} / ${money(totals.cardCents)}", isCyber = isCyber)
-                                if (totals.refundCents > 0) ReportRow("   refunds", "-" + money(totals.refundCents), color = Color(0xFFFF5252), isCyber = isCyber)
+                                ReportRow("$staff (${totals.count})", money(totals.cents), isBold = true)
+                                ReportRow("   cash / card", "${money(totals.cashCents)} / ${money(totals.cardCents)}")
+                                if (totals.refundCents > 0) ReportRow("   refunds", "-" + money(totals.refundCents), color = GsTheme.colors.danger)
                             }
                         }
                     }
@@ -239,33 +239,33 @@ fun DayReportScreen(
                 // Tax & Tips Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface),
-                    border = if (isCyber) androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF26354F)) else null
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("TAX & TIPS", style = MaterialTheme.typography.labelMedium, color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                        ReportRow("Total Tax", "$${"%.2f".format(r.taxCents / 100.0)}", isCyber = isCyber)
-                        ReportRow("Total Tips", "$${"%.2f".format(r.tipCents / 100.0)}", isCyber = isCyber)
-                        ReportRow("Taxable Amount", "$${"%.2f".format(r.taxableCents / 100.0)}", isCyber = isCyber)
-                        ReportRow("Exempt Amount", "$${"%.2f".format(r.exemptCents / 100.0)}", isCyber = isCyber)
+                        Text("TAX & TIPS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        ReportRow("Total Tax", "$${"%.2f".format(r.taxCents / 100.0)}")
+                        ReportRow("Total Tips", "$${"%.2f".format(r.tipCents / 100.0)}")
+                        ReportRow("Taxable Amount", "$${"%.2f".format(r.taxableCents / 100.0)}")
+                        ReportRow("Exempt Amount", "$${"%.2f".format(r.exemptCents / 100.0)}")
                     }
                 }
 
                 // Refunds & voids, one per line (owner asked for time, amount, method, approver)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface),
-                    border = if (isCyber) androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF26354F)) else null
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("REFUNDS & VOIDS", style = MaterialTheme.typography.labelMedium, color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text("REFUNDS & VOIDS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         if (r.refunds.isEmpty()) {
-                            Text("None", style = MaterialTheme.typography.bodyMedium, color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("None", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             r.refunds.forEach { f ->
-                                ReportRow("${localTime(f.at)}  ${methodShort(f.method)} ${if (f.status == "VOIDED") "void" else "refund"}", "-" + money(f.cents), isCyber = isCyber)
+                                ReportRow("${localTime(f.at)}  ${methodShort(f.method)} ${if (f.status == "VOIDED") "void" else "refund"}", "-" + money(f.cents))
                                 Text("   approved by ${f.approvedBy ?: "-"} · sale by ${f.staff ?: "-"}", style = MaterialTheme.typography.bodySmall,
-                                    color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -280,10 +280,9 @@ private fun ReportRow(
     label: String,
     value: String,
     isBold: Boolean = false,
-    color: Color = Color.Unspecified,
-    isCyber: Boolean = false
+    color: Color = Color.Unspecified
 ) {
-    val finalColor = if (color != Color.Unspecified) color else if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface
+    val finalColor = if (color != Color.Unspecified) color else MaterialTheme.colorScheme.onSurface
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween

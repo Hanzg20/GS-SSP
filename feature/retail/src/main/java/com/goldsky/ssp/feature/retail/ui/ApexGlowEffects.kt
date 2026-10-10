@@ -20,11 +20,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 // GoldSky Signature Brand Colors
-val GoldSkyBlue = Color(0xFF0066FF)
-val GoldSkyCyan = Color(0xFF00E5FF)
-val GoldSkyPurple = Color(0xFF7000FF)
-val GoldSkyDarkSurface = Color(0xFF0F172A)
-val GoldSkyCardSurface = Color(0xFF1E293B)
+// Brand colours come from the theme palette (core/ui theme/Color.kt).
+val GoldSkyBlue = com.goldsky.ssp.ui.theme.BrandBlue
+val GoldSkyCyan = com.goldsky.ssp.ui.theme.BrandCyan
+val GoldSkyPurple = com.goldsky.ssp.ui.theme.BrandPurple
+val GoldSkyDarkSurface = com.goldsky.ssp.ui.theme.Navy900
+val GoldSkyCardSurface = com.goldsky.ssp.ui.theme.Navy700
 
 /**
  * Animated breathing glow modifier for AI & SI empowered elements.

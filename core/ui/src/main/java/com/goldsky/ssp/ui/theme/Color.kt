@@ -34,3 +34,11 @@ val WarningOnDark = Color(0xFFFFB300)
 val WarningOnLight = Color(0xFFB26A00)
 val DangerOnDark = Color(0xFFFF6B6B)
 val DangerOnLight = Color(0xFFD32F2F)
+
+// Full-bleed payment result dialog (white text on top, both themes)
+val SuccessSlab = Color(0xFF1B5E20)
+val DangerSlab = Color(0xFFB71C1C)
+
+// Decorative / fixed-context
+val BrandPurple = Color(0xFF7000FF)   // third stop of the Apex glow gradient
+val ScanFrameGold = Color(0xFFD4AF37) // receipt-scanner frame, drawn over the live camera (theme-independent)

@@ -42,15 +42,14 @@ fun SettingsScreen() {
     val onboardingStatus by NuveiOnboardingRepository.currentStatus.collectAsState()
     var isCheckingStatus by remember { mutableStateOf(false) }
 
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("SETTINGS", fontWeight = FontWeight.Black) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (isCyber) Color(0xFF0F172A) else MaterialTheme.colorScheme.background,
-                    titleContentColor = if (isCyber) Color.White else MaterialTheme.colorScheme.onBackground
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         }
@@ -58,7 +57,7 @@ fun SettingsScreen() {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(if (isCyber) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background)
+                .background(MaterialTheme.colorScheme.background)
                 .padding(padding)
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState()),
@@ -66,12 +65,12 @@ fun SettingsScreen() {
         ) {
             Spacer(modifier = Modifier.height(8.dp))
             
-            Text("RECEIPT SETTINGS", style = MaterialTheme.typography.labelMedium, color = if (isCyber) com.goldsky.ssp.feature.retail.ui.GoldSkyCyan else MaterialTheme.colorScheme.primary)
+            Text("RECEIPT SETTINGS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface,
-                border = BorderStroke(0.5.dp, if (isCyber) Color(0xFF26354F) else MaterialTheme.colorScheme.outline),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -133,12 +132,12 @@ fun SettingsScreen() {
             // Theme Options at the Bottom (Cyber Dark Mode vs Classic Light Mode)
             var themeStyle by remember { mutableStateOf(DeviceRepository.getThemeStyle()) }
 
-            Text("UI THEME", style = MaterialTheme.typography.labelMedium, color = if (isCyber) com.goldsky.ssp.feature.retail.ui.GoldSkyCyan else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Text("UI THEME", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface,
-                border = BorderStroke(0.5.dp, if (isCyber) Color(0xFF26354F) else MaterialTheme.colorScheme.outline),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -151,8 +150,8 @@ fun SettingsScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Cyber Dark Mode", fontWeight = FontWeight.Bold, color = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface)
-                            Text("Dark futuristic theme with glowing pulse borders", style = MaterialTheme.typography.bodySmall, color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Cyber Dark Mode", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            Text("Dark futuristic theme with glowing pulse borders", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         RadioButton(
                             selected = themeStyle == DeviceRepository.UiThemeStyle.CYBER,
@@ -172,8 +171,8 @@ fun SettingsScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Classic Light Mode", fontWeight = FontWeight.Bold, color = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface)
-                            Text("Clean minimalist layout with standard light colors", style = MaterialTheme.typography.bodySmall, color = if (isCyber) Color.LightGray else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Classic Light Mode", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            Text("Clean minimalist layout with standard light colors", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         RadioButton(
                             selected = themeStyle == DeviceRepository.UiThemeStyle.CLASSIC,
@@ -192,16 +191,15 @@ fun SettingsScreen() {
 
 @Composable
 fun ModeSelectionItem(title: String, selected: Boolean, onClick: () -> Unit) {
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
     Surface(
         onClick = onClick,
         shape = MaterialTheme.shapes.medium,
         color = if (selected) {
-            if (isCyber) Color(0xFF1E293B) else MaterialTheme.colorScheme.primaryContainer
+            MaterialTheme.colorScheme.primaryContainer
         } else {
-            if (isCyber) Color(0xFF162032) else MaterialTheme.colorScheme.surface
+            MaterialTheme.colorScheme.surfaceVariant
         },
-        border = if (isCyber) BorderStroke(0.5.dp, Color(0xFF26354F)) else null,
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -209,7 +207,7 @@ fun ModeSelectionItem(title: String, selected: Boolean, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(title, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface)
+            Text(title, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = MaterialTheme.colorScheme.onSurface)
             RadioButton(selected = selected, onClick = null)
         }
     }

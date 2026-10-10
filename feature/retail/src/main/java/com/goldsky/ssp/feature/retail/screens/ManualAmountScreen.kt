@@ -21,12 +21,11 @@ import com.goldsky.ssp.feature.retail.ui.GoldSkyCyan
 fun ManualAmountScreen(onInitiatePayment: (String) -> Unit) {
     var amount by remember { mutableStateOf("0.00") }
     val currency = remember { DeviceRepository.getCurrencySymbol() }
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isCyber) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.colorScheme.background)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
@@ -39,14 +38,14 @@ fun ManualAmountScreen(onInitiatePayment: (String) -> Unit) {
             Text(
                 text = "ENTER AMOUNT ($currency)",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.secondary,
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 text = "$$amount",
                 fontSize = 64.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isCyber) Color.White else MaterialTheme.colorScheme.onBackground
+                color = MaterialTheme.colorScheme.onBackground
             )
         }
 

@@ -1,6 +1,7 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.BorderStroke
+import com.goldsky.ssp.ui.theme.GsTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -23,7 +24,6 @@ data class Table(val id: String, val name: String, var isOccupied: Boolean = fal
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DineInScreen(onTableSelected: (Table) -> Unit) {
-    val isCyber = DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER
     val tables = remember {
         mutableStateListOf(
             Table("1", "T-01"), Table("2", "T-02", true),
@@ -39,8 +39,8 @@ fun DineInScreen(onTableSelected: (Table) -> Unit) {
             CenterAlignedTopAppBar(
                 title = { Text("DINE-IN MANAGEMENT", fontWeight = FontWeight.Black, letterSpacing = 1.sp) },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = if (isCyber) Color(0xFF151D30) else MaterialTheme.colorScheme.background,
-                    titleContentColor = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.primary
                 )
             )
         }
@@ -49,13 +49,13 @@ fun DineInScreen(onTableSelected: (Table) -> Unit) {
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .background(if (isCyber) Color(0xFF0B0F19) else MaterialTheme.colorScheme.background)
+                .background(MaterialTheme.colorScheme.background)
         ) {
             Text(
                 "SELECT TABLE",
                 modifier = Modifier.padding(16.dp),
                 style = MaterialTheme.typography.labelSmall,
-                color = if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.secondary,
+                color = MaterialTheme.colorScheme.primary,
                 letterSpacing = 2.sp
             )
             
@@ -66,7 +66,7 @@ fun DineInScreen(onTableSelected: (Table) -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(tables) { table ->
-                    TableCard(table = table, isCyber = isCyber, onClick = { onTableSelected(table) })
+                    TableCard(table = table, onClick = { onTableSelected(table) })
                 }
             }
         }
@@ -74,15 +74,13 @@ fun DineInScreen(onTableSelected: (Table) -> Unit) {
 }
 
 @Composable
-fun TableCard(table: Table, isCyber: Boolean = false, onClick: () -> Unit) {
+fun TableCard(table: Table, onClick: () -> Unit) {
     val cardBg = when {
-        table.isOccupied -> if (isCyber) Color(0xFF3B1219) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
-        isCyber -> Color(0xFF162032)
-        else -> MaterialTheme.colorScheme.surface
+        table.isOccupied -> MaterialTheme.colorScheme.errorContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
     }
     val borderCol = when {
-        table.isOccupied -> Color(0xFFFF5252)
-        isCyber -> Color(0xFF26354F)
+        table.isOccupied -> GsTheme.colors.danger
         else -> MaterialTheme.colorScheme.outline
     }
 
@@ -99,7 +97,7 @@ fun TableCard(table: Table, isCyber: Boolean = false, onClick: () -> Unit) {
                     table.name, 
                     fontWeight = FontWeight.Light, 
                     fontSize = 22.sp,
-                    color = if (table.isOccupied) Color(0xFFFF5252) else if (isCyber) Color.White else MaterialTheme.colorScheme.onSurface
+                    color = if (table.isOccupied) GsTheme.colors.danger else MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -107,7 +105,7 @@ fun TableCard(table: Table, isCyber: Boolean = false, onClick: () -> Unit) {
                     style = MaterialTheme.typography.labelSmall,
                     fontSize = 9.sp,
                     letterSpacing = 1.sp,
-                    color = if (table.isOccupied) Color(0xFFFF5252) else if (isCyber) GoldSkyCyan else MaterialTheme.colorScheme.primary
+                    color = if (table.isOccupied) GsTheme.colors.danger else MaterialTheme.colorScheme.primary
                 )
             }
         }
