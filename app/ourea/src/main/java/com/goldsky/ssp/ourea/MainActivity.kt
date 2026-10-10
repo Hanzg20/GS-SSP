@@ -81,6 +81,7 @@ class MainActivity : ComponentActivity() {
         PaymentProviderFactory.registerPaymentProvider("WIZARPOS", wizarPosProvider.getPaymentProvider())
 
         DeviceRepository.init(this)
+        StaffRepository.init(this)
         RetailRepository.init(this)
 
         val deviceSn = try {
@@ -98,10 +99,10 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             OureaTheme {
-                var isUnlocked by remember { mutableStateOf(false) }
+                var isUnlocked by remember { mutableStateOf(StaffRepository.current != null) }
 
                 if (!isUnlocked) {
-                    StaffPinLockScreen(onUnlock = { if (it == "1234") isUnlocked = true })
+                    StaffPinLockScreen(onSignedIn = { isUnlocked = true })
                 } else {
                     val retailViewModel: RetailViewModel = viewModel()
                     var destination by remember { mutableStateOf(OureaDestination.CHECKOUT) }
@@ -124,7 +125,7 @@ class MainActivity : ComponentActivity() {
                         OureaSidebar(
                             current = destination,
                             onSelect = { destination = it },
-                            onLock = { isUnlocked = false }
+                            onLock = { StaffRepository.signOut(); isUnlocked = false }
                         )
                         Box(modifier = Modifier.weight(1f).background(OureaBackground)) {
                             when (destination) {

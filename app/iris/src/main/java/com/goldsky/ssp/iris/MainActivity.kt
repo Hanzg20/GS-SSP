@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
         // IrisApplication so WorkManager jobs (batch close, offline replay)
         // started in a cold process without this Activity still find them.
         DeviceRepository.init(this)
+        StaffRepository.init(this)
         DeliveryOrderRepository.init(this)
         onBackPressedDispatcher.addCallback(this, stopScanOnBack)
 
@@ -102,7 +103,22 @@ class MainActivity : ComponentActivity() {
                 // Staged while the tip dialog is up; the real sale only fires
                 // once the customer picks (or skips) a tip.
                 var activeSaleData by remember { mutableStateOf<CheckoutSale?>(null) }
-                var isUnlocked by remember { mutableStateOf(false) }
+                var staff by remember { mutableStateOf(StaffRepository.current) }
+                fun lock() {
+                    StaffRepository.signOut()
+                    staff = null
+                    navController.navigate("checkout") { popUpTo(navController.graph.startDestinationId); launchSingleTop = true }
+                }
+                // Idle lock: no touch for IDLE_LOCK_MS -> back to the PIN screen, so
+                // the next person signs in as themselves. Not while a payment or a
+                // scan run is going on.
+                LaunchedEffect(staff) {
+                    while (staff != null) {
+                        kotlinx.coroutines.delay(15_000)
+                        val idle = android.os.SystemClock.elapsedRealtime() - lastInteractionAt
+                        if (idle > IDLE_LOCK_MS && paymentStatus !is PaymentUiState.Processing && !scanning.value) lock()
+                    }
+                }
                 // Bumped after a delivery order is collected so the list reloads without it.
                 var deliveryReload by remember { mutableStateOf(0) }
                 val scope = rememberCoroutineScope()
@@ -147,12 +163,14 @@ class MainActivity : ComponentActivity() {
                 fun saleOf(order: DeliveryOrder) =
                     CheckoutSale(order.subtotalCents, order.taxCents, order.lines, deliveryOrderId = order.id)
 
-                if (!isUnlocked) {
-                    StaffPinLockScreen(onUnlock = { if (it == "1234") isUnlocked = true })
+                val signedIn = staff
+                if (signedIn == null) {
+                    StaffPinLockScreen(onSignedIn = { staff = it; lastInteractionAt = android.os.SystemClock.elapsedRealtime() })
                 } else {
                     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                         Scaffold(
-                            bottomBar = { MainBottomNavigation(navController) }
+                            topBar = { StaffBar(signedIn, onLock = { lock() }) },
+                            bottomBar = { MainBottomNavigation(navController, showSettings = signedIn.isManager) }
                         ) { padding ->
                             NavHost(
                                 navController = navController,
@@ -196,7 +214,8 @@ class MainActivity : ComponentActivity() {
                                         onBack = { navController.popBackStack() }
                                     )
                                 }
-                                composable("settings") { SettingsScreen() }
+                                // Managers only (the nav item is hidden for cashiers too).
+                                composable("settings") { if (signedIn.isManager) SettingsScreen() }
                             }
                         }
 
@@ -286,8 +305,16 @@ class MainActivity : ComponentActivity() {
         override fun handleOnBackPressed() = stopScanSession()
     }
 
+    @Volatile private var lastInteractionAt = android.os.SystemClock.elapsedRealtime()
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent?): Boolean {
+        lastInteractionAt = android.os.SystemClock.elapsedRealtime()
+        return super.dispatchTouchEvent(ev)
+    }
+
     private companion object {
         const val SAME_CODE_MS = 1500L
+        const val IDLE_LOCK_MS = 5 * 60_000L
     }
 
     /**
@@ -304,7 +331,8 @@ class MainActivity : ComponentActivity() {
                 this@MainActivity,
                 TransactionRecord(
                     device_sn = sn, amount = total, subtotal_cents = sale.subtotalCents, tax_cents = sale.taxCents,
-                    tip_cents = 0, payment_status = "PAID", ecr_ref_num = ref, payment_method = "CASH"
+                    tip_cents = 0, payment_status = "PAID", ecr_ref_num = ref, payment_method = "CASH",
+                    staff_id = StaffRepository.current?.id, staff_name = StaffRepository.current?.name
                 )
             )
             TransactionRepository.recordItems(this@MainActivity, ref, sn, sale.lines)
@@ -336,7 +364,9 @@ class MainActivity : ComponentActivity() {
             tip_cents = tip,
             payment_status = "PENDING",
             ecr_ref_num = ref,
-            payment_method = "CREDIT_CARD"
+            payment_method = "CREDIT_CARD",
+            staff_id = StaffRepository.current?.id,
+            staff_name = StaffRepository.current?.name
         )
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -440,7 +470,7 @@ fun CheckoutContainer(
 }
 
 @Composable
-fun MainBottomNavigation(navController: NavHostController) {
+fun MainBottomNavigation(navController: NavHostController, showSettings: Boolean) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
@@ -481,12 +511,34 @@ fun MainBottomNavigation(navController: NavHostController) {
             icon = { Icon(Icons.Default.Receipt, null) },
             label = { Text("Expenses") }
         )
-        NavigationBarItem(
+        if (showSettings) NavigationBarItem(
             selected = currentRoute == "settings",
             onClick = { navController.navigate("settings") { launchSingleTop = true } },
             icon = { Icon(Icons.Default.Settings, null) },
             label = { Text("Settings") }
         )
+    }
+}
+
+/** Who is signed in, and the button to lock / hand over to the next person. */
+@Composable
+fun StaffBar(staff: StaffMember, onLock: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(6.dp))
+            Text(staff.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.width(6.dp))
+            Text(if (staff.isManager) "Manager" else "Cashier", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onLock) {
+                Icon(Icons.Default.Lock, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("LOCK")
+            }
+        }
     }
 }
 

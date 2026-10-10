@@ -41,7 +41,11 @@ data class TransactionRecord(
     val service_bay: String? = null,
     // "VIP_LOAD" for money loaded onto a VIP card; null = the column default
     // 'SERVICE' (docs/migrations/2026-10-06_vip_terminal_load.sql)
-    val txn_kind: String? = null
+    val txn_kind: String? = null,
+    // Who took the payment on an attended terminal (docs/migrations/2026-10-10_staff.sql);
+    // null on unattended ones, and then left out of the insert.
+    val staff_id: String? = null,
+    val staff_name: String? = null
 )
 
 /** One row of transaction_items (docs/migrations/2026-10-10_transaction_items.sql). */
@@ -254,7 +258,8 @@ object TransactionRepository {
         amountCents = amount,
         status = payment_status,
         hardwareStatus = hardware_status,
-        paymentMethod = payment_method ?: "UNKNOWN"
+        paymentMethod = payment_method ?: "UNKNOWN",
+        staffId = staff_id
     )
 
     /**
