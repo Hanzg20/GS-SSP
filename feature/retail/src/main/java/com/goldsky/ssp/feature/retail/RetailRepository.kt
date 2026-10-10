@@ -95,7 +95,9 @@ object RetailRepository {
     )
 
     fun getProductByBarcode(barcode: String): Product? {
-        return _catalog.value.find { it.barcode == barcode }
+        // Canonical on both sides: a scanner may report a UPC-A as 12 or 13 digits.
+        val code = com.goldsky.ssp.model.Barcodes.canonical(barcode) ?: return null
+        return _catalog.value.find { com.goldsky.ssp.model.Barcodes.canonical(it.barcode) == code }
     }
 }
 
