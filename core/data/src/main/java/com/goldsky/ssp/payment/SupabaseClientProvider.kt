@@ -45,6 +45,14 @@ object SupabaseClientProvider {
         install(Storage)
     }
 
+    /**
+     * Drops every pooled connection. Call when the network changes: a pooled
+     * socket from the old network is dead, and a request written to it sits
+     * out the full read timeout (Wi-Fi off/on on the Q2: the first heartbeat
+     * after reconnecting hung ~30 s).
+     */
+    fun dropConnections() = industrialPool.evictAll()
+
     private val functionsHttpClient = HttpClient(OkHttp) {
         engine {
             config {

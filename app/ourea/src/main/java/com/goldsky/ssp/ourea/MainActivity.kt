@@ -14,15 +14,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.goldsky.ssp.common.CoreConfig
 import com.goldsky.ssp.common.FeedbackManager
-import com.goldsky.ssp.common.HardwareConfig
 import com.goldsky.ssp.common.QrUtils
 import com.goldsky.ssp.payment.*
 import com.goldsky.ssp.payment.hardware.*
-import com.goldsky.ssp.iris.hardware.idtech.IdTechHardwareProvider
-import com.goldsky.ssp.iris.hardware.pax.PaxHardwareProvider
-import com.goldsky.ssp.iris.hardware.wizarpos.WizarPosHardwareProvider
 import com.goldsky.ssp.feature.retail.RetailRepository
 import com.goldsky.ssp.feature.retail.screens.SettingsScreen
 import com.goldsky.ssp.feature.retail.screens.StaffPinLockScreen
@@ -59,27 +54,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        CoreConfig.isMock = BuildConfig.IS_MOCK
-        HardwareConfig.isMock = BuildConfig.IS_MOCK
-        CoreConfig.supabaseUrl = BuildConfig.SUPABASE_URL
-        CoreConfig.supabaseKey = BuildConfig.SUPABASE_KEY
-
-        val idTechProvider = IdTechHardwareProvider()
-        val paxProvider = PaxHardwareProvider()
-        val wizarPosProvider = WizarPosHardwareProvider()
-
-        idTechProvider.init(this)
-        paxProvider.init(this)
-        wizarPosProvider.init(this)
-
-        HardwareFactory.registerHardwareProvider("IDTECH", idTechProvider)
-        HardwareFactory.registerHardwareProvider("PAX", paxProvider)
-        HardwareFactory.registerHardwareProvider("WIZARPOS", wizarPosProvider)
-
-        PaymentProviderFactory.registerPaymentProvider("IDTECH", idTechProvider.getPaymentProvider())
-        PaymentProviderFactory.registerPaymentProvider("PAX", paxProvider.getPaymentProvider())
-        PaymentProviderFactory.registerPaymentProvider("WIZARPOS", wizarPosProvider.getPaymentProvider())
-
+        // Config and hardware/payment providers: OureaApplication.
         DeviceRepository.init(this)
         StaffRepository.init(this)
         RetailRepository.init(this)
@@ -90,6 +65,9 @@ class MainActivity : ComponentActivity() {
             "MOCK_SN_${System.currentTimeMillis()}"
         }
         DeviceRepository.persistDeviceSn(deviceSn)
+        // Heartbeat (now, on every reconnect, and every 15 min), offline
+        // replay, daily batch close -- Ourea scheduled none of these before. No ad screen.
+        AdManager.init(this, syncAds = false)
         CoroutineScope(Dispatchers.IO).launch {
             SupabaseClientProvider.ensureAuthenticated()
             DeviceRepository.registerDevice(deviceSn, BuildConfig.VERSION_NAME)

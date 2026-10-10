@@ -119,6 +119,103 @@ object AdManager {
             ExistingPeriodicWorkPolicy.KEEP,
             cleanRequest
         )
+
+        // 6. Heartbeat (+ offline replay) as soon as the terminal is online:
+        // now (runs the moment there is a network), and again every time the
+        // network comes back. The periodic heartbeat alone left CMP showing a
+        // stale last_seen for up to 15 min after a boot or a Wi-Fi drop.
+        onlineNow(context)
+        watchNetwork(context.applicationContext)
+    }
+
+    private const val HEARTBEAT_NOW_WORK = "heartbeat_now"
+    private const val REPLAY_NOW_WORK = "transaction_replay_now"
+    private const val ONLINE_NOW_MIN_GAP_MS = 15_000L
+    @Volatile private var lastOnlineNowAt = 0L
+    @Volatile private var watchingNetwork = false
+
+    /**
+     * One heartbeat and one offline-queue replay, as soon as there is a
+     * network. The heartbeat is sent directly (a WorkManager one-time job
+     * started ~45 s late); only if that fails is it left to a one-time job
+     * that runs once the network is really usable. At most once per 15 s, so
+     * a flapping Wi-Fi doesn't send a burst; [force] skips that limit (the
+     * device was only just registered, so an earlier one may have been refused).
+     */
+    fun onlineNow(context: Context, force: Boolean = false) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!force && lastOnlineNowAt != 0L && now - lastOnlineNowAt < ONLINE_NOW_MIN_GAP_MS) return
+        lastOnlineNowAt = now
+        val appContext = context.applicationContext
+        val online = androidx.work.Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        val wm = WorkManager.getInstance(appContext)
+        wm.enqueueUniqueWork(
+            REPLAY_NOW_WORK, androidx.work.ExistingWorkPolicy.KEEP,
+            androidx.work.OneTimeWorkRequestBuilder<TransactionReplayWorker>().setConstraints(online).build()
+        )
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            // Bounded, and tried again on a fresh connection: a request stuck on
+            // a half-dead socket must not hold the heartbeat back.
+            var sent = false
+            for (attempt in 1..3) {
+                if (attempt > 1) SupabaseClientProvider.dropConnections()
+                sent = kotlinx.coroutines.withTimeoutOrNull(10_000L) { HeartbeatWorker.send(appContext) } == true
+                if (sent) break
+                kotlinx.coroutines.delay(2_000L)
+            }
+            if (sent) {
+                android.util.Log.i("AdManager", "Heartbeat sent on coming online")
+                wm.cancelUniqueWork(HEARTBEAT_NOW_WORK) // onAvailable's fallback isn't needed any more
+            } else {
+                lastOnlineNowAt = 0L // offline at the time: let the next network-available try again at once
+                enqueueHeartbeatNow(wm)
+            }
+        }
+    }
+
+    private fun enqueueHeartbeatNow(wm: WorkManager) {
+        val online = androidx.work.Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        wm.enqueueUniqueWork(
+            HEARTBEAT_NOW_WORK, androidx.work.ExistingWorkPolicy.KEEP,
+            androidx.work.OneTimeWorkRequestBuilder<HeartbeatWorker>().setConstraints(online).build()
+        )
+    }
+
+    /**
+     * Calls [onlineNow] whenever a default network becomes VALIDATED (= has
+     * working internet). Not onAvailable: that fires before DNS / routing are
+     * usable, and on the Q2 a heartbeat sent then hung until it timed out
+     * (Wi-Fi off/on, 2026-10-10). onAvailable still drops the old network's
+     * pooled connections and queues a WorkManager heartbeat, for a network
+     * that never validates (no internet probe allowed). Registered once per process.
+     */
+    private fun watchNetwork(appContext: Context) {
+        if (watchingNetwork) return
+        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return
+        try {
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                @Volatile private var validated: android.net.Network? = null
+
+                override fun onAvailable(network: android.net.Network) {
+                    SupabaseClientProvider.dropConnections()
+                    enqueueHeartbeatNow(WorkManager.getInstance(appContext))
+                }
+
+                override fun onCapabilitiesChanged(network: android.net.Network, caps: android.net.NetworkCapabilities) {
+                    if (!caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) || network == validated) return
+                    validated = network
+                    android.util.Log.i("AdManager", "Network online: heartbeat + replay now")
+                    onlineNow(appContext)
+                }
+
+                override fun onLost(network: android.net.Network) {
+                    if (network == validated) validated = null
+                }
+            })
+            watchingNetwork = true
+        } catch (e: Exception) {
+            android.util.Log.w("AdManager", "Network watch not registered: ${e.message}")
+        }
     }
 
     /**

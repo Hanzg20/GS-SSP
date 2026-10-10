@@ -65,12 +65,6 @@ class MainActivity : ComponentActivity() {
 
         RetailRepository.init(this)
 
-        // Heartbeat, offline transaction replay, daily batch close, storage
-        // cleaning -- never scheduled here before, so a sale whose insert
-        // failed sat in the offline queue forever and the batch was never
-        // auto-settled (WizarPOS Q2, 2026-10-09). No ad screen in Iris.
-        AdManager.init(this, syncAds = false)
-
         // Every products/transactions/etc. RLS policy is scoped `TO authenticated`
         // AND to this device's org (via device_auth_map) -- see
         // docs/supabase_full_schema.sql. Nothing in this Activity previously
@@ -92,6 +86,13 @@ class MainActivity : ComponentActivity() {
             "MOCK_SN_${System.currentTimeMillis()}"
         }
         DeviceRepository.persistDeviceSn(deviceSn)
+
+        // Heartbeat, offline transaction replay, daily batch close, storage
+        // cleaning -- never scheduled here before, so a sale whose insert
+        // failed sat in the offline queue forever and the batch was never
+        // auto-settled (WizarPOS Q2, 2026-10-09). No ad screen in Iris.
+        // After persistDeviceSn: the first heartbeat goes out right away and must carry this SN.
+        AdManager.init(this, syncAds = false)
         CoroutineScope(Dispatchers.IO).launch {
             SupabaseClientProvider.ensureAuthenticated()
             DeviceRepository.registerDevice(deviceSn, BuildConfig.VERSION_NAME)

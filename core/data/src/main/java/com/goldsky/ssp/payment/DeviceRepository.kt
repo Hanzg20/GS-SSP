@@ -315,6 +315,10 @@ object DeviceRepository {
             result.secret_key?.let { persistDeviceSecret(it) }
             
             persistOrgId(result.org_id)
+            // The heartbeats RLS needs the device_auth_map row this RPC just
+            // made, so a first-launch heartbeat sent before now was rejected:
+            // send one now that it will pass (every shell runs this at start).
+            appContext?.let { AdManager.onlineNow(it, force = true) }
             result
         } catch (e: Exception) {
             Log.w(TAG, "Device identity sync failed: ${e.message}")
