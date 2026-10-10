@@ -19,6 +19,16 @@ class TransactionReplayWorker(appContext: Context, params: WorkerParameters) : C
                     "insert" -> op.record?.let { TransactionRepository.recordTransactionRemote(it) } ?: true
                     // Queued after its "insert", so the parent row lands first (FK on ecr_ref_num).
                     "insert_items" -> op.items?.let { TransactionRepository.recordItemsRemote(it) } ?: true
+                    // A refusal (false) is final -- only a transport failure (null) stays queued.
+                    "delivery_paid" -> {
+                        val id = op.orderId
+                        val ref = op.ecrRefNum
+                        if (id != null && ref != null) {
+                            DeliveryOrderRepository.markPaidRemote(id, ref, op.paymentMethod ?: "UNKNOWN") != null
+                        } else {
+                            true // malformed entry, drop it rather than retry forever
+                        }
+                    }
                     "update_hw" -> {
                         val ref = op.ecrRefNum
                         val status = op.status

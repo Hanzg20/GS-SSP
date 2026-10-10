@@ -101,16 +101,44 @@ class MainActivity : ComponentActivity() {
                 // once the customer picks (or skips) a tip.
                 var activeSaleData by remember { mutableStateOf<CheckoutSale?>(null) }
                 var isUnlocked by remember { mutableStateOf(false) }
+                // Bumped after a delivery order is collected so the list reloads without it.
+                var deliveryReload by remember { mutableStateOf(0) }
+                val scope = rememberCoroutineScope()
 
                 fun pay(sale: CheckoutSale, tip: Int) {
                     triggerPaymentFlow(sale, tip) {
                         paymentStatus = it
                         if (it is PaymentUiState.Success) {
-                            retailViewModel.clearCart()
+                            // A delivery collection leaves whatever is in the cart alone.
+                            if (sale.deliveryOrderId == null) retailViewModel.clearCart() else deliveryReload++
                             FeedbackManager.success(this@MainActivity)
                         }
                     }
                 }
+
+                fun checkout(sale: CheckoutSale) {
+                    // No tip step unless the store asks for tips (off for retail).
+                    if (DeviceRepository.isTipsEnabled()) activeSaleData = sale else pay(sale, 0)
+                }
+
+                // Re-check the order right before taking money: another terminal may
+                // have collected it, or the store cancelled it, since the list loaded.
+                fun withOpenOrder(order: DeliveryOrder, action: () -> Unit) {
+                    paymentStatus = PaymentUiState.Processing("Checking order D${order.order_no}...")
+                    scope.launch {
+                        when (val status = DeliveryOrderRepository.fetchStatus(order.id)) {
+                            "OPEN" -> { paymentStatus = PaymentUiState.Idle; action() }
+                            null -> paymentStatus = PaymentUiState.Error("Can't reach the server to check order D${order.order_no}. Try again.")
+                            else -> {
+                                paymentStatus = PaymentUiState.Error("Order D${order.order_no} is ${status.lowercase()}, not collected.")
+                                deliveryReload++
+                            }
+                        }
+                    }
+                }
+
+                fun saleOf(order: DeliveryOrder) =
+                    CheckoutSale(order.subtotalCents, order.taxCents, order.lines, deliveryOrderId = order.id)
 
                 if (!isUnlocked) {
                     StaffPinLockScreen(onUnlock = { if (it == "1234") isUnlocked = true })
@@ -128,10 +156,16 @@ class MainActivity : ComponentActivity() {
                                     CheckoutContainer(
                                         retailViewModel = retailViewModel,
                                         onScan = { scanOnce(retailViewModel) },
-                                        onCheckout = { sale ->
-                                            // No tip step unless the store asks for tips (off for retail).
-                                            if (DeviceRepository.isTipsEnabled()) activeSaleData = sale
-                                            else pay(sale, 0)
+                                        onCheckout = { checkout(it) },
+                                        deliveryReload = deliveryReload,
+                                        onCollectCard = { order -> withOpenOrder(order) { checkout(saleOf(order)) } },
+                                        onCollectCash = { order ->
+                                            withOpenOrder(order) {
+                                                recordCashCollection(saleOf(order), order.order_no)
+                                                paymentStatus = PaymentUiState.Success("Cash received for D${order.order_no}")
+                                                deliveryReload++
+                                                FeedbackManager.success(this@MainActivity)
+                                            }
                                         }
                                     )
                                 }
@@ -197,6 +231,37 @@ class MainActivity : ComponentActivity() {
         })
     }
 
+    /**
+     * Cash taken at the door for a delivery order: a PAID CASH transaction with
+     * its lines, the order marked paid, and a receipt. Every write goes through
+     * the offline queue, in that order, if the cloud can't be reached.
+     */
+    private fun recordCashCollection(sale: CheckoutSale, orderNo: Long) {
+        val ref = "RET-" + System.currentTimeMillis()
+        val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
+        val total = sale.subtotalCents + sale.taxCents
+        CoroutineScope(Dispatchers.IO).launch {
+            TransactionRepository.recordTransaction(
+                this@MainActivity,
+                TransactionRecord(
+                    device_sn = sn, amount = total, subtotal_cents = sale.subtotalCents, tax_cents = sale.taxCents,
+                    tip_cents = 0, payment_status = "PAID", ecr_ref_num = ref, payment_method = "CASH"
+                )
+            )
+            TransactionRepository.recordItems(this@MainActivity, ref, sn, sale.lines)
+            sale.deliveryOrderId?.let { DeliveryOrderRepository.markPaid(this@MainActivity, it, ref, "CASH") }
+            ReceiptPrinterManager.printReceipt(
+                this@MainActivity,
+                ReceiptPrinterManager.ReceiptData(
+                    subtotalCents = sale.subtotalCents, taxCents = sale.taxCents, tipCents = 0, amountCents = total,
+                    refNum = ref, deviceSn = sn, lines = sale.lines
+                ),
+                vendor = DeviceRepository.getPersistedHardwareVendor()
+            )
+            android.util.Log.i("IrisDelivery", "Cash collected for D$orderNo: $ref")
+        }
+    }
+
     private fun triggerPaymentFlow(sale: CheckoutSale, tip: Int, onStateChange: (PaymentUiState) -> Unit) {
         val subtotal = sale.subtotalCents
         val tax = sale.taxCents
@@ -227,6 +292,7 @@ class MainActivity : ComponentActivity() {
             override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                 CoroutineScope(Dispatchers.IO).launch {
                     TransactionRepository.updatePaymentStatus(this@MainActivity, ref, "PAID", entryMode)
+                    sale.deliveryOrderId?.let { DeliveryOrderRepository.markPaid(this@MainActivity, it, ref, "CARD") }
                     ReceiptPrinterManager.printReceipt(
                         this@MainActivity,
                         ReceiptPrinterManager.ReceiptData(
@@ -257,7 +323,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * KEYPAD/LIBRARY tab switcher hosting whichever "quick" flow actually
+ * KEYPAD/LIBRARY/DELIVERY tab switcher hosting whichever "quick" flow actually
  * collects the sale -- restored from the old retail flavor's CheckoutScreen
  * (a container, not a screen of its own; unrelated to the standalone
  * feature.retail.screens.CheckoutScreen file, which nothing currently
@@ -266,8 +332,15 @@ class MainActivity : ComponentActivity() {
  * ever wired to the "checkout" route.
  */
 @Composable
-fun CheckoutContainer(retailViewModel: RetailViewModel, onScan: () -> Unit, onCheckout: (CheckoutSale) -> Unit) {
-    // Amounts with no product behind them (keypad, table, delivery): one line at the device rate.
+fun CheckoutContainer(
+    retailViewModel: RetailViewModel,
+    onScan: () -> Unit,
+    onCheckout: (CheckoutSale) -> Unit,
+    deliveryReload: Int,
+    onCollectCard: (DeliveryOrder) -> Unit,
+    onCollectCash: (DeliveryOrder) -> Unit
+) {
+    // Amounts with no product behind them (keypad, table): one line at the device rate.
     fun atDeviceRate(name: String, cents: Int) {
         val bps = SalesTax.deviceRateBps()
         onCheckout(CheckoutSale(cents, SalesTax.cents(cents, bps), listOf(SaleLine(name, 1, cents, bps))))
@@ -279,10 +352,14 @@ fun CheckoutContainer(retailViewModel: RetailViewModel, onScan: () -> Unit, onCh
         TabRow(selectedTabIndex = selectedTab) {
             Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("KEYPAD", fontWeight = FontWeight.Bold) })
             Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("LIBRARY", fontWeight = FontWeight.Bold) })
+            // Its own tab, not a mode: the same handheld does line-busting and delivery.
+            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("DELIVERY", fontWeight = FontWeight.Bold) })
         }
 
         Box(modifier = Modifier.weight(1f)) {
-            if (selectedTab == 0) {
+            if (selectedTab == 2) {
+                DeliveryScreen(reloadKey = deliveryReload, onCollectCard = onCollectCard, onCollectCash = onCollectCash)
+            } else if (selectedTab == 0) {
                 ManualAmountScreen(onInitiatePayment = { amountStr ->
                     val cents = amountStr.replace(".", "").toIntOrNull() ?: 0
                     if (cents > 0) atDeviceRate("Keypad amount", cents)
@@ -290,7 +367,6 @@ fun CheckoutContainer(retailViewModel: RetailViewModel, onScan: () -> Unit, onCh
             } else {
                 when (retailMode) {
                     com.goldsky.ssp.model.RetailMode.RESTAURANT -> DineInScreen(onTableSelected = { atDeviceRate("Table", 5000) })
-                    com.goldsky.ssp.model.RetailMode.DELIVERY -> DeliveryScreen(onCollect = { atDeviceRate("Delivery", it) })
                     else -> RetailStoreScreen(
                         onCheckout = { onCheckout(retailViewModel.checkoutSale()) },
                         viewModel = retailViewModel,

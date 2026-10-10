@@ -19,5 +19,7 @@ data class SaleLine(
 data class CheckoutSale(
     val subtotalCents: Int,
     val taxCents: Int,
-    val lines: List<SaleLine>
+    val lines: List<SaleLine>,
+    // Set when this sale collects a delivery order (marked paid once it goes through).
+    val deliveryOrderId: String? = null
 )
