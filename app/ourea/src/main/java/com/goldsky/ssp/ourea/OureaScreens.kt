@@ -58,7 +58,7 @@ enum class OureaDestination { CHECKOUT, INSIGHTS, PRODUCTS, TRANSACTIONS, SETTIN
  * deliberately left out rather than built as dead UI.
  */
 @Composable
-fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit, onLock: () -> Unit) {
+fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit, onLock: () -> Unit, isManager: Boolean = true) {
     Column(
         modifier = Modifier
             .fillMaxHeight()
@@ -73,15 +73,20 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
             modifier = Modifier.size(40.dp)
         )
         Spacer(modifier = Modifier.height(32.dp))
-        SidebarIcon(Icons.Default.Dashboard, current == OureaDestination.INSIGHTS) { onSelect(OureaDestination.INSIGHTS) }
-        Spacer(modifier = Modifier.height(20.dp))
+        // Cashiers: checkout and their own transactions; managers also insights, products, Settings.
+        if (isManager) {
+            SidebarIcon(Icons.Default.Dashboard, current == OureaDestination.INSIGHTS) { onSelect(OureaDestination.INSIGHTS) }
+            Spacer(modifier = Modifier.height(20.dp))
+        }
         SidebarIcon(Icons.Default.ShoppingCart, current == OureaDestination.CHECKOUT) { onSelect(OureaDestination.CHECKOUT) }
         Spacer(modifier = Modifier.height(20.dp))
-        SidebarIcon(Icons.Default.Inventory2, current == OureaDestination.PRODUCTS) { onSelect(OureaDestination.PRODUCTS) }
-        Spacer(modifier = Modifier.height(20.dp))
+        if (isManager) {
+            SidebarIcon(Icons.Default.Inventory2, current == OureaDestination.PRODUCTS) { onSelect(OureaDestination.PRODUCTS) }
+            Spacer(modifier = Modifier.height(20.dp))
+        }
         SidebarIcon(Icons.Default.History, current == OureaDestination.TRANSACTIONS) { onSelect(OureaDestination.TRANSACTIONS) }
         Spacer(modifier = Modifier.weight(1f))
-        SidebarIcon(Icons.Default.Settings, current == OureaDestination.SETTINGS) { onSelect(OureaDestination.SETTINGS) }
+        if (isManager) SidebarIcon(Icons.Default.Settings, current == OureaDestination.SETTINGS) { onSelect(OureaDestination.SETTINGS) }
         Spacer(modifier = Modifier.height(20.dp))
         SidebarIcon(Icons.Default.Lock, false, onLock)
     }

@@ -99,10 +99,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             OureaTheme {
-                var isUnlocked by remember { mutableStateOf(StaffRepository.current != null) }
+                var staff by remember { mutableStateOf(StaffRepository.current) }
 
-                if (!isUnlocked) {
-                    StaffPinLockScreen(onSignedIn = { isUnlocked = true })
+                val signedIn = staff
+                if (signedIn == null) {
+                    StaffPinLockScreen(onSignedIn = { staff = it })
                 } else {
                     val retailViewModel: RetailViewModel = viewModel()
                     var destination by remember { mutableStateOf(OureaDestination.CHECKOUT) }
@@ -111,6 +112,8 @@ class MainActivity : ComponentActivity() {
                     var confirmingPayment by remember { mutableStateOf<Triple<Int, Int, Int>?>(null) }
                     var showCashDialog by remember { mutableStateOf(false) }
                     var showMemberDialog by remember { mutableStateOf(false) }
+                    // Lines of the sale being paid (taken at checkout), for transaction_items and the receipt.
+                    var saleLines by remember { mutableStateOf<List<com.goldsky.ssp.model.SaleLine>>(emptyList()) }
                     var qrState by remember { mutableStateOf<OureaQrUiState>(OureaQrUiState.Hidden) }
 
                     fun onPaymentSettled(state: OureaPaymentUiState) {
@@ -125,7 +128,8 @@ class MainActivity : ComponentActivity() {
                         OureaSidebar(
                             current = destination,
                             onSelect = { destination = it },
-                            onLock = { StaffRepository.signOut(); isUnlocked = false }
+                            onLock = { StaffRepository.signOut(); staff = null; destination = OureaDestination.CHECKOUT },
+                            isManager = signedIn.isManager
                         )
                         Box(modifier = Modifier.weight(1f).background(OureaBackground)) {
                             when (destination) {
@@ -139,12 +143,12 @@ class MainActivity : ComponentActivity() {
                                             tipCents = tip,
                                             onChargeCard = {
                                                 confirmingPayment = null
-                                                triggerPaymentFlow(subtotal, tax, tip, ::onPaymentSettled)
+                                                triggerPaymentFlow(subtotal, tax, tip, saleLines, ::onPaymentSettled)
                                             },
                                             onCash = { showCashDialog = true },
                                             onQr = {
                                                 confirmingPayment = null
-                                                startQrPayment(subtotal, tax, tip, onQrStateChange = { qrState = it }, onSettled = ::onPaymentSettled)
+                                                startQrPayment(subtotal, tax, tip, saleLines, onQrStateChange = { qrState = it }, onSettled = ::onPaymentSettled)
                                             },
                                             onMember = { showMemberDialog = true },
                                             onBack = { confirmingPayment = null }
@@ -153,7 +157,9 @@ class MainActivity : ComponentActivity() {
                                         OureaCheckoutScreen(
                                             viewModel = retailViewModel,
                                             onCheckout = { subtotal ->
-                                                val tax = retailViewModel.cartTaxCents()
+                                                val sale = retailViewModel.checkoutSale()
+                                                saleLines = sale.lines
+                                                val tax = sale.taxCents
                                                 // No tip step unless the store asks for tips (off for retail).
                                                 if (DeviceRepository.isTipsEnabled()) activeSaleData = subtotal to tax
                                                 else confirmingPayment = Triple(subtotal, tax, 0)
@@ -161,10 +167,11 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                 }
-                                OureaDestination.INSIGHTS -> OureaDashboardScreen()
-                                OureaDestination.PRODUCTS -> OureaProductsScreen()
-                                OureaDestination.TRANSACTIONS -> TransactionHistoryScreen()
-                                OureaDestination.SETTINGS -> SettingsScreen()
+                                // Insights, products and Settings: managers only (their rail icons are hidden too).
+                                OureaDestination.INSIGHTS -> if (signedIn.isManager) OureaDashboardScreen()
+                                OureaDestination.PRODUCTS -> if (signedIn.isManager) OureaProductsScreen()
+                                OureaDestination.TRANSACTIONS -> TransactionHistoryScreen(onlyStaffId = if (signedIn.isManager) null else signedIn.id)
+                                OureaDestination.SETTINGS -> if (signedIn.isManager) SettingsScreen()
                             }
                         }
                     }
@@ -195,7 +202,7 @@ class MainActivity : ComponentActivity() {
                             onConfirm = { cashReceivedCents ->
                                 showCashDialog = false
                                 confirmingPayment = null
-                                triggerCashPayment(subtotal, tax, tip, cashReceivedCents, ::onPaymentSettled)
+                                triggerCashPayment(subtotal, tax, tip, cashReceivedCents, saleLines, ::onPaymentSettled)
                             },
                             onDismiss = { showCashDialog = false }
                         )
@@ -246,7 +253,7 @@ class MainActivity : ComponentActivity() {
      * payment dialogs aren't factored into a shared module in this codebase
      * yet (same as app/iris, which doesn't share them with anyone either).
      */
-    private fun triggerPaymentFlow(subtotal: Int, tax: Int, tip: Int, onStateChange: (OureaPaymentUiState) -> Unit) {
+    private fun triggerPaymentFlow(subtotal: Int, tax: Int, tip: Int, lines: List<com.goldsky.ssp.model.SaleLine>, onStateChange: (OureaPaymentUiState) -> Unit) {
         val total = subtotal + tax + tip
         val ref = "OUR-" + System.currentTimeMillis()
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
@@ -259,19 +266,34 @@ class MainActivity : ComponentActivity() {
             tip_cents = tip,
             payment_status = "PENDING",
             ecr_ref_num = ref,
-            payment_method = "CREDIT_CARD"
+            payment_method = "CREDIT_CARD",
+            staff_id = StaffRepository.current?.id,
+            staff_name = StaffRepository.current?.name
         )
 
         CoroutineScope(Dispatchers.IO).launch {
             TransactionRepository.recordTransaction(this@MainActivity, record)
+            // After the parent row: transaction_items references it.
+            TransactionRepository.recordItems(this@MainActivity, ref, sn, lines)
         }
 
         onStateChange(OureaPaymentUiState.Processing("Processing $${"%.2f".format(total / 100.0)}..."))
 
+        var card: IPaymentProvider.CardInfo? = null
+        var cancelled = false
         paymentProvider.startSale(total, ref, object : IPaymentProvider.PaymentCallback {
+            override fun onCardInfo(info: IPaymentProvider.CardInfo) { card = info }
+            override fun onCancelled() { cancelled = true }
+
             override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                 CoroutineScope(Dispatchers.IO).launch {
-                    TransactionRepository.updatePaymentStatus(this@MainActivity, ref, "PAID", entryMode)
+                    val c = card
+                    TransactionRepository.updatePaymentStatus(
+                        this@MainActivity, ref, "PAID", entryMode,
+                        paymentMethod = c?.let { com.goldsky.ssp.payment.CardTypeClassifier.paymentMethod(it.scheme, it.aid, it.brand) },
+                        cardAid = c?.aid, cardBin = c?.bin, cardBrand = c?.brand,
+                        authCode = authCode
+                    )
                     ReceiptPrinterManager.printReceipt(
                         this@MainActivity,
                         ReceiptPrinterManager.ReceiptData(
@@ -280,7 +302,8 @@ class MainActivity : ComponentActivity() {
                             tipCents = tip,
                             amountCents = total,
                             refNum = ref,
-                            deviceSn = sn
+                            deviceSn = sn,
+                            lines = lines
                         ),
                         vendor = DeviceRepository.getPersistedHardwareVendor()
                     )
@@ -289,7 +312,9 @@ class MainActivity : ComponentActivity() {
             }
             override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                 CoroutineScope(Dispatchers.IO).launch {
-                    TransactionRepository.updatePaymentStatus(this@MainActivity, ref, "FAILED")
+                    // CANCELLED / DECLINED: "FAILED" isn't an allowed payment_status
+                    // and left the row PENDING (same bug as Iris had).
+                    TransactionRepository.recordFailedCardSale(this@MainActivity, ref, card, cancelled)
                 }
                 onStateChange(OureaPaymentUiState.Error(errorMsg))
             }
@@ -306,7 +331,7 @@ class MainActivity : ComponentActivity() {
      * confirms). [cashReceivedCents] is only used to report change due; the
      * caller (OureaCashDialog) already guards against cashReceivedCents < total.
      */
-    private fun triggerCashPayment(subtotal: Int, tax: Int, tip: Int, cashReceivedCents: Int, onStateChange: (OureaPaymentUiState) -> Unit) {
+    private fun triggerCashPayment(subtotal: Int, tax: Int, tip: Int, cashReceivedCents: Int, lines: List<com.goldsky.ssp.model.SaleLine>, onStateChange: (OureaPaymentUiState) -> Unit) {
         val total = subtotal + tax + tip
         val ref = "OUR-CASH-" + System.currentTimeMillis()
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
@@ -325,9 +350,12 @@ class MainActivity : ComponentActivity() {
                     payment_status = "PAID",
                     ecr_ref_num = ref,
                     payment_method = "CASH",
-                    entry_mode = "CASH"
+                    entry_mode = "CASH",
+                    staff_id = StaffRepository.current?.id,
+                    staff_name = StaffRepository.current?.name
                 )
             )
+            TransactionRepository.recordItems(this@MainActivity, ref, sn, lines)
             ReceiptPrinterManager.printReceipt(
                 this@MainActivity,
                 ReceiptPrinterManager.ReceiptData(
@@ -336,7 +364,8 @@ class MainActivity : ComponentActivity() {
                     tipCents = tip,
                     amountCents = total,
                     refNum = ref,
-                    deviceSn = sn
+                    deviceSn = sn,
+                    lines = lines
                 ),
                 vendor = DeviceRepository.getPersistedHardwareVendor()
             )
@@ -358,6 +387,7 @@ class MainActivity : ComponentActivity() {
         subtotal: Int,
         tax: Int,
         tip: Int,
+        lines: List<com.goldsky.ssp.model.SaleLine>,
         onQrStateChange: (OureaQrUiState) -> Unit,
         onSettled: (OureaPaymentUiState) -> Unit
     ) {
@@ -379,15 +409,19 @@ class MainActivity : ComponentActivity() {
                     tip_cents = tip,
                     payment_status = "PENDING",
                     ecr_ref_num = txId,
-                    payment_method = "QR_CODE"
+                    payment_method = "QR_CODE",
+                    staff_id = StaffRepository.current?.id,
+                    staff_name = StaffRepository.current?.name
                 )
             )
+            TransactionRepository.recordItems(this@MainActivity, txId, sn, lines)
 
             val codeUrl = QrPaymentRepository.createSession(txId, sn, total)
             if (codeUrl == null) {
                 activeQrTxId = null
                 withContext(Dispatchers.Main) { onQrStateChange(OureaQrUiState.Hidden) }
-                TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "FAILED")
+                // Allowed statuses only (was "FAILED", which left the row PENDING).
+                TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "DECLINED")
                 withContext(Dispatchers.Main) { onSettled(OureaPaymentUiState.Error("Failed to create QR session, try again")) }
                 return@launch
             }
@@ -395,7 +429,7 @@ class MainActivity : ComponentActivity() {
             if (bitmap == null) {
                 activeQrTxId = null
                 withContext(Dispatchers.Main) { onQrStateChange(OureaQrUiState.Hidden) }
-                TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "FAILED")
+                TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "DECLINED")
                 withContext(Dispatchers.Main) { onSettled(OureaPaymentUiState.Error("Failed to render QR code")) }
                 return@launch
             }
@@ -414,13 +448,14 @@ class MainActivity : ComponentActivity() {
                         tipCents = tip,
                         amountCents = total,
                         refNum = txId,
-                        deviceSn = sn
+                        deviceSn = sn,
+                        lines = lines
                     ),
                     vendor = DeviceRepository.getPersistedHardwareVendor()
                 )
                 withContext(Dispatchers.Main) { onSettled(OureaPaymentUiState.Success("QR payment received")) }
             } else {
-                TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "EXPIRED")
+                TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "CANCELLED")
                 withContext(Dispatchers.Main) { onSettled(OureaPaymentUiState.Error("QR payment was not completed in time")) }
             }
         }
@@ -489,7 +524,11 @@ class MainActivity : ComponentActivity() {
                             payment_status = "PAID",
                             ecr_ref_num = ref,
                             payment_method = "VIP_CARD",
-                            entry_mode = "MANUAL_CODE"
+                            entry_mode = "MANUAL_CODE",
+                            // No transaction_items here: the tier discount scales the
+                            // totals, so undiscounted lines wouldn't add up to them.
+                            staff_id = StaffRepository.current?.id,
+                            staff_name = StaffRepository.current?.name
                         )
                     )
                     ReceiptPrinterManager.printReceipt(
