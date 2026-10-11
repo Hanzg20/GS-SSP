@@ -14,6 +14,17 @@ import java.io.File
 class VoiceRecorder(private val context: Context) {
     private var recorder: MediaRecorder? = null
     private var startedAt = 0L
+    // Loudest level seen while recording (0..32767). Whisper turns silence into
+    // made-up text ("Thank you for watching."), so a silent take isn't sent.
+    @Volatile private var peak = 0
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val sampler = object : Runnable {
+        override fun run() {
+            val r = recorder ?: return
+            peak = maxOf(peak, runCatching { r.maxAmplitude }.getOrDefault(0))
+            handler.postDelayed(this, 100)
+        }
+    }
     val file: File get() = File(context.cacheDir, "apex_speech.m4a")
 
     fun start(): Boolean {
@@ -33,6 +44,8 @@ class VoiceRecorder(private val context: Context) {
             r.start()
             recorder = r
             startedAt = System.currentTimeMillis()
+            peak = 0
+            handler.post(sampler)
             true
         } catch (e: Exception) {
             Log.w(TAG, "Recording didn't start: ${e.message}")
@@ -41,14 +54,22 @@ class VoiceRecorder(private val context: Context) {
         }
     }
 
-    /** The recording, or null if it was too short to hold any speech (a tap, not a hold). */
+    /** Why the last [stop] returned null. */
+    var lastProblem: Problem? = null
+        private set
+
+    enum class Problem { TOO_SHORT, SILENT }
+
+    /** The recording, or null if it was too short (a tap, not a hold) or silent. */
     fun stop(): File? {
         val r = recorder ?: return null
         recorder = null
+        handler.removeCallbacks(sampler)
         val longEnough = System.currentTimeMillis() - startedAt >= MIN_MS
+        lastProblem = when { !longEnough -> Problem.TOO_SHORT; peak < SILENCE_PEAK -> Problem.SILENT; else -> null }
         return try {
             r.stop()
-            if (longEnough) file else null
+            if (lastProblem == null) file else null
         } catch (e: Exception) {
             null // stop() throws when nothing was captured
         } finally {
@@ -57,6 +78,7 @@ class VoiceRecorder(private val context: Context) {
     }
 
     fun stopQuietly() {
+        handler.removeCallbacks(sampler)
         recorder?.let { runCatching { it.stop() }; it.release() }
         recorder = null
     }
@@ -65,5 +87,6 @@ class VoiceRecorder(private val context: Context) {
         private const val TAG = "VoiceRecorder"
         const val MAX_MS = 30_000
         private const val MIN_MS = 600L
+        private const val SILENCE_PEAK = 1500
     }
 }

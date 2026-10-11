@@ -87,7 +87,11 @@ fun ApexScreen(staff: StaffMember) {
     fun stopAndTranscribe() {
         if (!recording) return
         recording = false
-        val audio = recorder.stop() ?: run { voiceNote = t("按住说话，松开结束", "Hold to talk, release when done"); return }
+        val audio = recorder.stop() ?: run {
+            voiceNote = if (recorder.lastProblem == VoiceRecorder.Problem.SILENT) t("没听到声音，请靠近一点再说", "Didn't hear anything -- speak a little closer")
+                        else t("按住说话，松开结束", "Hold to talk, release when done")
+            return
+        }
         transcribing = true
         voiceNote = null
         scope.launch {
@@ -113,9 +117,17 @@ fun ApexScreen(staff: StaffMember) {
     }
     LaunchedEffect(lang) { load(refresh = false) }
 
+    // The Q2 has no back key or navigation bar: nothing closes the keyboard
+    // unless the screen does -- on send, on the keyboard's Send key, on a tap
+    // outside the field, and when recording starts.
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    fun hideKeyboard() { keyboard?.hide(); focusManager.clearFocus() }
+
     fun send(text: String) {
         val q = text.trim()
         if (q.isEmpty() || asking) return
+        hideKeyboard()
         chat.add(true to q)
         question = ""
         asking = true
@@ -131,7 +143,8 @@ fun ApexScreen(staff: StaffMember) {
         }
     }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+        .pointerInput(Unit) { detectTapGestures(onTap = { hideKeyboard() }) }) {
         // Header: mascot, name, language, refresh
         Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
             ApexAvatar(44.dp)
@@ -209,6 +222,7 @@ fun ApexScreen(staff: StaffMember) {
                     detectTapGestures(onPress = {
                         if (!micAllowed) { askMic.launch(android.Manifest.permission.RECORD_AUDIO); return@detectTapGestures }
                         if (asking || transcribing) return@detectTapGestures
+                        hideKeyboard()
                         recording = recorder.start()
                         if (!recording) voiceNote = t("麦克风打不开", "Couldn't open the microphone")
                         tryAwaitRelease()
@@ -228,7 +242,9 @@ fun ApexScreen(staff: StaffMember) {
                 onValueChange = { question = it.take(500) },
                 modifier = Modifier.weight(1f),
                 placeholder = { Text(t("问问小海狸…", "Ask Beaver...")) },
-                maxLines = 3
+                maxLines = 3,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { send(question) })
             )
             Spacer(Modifier.width(8.dp))
             FilledIconButton(onClick = { send(question) }, enabled = question.isNotBlank() && !asking) {

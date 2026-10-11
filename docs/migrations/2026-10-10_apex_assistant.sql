@@ -84,8 +84,13 @@ BEGIN
         LIMIT 30) x),
     'declined_today', (SELECT count(*) FROM tx WHERE payment_status = 'DECLINED' AND local_at::date = today),
     'delivery_open', (SELECT count(*) FROM delivery_orders WHERE org_id = p_org AND status = 'OPEN'),
+    -- Online = a heartbeat within 35 min (they come every 15). Decided here, not
+    -- left to the model: given raw minutes it called an 8-minute-old heartbeat
+    -- "idle, auto-locked" (the lock screen is a different thing entirely).
     'terminals', (SELECT coalesce(jsonb_agg(jsonb_build_object('name', coalesce(alias, sn),
-          'last_seen_minutes_ago', round(extract(epoch FROM now() - last_seen) / 60))), '[]')
+          'online', coalesce(last_seen > now() - INTERVAL '35 minutes', false),
+          'offline_for_minutes', CASE WHEN last_seen > now() - INTERVAL '35 minutes' THEN NULL
+                                      ELSE round(extract(epoch FROM now() - last_seen) / 60) END)), '[]')
       FROM devices WHERE org_id = p_org)
   ) INTO result;
   RETURN result;

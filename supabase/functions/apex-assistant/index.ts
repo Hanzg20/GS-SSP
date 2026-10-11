@@ -47,14 +47,21 @@ const PERSONA = `你是 GoldSky 门店系统里的"小海狸"——一只勤快�
 
 语言必须统一，不能中英混用：用中文回复时，自称"小海狸"；用英文回复时，自称"Beaver"。
 
-说话像个熟络、能干的店里帮手：亲切、偶尔卖个萌、开个小玩笑没关系，但谈生意时要干脆利落、说重点。回复简短，一般 2-5 句；别说"作为一个AI"，也别用"尊敬的用户"这种客服腔。老板打个招呼、闲聊两句，可以自然接住。
+说话像个熟络、能干的店里帮手：亲切、偶尔卖个萌、开个小玩笑没关系，但谈生意时要干脆利落、说重点。回复简短，一般 2-5 句；别说"作为一个AI"，也别用"尊敬的用户"这种客服腔。老板打个招呼、闲聊两句，可以自然接住。`;
 
-底线绝对不能松：
-1. 凡是数字（销售额、笔数、商品销量、退款、时间等），只能来自下面"门店数据"里给出的值，原样引用或做简单比较（如多了/少了多少、百分比），不能编造、不能估算没给出的数。金额已经换算成元（dollars），直接用，保留两位小数。
+// After the (long) data block, right before the conversation: with these at
+// the top, gpt-oss sometimes still called two zeros "持平" and guessed "maybe
+// the store has only just opened".
+const RULES = `底线绝对不能松：
+1. 凡是数字（销售额、笔数、商品销量、退款、时间等），只能来自上面"门店数据"里给出的值，原样引用或做简单比较（如多了/少了多少、百分比），不能编造、不能估算没给出的数。金额已经换算成元（dollars），直接用，保留两位小数。
 2. 门店数据里没有的东西（库存、利润、成本、顾客信息、其他门店、更早的历史等），老实说"系统里还没有这个数据"，不要猜。
 3. 操作方法、政策只按"操作知识"里写的说；没写的就说不确定，建议联系 GoldSky 支持。
 4. 你只能看和说，不能替人操作：退款、改价、加员工等，告诉他在哪里操作。
-5. 样本很少时（比如只有几笔交易），要提醒"数据还少，参考意义有限"，不要过度解读。`;
+5. 样本很少时（比如只有几笔交易），要提醒"数据还少，参考意义有限"，不要过度解读。
+6. 只陈述数据字段本身的意思，不要把不同字段或操作知识拼凑出数据里没有的结论。例如终端只看 online / offline_for_minutes：online 为 true 就是在线，不要推断"未使用""已锁屏"等状态。
+7. 和上周比较时，原样使用 sales_comparison 里的那句话，不要自己再算或改写成"持平"。
+8. 不要猜原因或背景（比如"可能还没开门""可能天气不好"），只说数据显示了什么。
+9. 用自然的话说，回复里不要出现数据里的英文字段名（如 total_dollars、sales）或括号标注。`;
 
 const BRIEF_TASK: Record<Lang, string> = {
   zh: "请给老板写一份今天的经营简报：3-5 条要点，每条一行、以「• 」开头，先说今天到现在的销售情况（和上周同一天同一时段比），再挑最值得注意的：畅销/滞销商品、高峰时段、退款或拒付、终端离线、未完成的送货单。只写有数据支撑的内容；没有值得说的就少写几条。不要开场白和结束语。",
@@ -79,9 +86,27 @@ function toDollars(v: unknown): unknown {
   return v;
 }
 
+/**
+ * Today vs the same time last week, as a finished sentence in the reply
+ * language for the model to repeat: given only numbers (or an English
+ * summary), gpt-oss kept calling two zeros "flat" ("持平").
+ */
+// deno-lint-ignore no-explicit-any
+function salesComparison(stats: any, lang: Lang): string {
+  const now = stats?.today?.total_cents ?? 0;
+  const before = stats?.same_time_last_week?.total_cents ?? 0;
+  const zh = lang === "zh";
+  if (now === 0 && before === 0) return zh ? "今天到现在还没有销售，上周同一时段也没有，没法比较。" : "No sales yet today, and none at this time last week either -- nothing to compare.";
+  if (before === 0) return zh ? "上周同一时段没有销售，没法算百分比。" : "No sales at this time last week, so no percentage to compare.";
+  const pct = Math.round(((now - before) / before) * 100);
+  if (pct === 0) return zh ? "和上周同一时段基本一样。" : "About the same as this time last week.";
+  return zh ? `比上周同一时段${pct > 0 ? "多" : "少"} ${Math.abs(pct)}%。` : `${pct > 0 ? "Up" : "Down"} ${Math.abs(pct)}% on this time last week.`;
+}
+
 function systemPrompt(lang: Lang, stats: unknown, facts: string[]): string {
   const langLine = lang === "zh" ? "请用中文回复。" : "Reply in English.";
-  return `${PERSONA}\n\n${langLine}\n\n操作知识：\n${facts.map((f) => `- ${f}`).join("\n")}\n\n门店数据（JSON，金额单位为元/dollars，时间为门店当地时间）：\n${JSON.stringify(toDollars(stats))}`;
+  const data = { ...(toDollars(stats) as Record<string, unknown>), sales_comparison: salesComparison(stats, lang) };
+  return `${PERSONA}\n\n操作知识：\n${facts.map((f) => `- ${f}`).join("\n")}\n\n门店数据（JSON，金额单位为元/dollars，时间为门店当地时间）：\n${JSON.stringify(data)}\n\n${RULES}\n\n${langLine}`;
 }
 
 // ---- model providers -------------------------------------------------------
@@ -170,8 +195,22 @@ async function transcribe(audioB64: string, mime: string, lang: Lang): Promise<s
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`transcription ${res.status}: ${JSON.stringify(data).slice(0, 300)}`);
-  return String(data?.text ?? "").trim();
+  const text = String(data?.text ?? "").trim();
+  // Whisper's stock output for silence or noise (trained on subtitled video);
+  // return nothing rather than put it in the manager's question box.
+  return HALLUCINATIONS.some((h) => h.test(text)) ? "" : text;
 }
+
+const HALLUCINATIONS = [
+  /^(thank you( (so much|very much))?( for watching)?[.!]*)$/i,
+  /^(thanks for watching[.!]*)$/i,
+  /^(please subscribe.*)$/i,
+  /^(you)$/i,
+  /^(谢谢(大家)?(观看|收看)?[。！!]*)$/,
+  /字幕(由|提供|志愿者)/,
+  /请不吝点赞|订阅.*(频道|转发)/,
+  /^[.。,，!！?？\s]*$/,
+];
 
 // ---- handler ---------------------------------------------------------------
 

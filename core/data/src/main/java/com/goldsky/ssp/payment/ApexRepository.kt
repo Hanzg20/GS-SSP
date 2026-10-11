@@ -38,14 +38,16 @@ object ApexRepository {
         val refresh: Boolean = false
     )
 
+    // No default values here: kotlinx.serialization leaves defaults out of the
+    // JSON, and a defaulted action = "transcribe" never reached the function
+    // (it answered "Unknown action").
     @Serializable
     private data class TranscribeRequest(
+        val action: String,
         val staffId: String,
         val language: String,
         val audio: String,
-        val mime: String = "audio/mp4",
-        val action: String = "transcribe",
-        val timezone: String = ""
+        val mime: String
     )
 
     sealed class Result {
@@ -86,7 +88,7 @@ object ApexRepository {
     suspend fun transcribe(staffId: String, language: String, audio: java.io.File): Result {
         val bytes = withContext(Dispatchers.IO) { audio.readBytes() }
         val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-        return call(TranscribeRequest(staffId, language, b64), language, "transcribe") { body ->
+        return call(TranscribeRequest("transcribe", staffId, language, b64, "audio/mp4"), language, "transcribe") { body ->
             when {
                 body["skipped"] != null -> Result.Failed(
                     if (language == "zh") "语音输入还没开通（云端未配置识别服务）" else "Voice input isn't switched on yet (no speech service configured)"
