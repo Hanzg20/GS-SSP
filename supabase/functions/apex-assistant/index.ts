@@ -17,6 +17,9 @@
 //   stats  the numbers only, no model call (always works, no key needed)
 //   brief  3-5 point summary of the day, cached per store/language for an hour
 //   ask    one question, with the last few turns of this staff member's chat
+//   history  this staff member's last 50 chat messages, oldest first, so the
+//          conversation is still there when the page is reopened (the model
+//          itself only gets the last 24 h / 10 turns of it)
 //   transcribe  { audio: base64, mime } -> { text }: speech to text for the
 //          mic button (Whisper on Groq, or OpenAI's whisper-1 if only
 //          OPENAI_API_KEY is set). The Q2's keyboard has no Chinese and it has
@@ -241,6 +244,13 @@ Deno.serve(async (req) => {
     const { data: staff } = await db.from("staff")
       .select("id, name, role").eq("id", body.staffId ?? "").eq("org_id", orgId).eq("is_active", true).maybeSingle();
     if (!staff || staff.role !== "MANAGER") return json({ error: "Managers only" }, 403);
+
+    if (action === "history") {
+      const { data: rows } = await db.from("apex_messages")
+        .select("role, content, created_at").eq("org_id", orgId).eq("staff_id", staff.id).eq("kind", "chat")
+        .order("created_at", { ascending: false }).limit(50);
+      return json({ messages: (rows ?? []).reverse() });
+    }
 
     if (action === "transcribe") {
       if (typeof body.audio !== "string" || !body.audio) return json({ error: "No audio" }, 400);

@@ -50,11 +50,15 @@ object ApexRepository {
         val mime: String
     )
 
+    data class Turn(val fromUser: Boolean, val text: String, val at: String)
+
     sealed class Result {
         /** [stats] is apex_store_stats()'s JSON (amounts in cents). */
         data class Brief(val text: String?, val stats: JsonObject?, val modelOff: Boolean) : Result()
         data class Reply(val text: String) : Result()
         data class Transcript(val text: String) : Result()
+        /** Oldest first; [Turn.at] is the server's ISO timestamp. */
+        data class History(val turns: List<Turn>) : Result()
         data class Failed(val message: String) : Result()
     }
 
@@ -82,6 +86,17 @@ object ApexRepository {
                 else -> body["reply"]?.jsonPrimitive?.contentOrNull?.let { Result.Reply(it) }
                     ?: Result.Failed("Empty reply")
             }
+        }
+
+    /** This staff member's earlier chat with 小海狸 (last 50 messages), to show on reopening. */
+    suspend fun history(staffId: String, language: String): Result =
+        call(Request("history", staffId, language, timezone())) { body ->
+            val turns = (body["messages"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { m ->
+                val o = m as? JsonObject ?: return@mapNotNull null
+                val text = o["content"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                Turn(o["role"]?.jsonPrimitive?.contentOrNull == "user", text, o["created_at"]?.jsonPrimitive?.contentOrNull ?: "")
+            }
+            Result.History(turns)
         }
 
     /** Speech to text for the hold-to-talk button; the caller shows the text for editing before sending. */

@@ -117,6 +117,17 @@ fun ApexScreen(staff: StaffMember) {
     }
     LaunchedEffect(lang) { load(refresh = false) }
 
+    // Earlier conversation (kept in the cloud per staff member), shown above anything new.
+    LaunchedEffect(Unit) {
+        val r = ApexRepository.history(staff.id, lang)
+        if (r is ApexRepository.Result.History && r.turns.isNotEmpty()) {
+            chat.addAll(0, r.turns.map { it.fromUser to it.text })
+            // After the list has laid the new items out: stats + brief come first, then the chat.
+            kotlinx.coroutines.delay(300)
+            listState.scrollToItem(2 + chat.size - 1)
+        }
+    }
+
     // The Q2 has no back key or navigation bar: nothing closes the keyboard
     // unless the screen does -- on send, on the keyboard's Send key, on a tap
     // outside the field, and when recording starts.
