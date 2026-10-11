@@ -38,10 +38,21 @@ object ApexRepository {
         val refresh: Boolean = false
     )
 
+    @Serializable
+    private data class TranscribeRequest(
+        val staffId: String,
+        val language: String,
+        val audio: String,
+        val mime: String = "audio/mp4",
+        val action: String = "transcribe",
+        val timezone: String = ""
+    )
+
     sealed class Result {
         /** [stats] is apex_store_stats()'s JSON (amounts in cents). */
         data class Brief(val text: String?, val stats: JsonObject?, val modelOff: Boolean) : Result()
         data class Reply(val text: String) : Result()
+        data class Transcript(val text: String) : Result()
         data class Failed(val message: String) : Result()
     }
 
@@ -71,9 +82,27 @@ object ApexRepository {
             }
         }
 
+    /** Speech to text for the hold-to-talk button; the caller shows the text for editing before sending. */
+    suspend fun transcribe(staffId: String, language: String, audio: java.io.File): Result {
+        val bytes = withContext(Dispatchers.IO) { audio.readBytes() }
+        val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+        return call(TranscribeRequest(staffId, language, b64), language, "transcribe") { body ->
+            when {
+                body["skipped"] != null -> Result.Failed(
+                    if (language == "zh") "语音输入还没开通（云端未配置识别服务）" else "Voice input isn't switched on yet (no speech service configured)"
+                )
+                else -> body["text"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { Result.Transcript(it) }
+                    ?: Result.Failed(if (language == "zh") "没听清，请再说一次" else "Didn't catch that -- try again")
+            }
+        }
+    }
+
     private fun timezone(): String = java.util.TimeZone.getDefault().id
 
-    private suspend fun call(request: Request, parse: (JsonObject) -> Result): Result = withContext(Dispatchers.IO) {
+    private suspend fun call(request: Request, parse: (JsonObject) -> Result): Result =
+        call(request, request.language, request.action, parse)
+
+    private suspend fun call(request: Any, language: String, action: String, parse: (JsonObject) -> Result): Result = withContext(Dispatchers.IO) {
         try {
             SupabaseClientProvider.ensureAuthenticated()
             val response = SupabaseClientProvider.invokeFunction(FUNCTION, request)
@@ -81,13 +110,13 @@ object ApexRepository {
             val body = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
             if (!response.status.isSuccess() || body == null) {
                 val error = body?.get("error")?.jsonPrimitive?.contentOrNull ?: "HTTP ${response.status.value}"
-                Log.w(TAG, "${request.action} failed: $error")
+                Log.w(TAG, "$action failed: $error")
                 return@withContext Result.Failed(error)
             }
             parse(body)
         } catch (e: Exception) {
-            Log.w(TAG, "${request.action} failed: ${e.message}")
-            Result.Failed(if (request.language == "zh") "连不上服务器，请检查网络" else "Can't reach the server -- check the connection")
+            Log.w(TAG, "$action failed: ${e.message}")
+            Result.Failed(if (language == "zh") "连不上服务器，请检查网络" else "Can't reach the server -- check the connection")
         }
     }
 }

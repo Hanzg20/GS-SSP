@@ -17,6 +17,10 @@
 //   stats  the numbers only, no model call (always works, no key needed)
 //   brief  3-5 point summary of the day, cached per store/language for an hour
 //   ask    one question, with the last few turns of this staff member's chat
+//   transcribe  { audio: base64, mime } -> { text }: speech to text for the
+//          mic button (Whisper on Groq, or OpenAI's whisper-1 if only
+//          OPENAI_API_KEY is set). The Q2's keyboard has no Chinese and it has
+//          no Google Play services, so the system recognizer can't help.
 //
 // Model: switchable. APEX_PROVIDER = "anthropic" | "groq"; without it,
 // whichever key is set (Anthropic first). Secrets:
@@ -137,6 +141,38 @@ function alternate(turns: Turn[]): Turn[] {
   return out;
 }
 
+// ---- speech to text --------------------------------------------------------
+
+const MAX_AUDIO_BYTES = 2_000_000; // ~60 s of AAC; the terminal stops at 30 s
+
+async function transcribe(audioB64: string, mime: string, lang: Lang): Promise<string | null> {
+  const groqKey = Deno.env.get("GROQ_API_KEY");
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!groqKey && !openaiKey) return null;
+  const bytes = Uint8Array.from(atob(audioB64), (c) => c.charCodeAt(0));
+  if (bytes.length > MAX_AUDIO_BYTES) throw new Error("Recording too long");
+
+  const form = new FormData();
+  form.append("file", new Blob([bytes], { type: mime }), mime.includes("wav") ? "speech.wav" : "speech.m4a");
+  form.append("model", groqKey ? (Deno.env.get("APEX_GROQ_STT_MODEL") ?? "whisper-large-v3") : "whisper-1");
+  // No language lock: managers mix Chinese with English product names. The
+  // prompt steers Mandarin to simplified characters (Whisper often writes
+  // traditional) and spells the store vocabulary.
+  form.append("prompt", lang === "zh"
+    ? "以下是普通话的句子，使用简体中文。今天的销售额、退款、商品、库存、收银员。"
+    : "Questions about today's sales, refunds, products and staff.");
+  form.append("response_format", "json");
+
+  const res = await fetch(groqKey ? "https://api.groq.com/openai/v1/audio/transcriptions" : "https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${groqKey ?? openaiKey}` },
+    body: form,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`transcription ${res.status}: ${JSON.stringify(data).slice(0, 300)}`);
+  return String(data?.text ?? "").trim();
+}
+
 // ---- handler ---------------------------------------------------------------
 
 Deno.serve(async (req) => {
@@ -166,6 +202,12 @@ Deno.serve(async (req) => {
     const { data: staff } = await db.from("staff")
       .select("id, name, role").eq("id", body.staffId ?? "").eq("org_id", orgId).eq("is_active", true).maybeSingle();
     if (!staff || staff.role !== "MANAGER") return json({ error: "Managers only" }, 403);
+
+    if (action === "transcribe") {
+      if (typeof body.audio !== "string" || !body.audio) return json({ error: "No audio" }, 400);
+      const text = await transcribe(body.audio, typeof body.mime === "string" ? body.mime : "audio/mp4", lang);
+      return text === null ? json({ skipped: "No speech-to-text key configured" }) : json({ text });
+    }
 
     const { data: stats, error: statsError } = await db.rpc("apex_store_stats", { p_org: orgId, p_tz: tz });
     if (statsError) throw new Error(statsError.message);

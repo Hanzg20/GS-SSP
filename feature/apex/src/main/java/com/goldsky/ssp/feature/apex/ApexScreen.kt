@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
@@ -18,6 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -66,6 +69,36 @@ fun ApexScreen(staff: StaffMember) {
     var question by remember { mutableStateOf("") }
     var asking by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+
+    // Hold-to-talk: speech -> text in the input box (edited, then sent by hand).
+    val recorder = remember { VoiceRecorder(context) }
+    DisposableEffect(Unit) { onDispose { recorder.stopQuietly() } }
+    var recording by remember { mutableStateOf(false) }
+    var transcribing by remember { mutableStateOf(false) }
+    var voiceNote by remember { mutableStateOf<String?>(null) }
+    var micAllowed by remember {
+        mutableStateOf(androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED)
+    }
+    val askMic = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted -> micAllowed = granted }
+
+    fun stopAndTranscribe() {
+        if (!recording) return
+        recording = false
+        val audio = recorder.stop() ?: run { voiceNote = t("按住说话，松开结束", "Hold to talk, release when done"); return }
+        transcribing = true
+        voiceNote = null
+        scope.launch {
+            when (val r = ApexRepository.transcribe(staff.id, lang, audio)) {
+                is ApexRepository.Result.Transcript -> question = (if (question.isBlank()) "" else "$question ") + r.text
+                is ApexRepository.Result.Failed -> voiceNote = r.message
+                else -> {}
+            }
+            transcribing = false
+        }
+    }
 
     fun load(refresh: Boolean) {
         loading = true
@@ -158,7 +191,38 @@ fun ApexScreen(staff: StaffMember) {
         LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(quick) { q -> AssistChip(onClick = { send(q) }, label = { Text(q) }, enabled = !asking) }
         }
+        val note = when {
+            recording -> t("正在听…松开结束", "Listening... release when done")
+            transcribing -> t("正在识别…", "Transcribing...")
+            else -> voiceNote
+        }
+        if (note != null) {
+            Text(note, Modifier.padding(start = 16.dp, top = 6.dp), style = MaterialTheme.typography.bodySmall,
+                color = if (recording) GsTheme.colors.danger else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Row(Modifier.fillMaxWidth().padding(12.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Press and hold to record; release to transcribe.
+            Surface(
+                shape = CircleShape,
+                color = if (recording) GsTheme.colors.danger else MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.size(52.dp).pointerInput(micAllowed, asking, transcribing) {
+                    detectTapGestures(onPress = {
+                        if (!micAllowed) { askMic.launch(android.Manifest.permission.RECORD_AUDIO); return@detectTapGestures }
+                        if (asking || transcribing) return@detectTapGestures
+                        recording = recorder.start()
+                        if (!recording) voiceNote = t("麦克风打不开", "Couldn't open the microphone")
+                        tryAwaitRelease()
+                        stopAndTranscribe()
+                    })
+                }
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    if (transcribing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Default.Mic, contentDescription = t("按住说话", "Hold to talk"),
+                        tint = if (recording) Color.White else MaterialTheme.colorScheme.primary)
+                }
+            }
+            Spacer(Modifier.width(8.dp))
             OutlinedTextField(
                 value = question,
                 onValueChange = { question = it.take(500) },
