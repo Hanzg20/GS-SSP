@@ -56,6 +56,13 @@ object ApexRepository {
         /** [stats] is apex_store_stats()'s JSON (amounts in cents). */
         data class Brief(val text: String?, val stats: JsonObject?, val modelOff: Boolean) : Result()
         data class Reply(val text: String) : Result()
+        /**
+         * An expense or a reminder to confirm (apex-assistant's parse; amounts re-read
+         * from the spoken words, dates range-checked). Keys: kind = "expense" (vendor,
+         * category, amount [dollars, may be null], amountWords, spentOn, note) or
+         * "reminder" (text, dueAt [ISO, may be null], whenWords); check = fields to look at.
+         */
+        data class Proposal(val data: JsonObject) : Result()
         data class Transcript(val text: String) : Result()
         /** Oldest first; [Turn.at] is the server's ISO timestamp. */
         data class History(val turns: List<Turn>) : Result()
@@ -83,6 +90,7 @@ object ApexRepository {
                 body["skipped"] != null -> Result.Failed(
                     if (language == "zh") "小海狸还没开通（云端未配置模型）" else "Beaver isn't switched on yet (no model configured)"
                 )
+                body["proposal"] is JsonObject -> Result.Proposal(body["proposal"] as JsonObject)
                 else -> body["reply"]?.jsonPrimitive?.contentOrNull?.let { Result.Reply(it) }
                     ?: Result.Failed("Empty reply")
             }

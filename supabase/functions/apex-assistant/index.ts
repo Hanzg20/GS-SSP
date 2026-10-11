@@ -34,6 +34,7 @@
 // No key at all: brief/ask answer { skipped }, the terminal shows the numbers only.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+import { calendarLines, localNow, looksLikeCommand, parsePrompt, toProposal } from "./parse.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -66,11 +67,13 @@ const RULES = `底线绝对不能松：
 8. 不要猜原因或背景（比如"可能还没开门""可能天气不好"），只说数据显示了什么。
 9. 用自然的话说，回复里不要出现数据里的英文字段名（如 total_dollars、sales）或括号标注。
 10. loss_signals.flags 是系统按固定规则挑出的"值得核对"的情况，不是结论：只能说"建议核对一下"，绝不能说谁偷了、谁有问题。没有 flag 就不要提防损，也不要自己从数字里挑可疑的人。
-11. perishable_not_sold_3_days 是 3 天没卖出的生鲜，可以建议打折或检查是否已变质；不要猜原因。`;
+11. perishable_not_sold_3_days 是 3 天没卖出的生鲜，可以建议打折或检查是否已变质；不要猜原因。
+12. reminders_due 是今天到期或已过期（overdue=true）的待办；expenses_this_month 是本月已记的费用（按类别），expenses_last_month_dollars 是上月合计，sales_this_month_dollars 是本月销售额。费用只按这些记录说，没记的就是"系统里还没记"，不要估算。类别名翻译：INVENTORY 进货、RENT 房租、UTILITIES 水电网、PAYROLL 工资、REPAIRS 维修、MARKETING 营销、FEES 手续费、OTHER 其他。
+13. 想记账或设提醒，告诉他直接说出来，比如"今天付了电费 234 块 5"或"明天 9 点提醒我订货"，你会弹出确认卡片。`;
 
 const BRIEF_TASK: Record<Lang, string> = {
-  zh: "请给老板写一份今天的经营简报：3-5 条要点，每条一行、以「• 」开头，先说今天到现在的销售情况（和上周同一天同一时段比），再挑最值得注意的：防损提醒（loss_signals.flags，有就一定写，措辞是「建议核对」）、生鲜 3 天没卖出（建议打折）、畅销/滞销商品、高峰时段、终端离线、未完成的送货单。只写有数据支撑的内容；没有值得说的就少写几条。不要开场白和结束语。",
-  en: "Write today's brief for the store owner: 3-5 points, one per line starting with \"• \". First, sales so far today versus the same weekday last week at this time; then the most notable of: loss-prevention flags (loss_signals.flags -- always include them, worded as \"worth checking\", never as an accusation), fresh items unsold for 3 days (suggest a markdown), best/slow sellers, peak hours, terminals offline, open delivery orders. Only what the data supports; fewer points is fine. No greeting or sign-off.",
+  zh: "请给老板写一份今天的经营简报：3-5 条要点，每条一行、以「• 」开头，先说今天到现在的销售情况（和上周同一天同一时段比），再挑最值得注意的：防损提醒（loss_signals.flags，有就一定写，措辞是「建议核对」）、今天到期或已过期的待办（reminders_due，有就一定写）、生鲜 3 天没卖出（建议打折）、畅销/滞销商品、高峰时段、终端离线、未完成的送货单。只写有数据支撑的内容；没有值得说的就少写几条。不要开场白和结束语。",
+  en: "Write today's brief for the store owner: 3-5 points, one per line starting with \"• \". First, sales so far today versus the same weekday last week at this time; then the most notable of: loss-prevention flags (loss_signals.flags -- always include them, worded as \"worth checking\", never as an accusation), to-dos due today or overdue (reminders_due -- always include them), fresh items unsold for 3 days (suggest a markdown), best/slow sellers, peak hours, terminals offline, open delivery orders. Only what the data supports; fewer points is fine. No greeting or sign-off.",
 };
 
 function json(data: unknown, status = 200): Response {
@@ -144,11 +147,19 @@ function pickProvider(): Provider | null {
     return {
       name: "groq", model,
       call: async (system, turns) => {
-        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const send = () => fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...turns] }),
         });
+        let res = await send();
+        // Free tier: 8000 tokens/minute for the whole Groq account (every store,
+        // and JustWeDo's beaver too). Wait out a short limit once.
+        if (res.status === 429) {
+          const wait = Number(res.headers.get("retry-after") ?? "") || 6;
+          if (wait <= 10) { await new Promise((ok) => setTimeout(ok, wait * 1000 + 300)); res = await send(); }
+          if (res.status === 429) throw new BusyError();
+        }
         const data = await res.json();
         const text: string | undefined = data?.choices?.[0]?.message?.content;
         if (!res.ok || !text) throw new Error(`groq ${res.status}: ${JSON.stringify(data).slice(0, 300)}`);
@@ -158,6 +169,9 @@ function pickProvider(): Provider | null {
   }
   return null;
 }
+
+/** The model provider is rate-limiting us; the terminal says "busy, try again". */
+class BusyError extends Error {}
 
 /** Anthropic needs strictly alternating turns starting with the user. */
 function alternate(turns: Turn[]): Turn[] {
@@ -302,6 +316,22 @@ Deno.serve(async (req) => {
         return json({ reply: lang === "zh" ? "今天问得有点多啦，小海狸要去筑会儿坝，明天再来吧～" : "That's a lot of questions for one day — Beaver needs a break. Try again tomorrow!" });
       }
 
+      // An expense to book or a to-do to remember? Then a proposal for the
+      // terminal to show on a confirmation card -- nothing is saved here.
+      if (looksLikeCommand(question)) {
+        const raw = await provider.call(parsePrompt(lang, localNow(tz).stamp, calendarLines(tz)), [{ role: "user", content: question }]);
+        const match = raw.match(/\{[\s\S]*\}/);
+        const proposal = match ? toProposal(JSON.parse(match[0]), tz) : null;
+        if (proposal) {
+          await log("chat", "user", question);
+          const summary = proposal.kind === "expense"
+            ? (lang === "zh" ? `【待确认费用】${proposal.note || proposal.vendor} $${proposal.amount ?? "?"}` : `[Expense to confirm] ${proposal.note || proposal.vendor} $${proposal.amount ?? "?"}`)
+            : (lang === "zh" ? `【待确认提醒】${proposal.text}` : `[Reminder to confirm] ${proposal.text}`);
+          await log("chat", "assistant", summary);
+          return json({ proposal });
+        }
+      }
+
       const { data: history } = await db.from("apex_messages")
         .select("role, content").eq("org_id", orgId).eq("staff_id", staff.id).eq("kind", "chat")
         .gte("created_at", new Date(Date.now() - 86_400_000).toISOString())
@@ -317,6 +347,9 @@ Deno.serve(async (req) => {
     return json({ error: "Unknown action" }, 400);
   } catch (e) {
     console.error("[apex-assistant]", e);
+    if (e instanceof BusyError) {
+      return json({ reply: "小海狸这会儿有点忙（问的人多），请过半分钟再试～ / Beaver is busy right now -- try again in half a minute.", busy: true });
+    }
     return json({ error: (e as Error).message }, 500);
   }
 });

@@ -66,6 +66,15 @@ fun ApexScreen(staff: StaffMember) {
     var loadError by remember { mutableStateOf<String?>(null) }
 
     val chat = remember { mutableStateListOf<Pair<Boolean, String>>() } // (fromUser, text)
+    // An expense / reminder 小海狸 understood, waiting for the manager's OK.
+    var proposal by remember { mutableStateOf<JsonObject?>(null) }
+    var notifyAllowed by remember {
+        mutableStateOf(android.os.Build.VERSION.SDK_INT < 33 || androidx.core.content.ContextCompat.checkSelfPermission(
+            context, "android.permission.POST_NOTIFICATIONS") == android.content.pm.PackageManager.PERMISSION_GRANTED)
+    }
+    val askNotify = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted -> notifyAllowed = granted }
     var question by remember { mutableStateOf("") }
     var asking by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -145,6 +154,11 @@ fun ApexScreen(staff: StaffMember) {
         scope.launch {
             val answer = when (val r = ApexRepository.ask(staff.id, lang, q)) {
                 is ApexRepository.Result.Reply -> r.text
+                is ApexRepository.Result.Proposal -> {
+                    proposal = r.data
+                    if (r.data["kind"]?.jsonPrimitive?.contentOrNull == "reminder" && !notifyAllowed) askNotify.launch("android.permission.POST_NOTIFICATIONS")
+                    t("请确认下面的内容，确认后才会保存。", "Please check the card below -- nothing is saved until you confirm.")
+                }
                 is ApexRepository.Result.Failed -> "⚠ ${r.message}"
                 else -> ""
             }
@@ -181,7 +195,9 @@ fun ApexScreen(staff: StaffMember) {
         ) {
             item {
                 when {
-                    stats != null -> StatsPanel(stats!!, lang)
+                    stats != null -> StatsPanel(stats!!, lang, onReminderDone = { id ->
+                        scope.launch { if (com.goldsky.ssp.payment.ReminderRepository.markDone(id)) load(refresh = false) }
+                    })
                     loading -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     loadError != null -> Notice("⚠ $loadError")
                 }
@@ -207,6 +223,13 @@ fun ApexScreen(staff: StaffMember) {
             }
             items(chat) { (fromUser, text) -> ChatBubble(fromUser, text, lang) }
             if (asking) item { ChatBubble(false, "…", lang) }
+        }
+
+        proposal?.let { p ->
+            ProposalCard(p, lang,
+                onCancel = { proposal = null; chat.add(false to t("好的，已取消。", "OK, cancelled.")) },
+                onSaved = { message -> proposal = null; chat.add(false to message); load(refresh = false) },
+                staff = staff)
         }
 
         // Quick questions + input
@@ -303,7 +326,7 @@ private fun JsonObject.arr(key: String): List<JsonObject> = (this[key] as? JsonA
 
 /** The store's live numbers -- straight from the database, no model involved. */
 @Composable
-private fun StatsPanel(stats: JsonObject, lang: String) {
+private fun StatsPanel(stats: JsonObject, lang: String, onReminderDone: (String) -> Unit) {
     fun t(zh: String, en: String) = if (lang == "zh") zh else en
     val today = stats.obj("today")
     val lastWeek = stats.obj("same_time_last_week")
@@ -333,6 +356,23 @@ private fun StatsPanel(stats: JsonObject, lang: String) {
         if (top.isNotEmpty()) {
             StatCard(t("近 7 天畅销", "Best sellers (7 days)"),
                 top.joinToString("\n") { "${it["name"]?.jsonPrimitive?.contentOrNull} × ${it.num("qty").toInt()}" }, Modifier.fillMaxWidth(), small = true)
+        }
+        val due = stats.arr("reminders_due")
+        if (due.isNotEmpty()) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(t("今天的待办", "To-dos due today"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    due.forEach { r ->
+                        val overdue = r["overdue"]?.jsonPrimitive?.contentOrNull == "true"
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text("${r["due"]?.jsonPrimitive?.contentOrNull?.takeLast(5) ?: ""}  ${r["text"]?.jsonPrimitive?.contentOrNull ?: ""}",
+                                Modifier.weight(1f), color = if (overdue) GsTheme.colors.danger else MaterialTheme.colorScheme.onSurface)
+                            TextButton(onClick = { r["id"]?.jsonPrimitive?.contentOrNull?.let(onReminderDone) }) { Text(t("完成", "Done")) }
+                        }
+                    }
+                }
+            }
         }
         // Loss prevention first: rule-based flags from the database, worded here.
         val flags = stats.obj("loss_signals")?.arr("flags").orEmpty()
@@ -384,6 +424,110 @@ private fun StatCard(title: String, value: String, modifier: Modifier, sub: Stri
             if (sub != null) {
                 Spacer(Modifier.height(2.dp))
                 Text(sub, style = MaterialTheme.typography.bodySmall, color = subColor ?: MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/**
+ * 小海狸's understanding of a spoken expense or reminder, editable, saved only
+ * on 确认. Fields the server flagged (amount re-read from the words didn't match,
+ * date out of range, no time) are marked "请核对" and must be filled in.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProposalCard(p: JsonObject, lang: String, staff: StaffMember, onCancel: () -> Unit, onSaved: (String) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    fun t(zh: String, en: String) = if (lang == "zh") zh else en
+    fun str(k: String) = p[k]?.jsonPrimitive?.contentOrNull ?: ""
+    val check = (p["check"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty()
+    val isExpense = str("kind") == "expense"
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    // expense fields
+    var vendor by remember(p) { mutableStateOf(str("vendor")) }
+    var amount by remember(p) { mutableStateOf(p["amount"]?.jsonPrimitive?.doubleOrNull?.let { "%.2f".format(it) } ?: "") }
+    var category by remember(p) { mutableStateOf(str("category").ifBlank { "OTHER" }) }
+    var spentOn by remember(p) { mutableStateOf(str("spentOn")) }
+    var note by remember(p) { mutableStateOf(str("note")) }
+    // reminder fields (store-local date and time)
+    val dueMillis = str("dueAt").takeIf { it.isNotBlank() }?.let { com.goldsky.ssp.payment.DayReportRepository.parseIsoMillis(it) }
+    var text by remember(p) { mutableStateOf(str("text")) }
+    var dueDate by remember(p) { mutableStateOf(dueMillis?.let { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(it)) } ?: "") }
+    var dueTime by remember(p) { mutableStateOf(dueMillis?.let { java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(it)) } ?: "") }
+
+    @Composable
+    fun flagged(field: String, label: String): @Composable () -> Unit = {
+        Text(if (field in check) "$label · ${t("请核对", "please check")}" else label,
+            color = if (field in check) GsTheme.colors.warning else androidx.compose.ui.graphics.Color.Unspecified)
+    }
+
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(if (isExpense) t("💵 记一笔费用", "💵 Record an expense") else t("📌 设一个提醒", "📌 Set a reminder"),
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            if (isExpense) {
+                val said = listOf(str("amountWords"), str("dateWords")).filter { it.isNotBlank() }.joinToString("，")
+                if (said.isNotBlank()) Text(t("你说的：", "You said: ") + said, style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' }.take(10) }, Modifier.weight(1f),
+                        label = flagged("amount", t("金额 $", "Amount $")), singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                    OutlinedTextField(spentOn, { spentOn = it.take(10) }, Modifier.weight(1f), label = flagged("date", t("日期", "Date")), singleLine = true)
+                }
+                OutlinedTextField(vendor, { vendor = it.take(120) }, Modifier.fillMaxWidth(), label = { Text(t("收款方", "Paid to")) }, singleLine = true)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(com.goldsky.ssp.payment.ExpenseRepository.CATEGORIES) { c ->
+                        FilterChip(selected = category == c, onClick = { category = c },
+                            label = { Text(com.goldsky.ssp.payment.ExpenseRepository.label(c, lang == "zh")) })
+                    }
+                }
+                OutlinedTextField(note, { note = it.take(500) }, Modifier.fillMaxWidth(), label = { Text(t("备注", "Note")) }, singleLine = true)
+            } else {
+                OutlinedTextField(text, { text = it.take(300) }, Modifier.fillMaxWidth(), label = { Text(t("内容", "What")) })
+                if (str("whenWords").isNotBlank()) Text(t("你说的时间：", "You said: ") + str("whenWords"), style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(dueDate, { dueDate = it.take(10) }, Modifier.weight(1f), label = flagged("due", t("日期 yyyy-mm-dd", "Date yyyy-mm-dd")), singleLine = true)
+                    OutlinedTextField(dueTime, { dueTime = it.take(5) }, Modifier.weight(1f), label = flagged("due", t("时间 HH:mm", "Time HH:mm")), singleLine = true)
+                }
+            }
+            error?.let { Text(it, color = GsTheme.colors.danger, style = MaterialTheme.typography.bodySmall) }
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onCancel, enabled = !saving) { Text(t("取消", "Cancel")) }
+                Spacer(Modifier.width(8.dp))
+                Button(enabled = !saving, onClick = {
+                    error = null
+                    if (isExpense) {
+                        val cents = amount.toDoubleOrNull()?.let { Math.round(it * 100).toInt() }
+                        if (cents == null || cents <= 0) { error = t("请填写金额", "Enter the amount"); return@Button }
+                        if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(spentOn)) { error = t("日期格式：2026-10-10", "Date as 2026-10-10"); return@Button }
+                        saving = true
+                        scope.launch {
+                            val online = com.goldsky.ssp.payment.ExpenseRepository.record(context, vendor, category, cents, spentOn, note, "voice", staff)
+                            saving = false
+                            val what = "${com.goldsky.ssp.payment.ExpenseRepository.label(category, lang == "zh")} $${"%.2f".format(cents / 100.0)}" +
+                                (if (vendor.isNotBlank()) " · $vendor" else "")
+                            onSaved(if (online) t("已记账：$what", "Booked: $what") else t("已记下：$what（离线，联网后自动上传）", "Saved: $what (offline, uploads when back online)"))
+                        }
+                    } else {
+                        val at = runCatching {
+                            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).apply { isLenient = false }.parse("$dueDate $dueTime")?.time
+                        }.getOrNull()
+                        if (text.isBlank()) { error = t("请填写内容", "Enter what to do"); return@Button }
+                        if (at == null || at < System.currentTimeMillis()) { error = t("请填一个将来的日期和时间", "Enter a future date and time"); return@Button }
+                        saving = true
+                        scope.launch {
+                            val ok = com.goldsky.ssp.payment.ReminderRepository.create(context, text, at, staff)
+                            saving = false
+                            if (ok) onSaved(t("好的，$dueDate $dueTime 提醒你：$text", "OK -- I'll remind you at $dueDate $dueTime: $text"))
+                            else error = t("没保存成功，请检查网络再试", "Couldn't save -- check the connection and try again")
+                        }
+                    }
+                }) { Text(if (saving) t("保存中…", "Saving...") else t("确认", "Confirm"), fontWeight = FontWeight.Bold) }
             }
         }
     }

@@ -2,4 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 小海狸's hold-to-talk button (merged into every shell that shows ApexScreen). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 小海狸 reminders (Android 13+ asks; requested when the first reminder is confirmed). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

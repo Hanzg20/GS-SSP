@@ -23,12 +23,19 @@ import com.goldsky.ssp.db.ExpenseEntity
 import com.goldsky.ssp.db.LocalDatabase
 import com.goldsky.ssp.feature.retail.ui.GoldSkyCyan
 import com.goldsky.ssp.payment.DeviceRepository
+import com.goldsky.ssp.payment.ExpenseRepository
+import com.goldsky.ssp.payment.StaffRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
+/**
+ * The store's expenses -- the same cloud records 小海狸 books by voice
+ * (ExpenseRepository): added here by hand or from a receipt photo, listed from
+ * the cloud (offline copy when there's no connection), visible in CMP.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExpenseScreen(onScanReceipt: () -> Unit) {
@@ -36,15 +43,18 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
     val scope = rememberCoroutineScope()
     var expenses by remember { mutableStateOf<List<ExpenseEntity>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var adding by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        scope.launch(Dispatchers.IO) {
-            val list = LocalDatabase.getInstance(context).expenseDao().getAll()
-            withContext(Dispatchers.Main) {
-                expenses = list
-                isLoading = false
-            }
+    fun reload() {
+        scope.launch {
+            expenses = ExpenseRepository.list(context)
+            isLoading = false
         }
+    }
+    LaunchedEffect(Unit) { reload() }
+
+    if (adding) {
+        AddExpenseDialog(onDismiss = { adding = false }, onSaved = { adding = false; reload() })
     }
 
     Scaffold(
@@ -52,6 +62,9 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("EXPENSES", fontWeight = FontWeight.Black) },
+                actions = {
+                    IconButton(onClick = { adding = true }) { Icon(Icons.Default.Add, contentDescription = "Add expense") }
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.primary
@@ -83,7 +96,7 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("No expenses recorded.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(
-                    onClick = { /* TODO: Manual Add */ },
+                    onClick = { adding = true },
                     modifier = Modifier.padding(top = 16.dp),
                     colors = ButtonDefaults.buttonColors()
                 ) {
@@ -106,9 +119,10 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
 
 @Composable
 fun ExpenseCard(expense: ExpenseEntity) {
-    val dateStr = remember(expense.createdAt) {
-        SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(Date(expense.createdAt))
+    val dateStr = remember(expense.createdAt, expense.spentOn) {
+        expense.spentOn ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(expense.createdAt))
     }
+    val via = when (expense.source) { "voice" -> " · 🎙"; "receipt" -> " · 📷"; else -> "" }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -124,7 +138,7 @@ fun ExpenseCard(expense: ExpenseEntity) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = expense.vendor.uppercase(),
+                    text = expense.vendor.ifBlank { expense.note ?: "" }.uppercase(),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                     letterSpacing = 1.sp
@@ -136,7 +150,8 @@ fun ExpenseCard(expense: ExpenseEntity) {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "$dateStr • ${expense.category}",
+                    text = "$dateStr • ${ExpenseRepository.label(expense.category, false)}$via" +
+                        (expense.staffName?.let { " • $it" } ?: "") + (if (expense.synced) "" else " • not uploaded yet"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -149,3 +164,54 @@ fun ExpenseCard(expense: ExpenseEntity) {
     }
 }
 
+/** Manual entry: amount, date, who was paid, category, note. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddExpenseDialog(onDismiss: () -> Unit, onSaved: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var amount by remember { mutableStateOf("") }
+    var spentOn by remember { mutableStateOf(ExpenseRepository.today()) }
+    var vendor by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("INVENTORY") }
+    var note by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("Add expense") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' }.take(10) }, Modifier.weight(1f),
+                        label = { Text("Amount $") }, singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                    OutlinedTextField(spentOn, { spentOn = it.take(10) }, Modifier.weight(1f), label = { Text("Date") }, singleLine = true)
+                }
+                OutlinedTextField(vendor, { vendor = it.take(120) }, Modifier.fillMaxWidth(), label = { Text("Paid to") }, singleLine = true)
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(ExpenseRepository.CATEGORIES) { c ->
+                        FilterChip(selected = category == c, onClick = { category = c }, label = { Text(ExpenseRepository.label(c, false)) })
+                    }
+                }
+                OutlinedTextField(note, { note = it.take(500) }, Modifier.fillMaxWidth(), label = { Text("Note") }, singleLine = true)
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            Button(enabled = !saving, onClick = {
+                val cents = amount.toDoubleOrNull()?.let { Math.round(it * 100).toInt() }
+                if (cents == null || cents <= 0) { error = "Enter the amount"; return@Button }
+                if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(spentOn)) { error = "Date as 2026-10-10"; return@Button }
+                saving = true
+                scope.launch {
+                    ExpenseRepository.record(context, vendor, category, cents, spentOn, note, "manual", StaffRepository.current)
+                    saving = false
+                    onSaved()
+                }
+            }) { Text(if (saving) "SAVING..." else "SAVE", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text("CANCEL") } }
+    )
+}

@@ -72,6 +72,9 @@ class MainActivity : ComponentActivity() {
             SupabaseClientProvider.ensureAuthenticated()
             DeviceRepository.registerDevice(deviceSn, BuildConfig.VERSION_NAME)
             DeviceRepository.syncDeviceIdentity(deviceSn)
+            // Expenses saved offline go up; this terminal's reminders get their notifications back.
+            ExpenseRepository.syncPending(this@MainActivity)
+            ReminderRepository.rescheduleOpen(this@MainActivity)
             RetailRepository.syncWithCloud(this@MainActivity)
         }
 

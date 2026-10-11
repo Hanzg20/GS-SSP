@@ -48,7 +48,14 @@ data class ExpenseEntity(
     val amountCents: Int,
     val category: String,
     val imageUrl: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    // v8: the cloud `expenses` table is the record now; this is its offline
+    // copy. synced = uploaded (an unsynced row is retried on the next sync).
+    val spentOn: String? = null,      // yyyy-MM-dd, store-local
+    val note: String? = null,
+    val source: String = "manual",    // manual | receipt | voice
+    val staffName: String? = null,
+    val synced: Boolean = false
 )
 
 @Dao
@@ -103,6 +110,18 @@ interface ExpenseDao {
     @Query("SELECT * FROM local_expenses ORDER BY createdAt DESC")
     fun getAll(): List<ExpenseEntity>
 
+    @Query("SELECT * FROM local_expenses WHERE synced = 0")
+    fun unsynced(): List<ExpenseEntity>
+
+    @Query("UPDATE local_expenses SET synced = 1 WHERE id = :id")
+    fun markSynced(id: String)
+
+    @Query("DELETE FROM local_expenses WHERE synced = 1")
+    fun deleteSynced()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertAll(expenses: List<ExpenseEntity>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(expense: ExpenseEntity)
 
@@ -110,7 +129,7 @@ interface ExpenseDao {
     fun delete(expense: ExpenseEntity)
 }
 
-@Database(entities = [ProductEntity::class, OrderEntity::class, ParkedOrderEntity::class, ExpenseEntity::class], version = 7, exportSchema = false)
+@Database(entities = [ProductEntity::class, OrderEntity::class, ParkedOrderEntity::class, ExpenseEntity::class], version = 8, exportSchema = false)
 abstract class LocalDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
     abstract fun orderDao(): OrderDao
@@ -123,6 +142,16 @@ abstract class LocalDatabase : RoomDatabase() {
 
         // Explicit so this upgrade doesn't fall through to the destructive
         // fallback, which would also wipe local orders and parked carts.
+        private val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_expenses ADD COLUMN spentOn TEXT")
+                db.execSQL("ALTER TABLE local_expenses ADD COLUMN note TEXT")
+                db.execSQL("ALTER TABLE local_expenses ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
+                db.execSQL("ALTER TABLE local_expenses ADD COLUMN staffName TEXT")
+                db.execSQL("ALTER TABLE local_expenses ADD COLUMN synced INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         private val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE local_products ADD COLUMN taxRateBps INTEGER")
@@ -136,7 +165,7 @@ abstract class LocalDatabase : RoomDatabase() {
                     LocalDatabase::class.java,
                     "ssp_local_db"
                 )
-                .addMigrations(MIGRATION_6_7)
+                .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

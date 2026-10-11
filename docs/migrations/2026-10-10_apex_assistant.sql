@@ -171,6 +171,22 @@ BEGIN
     'declined_today', (SELECT count(*) FROM tx WHERE payment_status = 'DECLINED' AND local_at::date = today),
     'loss_signals', apex_loss_signals(p_org, tz),
     'delivery_open', (SELECT count(*) FROM delivery_orders WHERE org_id = p_org AND status = 'OPEN'),
+    -- Open to-dos due by the end of today (overdue included), soonest first.
+    'reminders_due', (SELECT coalesce(jsonb_agg(jsonb_build_object('id', id, 'text', text, 'for', staff_name,
+          'due', to_char(due_at AT TIME ZONE tz, 'MM-DD HH24:MI'), 'overdue', due_at < now()) ORDER BY due_at), '[]')
+      FROM reminders WHERE org_id = p_org AND done_at IS NULL AND (due_at AT TIME ZONE tz)::date <= today),
+    -- Spending this calendar month (by category) and all of last month.
+    'expenses_this_month', (SELECT jsonb_build_object(
+          'total_cents', coalesce(sum(amount_cents), 0),
+          'by_category', coalesce((SELECT jsonb_object_agg(category, c) FROM (
+              SELECT category, sum(amount_cents) AS c FROM expenses
+              WHERE org_id = p_org AND spent_on >= date_trunc('month', today)::date GROUP BY 1) x), '{}'))
+      FROM expenses WHERE org_id = p_org AND spent_on >= date_trunc('month', today)::date),
+    'expenses_last_month_cents', (SELECT coalesce(sum(amount_cents), 0) FROM expenses WHERE org_id = p_org
+      AND spent_on >= (date_trunc('month', today) - INTERVAL '1 month')::date AND spent_on < date_trunc('month', today)::date),
+    'sales_this_month_cents', (SELECT coalesce(sum(amount), 0) FROM transactions t
+      WHERE t.device_sn IN (SELECT sn FROM devices WHERE org_id = p_org) AND t.payment_status = 'PAID'
+        AND (t.created_at AT TIME ZONE tz)::date >= date_trunc('month', today)::date),
     -- Online = a heartbeat within 35 min (they come every 15). Decided here, not
     -- left to the model: given raw minutes it called an 8-minute-old heartbeat
     -- "idle, auto-locked" (the lock screen is a different thing entirely).

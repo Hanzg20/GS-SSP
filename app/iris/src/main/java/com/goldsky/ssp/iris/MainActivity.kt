@@ -97,6 +97,9 @@ class MainActivity : ComponentActivity() {
             SupabaseClientProvider.ensureAuthenticated()
             DeviceRepository.registerDevice(deviceSn, BuildConfig.VERSION_NAME)
             DeviceRepository.syncDeviceIdentity(deviceSn)
+            // Expenses saved offline go up; this terminal's reminders get their notifications back.
+            ExpenseRepository.syncPending(this@MainActivity)
+            ReminderRepository.rescheduleOpen(this@MainActivity)
             RetailRepository.syncWithCloud(this@MainActivity)
         }
 
@@ -235,8 +238,11 @@ class MainActivity : ComponentActivity() {
                                     ReceiptScannerScreen(
                                         onReceiptCaptured = { vendor, amount ->
                                             CoroutineScope(Dispatchers.IO).launch {
-                                                LocalDatabase.getInstance(this@MainActivity).expenseDao().insert(
-                                                    ExpenseEntity(vendor = vendor, amountCents = amount, category = "SUPPLY")
+                                                // Same cloud record as manual and voice entries; a supplier
+                                                // receipt is most often stock, the manager can change it in CMP.
+                                                ExpenseRepository.record(
+                                                    this@MainActivity, vendor, "INVENTORY", amount, ExpenseRepository.today(),
+                                                    null, "receipt", StaffRepository.current
                                                 )
                                                 withContext(Dispatchers.Main) { navController.popBackStack() }
                                             }
