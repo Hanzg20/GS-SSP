@@ -174,15 +174,13 @@ fun ApexScreen(staff: StaffMember) {
     }
 }
 
-/** Placeholder until the mascot artwork exists: the GoldSky logo in a circle. */
+/** 小海狸's avatar -- the same character as JustWeDo's support beaver (public/mascots/beaver.png). */
 @Composable
 fun ApexAvatar(size: androidx.compose.ui.unit.Dp) {
-    Box(
-        Modifier.size(size).clip(CircleShape).background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        Image(painterResource(com.goldsky.ssp.core.ui.R.drawable.goldsky_logo), contentDescription = null, modifier = Modifier.fillMaxSize(0.8f))
-    }
+    Image(
+        painterResource(R.drawable.apex_beaver), contentDescription = null,
+        modifier = Modifier.size(size).clip(CircleShape).background(Color.White)
+    )
 }
 
 @Composable
