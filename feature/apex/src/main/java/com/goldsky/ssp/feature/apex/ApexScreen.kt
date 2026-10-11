@@ -171,16 +171,17 @@ fun ApexScreen(staff: StaffMember) {
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
         .pointerInput(Unit) { detectTapGestures(onTap = { hideKeyboard() }) }) {
-        // Header: mascot, name, language, refresh
-        Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            ApexAvatar(44.dp)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(apexName(context), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
-                Text(str(R.string.apex_your_store_assistant), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            IconButton(onClick = { load(refresh = true) }, enabled = !loading) {
-                Icon(Icons.Default.Refresh, contentDescription = str(R.string.apex_refresh))
+        // Header: one slim row (mascot, name, what it is, refresh). Was two lines
+        // with a 44dp avatar -- too much of the Q2's portrait screen.
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            ApexAvatar(28.dp)
+            Spacer(Modifier.width(8.dp))
+            Text(apexName(context), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(8.dp))
+            Text(str(R.string.apex_your_store_assistant), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            IconButton(onClick = { load(refresh = true) }, enabled = !loading, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.Refresh, contentDescription = str(R.string.apex_refresh), modifier = Modifier.size(20.dp))
             }
         }
 
