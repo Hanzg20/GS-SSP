@@ -263,7 +263,7 @@ CREATE TABLE IF NOT EXISTS apex_messages (
   staff_name  TEXT,
   kind        TEXT NOT NULL DEFAULT 'chat' CHECK (kind IN ('chat', 'brief')),
   role        TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
-  language    TEXT NOT NULL DEFAULT 'zh' CHECK (language IN ('zh', 'en')),
+  language    TEXT NOT NULL DEFAULT 'zh' CHECK (language IN ('zh', 'en', 'fr', 'ar', 'fa')),
   content     TEXT NOT NULL,
   model       TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -274,5 +274,10 @@ ALTER TABLE apex_messages ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Managers can view apex messages" ON apex_messages;
 CREATE POLICY "Managers can view apex messages" ON apex_messages FOR SELECT TO authenticated
   USING (is_sys_admin() OR (has_permission('apex.manage') AND org_id IN (SELECT member_org_ids())));
+
+-- The interface languages the terminals are built for (UiLanguage): widen the
+-- check on databases created before French / Arabic / Persian were added.
+ALTER TABLE apex_messages DROP CONSTRAINT IF EXISTS apex_messages_language_check;
+ALTER TABLE apex_messages ADD CONSTRAINT apex_messages_language_check CHECK (language IN ('zh', 'en', 'fr', 'ar', 'fa'));
 
 NOTIFY pgrst, 'reload schema';

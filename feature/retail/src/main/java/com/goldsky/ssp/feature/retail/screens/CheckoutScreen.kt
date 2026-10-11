@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.background
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,8 +26,7 @@ fun CheckoutScreen(viewModel: RetailViewModel = viewModel()) {
             .background(MaterialTheme.colorScheme.background)
             .padding(16.dp)
     ) {
-        Text(
-            "CHECKOUT",
+        Text(stringResource(R.string.retail_checkout),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
@@ -52,7 +53,7 @@ fun CheckoutScreen(viewModel: RetailViewModel = viewModel()) {
             modifier = Modifier.fillMaxWidth().height(52.dp),
             colors = ButtonDefaults.buttonColors()
         ) {
-            Text("PAY NOW", fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.retail_pay_now), fontWeight = FontWeight.Bold)
         }
     }
 }

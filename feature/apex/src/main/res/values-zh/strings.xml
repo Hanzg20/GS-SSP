@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="apex_didn_t_hear_anything_speak">没听到声音，请靠近一点再说</string>
+    <string name="apex_hold_to_talk_release_when">按住说话，松开结束</string>
+    <string name="apex_please_check_the_card_below">请确认下面的内容，确认后才会保存。</string>
+    <string name="apex_your_store_assistant">门店经营助手</string>
+    <string name="apex_refresh">刷新</string>
+    <string name="apex_s_brief">%1$s的今日简报</string>
+    <string name="apex_beaver_is_looking_over_today">小海狸正在看今天的数据…</string>
+    <string name="apex_the_ai_brief_isn_t">AI 简报还没开通（云端未配置模型）。上面的数字是实时的。</string>
+    <string name="apex_ok_cancelled">好的，已取消。</string>
+    <string name="apex_listening_release_when_done">正在听…松开结束</string>
+    <string name="apex_transcribing">正在识别…</string>
+    <string name="apex_couldn_t_open_the_microphone">麦克风打不开</string>
+    <string name="apex_hold_to_talk">按住说话</string>
+    <string name="apex_ask_beaver">问问小海狸…</string>
+    <string name="apex_send">发送</string>
+    <string name="apex_sales_today">今日销售</string>
+    <string name="apex_no_sales_same_time_last">上周同期无数据</string>
+    <string name="apex_vs_last_week">比上周同期 +%1$s%</string>
+    <string name="apex_vs_last_week_2">比上周同期 %1$s%</string>
+    <string name="apex_sales_avg">笔数 / 客单价</string>
+    <string name="apex_busiest_hours_28_days">高峰时段（近 28 天）</string>
+    <string name="apex_best_sellers_7_days">近 7 天畅销</string>
+    <string name="apex_to_dos_due_today">今天的待办</string>
+    <string name="apex_done">完成</string>
+    <string name="apex_worth_a_look_last_7">防损提醒（近 7 天，值得核对）</string>
+    <string name="apex_fresh_items_unsold_for_3">生鲜 3 天没卖出（考虑打折）</string>
+    <string name="apex_not_sold_in_14_days">14 天没卖出</string>
+    <string name="apex_items">%1$s 个商品</string>
+    <string name="apex_please_check">请核对</string>
+    <string name="apex_record_an_expense">💵 记一笔费用</string>
+    <string name="apex_set_a_reminder">📌 设一个提醒</string>
+    <string name="apex_you_said">你说的：</string>
+    <string name="apex_amount">金额 $</string>
+    <string name="apex_date">日期</string>
+    <string name="apex_paid_to">收款方</string>
+    <string name="apex_note">备注</string>
+    <string name="apex_what">内容</string>
+    <string name="apex_you_said_2">你说的时间：</string>
+    <string name="apex_date_yyyy_mm_dd">日期 yyyy-mm-dd</string>
+    <string name="apex_time_hh_mm">时间 HH:mm</string>
+    <string name="apex_cancel">取消</string>
+    <string name="apex_enter_the_amount">请填写金额</string>
+    <string name="apex_date_as_2026_10_10">日期格式：2026-10-10</string>
+    <string name="apex_booked">已记账：%1$s</string>
+    <string name="apex_saved_offline_uploads_when_back">已记下：%1$s（离线，联网后自动上传）</string>
+    <string name="apex_enter_what_to_do">请填写内容</string>
+    <string name="apex_enter_a_future_date_and">请填一个将来的日期和时间</string>
+    <string name="apex_ok_i_ll_remind_you">好的，%1$s %2$s 提醒你：%3$s</string>
+    <string name="apex_couldn_t_save_check_the">没保存成功，请检查网络再试</string>
+    <string name="apex_saving">保存中…</string>
+    <string name="apex_confirm">确认</string>
+    <string-array name="apex_quick_questions">
+        <item>今天生意怎么样？</item>
+        <item>这周什么卖得最好？</item>
+        <item>哪些商品卖不动？</item>
+        <item>高峰期是几点？</item>
+        <item>最近有哪些退款？</item>
+    </string-array>
+    <string name="apex_flag_high_refund_rate">%1$s 经手的销售退款/撤销 %2$d 笔（%3$s%%，全店 %4$s%%），共 %5$s</string>
+    <string name="apex_flag_self_approved">%1$s 批准了自己经手的销售退款 %2$d 笔</string>
+    <string name="apex_flag_cash_refunds">%1$s 经手的现金销售被退款 %2$d 笔</string>
+    <string name="apex_flag_high_cash_share">%1$s 收现金比例 %2$s%%，明显高于全店 %3$s%%</string>
+    <string name="apex_flag_declines_today">今天被拒付 %1$d 笔，留意读卡器或可疑卡</string>
+    <string name="apex_cash_card">现金 %1$s · 刷卡 %2$s</string>
+</resources>

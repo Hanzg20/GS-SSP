@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.ui
 
 import androidx.compose.foundation.BorderStroke
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -38,8 +40,7 @@ fun TipSelectionDialog(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    "ADD A TIP?",
+                Text(stringResource(R.string.retail_add_a_tip),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
@@ -83,7 +84,7 @@ fun TipSelectionDialog(
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors()
                 ) {
-                    Text("AUTHORIZE", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.retail_authorize), fontWeight = FontWeight.Bold)
                 }
             }
         }

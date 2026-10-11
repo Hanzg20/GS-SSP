@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail
 
 import android.content.Context
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -46,15 +48,15 @@ object RefundFlow {
 
     fun start(context: Context, provider: IPaymentProvider, order: OrderEntity, approver: StaffMember, onState: (RefundState) -> Unit) {
         if (order.paymentMethod == "CASH") {
-            finish(context, order, approver, "REFUNDED", "Cash handed back: $${amount(order)}", onState)
+            finish(context, order, approver, "REFUNDED", "Cash handed back: $${amount(order)}", R.string.retail_refund_how_cash, onState)
             return
         }
-        onState(RefundState.Processing("Reversing $${amount(order)}..."))
+        onState(RefundState.Processing(context.getString(R.string.retail_refund_reversing, amount(order))))
         val ref = order.ecrRefNum
         provider.queryTransaction(ref) { _ ->
             provider.voidTransaction(ref, object : IPaymentProvider.PaymentCallback {
                 override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                    main.post { finish(context, order, approver, "VOIDED", "Card sale reversed", onState) }
+                    main.post { finish(context, order, approver, "VOIDED", "Card sale reversed", R.string.retail_refund_how_reversed, onState) }
                 }
                 override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                     Log.w("RefundFlow", "Reversal of $ref failed: $errorMsg")
@@ -67,13 +69,13 @@ object RefundFlow {
 
     /** Socket-mode Refund: PAYWizard asks for the customer's card. */
     fun withCard(context: Context, provider: IPaymentProvider, order: OrderEntity, approver: StaffMember, onState: (RefundState) -> Unit) {
-        onState(RefundState.Processing("Customer: tap or insert the card used for this sale"))
+        onState(RefundState.Processing(context.getString(R.string.retail_refund_tap_card)))
         provider.refundTransaction(order.ecrRefNum, order.amountCents, object : IPaymentProvider.PaymentCallback {
             override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                main.post { finish(context, order, approver, "REFUNDED", "Refunded to card", onState) }
+                main.post { finish(context, order, approver, "REFUNDED", "Refunded to card", R.string.retail_refund_how_card, onState) }
             }
             override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
-                main.post { onState(RefundState.Failed("Refund not done: $errorMsg")) }
+                main.post { onState(RefundState.Failed(context.getString(R.string.retail_refund_failed, errorMsg))) }
             }
             override fun onProgress(message: String) {}
         })
@@ -81,9 +83,10 @@ object RefundFlow {
 
     /** Refunded in the WizarPOS merchant portal: record it, no PAYWizard call. */
     fun refundedInPortal(context: Context, order: OrderEntity, approver: StaffMember, onState: (RefundState) -> Unit) =
-        finish(context, order, approver, "REFUNDED", "Refunded in WizarPOS merchant portal", onState)
+        finish(context, order, approver, "REFUNDED", "Refunded in WizarPOS merchant portal", R.string.retail_refund_how_portal, onState)
 
-    private fun finish(context: Context, order: OrderEntity, approver: StaffMember, status: String, how: String, onState: (RefundState) -> Unit) {
+    /** [how] goes on the printed slip (English for now); [howRes] is what the screen says. */
+    private fun finish(context: Context, order: OrderEntity, approver: StaffMember, status: String, how: String, howRes: Int, onState: (RefundState) -> Unit) {
         val ref = order.ecrRefNum
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
         CoroutineScope(Dispatchers.IO).launch {
@@ -98,7 +101,7 @@ object RefundFlow {
                 ),
                 vendor = DeviceRepository.getPersistedHardwareVendor()
             )
-            withContext(Dispatchers.Main) { onState(RefundState.Done("Refunded $${amount(order)}. $how")) }
+            withContext(Dispatchers.Main) { onState(RefundState.Done(context.getString(R.string.retail_refund_done, amount(order), context.getString(howRes)))) }
         }
     }
 }
@@ -109,19 +112,15 @@ fun RefundNeedsCardDialog(amountCents: Int, onCardTapped: () -> Unit, onRefunded
     val amount = "%.2f".format(amountCents / 100.0)
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text("Refund needs the card") },
+        title = { Text(stringResource(R.string.retail_refund_needs_the_card)) },
         text = {
-            Text(
-                "This sale couldn't be reversed -- it has most likely been settled already. " +
-                    "A refund of $$amount from this terminal needs the customer's card.\n\n" +
-                    "If the customer isn't here, refund it in the WizarPOS merchant portal (no card needed), then record it here."
-            )
+            Text(stringResource(R.string.retail_refund_needs_card_body, amount))
         },
         confirmButton = {
             Column(horizontalAlignment = Alignment.End) {
-                Button(onClick = onCardTapped) { Text("CUSTOMER TAPS CARD", fontWeight = FontWeight.Bold) }
-                TextButton(onClick = onRefundedInPortal) { Text("ALREADY REFUNDED IN PORTAL") }
-                TextButton(onClick = onCancel) { Text("CANCEL", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Button(onClick = onCardTapped) { Text(stringResource(R.string.retail_customer_taps_card), fontWeight = FontWeight.Bold) }
+                TextButton(onClick = onRefundedInPortal) { Text(stringResource(R.string.retail_already_refunded_in_portal)) }
+                TextButton(onClick = onCancel) { Text(stringResource(R.string.retail_cancel), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
     )

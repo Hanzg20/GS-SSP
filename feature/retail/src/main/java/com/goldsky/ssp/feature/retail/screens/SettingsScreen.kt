@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.BorderStroke
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -46,7 +48,7 @@ fun SettingsScreen() {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("SETTINGS", fontWeight = FontWeight.Black) },
+                title = { Text(stringResource(R.string.retail_settings), fontWeight = FontWeight.Black) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
@@ -65,7 +67,7 @@ fun SettingsScreen() {
         ) {
             Spacer(modifier = Modifier.height(8.dp))
             
-            Text("RECEIPT SETTINGS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(stringResource(R.string.retail_receipt_settings), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             
             Surface(
                 shape = RoundedCornerShape(16.dp),
@@ -77,7 +79,7 @@ fun SettingsScreen() {
                     OutlinedTextField(
                         value = storeName,
                         onValueChange = { storeName = it; DeviceRepository.persistStoreName(it) },
-                        label = { Text("Store Name") },
+                        label = { Text(stringResource(R.string.retail_store_name)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -88,16 +90,16 @@ fun SettingsScreen() {
                             if (text.isBlank()) DeviceRepository.persistTaxRate(0f)
                             else text.toFloatOrNull()?.takeIf { it in 0f..100f }?.let { DeviceRepository.persistTaxRate(it) }
                         },
-                        label = { Text("Default tax rate (%)") },
-                        supportingText = { Text("For keypad amounts and products without their own rate") },
+                        label = { Text(stringResource(R.string.retail_default_tax_rate)) },
+                        supportingText = { Text(stringResource(R.string.retail_for_keypad_amounts_and_products)) },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Ask for tip", fontWeight = FontWeight.Bold)
-                            Text("Show the tip screen before payment", style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.retail_ask_for_tip), fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.retail_show_the_tip_screen_before), style = MaterialTheme.typography.bodySmall)
                         }
                         Switch(checked = tipsEnabled, onCheckedChange = { tipsEnabled = it; DeviceRepository.persistTipsEnabled(it) })
                     }
@@ -115,7 +117,7 @@ fun SettingsScreen() {
             ) {
                 Icon(Icons.Default.Sync, null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("FORCE SYNC CATALOG")
+                Text(stringResource(R.string.retail_force_sync_catalog))
             }
             
             RetailMode.values().forEach { mode ->
@@ -129,10 +131,38 @@ fun SettingsScreen() {
                 )
             }
 
+            // Interface language (UiLanguage). Applying it recreates the activity;
+            // Arabic / Persian also mirror the layout once their translations ship.
+            val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+            val currentLang = remember { activity?.let { com.goldsky.ssp.payment.UiLanguage.current(it) } ?: "en" }
+            Text(stringResource(R.string.retail_language), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(8.dp)) {
+                    com.goldsky.ssp.payment.UiLanguage.available.forEach { lang ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable(enabled = lang.code != currentLang) {
+                                activity?.let { com.goldsky.ssp.payment.UiLanguage.set(it, lang.code); it.recreate() }
+                            }.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(lang.nativeName, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface)
+                            RadioButton(selected = lang.code == currentLang, onClick = {
+                                activity?.let { com.goldsky.ssp.payment.UiLanguage.set(it, lang.code); it.recreate() }
+                            })
+                        }
+                    }
+                }
+            }
+
             // Theme Options at the Bottom (Cyber Dark Mode vs Classic Light Mode)
             var themeStyle by remember { mutableStateOf(DeviceRepository.getThemeStyle()) }
 
-            Text("UI THEME", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.retail_ui_theme), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             
             Surface(
                 shape = RoundedCornerShape(16.dp),
@@ -150,8 +180,8 @@ fun SettingsScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Cyber Dark Mode", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                            Text("Dark futuristic theme with glowing pulse borders", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.retail_cyber_dark_mode), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            Text(stringResource(R.string.retail_dark_futuristic_theme_with_glowing), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         RadioButton(
                             selected = themeStyle == DeviceRepository.UiThemeStyle.CYBER,
@@ -171,8 +201,8 @@ fun SettingsScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Classic Light Mode", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                            Text("Clean minimalist layout with standard light colors", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.retail_classic_light_mode), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            Text(stringResource(R.string.retail_clean_minimalist_layout_with_standard), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         RadioButton(
                             selected = themeStyle == DeviceRepository.UiThemeStyle.CLASSIC,

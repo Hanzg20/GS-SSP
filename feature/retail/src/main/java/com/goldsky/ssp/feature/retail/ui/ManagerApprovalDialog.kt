@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.ui
 
 import androidx.compose.foundation.background
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -34,6 +36,7 @@ fun ManagerApprovalDialog(
     onApproved: (StaffMember) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -47,9 +50,9 @@ fun ManagerApprovalDialog(
             pin = ""
             when {
                 result is StaffRepository.PinResult.Match && result.staff.isManager -> onApproved(result.staff)
-                result is StaffRepository.PinResult.Match -> error = "${result.staff.name} is not a manager"
-                result == StaffRepository.PinResult.Ambiguous -> error = "PIN shared by several staff -- reset it in CMP"
-                else -> error = "Wrong PIN"
+                result is StaffRepository.PinResult.Match -> error = context.getString(R.string.retail_not_a_manager, result.staff.name)
+                result == StaffRepository.PinResult.Ambiguous -> error = context.getString(R.string.retail_pin_shared)
+                else -> error = context.getString(R.string.retail_wrong_pin)
             }
         }
     }
@@ -68,8 +71,7 @@ fun ManagerApprovalDialog(
                     modifier = Modifier.size(40.dp)
                 )
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "Manager approval",
+                Text(stringResource(R.string.retail_manager_approval),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
@@ -108,7 +110,7 @@ fun ManagerApprovalDialog(
                     onBackSpace = { if (pin.isNotEmpty()) pin = pin.dropLast(1) },
                     onConfirm = { if (pin.length == 4 && !checking) submit(pin) }
                 )
-                TextButton(onClick = onDismiss) { Text("CANCEL", color = MaterialTheme.colorScheme.primary) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.retail_cancel), color = MaterialTheme.colorScheme.primary) }
             }
         }
     }

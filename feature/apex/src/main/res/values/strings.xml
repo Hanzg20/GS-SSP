@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="apex_didn_t_hear_anything_speak">Didn\'t hear anything -- speak a little closer</string>
+    <string name="apex_hold_to_talk_release_when">Hold to talk, release when done</string>
+    <string name="apex_please_check_the_card_below">Please check the card below -- nothing is saved until you confirm.</string>
+    <string name="apex_your_store_assistant">Your store assistant</string>
+    <string name="apex_refresh">Refresh</string>
+    <string name="apex_s_brief">%1$s\'s brief</string>
+    <string name="apex_beaver_is_looking_over_today">Beaver is looking over today\'s numbers...</string>
+    <string name="apex_the_ai_brief_isn_t">The AI brief isn\'t switched on yet (no model configured). The numbers above are live.</string>
+    <string name="apex_ok_cancelled">OK, cancelled.</string>
+    <string name="apex_listening_release_when_done">Listening... release when done</string>
+    <string name="apex_transcribing">Transcribing...</string>
+    <string name="apex_couldn_t_open_the_microphone">Couldn\'t open the microphone</string>
+    <string name="apex_hold_to_talk">Hold to talk</string>
+    <string name="apex_ask_beaver">Ask Beaver...</string>
+    <string name="apex_send">Send</string>
+    <string name="apex_sales_today">Sales today</string>
+    <string name="apex_no_sales_same_time_last">No sales same time last week</string>
+    <string name="apex_vs_last_week">+%1$s% vs last week</string>
+    <string name="apex_vs_last_week_2">%1$s% vs last week</string>
+    <string name="apex_sales_avg">Sales / avg</string>
+    <string name="apex_busiest_hours_28_days">Busiest hours (28 days)</string>
+    <string name="apex_best_sellers_7_days">Best sellers (7 days)</string>
+    <string name="apex_to_dos_due_today">To-dos due today</string>
+    <string name="apex_done">Done</string>
+    <string name="apex_worth_a_look_last_7">Worth a look (last 7 days)</string>
+    <string name="apex_fresh_items_unsold_for_3">Fresh items unsold for 3 days (mark down?)</string>
+    <string name="apex_not_sold_in_14_days">Not sold in 14 days</string>
+    <string name="apex_items">%1$s items</string>
+    <string name="apex_please_check">please check</string>
+    <string name="apex_record_an_expense">💵 Record an expense</string>
+    <string name="apex_set_a_reminder">📌 Set a reminder</string>
+    <string name="apex_you_said">You said: </string>
+    <string name="apex_amount">Amount $</string>
+    <string name="apex_date">Date</string>
+    <string name="apex_paid_to">Paid to</string>
+    <string name="apex_note">Note</string>
+    <string name="apex_what">What</string>
+    <string name="apex_you_said_2">You said: </string>
+    <string name="apex_date_yyyy_mm_dd">Date yyyy-mm-dd</string>
+    <string name="apex_time_hh_mm">Time HH:mm</string>
+    <string name="apex_cancel">Cancel</string>
+    <string name="apex_enter_the_amount">Enter the amount</string>
+    <string name="apex_date_as_2026_10_10">Date as 2026-10-10</string>
+    <string name="apex_booked">Booked: %1$s</string>
+    <string name="apex_saved_offline_uploads_when_back">Saved: %1$s (offline, uploads when back online)</string>
+    <string name="apex_enter_what_to_do">Enter what to do</string>
+    <string name="apex_enter_a_future_date_and">Enter a future date and time</string>
+    <string name="apex_ok_i_ll_remind_you">OK -- I\'ll remind you at %1$s %2$s: %3$s</string>
+    <string name="apex_couldn_t_save_check_the">Couldn\'t save -- check the connection and try again</string>
+    <string name="apex_saving">Saving...</string>
+    <string name="apex_confirm">Confirm</string>
+    <string-array name="apex_quick_questions">
+        <item>How\'s today going?</item>
+        <item>Best sellers this week?</item>
+        <item>What isn\'t selling?</item>
+        <item>When are we busiest?</item>
+        <item>Any recent refunds?</item>
+    </string-array>
+    <string name="apex_flag_high_refund_rate">%1$s: %2$d refunds/voids on their sales (%3$s%% vs store %4$s%%), %5$s</string>
+    <string name="apex_flag_self_approved">%1$s approved refunds of their own sales: %2$d</string>
+    <string name="apex_flag_cash_refunds">%1$s: %2$d cash refunds on their sales</string>
+    <string name="apex_flag_high_cash_share">%1$s takes %2$s%% in cash vs store %3$s%%</string>
+    <string name="apex_flag_declines_today">%1$d declined card payments today -- check the reader or suspicious cards</string>
+    <string name="apex_cash_card">Cash %1$s · Card %2$s</string>
+</resources>

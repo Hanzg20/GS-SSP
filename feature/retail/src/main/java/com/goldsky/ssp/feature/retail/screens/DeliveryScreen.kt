@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.BorderStroke
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -59,7 +61,7 @@ fun DeliveryScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                orders?.let { "${it.size} open order${if (it.size == 1) "" else "s"}" } ?: "Delivery orders",
+                orders?.let { androidx.compose.ui.res.pluralStringResource(R.plurals.retail_open_orders, it.size, it.size) } ?: stringResource(R.string.retail_delivery_orders),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
@@ -67,12 +69,11 @@ fun DeliveryScreen(
             )
             if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
             IconButton(onClick = { refreshTick++ }, enabled = !loading) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.retail_refresh), tint = MaterialTheme.colorScheme.primary)
             }
         }
         if (failed) {
-            Text(
-                "Can't reach the server -- showing the last list" + if (orders == null) " (none yet)" else "",
+            Text(stringResource(R.string.retail_can_t_reach_the_server) + if (orders == null) " (none yet)" else "",
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 16.dp)
@@ -81,7 +82,7 @@ fun DeliveryScreen(
         val list = orders.orEmpty()
         if (!loading && list.isEmpty() && !failed) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No open delivery orders", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.retail_no_open_delivery_orders), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         LazyColumn(
@@ -104,15 +105,15 @@ fun DeliveryScreen(
     cashFor?.let { order ->
         AlertDialog(
             onDismissRequest = { cashFor = null },
-            title = { Text("Cash received?") },
-            text = { Text("Order D${order.order_no}: collect ${money(order.subtotalCents + order.taxCents)} in cash from ${order.customer_name}.") },
+            title = { Text(stringResource(R.string.retail_cash_received)) },
+            text = { Text(stringResource(R.string.retail_collect_cash, order.order_no.toString(), money(order.subtotalCents + order.taxCents), order.customer_name)) },
             confirmButton = {
                 Button(
                     onClick = { cashFor = null; onCollectCash(order) },
                     colors = ButtonDefaults.buttonColors()
-                ) { Text("CASH RECEIVED", fontWeight = FontWeight.Bold) }
+                ) { Text(stringResource(R.string.retail_cash_received_2), fontWeight = FontWeight.Bold) }
             },
-            dismissButton = { TextButton(onClick = { cashFor = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { cashFor = null }) { Text(stringResource(R.string.retail_cancel_2)) } },
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
             titleContentColor = MaterialTheme.colorScheme.onSurface,
             textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -162,9 +163,9 @@ private fun OrderCard(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                Row { Text("Tax", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)); Text(money(order.taxCents), color = textColor) }
+                Row { Text(stringResource(R.string.retail_tax), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)); Text(money(order.taxCents), color = textColor) }
                 Row {
-                    Text("Total", fontWeight = FontWeight.Bold, color = textColor, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.retail_total), fontWeight = FontWeight.Bold, color = textColor, modifier = Modifier.weight(1f))
                     Text(money(total), fontWeight = FontWeight.Bold, color = textColor)
                 }
                 Spacer(Modifier.height(12.dp))
@@ -174,19 +175,19 @@ private fun OrderCard(
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors()
                     ) {
-                        Icon(Icons.Default.CreditCard, null); Spacer(Modifier.width(6.dp)); Text("CARD", fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.CreditCard, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.retail_card), fontWeight = FontWeight.Bold)
                     }
                     OutlinedButton(
                         onClick = onCash,
                         modifier = Modifier.weight(1f),
                         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
                     ) {
-                        Icon(Icons.Default.Payments, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(6.dp)); Text("CASH", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Payments, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.retail_cash), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     }
                 }
             } else {
                 Text(
-                    "${order.lines.sumOf { it.quantity }} item(s) · tap for details",
+                    stringResource(R.string.retail_items_tap_details, order.lines.sumOf { it.quantity }),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)

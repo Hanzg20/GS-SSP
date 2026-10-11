@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.BorderStroke
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -80,12 +82,12 @@ fun RetailStoreScreen(
                             IconButton(onClick = {
                                 cart.lastOrNull { it.product.id == product.id }?.let { viewModel.removeItem(it.id) }
                             }) {
-                                Icon(Icons.Default.Remove, contentDescription = "Remove one", tint = scheme.onSurfaceVariant)
+                                Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.retail_remove_one), tint = scheme.onSurfaceVariant)
                             }
                             Text("×$qty", fontWeight = FontWeight.Bold, color = scheme.primary)
                         }
                         IconButton(onClick = { viewModel.addItem(product) }) {
-                            Icon(Icons.Default.Add, contentDescription = "Add one", tint = scheme.primary)
+                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.retail_add_one), tint = scheme.primary)
                         }
                     }
                 }
@@ -107,7 +109,7 @@ fun RetailStoreScreen(
                     )
                     Spacer(Modifier.width(12.dp))
                     Column {
-                        Text(if (found) "Added: ${scan.productName}" else "Unknown barcode", fontWeight = FontWeight.Bold)
+                        Text(if (found) stringResource(R.string.retail_scan_added, scan.productName ?: "") else stringResource(R.string.retail_unknown_barcode), fontWeight = FontWeight.Bold)
                         Text(scan.barcode, style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -121,15 +123,15 @@ fun RetailStoreScreen(
             ) {
                 if (onScan != null) {
                     IconButton(onClick = onScan) {
-                        if (isScanning) Icon(Icons.Default.Close, contentDescription = "Stop scanning", tint = gs.danger)
-                        else Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan", tint = scheme.primary)
+                        if (isScanning) Icon(Icons.Default.Close, contentDescription = stringResource(R.string.retail_stop_scanning), tint = gs.danger)
+                        else Icon(Icons.Default.QrCodeScanner, contentDescription = stringResource(R.string.retail_scan), tint = scheme.primary)
                     }
                 }
                 Text("Total: ${money(total)}", color = scheme.onSurface, fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
                 Spacer(modifier = Modifier.weight(1f))
                 Button(onClick = { if (total > 0) onCheckout(total) }, enabled = total > 0, shape = RoundedCornerShape(12.dp)) {
-                    Text("CHECKOUT", fontWeight = FontWeight.Black)
+                    Text(stringResource(R.string.retail_checkout), fontWeight = FontWeight.Black)
                 }
             }
         }

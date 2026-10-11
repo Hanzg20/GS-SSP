@@ -1,5 +1,6 @@
 package com.goldsky.ssp.payment
 
+import com.goldsky.ssp.core.data.R
 import android.content.Context
 import android.util.Log
 import com.goldsky.ssp.db.ExpenseEntity
@@ -28,16 +29,19 @@ object ExpenseRepository {
     /** Same set as the table's CHECK; roughly what a Canadian small business reports for tax. */
     val CATEGORIES = listOf("INVENTORY", "RENT", "UTILITIES", "PAYROLL", "REPAIRS", "MARKETING", "FEES", "OTHER")
 
-    fun label(category: String, zh: Boolean): String = when (category) {
-        "INVENTORY" -> if (zh) "进货" else "Inventory"
-        "RENT" -> if (zh) "房租" else "Rent"
-        "UTILITIES" -> if (zh) "水电网" else "Utilities"
-        "PAYROLL" -> if (zh) "工资" else "Payroll"
-        "REPAIRS" -> if (zh) "维修" else "Repairs"
-        "MARKETING" -> if (zh) "营销" else "Marketing"
-        "FEES" -> if (zh) "手续费" else "Fees"
-        else -> if (zh) "其他" else "Other"
-    }
+    /** The category's name in the interface language (core/data res, values-<lang>). */
+    fun label(context: Context, category: String): String = context.getString(
+        when (category) {
+            "INVENTORY" -> R.string.expense_cat_inventory
+            "RENT" -> R.string.expense_cat_rent
+            "UTILITIES" -> R.string.expense_cat_utilities
+            "PAYROLL" -> R.string.expense_cat_payroll
+            "REPAIRS" -> R.string.expense_cat_repairs
+            "MARKETING" -> R.string.expense_cat_marketing
+            "FEES" -> R.string.expense_cat_fees
+            else -> R.string.expense_cat_other
+        }
+    )
 
     @Serializable
     private data class ExpenseRow(

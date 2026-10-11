@@ -44,12 +44,24 @@ const BRIEF_CACHE_MINUTES = 60;
 const HISTORY_TURNS = 10;
 const MAX_QUESTION = 500;
 
-type Lang = "zh" | "en";
+// The terminal's interface language (UiLanguage on Android). Chinese has its own
+// wording below; every other language gets the English text plus "reply in X".
+type Lang = "zh" | "en" | "fr" | "ar" | "fa";
+const LANGS: Lang[] = ["zh", "en", "fr", "ar", "fa"];
+const REPLY_IN: Record<Lang, string> = {
+  zh: "请用中文回复。",
+  en: "Reply in English.",
+  fr: "Réponds en français.",
+  ar: "أجب باللغة العربية.",
+  fa: "به زبان فارسی پاسخ بده.",
+};
+/** The mascot's name if the terminal didn't send one (it sends its own, from res apex_name). */
+const DEFAULT_NAME: Record<Lang, string> = { zh: "小海狸", en: "Beaver", fr: "Castor", ar: "القندس", fa: "سگ‌آبی" };
 type Turn = { role: "user" | "assistant"; content: string };
 
 const PERSONA = `你是 GoldSky 门店系统里的"小海狸"——一只勤快能干、脑子转得快的小海狸，在店里陪老板和经理看生意、答疑解惑。海狸是加拿大的国宝，最会精打细算、踏实筑坝，你的本事就是把店里的数字看清楚、说明白。
 
-语言必须统一，不能中英混用：用中文回复时，自称"小海狸"；用英文回复时，自称"Beaver"。
+语言必须统一，只用要求的那一种语言回复，不要夹杂别的语言（商品名可以照原样写）。自称用下面给出的名字。
 
 说话像个熟络、能干的店里帮手：亲切、偶尔卖个萌、开个小玩笑没关系，但谈生意时要干脆利落、说重点。回复简短，一般 2-5 句；别说"作为一个AI"，也别用"尊敬的用户"这种客服腔。老板打个招呼、闲聊两句，可以自然接住。`;
 
@@ -63,7 +75,7 @@ const RULES = `底线绝对不能松：
 4. 你只能看和说，不能替人操作：退款、改价、加员工等，告诉他在哪里操作。
 5. 样本很少时（比如只有几笔交易），要提醒"数据还少，参考意义有限"，不要过度解读。
 6. 只陈述数据字段本身的意思，不要把不同字段或操作知识拼凑出数据里没有的结论。例如终端只看 online / offline_for_minutes：online 为 true 就是在线，不要推断"未使用""已锁屏"等状态。
-7. 和上周比较时，原样使用 sales_comparison 里的那句话，不要自己再算或改写成"持平"。
+7. 和上周比较时，用 sales_comparison 里那句话的意思（回复语言不同就忠实翻译），不要自己再算或改写成"持平"。
 8. 不要猜原因或背景（比如"可能还没开门""可能天气不好"），只说数据显示了什么。
 9. 用自然的话说，回复里不要出现数据里的英文字段名（如 total_dollars、sales）或括号标注。
 10. loss_signals.flags 是系统按固定规则挑出的"值得核对"的情况，不是结论：只能说"建议核对一下"，绝不能说谁偷了、谁有问题。没有 flag 就不要提防损，也不要自己从数字里挑可疑的人。
@@ -71,7 +83,7 @@ const RULES = `底线绝对不能松：
 12. reminders_due 是今天到期或已过期（overdue=true）的待办；expenses_this_month 是本月已记的费用（按类别），expenses_last_month_dollars 是上月合计，sales_this_month_dollars 是本月销售额。费用只按这些记录说，没记的就是"系统里还没记"，不要估算。类别名翻译：INVENTORY 进货、RENT 房租、UTILITIES 水电网、PAYROLL 工资、REPAIRS 维修、MARKETING 营销、FEES 手续费、OTHER 其他。
 13. 想记账或设提醒，告诉他直接说出来，比如"今天付了电费 234 块 5"或"明天 9 点提醒我订货"，你会弹出确认卡片。`;
 
-const BRIEF_TASK: Record<Lang, string> = {
+const BRIEF_TASK: Record<"zh" | "en", string> = {
   zh: "请给老板写一份今天的经营简报：3-5 条要点，每条一行、以「• 」开头，先说今天到现在的销售情况（和上周同一天同一时段比），再挑最值得注意的：防损提醒（loss_signals.flags，有就一定写，措辞是「建议核对」）、今天到期或已过期的待办（reminders_due，有就一定写）、生鲜 3 天没卖出（建议打折）、畅销/滞销商品、高峰时段、终端离线、未完成的送货单。只写有数据支撑的内容；没有值得说的就少写几条。不要开场白和结束语。",
   en: "Write today's brief for the store owner: 3-5 points, one per line starting with \"• \". First, sales so far today versus the same weekday last week at this time; then the most notable of: loss-prevention flags (loss_signals.flags -- always include them, worded as \"worth checking\", never as an accusation), to-dos due today or overdue (reminders_due -- always include them), fresh items unsold for 3 days (suggest a markdown), best/slow sellers, peak hours, terminals offline, open delivery orders. Only what the data supports; fewer points is fine. No greeting or sign-off.",
 };
@@ -103,7 +115,7 @@ function toDollars(v: unknown): unknown {
 function salesComparison(stats: any, lang: Lang): string {
   const now = stats?.today?.total_cents ?? 0;
   const before = stats?.same_time_last_week?.total_cents ?? 0;
-  const zh = lang === "zh";
+  const zh = lang === "zh"; // other languages get English, which the model is told to translate
   if (now === 0 && before === 0) return zh ? "今天到现在还没有销售，上周同一时段也没有，没法比较。" : "No sales yet today, and none at this time last week either -- nothing to compare.";
   if (before === 0) return zh ? "上周同一时段没有销售，没法算百分比。" : "No sales at this time last week, so no percentage to compare.";
   const pct = Math.round(((now - before) / before) * 100);
@@ -111,8 +123,8 @@ function salesComparison(stats: any, lang: Lang): string {
   return zh ? `比上周同一时段${pct > 0 ? "多" : "少"} ${Math.abs(pct)}%。` : `${pct > 0 ? "Up" : "Down"} ${Math.abs(pct)}% on this time last week.`;
 }
 
-function systemPrompt(lang: Lang, stats: unknown, facts: string[]): string {
-  const langLine = lang === "zh" ? "请用中文回复。" : "Reply in English.";
+function systemPrompt(lang: Lang, name: string, stats: unknown, facts: string[]): string {
+  const langLine = `${REPLY_IN[lang]} 你的名字：${name}。`;
   const data = { ...(toDollars(stats) as Record<string, unknown>), sales_comparison: salesComparison(stats, lang) };
   return `${PERSONA}\n\n操作知识：\n${facts.map((f) => `- ${f}`).join("\n")}\n\n门店数据（JSON，金额单位为元/dollars，时间为门店当地时间）：\n${JSON.stringify(data)}\n\n${RULES}\n\n${langLine}`;
 }
@@ -202,9 +214,14 @@ async function transcribe(audioB64: string, mime: string, lang: Lang): Promise<s
   // No language lock: managers mix Chinese with English product names. The
   // prompt steers Mandarin to simplified characters (Whisper often writes
   // traditional) and spells the store vocabulary.
-  form.append("prompt", lang === "zh"
-    ? "以下是普通话的句子，使用简体中文。今天的销售额、退款、商品、库存、收银员。"
-    : "Questions about today's sales, refunds, products and staff.");
+  if (lang === "zh") {
+    form.append("prompt", "以下是普通话的句子，使用简体中文。今天的销售额、退款、商品、库存、收银员。");
+  } else if (lang === "en") {
+    form.append("prompt", "Questions about today's sales, refunds, products and staff.");
+  } else {
+    // French / Arabic / Persian: name the language rather than prime it with English.
+    form.append("language", lang);
+  }
   form.append("response_format", "json");
 
   const res = await fetch(groqKey ? "https://api.groq.com/openai/v1/audio/transcriptions" : "https://api.openai.com/v1/audio/transcriptions", {
@@ -240,7 +257,8 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const action: string = body.action;
-    const lang: Lang = body.language === "en" ? "en" : "zh";
+    const lang: Lang = LANGS.includes(body.language) ? body.language : "en";
+    const name: string = typeof body.name === "string" && body.name.trim() ? body.name.trim().slice(0, 30) : DEFAULT_NAME[lang];
     const tz: string = typeof body.timezone === "string" ? body.timezone : "America/Toronto";
 
     // Who is calling: the device behind this Supabase session.
@@ -284,7 +302,7 @@ Deno.serve(async (req) => {
     const { data: knowledge } = await db.from("apex_knowledge")
       .select("content").eq("is_active", true).or(`org_id.is.null,org_id.eq.${orgId}`)
       .order("sort_order", { ascending: true });
-    const system = systemPrompt(lang, stats, (knowledge ?? []).map((k) => k.content));
+    const system = systemPrompt(lang, name, stats, (knowledge ?? []).map((k) => k.content));
     const log = (kind: string, role: string, content: string) =>
       db.from("apex_messages").insert({
         org_id: orgId, device_sn: link.device_sn, staff_id: staff.id, staff_name: staff.name,
@@ -299,7 +317,7 @@ Deno.serve(async (req) => {
           .gte("created_at", since).order("created_at", { ascending: false }).limit(1).maybeSingle();
         if (cached) return json({ brief: cached.content, at: cached.created_at, cached: true, stats });
       }
-      const text = (await provider.call(system, [{ role: "user", content: BRIEF_TASK[lang] }])).trim();
+      const text = (await provider.call(system, [{ role: "user", content: BRIEF_TASK[lang === "zh" ? "zh" : "en"] }])).trim();
       await log("brief", "assistant", text);
       return json({ brief: text, at: new Date().toISOString(), cached: false, stats });
     }

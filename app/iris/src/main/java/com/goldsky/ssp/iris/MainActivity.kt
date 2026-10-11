@@ -1,6 +1,8 @@
 package com.goldsky.ssp.iris
 
 import android.os.Bundle
+import com.goldsky.ssp.iris.R
+import androidx.compose.ui.res.stringResource
 import com.goldsky.ssp.ui.theme.GsTheme
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -50,6 +52,12 @@ class MainActivity : ComponentActivity() {
     }
     private val scannerProvider by lazy {
         HardwareFactory.getScannerProvider(this, DeviceRepository.getPersistedHardwareVendor())
+    }
+
+    // Interface language from Settings (UiLanguage): strings and, for Arabic /
+    // Persian, a mirrored layout. Switching recreates the activity.
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.goldsky.ssp.payment.UiLanguage.wrap(newBase))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -158,15 +166,15 @@ class MainActivity : ComponentActivity() {
                 // Re-check the order right before taking money: another terminal may
                 // have collected it, or the store cancelled it, since the list loaded.
                 fun withOpenOrder(order: DeliveryOrder, action: () -> Unit) {
-                    paymentStatus = PaymentUiState.Processing("Checking order D${order.order_no}...")
+                    paymentStatus = PaymentUiState.Processing(getString(R.string.iris_checking_order, order.order_no.toString()))
                     scope.launch {
                         when (val status = DeliveryOrderRepository.fetchStatus(order.id)) {
                             "OPEN" -> { paymentStatus = PaymentUiState.Idle; action() }
-                            null -> paymentStatus = PaymentUiState.Error("Can't reach the server to check order D${order.order_no}. Try again.")
+                            null -> paymentStatus = PaymentUiState.Error(getString(R.string.iris_order_unreachable, order.order_no.toString()))
                             else -> {
                                 paymentStatus = PaymentUiState.Error(
-                                    if (status == "COLLECTED") "Order D${order.order_no} was already collected on this terminal."
-                                    else "Order D${order.order_no} is ${status.lowercase()}, not collected."
+                                    if (status == "COLLECTED") getString(R.string.iris_order_already_collected, order.order_no.toString())
+                                    else getString(R.string.iris_order_not_open, order.order_no.toString(), status.lowercase())
                                 )
                                 deliveryReload++
                             }
@@ -206,7 +214,7 @@ class MainActivity : ComponentActivity() {
                                             withOpenOrder(order) {
                                                 DeliveryOrderRepository.markCollectedLocally(order.id)
                                                 recordCashCollection(saleOf(order), order.order_no)
-                                                paymentStatus = PaymentUiState.Success("Cash received for D${order.order_no}")
+                                                paymentStatus = PaymentUiState.Success(getString(R.string.iris_cash_received_for, order.order_no.toString()))
                                                 deliveryReload++
                                                 FeedbackManager.success(this@MainActivity)
                                             }
@@ -270,7 +278,7 @@ class MainActivity : ComponentActivity() {
 
                         when (val state = paymentStatus) {
                             is PaymentUiState.Processing -> PaymentProcessingDialog(state.message)
-                            is PaymentUiState.Success -> PaymentResultDialog(true, "Approved: ${state.authCode}") { paymentStatus = PaymentUiState.Idle }
+                            is PaymentUiState.Success -> PaymentResultDialog(true, stringResource(R.string.iris_approved_code, state.authCode)) { paymentStatus = PaymentUiState.Idle }
                             is PaymentUiState.Done -> PaymentResultDialog(true, state.message) { paymentStatus = PaymentUiState.Idle }
                             is PaymentUiState.RefundNeedsCard -> com.goldsky.ssp.feature.retail.RefundNeedsCardDialog(
                                 amountCents = state.order.amountCents,
@@ -517,15 +525,15 @@ fun CheckoutContainer(
         ) {
             Tab(
                 selected = selectedTab == 0, onClick = { selectedTab = 0 },
-                text = { Text("KEYPAD", fontWeight = FontWeight.Bold, color = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                text = { Text(stringResource(R.string.iris_keypad), fontWeight = FontWeight.Bold, color = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
             )
             Tab(
                 selected = selectedTab == 1, onClick = { selectedTab = 1 },
-                text = { Text("LIBRARY", fontWeight = FontWeight.Bold, color = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                text = { Text(stringResource(R.string.iris_library), fontWeight = FontWeight.Bold, color = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
             )
             Tab(
                 selected = selectedTab == 2, onClick = { selectedTab = 2 },
-                text = { Text("DELIVERY", fontWeight = FontWeight.Bold, color = if (selectedTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                text = { Text(stringResource(R.string.iris_delivery), fontWeight = FontWeight.Bold, color = if (selectedTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
             )
         }
 
@@ -566,13 +574,13 @@ fun MainBottomNavigation(navController: NavHostController, isManager: Boolean) {
             selected = currentRoute == "checkout",
             onClick = { navController.navigate("checkout") { popUpTo(navController.graph.startDestinationId); launchSingleTop = true } },
             icon = { Icon(Icons.Default.PointOfSale, null) },
-            label = { Text("Quick") }
+            label = { Text(stringResource(R.string.iris_quick)) }
         )
         NavigationBarItem(
             selected = currentRoute == "transactions",
             onClick = { navController.navigate("transactions") { launchSingleTop = true } },
             icon = { Icon(Icons.Default.ReceiptLong, null) },
-            label = { Text("Records") }
+            label = { Text(stringResource(R.string.iris_records)) }
         )
         if (isManager) NavigationBarItem(
             selected = currentRoute == "insights",
@@ -606,13 +614,13 @@ fun MainBottomNavigation(navController: NavHostController, isManager: Boolean) {
             selected = currentRoute == "expenses",
             onClick = { navController.navigate("expenses") { launchSingleTop = true } },
             icon = { Icon(Icons.Default.Receipt, null) },
-            label = { Text("Expenses") }
+            label = { Text(stringResource(R.string.iris_expenses)) }
         )
         if (isManager) NavigationBarItem(
             selected = currentRoute == "settings",
             onClick = { navController.navigate("settings") { launchSingleTop = true } },
             icon = { Icon(Icons.Default.Settings, null) },
-            label = { Text("Settings") }
+            label = { Text(stringResource(R.string.iris_settings)) }
         )
     }
 }
@@ -645,13 +653,13 @@ fun IrisSystemHeader(staff: StaffMember, onLock: () -> Unit) {
                 Text(staff.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, color = textColor)
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = when { staff.isManager -> "Manager"; staff.isDriver -> "Driver"; else -> "Cashier" },
+                    text = stringResource(when { staff.isManager -> R.string.iris_role_manager; staff.isDriver -> R.string.iris_role_driver; else -> R.string.iris_role_cashier }),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onLock, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Lock, contentDescription = "Lock", modifier = Modifier.size(16.dp), tint = GsTheme.colors.danger)
+                    Icon(Icons.Default.Lock, contentDescription = stringResource(R.string.iris_lock), modifier = Modifier.size(16.dp), tint = GsTheme.colors.danger)
                 }
             }
 
@@ -673,7 +681,7 @@ fun IrisSystemHeader(staff: StaffMember, onLock: () -> Unit) {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     Icon(
                         if (level <= 15) Icons.Default.BatteryAlert else Icons.Default.BatteryStd,
-                        contentDescription = "Battery",
+                        contentDescription = stringResource(R.string.iris_battery),
                         modifier = Modifier.size(16.dp),
                         tint = if (level <= 15) GsTheme.colors.danger else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -730,13 +738,13 @@ fun PaymentProcessingDialog(message: String) {
 fun PaymentResultDialog(isSuccess: Boolean, message: String, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isSuccess) "Payment Success" else "Payment Failed") },
+        title = { Text(stringResource(if (isSuccess) R.string.iris_payment_success else R.string.iris_payment_failed)) },
         text = { Text(message) },
         confirmButton = {
             Button(
                 onClick = onDismiss,
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)
-            ) { Text("OK", fontWeight = FontWeight.Bold) }
+            ) { Text(stringResource(R.string.iris_ok), fontWeight = FontWeight.Bold) }
         },
         containerColor = if (isSuccess) com.goldsky.ssp.ui.theme.SuccessSlab else com.goldsky.ssp.ui.theme.DangerSlab,
         titleContentColor = Color.White,

@@ -1,5 +1,7 @@
 package com.goldsky.ssp.feature.retail.screens
 
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -36,7 +38,7 @@ fun ManualAmountScreen(onInitiatePayment: (String) -> Unit) {
             modifier = Modifier.padding(top = 16.dp)
         ) {
             Text(
-                text = "ENTER AMOUNT ($currency)",
+                text = stringResource(R.string.retail_enter_amount, currency),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold

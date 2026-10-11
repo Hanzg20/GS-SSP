@@ -174,7 +174,7 @@ export function toProposal(raw: any, tz: string, now = new Date()): Proposal | n
   return null;
 }
 
-export function parsePrompt(lang: "zh" | "en", nowStamp: string, calendar: string): string {
+export function parsePrompt(_lang: string, nowStamp: string, calendar: string): string {
   return `You turn a store manager's sentence into a record. The store's local time now is ${nowStamp}.
 Weeks start on Monday. Use this calendar for any weekday words ("上周五" = last week's Friday, "下周一" = next week's Monday, "周三"/"this Wednesday" = this week's):
 ${calendar}

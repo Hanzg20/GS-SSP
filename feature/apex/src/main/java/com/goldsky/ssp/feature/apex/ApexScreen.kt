@@ -42,8 +42,8 @@ import kotlinx.serialization.json.jsonPrimitive
 val GoldSkyBlue = com.goldsky.ssp.ui.theme.BrandBlue
 val GoldSkyCyan = com.goldsky.ssp.ui.theme.BrandCyan
 
-/** The mascot's name, by language: 小海狸 / Beaver (one place to rename it). */
-fun apexName(lang: String) = if (lang == "zh") "小海狸" else "Beaver"
+/** The mascot's name in the interface language (res: apex_name -- 小海狸 / Beaver). */
+fun apexName(context: android.content.Context): String = context.getString(com.goldsky.ssp.core.data.R.string.apex_name)
 
 /**
  * Apex (小海狸), the manager's assistant. The numbers at the top are the
@@ -56,8 +56,9 @@ fun apexName(lang: String) = if (lang == "zh") "小海狸" else "Beaver"
 fun ApexScreen(staff: StaffMember) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var lang by remember { mutableStateOf(ApexRepository.language(context)) }
-    fun t(zh: String, en: String) = if (lang == "zh") zh else en
+    // 小海狸 answers in the terminal's interface language (Settings > Language).
+    val lang = remember { com.goldsky.ssp.payment.UiLanguage.current(context) }
+    fun str(id: Int, vararg args: Any): String = context.getString(id, *args)
 
     var loading by remember { mutableStateOf(true) }
     var stats by remember { mutableStateOf<JsonObject?>(null) }
@@ -97,14 +98,14 @@ fun ApexScreen(staff: StaffMember) {
         if (!recording) return
         recording = false
         val audio = recorder.stop() ?: run {
-            voiceNote = if (recorder.lastProblem == VoiceRecorder.Problem.SILENT) t("没听到声音，请靠近一点再说", "Didn't hear anything -- speak a little closer")
-                        else t("按住说话，松开结束", "Hold to talk, release when done")
+            voiceNote = if (recorder.lastProblem == VoiceRecorder.Problem.SILENT) str(R.string.apex_didn_t_hear_anything_speak)
+                        else str(R.string.apex_hold_to_talk_release_when)
             return
         }
         transcribing = true
         voiceNote = null
         scope.launch {
-            when (val r = ApexRepository.transcribe(staff.id, lang, audio)) {
+            when (val r = ApexRepository.transcribe(context, staff.id, audio)) {
                 is ApexRepository.Result.Transcript -> question = (if (question.isBlank()) "" else "$question ") + r.text
                 is ApexRepository.Result.Failed -> voiceNote = r.message
                 else -> {}
@@ -116,7 +117,7 @@ fun ApexScreen(staff: StaffMember) {
     fun load(refresh: Boolean) {
         loading = true
         scope.launch {
-            when (val r = ApexRepository.brief(staff.id, lang, refresh)) {
+            when (val r = ApexRepository.brief(context, staff.id, refresh)) {
                 is ApexRepository.Result.Brief -> { stats = r.stats; brief = r.text; modelOff = r.modelOff; loadError = null }
                 is ApexRepository.Result.Failed -> loadError = r.message
                 else -> {}
@@ -128,7 +129,7 @@ fun ApexScreen(staff: StaffMember) {
 
     // Earlier conversation (kept in the cloud per staff member), shown above anything new.
     LaunchedEffect(Unit) {
-        val r = ApexRepository.history(staff.id, lang)
+        val r = ApexRepository.history(context, staff.id)
         if (r is ApexRepository.Result.History && r.turns.isNotEmpty()) {
             chat.addAll(0, r.turns.map { it.fromUser to it.text })
             // After the list has laid the new items out: stats + brief come first, then the chat.
@@ -152,12 +153,12 @@ fun ApexScreen(staff: StaffMember) {
         question = ""
         asking = true
         scope.launch {
-            val answer = when (val r = ApexRepository.ask(staff.id, lang, q)) {
+            val answer = when (val r = ApexRepository.ask(context, staff.id, q)) {
                 is ApexRepository.Result.Reply -> r.text
                 is ApexRepository.Result.Proposal -> {
                     proposal = r.data
                     if (r.data["kind"]?.jsonPrimitive?.contentOrNull == "reminder" && !notifyAllowed) askNotify.launch("android.permission.POST_NOTIFICATIONS")
-                    t("请确认下面的内容，确认后才会保存。", "Please check the card below -- nothing is saved until you confirm.")
+                    str(R.string.apex_please_check_the_card_below)
                 }
                 is ApexRepository.Result.Failed -> "⚠ ${r.message}"
                 else -> ""
@@ -175,15 +176,11 @@ fun ApexScreen(staff: StaffMember) {
             ApexAvatar(44.dp)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(apexName(lang), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
-                Text(t("门店经营助手", "Your store assistant"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(apexName(context), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                Text(str(R.string.apex_your_store_assistant), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            TextButton(onClick = {
-                lang = if (lang == "zh") "en" else "zh"
-                ApexRepository.setLanguage(context, lang)
-            }) { Text(if (lang == "zh") "EN" else "中文", fontWeight = FontWeight.Bold) }
             IconButton(onClick = { load(refresh = true) }, enabled = !loading) {
-                Icon(Icons.Default.Refresh, contentDescription = t("刷新", "Refresh"))
+                Icon(Icons.Default.Refresh, contentDescription = str(R.string.apex_refresh))
             }
         }
 
@@ -195,7 +192,7 @@ fun ApexScreen(staff: StaffMember) {
         ) {
             item {
                 when {
-                    stats != null -> StatsPanel(stats!!, lang, onReminderDone = { id ->
+                    stats != null -> StatsPanel(stats!!, onReminderDone = { id ->
                         scope.launch { if (com.goldsky.ssp.payment.ReminderRepository.markDone(id)) load(refresh = false) }
                     })
                     loading -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -210,11 +207,11 @@ fun ApexScreen(staff: StaffMember) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        Text(t("${apexName(lang)}的今日简报", "${apexName(lang)}'s brief"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text(str(R.string.apex_s_brief, apexName(context)), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(8.dp))
                         when {
-                            loading && brief == null -> Text(t("小海狸正在看今天的数据…", "Beaver is looking over today's numbers..."), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            modelOff -> Text(t("AI 简报还没开通（云端未配置模型）。上面的数字是实时的。", "The AI brief isn't switched on yet (no model configured). The numbers above are live."), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            loading && brief == null -> Text(str(R.string.apex_beaver_is_looking_over_today), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            modelOff -> Text(str(R.string.apex_the_ai_brief_isn_t), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             brief != null -> Text(brief!!, color = MaterialTheme.colorScheme.onSurface, lineHeight = 22.sp)
                             loadError != null -> Text("⚠ $loadError", color = GsTheme.colors.danger)
                         }
@@ -226,21 +223,20 @@ fun ApexScreen(staff: StaffMember) {
         }
 
         proposal?.let { p ->
-            ProposalCard(p, lang,
-                onCancel = { proposal = null; chat.add(false to t("好的，已取消。", "OK, cancelled.")) },
+            ProposalCard(p,
+                onCancel = { proposal = null; chat.add(false to str(R.string.apex_ok_cancelled)) },
                 onSaved = { message -> proposal = null; chat.add(false to message); load(refresh = false) },
                 staff = staff)
         }
 
         // Quick questions + input
-        val quick = if (lang == "zh") listOf("今天生意怎么样？", "这周什么卖得最好？", "哪些商品卖不动？", "高峰期是几点？", "最近有哪些退款？")
-                    else listOf("How's today going?", "Best sellers this week?", "What isn't selling?", "When are we busiest?", "Any recent refunds?")
+        val quick = androidx.compose.ui.res.stringArrayResource(R.array.apex_quick_questions).toList()
         LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(quick) { q -> AssistChip(onClick = { send(q) }, label = { Text(q) }, enabled = !asking) }
         }
         val note = when {
-            recording -> t("正在听…松开结束", "Listening... release when done")
-            transcribing -> t("正在识别…", "Transcribing...")
+            recording -> str(R.string.apex_listening_release_when_done)
+            transcribing -> str(R.string.apex_transcribing)
             else -> voiceNote
         }
         if (note != null) {
@@ -258,7 +254,7 @@ fun ApexScreen(staff: StaffMember) {
                         if (asking || transcribing) return@detectTapGestures
                         hideKeyboard()
                         recording = recorder.start()
-                        if (!recording) voiceNote = t("麦克风打不开", "Couldn't open the microphone")
+                        if (!recording) voiceNote = str(R.string.apex_couldn_t_open_the_microphone)
                         tryAwaitRelease()
                         stopAndTranscribe()
                     })
@@ -266,7 +262,7 @@ fun ApexScreen(staff: StaffMember) {
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     if (transcribing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                    else Icon(Icons.Default.Mic, contentDescription = t("按住说话", "Hold to talk"),
+                    else Icon(Icons.Default.Mic, contentDescription = str(R.string.apex_hold_to_talk),
                         tint = if (recording) Color.White else MaterialTheme.colorScheme.primary)
                 }
             }
@@ -275,14 +271,14 @@ fun ApexScreen(staff: StaffMember) {
                 value = question,
                 onValueChange = { question = it.take(500) },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text(t("问问小海狸…", "Ask Beaver...")) },
+                placeholder = { Text(str(R.string.apex_ask_beaver)) },
                 maxLines = 3,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { send(question) })
             )
             Spacer(Modifier.width(8.dp))
             FilledIconButton(onClick = { send(question) }, enabled = question.isNotBlank() && !asking) {
-                Icon(Icons.Default.Send, contentDescription = t("发送", "Send"))
+                Icon(Icons.Default.Send, contentDescription = str(R.string.apex_send))
             }
         }
     }
@@ -326,8 +322,9 @@ private fun JsonObject.arr(key: String): List<JsonObject> = (this[key] as? JsonA
 
 /** The store's live numbers -- straight from the database, no model involved. */
 @Composable
-private fun StatsPanel(stats: JsonObject, lang: String, onReminderDone: (String) -> Unit) {
-    fun t(zh: String, en: String) = if (lang == "zh") zh else en
+private fun StatsPanel(stats: JsonObject, onReminderDone: (String) -> Unit) {
+    val context = LocalContext.current
+    fun str(id: Int, vararg args: Any): String = context.getString(id, *args)
     val today = stats.obj("today")
     val lastWeek = stats.obj("same_time_last_week")
     val total = today?.num("total_cents") ?: 0.0
@@ -336,25 +333,24 @@ private fun StatsPanel(stats: JsonObject, lang: String, onReminderDone: (String)
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatCard(t("今日销售", "Sales today"), money(total), Modifier.weight(1f),
+            StatCard(str(R.string.apex_sales_today), money(total), Modifier.weight(1f),
                 sub = when {
-                    change == null -> t("上周同期无数据", "No sales same time last week")
-                    change >= 0 -> t("比上周同期 +$change%", "+$change% vs last week")
-                    else -> t("比上周同期 $change%", "$change% vs last week")
+                    change == null -> str(R.string.apex_no_sales_same_time_last)
+                    change >= 0 -> str(R.string.apex_vs_last_week, change)
+                    else -> str(R.string.apex_vs_last_week_2, change)
                 },
                 subColor = when { change == null -> null; change >= 0 -> GsTheme.colors.success; else -> GsTheme.colors.danger })
-            StatCard(t("笔数 / 客单价", "Sales / avg"), "${(today?.num("sales") ?: 0.0).toInt()} · ${money(today?.num("avg_basket_cents") ?: 0.0)}", Modifier.weight(1f),
-                sub = t("现金 ${money(today?.num("cash_cents") ?: 0.0)} · 刷卡 ${money(today?.num("card_cents") ?: 0.0)}",
-                        "Cash ${money(today?.num("cash_cents") ?: 0.0)} · Card ${money(today?.num("card_cents") ?: 0.0)}"))
+            StatCard(str(R.string.apex_sales_avg), "${(today?.num("sales") ?: 0.0).toInt()} · ${money(today?.num("avg_basket_cents") ?: 0.0)}", Modifier.weight(1f),
+                sub = str(R.string.apex_cash_card, money(today?.num("cash_cents") ?: 0.0), money(today?.num("card_cents") ?: 0.0)))
         }
         val peaks = stats.arr("hourly_last_28_days").sortedByDescending { it.num("avg_sales") }.take(3).filter { it.num("avg_sales") > 0 }
         if (peaks.isNotEmpty()) {
-            StatCard(t("高峰时段（近 28 天）", "Busiest hours (28 days)"),
+            StatCard(str(R.string.apex_busiest_hours_28_days),
                 peaks.joinToString("  ") { "%02d:00".format(it.num("hour").toInt()) }, Modifier.fillMaxWidth())
         }
         val top = stats.arr("top_items_7_days").take(5)
         if (top.isNotEmpty()) {
-            StatCard(t("近 7 天畅销", "Best sellers (7 days)"),
+            StatCard(str(R.string.apex_best_sellers_7_days),
                 top.joinToString("\n") { "${it["name"]?.jsonPrimitive?.contentOrNull} × ${it.num("qty").toInt()}" }, Modifier.fillMaxWidth(), small = true)
         }
         val due = stats.arr("reminders_due")
@@ -362,13 +358,13 @@ private fun StatsPanel(stats: JsonObject, lang: String, onReminderDone: (String)
             Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
-                    Text(t("今天的待办", "To-dos due today"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Text(str(R.string.apex_to_dos_due_today), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     due.forEach { r ->
                         val overdue = r["overdue"]?.jsonPrimitive?.contentOrNull == "true"
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                             Text("${r["due"]?.jsonPrimitive?.contentOrNull?.takeLast(5) ?: ""}  ${r["text"]?.jsonPrimitive?.contentOrNull ?: ""}",
                                 Modifier.weight(1f), color = if (overdue) GsTheme.colors.danger else MaterialTheme.colorScheme.onSurface)
-                            TextButton(onClick = { r["id"]?.jsonPrimitive?.contentOrNull?.let(onReminderDone) }) { Text(t("完成", "Done")) }
+                            TextButton(onClick = { r["id"]?.jsonPrimitive?.contentOrNull?.let(onReminderDone) }) { Text(str(R.string.apex_done)) }
                         }
                     }
                 }
@@ -377,39 +373,36 @@ private fun StatsPanel(stats: JsonObject, lang: String, onReminderDone: (String)
         // Loss prevention first: rule-based flags from the database, worded here.
         val flags = stats.obj("loss_signals")?.arr("flags").orEmpty()
         if (flags.isNotEmpty()) {
-            StatCard(t("防损提醒（近 7 天，值得核对）", "Worth a look (last 7 days)"),
-                flags.joinToString("\n") { "• " + lossFlagText(it, lang) }, Modifier.fillMaxWidth(), small = true,
+            StatCard(str(R.string.apex_worth_a_look_last_7),
+                flags.joinToString("\n") { "• " + lossFlagText(context, it) }, Modifier.fillMaxWidth(), small = true,
                 accent = GsTheme.colors.warning)
         }
         val perishable = (stats["perishable_not_sold_3_days"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty()
         if (perishable.isNotEmpty()) {
-            StatCard(t("生鲜 3 天没卖出（考虑打折）", "Fresh items unsold for 3 days (mark down?)"),
+            StatCard(str(R.string.apex_fresh_items_unsold_for_3),
                 perishable.take(8).joinToString("、"), Modifier.fillMaxWidth(), small = true)
         }
         val unsold = (stats["not_sold_14_days"] as? JsonArray)?.mapNotNull { (it as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull }.orEmpty()
         if (unsold.isNotEmpty()) {
-            StatCard(t("14 天没卖出", "Not sold in 14 days"),
-                t("${unsold.size} 个商品", "${unsold.size} items"), Modifier.fillMaxWidth(),
+            StatCard(str(R.string.apex_not_sold_in_14_days),
+                str(R.string.apex_items, unsold.size), Modifier.fillMaxWidth(),
                 sub = unsold.take(5).joinToString("、"))
         }
     }
 }
 
 /** One loss-prevention flag (apex_loss_signals) in plain words. Never an accusation: "check this". */
-private fun lossFlagText(flag: JsonObject, lang: String): String {
-    val zh = lang == "zh"
+private fun lossFlagText(context: android.content.Context, flag: JsonObject): String {
     val who = flag["staff"]?.jsonPrimitive?.contentOrNull ?: ""
     val d = flag.obj("detail")
     fun n(k: String) = d?.num(k) ?: 0.0
     fun i(k: String) = n(k).toInt()
     return when (flag["kind"]?.jsonPrimitive?.contentOrNull) {
-        "HIGH_REFUND_RATE" -> if (zh) "$who 经手的销售退款/撤销 ${i("refunds")} 笔（${n("rate_pct")}%，全店 ${n("store_rate_pct")}%），共 ${money(n("refund_cents"))}"
-            else "$who: ${i("refunds")} refunds/voids on their sales (${n("rate_pct")}% vs store ${n("store_rate_pct")}%), ${money(n("refund_cents"))}"
-        "SELF_APPROVED" -> if (zh) "$who 批准了自己经手的销售退款 ${i("count")} 笔" else "$who approved refunds of their own sales: ${i("count")}"
-        "CASH_REFUNDS" -> if (zh) "$who 经手的现金销售被退款 ${i("count")} 笔" else "$who: ${i("count")} cash refunds on their sales"
-        "HIGH_CASH_SHARE" -> if (zh) "$who 收现金比例 ${n("cash_share_pct")}%，明显高于全店 ${n("store_cash_share_pct")}%"
-            else "$who takes ${n("cash_share_pct")}% in cash vs store ${n("store_cash_share_pct")}%"
-        "DECLINES_TODAY" -> if (zh) "今天被拒付 ${i("count")} 笔，留意读卡器或可疑卡" else "${i("count")} declined card payments today -- check the reader or suspicious cards"
+        "HIGH_REFUND_RATE" -> context.getString(R.string.apex_flag_high_refund_rate, who, i("refunds"), n("rate_pct").toString(), n("store_rate_pct").toString(), money(n("refund_cents")))
+        "SELF_APPROVED" -> context.getString(R.string.apex_flag_self_approved, who, i("count"))
+        "CASH_REFUNDS" -> context.getString(R.string.apex_flag_cash_refunds, who, i("count"))
+        "HIGH_CASH_SHARE" -> context.getString(R.string.apex_flag_high_cash_share, who, n("cash_share_pct").toString(), n("store_cash_share_pct").toString())
+        "DECLINES_TODAY" -> context.getString(R.string.apex_flag_declines_today, i("count"))
         else -> flag["kind"]?.jsonPrimitive?.contentOrNull ?: ""
     }
 }
@@ -436,31 +429,31 @@ private fun StatCard(title: String, value: String, modifier: Modifier, sub: Stri
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProposalCard(p: JsonObject, lang: String, staff: StaffMember, onCancel: () -> Unit, onSaved: (String) -> Unit) {
+private fun ProposalCard(p: JsonObject, staff: StaffMember, onCancel: () -> Unit, onSaved: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    fun t(zh: String, en: String) = if (lang == "zh") zh else en
-    fun str(k: String) = p[k]?.jsonPrimitive?.contentOrNull ?: ""
+    fun str(id: Int, vararg args: Any): String = context.getString(id, *args)
+    fun field(k: String) = p[k]?.jsonPrimitive?.contentOrNull ?: ""
     val check = (p["check"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty()
-    val isExpense = str("kind") == "expense"
+    val isExpense = field("kind") == "expense"
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
     // expense fields
-    var vendor by remember(p) { mutableStateOf(str("vendor")) }
+    var vendor by remember(p) { mutableStateOf(field("vendor")) }
     var amount by remember(p) { mutableStateOf(p["amount"]?.jsonPrimitive?.doubleOrNull?.let { "%.2f".format(it) } ?: "") }
-    var category by remember(p) { mutableStateOf(str("category").ifBlank { "OTHER" }) }
-    var spentOn by remember(p) { mutableStateOf(str("spentOn")) }
-    var note by remember(p) { mutableStateOf(str("note")) }
+    var category by remember(p) { mutableStateOf(field("category").ifBlank { "OTHER" }) }
+    var spentOn by remember(p) { mutableStateOf(field("spentOn")) }
+    var note by remember(p) { mutableStateOf(field("note")) }
     // reminder fields (store-local date and time)
-    val dueMillis = str("dueAt").takeIf { it.isNotBlank() }?.let { com.goldsky.ssp.payment.DayReportRepository.parseIsoMillis(it) }
-    var text by remember(p) { mutableStateOf(str("text")) }
+    val dueMillis = field("dueAt").takeIf { it.isNotBlank() }?.let { com.goldsky.ssp.payment.DayReportRepository.parseIsoMillis(it) }
+    var text by remember(p) { mutableStateOf(field("text")) }
     var dueDate by remember(p) { mutableStateOf(dueMillis?.let { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(it)) } ?: "") }
     var dueTime by remember(p) { mutableStateOf(dueMillis?.let { java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(it)) } ?: "") }
 
     @Composable
     fun flagged(field: String, label: String): @Composable () -> Unit = {
-        Text(if (field in check) "$label · ${t("请核对", "please check")}" else label,
+        Text(if (field in check) "$label · ${str(R.string.apex_please_check)}" else label,
             color = if (field in check) GsTheme.colors.warning else androidx.compose.ui.graphics.Color.Unspecified)
     }
 
@@ -468,66 +461,66 @@ private fun ProposalCard(p: JsonObject, lang: String, staff: StaffMember, onCanc
         border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (isExpense) t("💵 记一笔费用", "💵 Record an expense") else t("📌 设一个提醒", "📌 Set a reminder"),
+            Text(if (isExpense) str(R.string.apex_record_an_expense) else str(R.string.apex_set_a_reminder),
                 fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             if (isExpense) {
-                val said = listOf(str("amountWords"), str("dateWords")).filter { it.isNotBlank() }.joinToString("，")
-                if (said.isNotBlank()) Text(t("你说的：", "You said: ") + said, style = MaterialTheme.typography.bodySmall)
+                val said = listOf(field("amountWords"), field("dateWords")).filter { it.isNotBlank() }.joinToString("，")
+                if (said.isNotBlank()) Text(str(R.string.apex_you_said) + said, style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' }.take(10) }, Modifier.weight(1f),
-                        label = flagged("amount", t("金额 $", "Amount $")), singleLine = true,
+                        label = flagged("amount", str(R.string.apex_amount)), singleLine = true,
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
-                    OutlinedTextField(spentOn, { spentOn = it.take(10) }, Modifier.weight(1f), label = flagged("date", t("日期", "Date")), singleLine = true)
+                    OutlinedTextField(spentOn, { spentOn = it.take(10) }, Modifier.weight(1f), label = flagged("date", str(R.string.apex_date)), singleLine = true)
                 }
-                OutlinedTextField(vendor, { vendor = it.take(120) }, Modifier.fillMaxWidth(), label = { Text(t("收款方", "Paid to")) }, singleLine = true)
+                OutlinedTextField(vendor, { vendor = it.take(120) }, Modifier.fillMaxWidth(), label = { Text(str(R.string.apex_paid_to)) }, singleLine = true)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(com.goldsky.ssp.payment.ExpenseRepository.CATEGORIES) { c ->
                         FilterChip(selected = category == c, onClick = { category = c },
-                            label = { Text(com.goldsky.ssp.payment.ExpenseRepository.label(c, lang == "zh")) })
+                            label = { Text(com.goldsky.ssp.payment.ExpenseRepository.label(context, c)) })
                     }
                 }
-                OutlinedTextField(note, { note = it.take(500) }, Modifier.fillMaxWidth(), label = { Text(t("备注", "Note")) }, singleLine = true)
+                OutlinedTextField(note, { note = it.take(500) }, Modifier.fillMaxWidth(), label = { Text(str(R.string.apex_note)) }, singleLine = true)
             } else {
-                OutlinedTextField(text, { text = it.take(300) }, Modifier.fillMaxWidth(), label = { Text(t("内容", "What")) })
-                if (str("whenWords").isNotBlank()) Text(t("你说的时间：", "You said: ") + str("whenWords"), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(text, { text = it.take(300) }, Modifier.fillMaxWidth(), label = { Text(str(R.string.apex_what)) })
+                if (field("whenWords").isNotBlank()) Text(str(R.string.apex_you_said_2) + field("whenWords"), style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(dueDate, { dueDate = it.take(10) }, Modifier.weight(1f), label = flagged("due", t("日期 yyyy-mm-dd", "Date yyyy-mm-dd")), singleLine = true)
-                    OutlinedTextField(dueTime, { dueTime = it.take(5) }, Modifier.weight(1f), label = flagged("due", t("时间 HH:mm", "Time HH:mm")), singleLine = true)
+                    OutlinedTextField(dueDate, { dueDate = it.take(10) }, Modifier.weight(1f), label = flagged("due", str(R.string.apex_date_yyyy_mm_dd)), singleLine = true)
+                    OutlinedTextField(dueTime, { dueTime = it.take(5) }, Modifier.weight(1f), label = flagged("due", str(R.string.apex_time_hh_mm)), singleLine = true)
                 }
             }
             error?.let { Text(it, color = GsTheme.colors.danger, style = MaterialTheme.typography.bodySmall) }
             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onCancel, enabled = !saving) { Text(t("取消", "Cancel")) }
+                TextButton(onClick = onCancel, enabled = !saving) { Text(str(R.string.apex_cancel)) }
                 Spacer(Modifier.width(8.dp))
                 Button(enabled = !saving, onClick = {
                     error = null
                     if (isExpense) {
                         val cents = amount.toDoubleOrNull()?.let { Math.round(it * 100).toInt() }
-                        if (cents == null || cents <= 0) { error = t("请填写金额", "Enter the amount"); return@Button }
-                        if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(spentOn)) { error = t("日期格式：2026-10-10", "Date as 2026-10-10"); return@Button }
+                        if (cents == null || cents <= 0) { error = str(R.string.apex_enter_the_amount); return@Button }
+                        if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(spentOn)) { error = str(R.string.apex_date_as_2026_10_10); return@Button }
                         saving = true
                         scope.launch {
                             val online = com.goldsky.ssp.payment.ExpenseRepository.record(context, vendor, category, cents, spentOn, note, "voice", staff)
                             saving = false
-                            val what = "${com.goldsky.ssp.payment.ExpenseRepository.label(category, lang == "zh")} $${"%.2f".format(cents / 100.0)}" +
+                            val what = "${com.goldsky.ssp.payment.ExpenseRepository.label(context, category)} $${"%.2f".format(cents / 100.0)}" +
                                 (if (vendor.isNotBlank()) " · $vendor" else "")
-                            onSaved(if (online) t("已记账：$what", "Booked: $what") else t("已记下：$what（离线，联网后自动上传）", "Saved: $what (offline, uploads when back online)"))
+                            onSaved(if (online) str(R.string.apex_booked, what) else str(R.string.apex_saved_offline_uploads_when_back, what))
                         }
                     } else {
                         val at = runCatching {
                             java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).apply { isLenient = false }.parse("$dueDate $dueTime")?.time
                         }.getOrNull()
-                        if (text.isBlank()) { error = t("请填写内容", "Enter what to do"); return@Button }
-                        if (at == null || at < System.currentTimeMillis()) { error = t("请填一个将来的日期和时间", "Enter a future date and time"); return@Button }
+                        if (text.isBlank()) { error = str(R.string.apex_enter_what_to_do); return@Button }
+                        if (at == null || at < System.currentTimeMillis()) { error = str(R.string.apex_enter_a_future_date_and); return@Button }
                         saving = true
                         scope.launch {
                             val ok = com.goldsky.ssp.payment.ReminderRepository.create(context, text, at, staff)
                             saving = false
-                            if (ok) onSaved(t("好的，$dueDate $dueTime 提醒你：$text", "OK -- I'll remind you at $dueDate $dueTime: $text"))
-                            else error = t("没保存成功，请检查网络再试", "Couldn't save -- check the connection and try again")
+                            if (ok) onSaved(str(R.string.apex_ok_i_ll_remind_you, dueDate, dueTime, text))
+                            else error = str(R.string.apex_couldn_t_save_check_the)
                         }
                     }
-                }) { Text(if (saving) t("保存中…", "Saving...") else t("确认", "Confirm"), fontWeight = FontWeight.Bold) }
+                }) { Text(if (saving) str(R.string.apex_saving) else str(R.string.apex_confirm), fontWeight = FontWeight.Bold) }
             }
         }
     }

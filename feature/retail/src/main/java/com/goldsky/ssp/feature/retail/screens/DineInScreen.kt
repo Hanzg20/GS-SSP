@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.BorderStroke
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import com.goldsky.ssp.ui.theme.GsTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -37,7 +39,7 @@ fun DineInScreen(onTableSelected: (Table) -> Unit) {
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("DINE-IN MANAGEMENT", fontWeight = FontWeight.Black, letterSpacing = 1.sp) },
+                title = { Text(stringResource(R.string.retail_dine_in_management), fontWeight = FontWeight.Black, letterSpacing = 1.sp) },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.primary
@@ -51,8 +53,7 @@ fun DineInScreen(onTableSelected: (Table) -> Unit) {
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            Text(
-                "SELECT TABLE",
+            Text(stringResource(R.string.retail_select_table),
                 modifier = Modifier.padding(16.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,

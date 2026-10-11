@@ -1,6 +1,8 @@
 package com.goldsky.ssp.ourea
 
 import android.graphics.Bitmap
+import com.goldsky.ssp.ourea.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -69,7 +71,7 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
     ) {
         Image(
             painter = painterResource(CoreUiR.drawable.goldsky_logo),
-            contentDescription = "GoldSky",
+            contentDescription = stringResource(R.string.ourea_goldsky),
             modifier = Modifier.size(40.dp)
         )
         Spacer(modifier = Modifier.height(32.dp))
@@ -178,7 +180,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
                 .padding(16.dp)
         ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Cart", color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.ourea_cart), color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 if (parkedOrders.isNotEmpty()) {
                     Box(
                         modifier = Modifier
@@ -190,7 +192,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Receipt, null, tint = OureaSkyBlue, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Held (${parkedOrders.size})", color = OureaTextPrimary, fontSize = 13.sp)
+                            Text(stringResource(R.string.ourea_held, parkedOrders.size), color = OureaTextPrimary, fontSize = 13.sp)
                         }
                     }
                 }
@@ -208,7 +210,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
             Divider(color = OureaSurfaceVariant)
             Spacer(modifier = Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Total", color = OureaTextSecondary)
+                Text(stringResource(R.string.ourea_total), color = OureaTextSecondary)
                 Text("$${"%.2f".format(total / 100.0)}", color = OureaTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -219,12 +221,12 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
                 ) {
                     Icon(Icons.Default.Schedule, null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Hold Order")
+                    Text(stringResource(R.string.ourea_hold_order))
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
             OureaGradientButton(
-                text = "CHECKOUT",
+                text = stringResource(R.string.ourea_checkout),
                 onClick = { if (total > 0) onCheckout(total) },
                 enabled = total > 0,
                 modifier = Modifier.fillMaxWidth().height(52.dp)
@@ -247,7 +249,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("Search products", color = OureaTextSecondary) },
+                placeholder = { Text(stringResource(R.string.ourea_search_products), color = OureaTextSecondary) },
                 leadingIcon = { Icon(Icons.Default.Search, null, tint = OureaTextSecondary) },
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
@@ -263,7 +265,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
             if (filtered.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No products yet -- add some from the CMP back office", color = OureaTextSecondary)
+                    Text(stringResource(R.string.ourea_no_products_yet_add_some), color = OureaTextSecondary)
                 }
             } else {
                 LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 160.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -312,24 +314,24 @@ fun OureaProductsScreen() {
 
     Row(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.weight(1f).fillMaxHeight().background(OureaBackground).padding(16.dp)) {
-            Text("Products", color = OureaTextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.ourea_products), color = OureaTextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${catalog.size} products", color = OureaTextSecondary, fontSize = 13.sp)
+                Text(stringResource(R.string.ourea_products_count, catalog.size), color = OureaTextSecondary, fontSize = 13.sp)
                 if (lowStockCount > 0) {
                     Text("  ·  ", color = OureaTextSecondary, fontSize = 13.sp)
-                    Text("$lowStockCount low stock", color = OureaGold, fontSize = 13.sp)
+                    Text(stringResource(R.string.ourea_low_stock_count, lowStockCount), color = OureaGold, fontSize = 13.sp)
                 }
                 if (outOfStockCount > 0) {
                     Text("  ·  ", color = OureaTextSecondary, fontSize = 13.sp)
-                    Text("$outOfStockCount out of stock", color = OureaRed, fontSize = 13.sp)
+                    Text(stringResource(R.string.ourea_out_of_stock_count, outOfStockCount), color = OureaRed, fontSize = 13.sp)
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("Search products", color = OureaTextSecondary) },
+                placeholder = { Text(stringResource(R.string.ourea_search_products), color = OureaTextSecondary) },
                 leadingIcon = { Icon(Icons.Default.Search, null, tint = OureaTextSecondary) },
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
@@ -345,7 +347,7 @@ fun OureaProductsScreen() {
             Spacer(modifier = Modifier.height(16.dp))
             if (filtered.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No products yet -- add some from the CMP back office", color = OureaTextSecondary)
+                    Text(stringResource(R.string.ourea_no_products_yet_add_some), color = OureaTextSecondary)
                 }
             } else {
                 LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 160.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -369,7 +371,7 @@ private fun OureaCategoryRail(categories: List<String>, selected: String?, onSel
             .background(OureaSurface)
             .padding(vertical = 16.dp, horizontal = 8.dp)
     ) {
-        OureaCategoryRailItem("All", selected == null) { onSelect(null) }
+        OureaCategoryRailItem(stringResource(R.string.ourea_all), selected == null) { onSelect(null) }
         Spacer(modifier = Modifier.height(4.dp))
         categories.forEach { category ->
             OureaCategoryRailItem(category, selected == category) { onSelect(category) }
@@ -479,9 +481,9 @@ private fun ProductCard(product: Product, onAdd: (() -> Unit)? = null) {
 @Composable
 private fun OureaStockBadge(stockQty: Int, modifier: Modifier = Modifier) {
     val (label, color) = when {
-        stockQty <= 0 -> "Out of Stock" to OureaRed
-        stockQty <= 5 -> "Low: $stockQty left" to OureaGold
-        else -> "$stockQty in stock" to OureaTextSecondary
+        stockQty <= 0 -> stringResource(R.string.ourea_out_of_stock) to OureaRed
+        stockQty <= 5 -> stringResource(R.string.ourea_low_left, stockQty) to OureaGold
+        else -> stringResource(R.string.ourea_in_stock, stockQty) to OureaTextSecondary
     }
     Box(
         modifier = modifier.clip(RoundedCornerShape(6.dp)).background(color.copy(alpha = 0.15f)).padding(horizontal = 8.dp, vertical = 2.dp)
@@ -520,23 +522,23 @@ fun OureaPaymentScreen(
         // confirmed on-device: at this column's actual measured width, fixed-width buttons
         // rendered past the column's right edge and were hidden behind the Bill Details panel).
         Column(modifier = Modifier.weight(1f).widthIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-            Text("Confirm Payment", color = OureaTextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.ourea_confirm_payment), color = OureaTextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(24.dp))
             OureaGradientButton(
-                text = "Charge Card",
+                text = stringResource(R.string.ourea_charge_card),
                 onClick = onChargeCard,
                 icon = Icons.Default.CreditCard,
                 modifier = Modifier.fillMaxWidth().height(72.dp)
             )
             Spacer(modifier = Modifier.height(12.dp))
-            OureaPaymentMethodButton("Cash", Icons.Default.Payments, onCash, Modifier.fillMaxWidth())
+            OureaPaymentMethodButton(stringResource(R.string.ourea_cash), Icons.Default.Payments, onCash, Modifier.fillMaxWidth())
             Spacer(modifier = Modifier.height(12.dp))
-            OureaPaymentMethodButton("QR Code", Icons.Default.QrCode, onQr, Modifier.fillMaxWidth())
+            OureaPaymentMethodButton(stringResource(R.string.ourea_qr_code), Icons.Default.QrCode, onQr, Modifier.fillMaxWidth())
             Spacer(modifier = Modifier.height(12.dp))
-            OureaPaymentMethodButton("Member Card", Icons.Default.Badge, onMember, Modifier.fillMaxWidth())
+            OureaPaymentMethodButton(stringResource(R.string.ourea_member_card), Icons.Default.Badge, onMember, Modifier.fillMaxWidth())
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-                Text("Back to Order")
+                Text(stringResource(R.string.ourea_back_to_order))
             }
         }
         Column(
@@ -547,14 +549,14 @@ fun OureaPaymentScreen(
                 .background(OureaSurface)
                 .padding(20.dp)
         ) {
-            Text("Bill Details", color = OureaTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.ourea_bill_details), color = OureaTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(16.dp))
-            BillLine("Subtotal", subtotalCents, OureaTextSecondary)
-            BillLine("Tax", taxCents, OureaTextSecondary)
-            if (tipCents > 0) BillLine("Tip", tipCents, OureaTextSecondary)
+            BillLine(stringResource(R.string.ourea_subtotal), subtotalCents, OureaTextSecondary)
+            BillLine(stringResource(R.string.ourea_tax), taxCents, OureaTextSecondary)
+            if (tipCents > 0) BillLine(stringResource(R.string.ourea_tip), tipCents, OureaTextSecondary)
             Divider(color = OureaSurfaceVariant, modifier = Modifier.padding(vertical = 12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Total Due", color = OureaTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(stringResource(R.string.ourea_total_due), color = OureaTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Text("$${"%.2f".format(total / 100.0)}", color = OureaGold, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
         }
@@ -623,13 +625,13 @@ fun OureaCashDialog(totalCents: Int, onConfirm: (cashReceivedCents: Int) -> Unit
                 modifier = Modifier.padding(24.dp).width(320.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Cash Payment", color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.ourea_cash_payment), color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Total Due: ${formatCents(totalCents)}", color = OureaTextSecondary)
+                Text(stringResource(R.string.ourea_total_due_amount, formatCents(totalCents)), color = OureaTextSecondary)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(formatCents(receivedCents), color = OureaGold, fontSize = 32.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    if (change >= 0) "Change: ${formatCents(change)}" else "Amount short: ${formatCents(-change)}",
+                    if (change >= 0) stringResource(R.string.ourea_change, formatCents(change)) else stringResource(R.string.ourea_amount_short, formatCents(-change)),
                     color = if (change >= 0) OureaTextSecondary else OureaRed
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -647,13 +649,13 @@ fun OureaCashDialog(totalCents: Int, onConfirm: (cashReceivedCents: Int) -> Unit
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.ourea_cancel)) }
                     Button(
                         onClick = { onConfirm(receivedCents) },
                         enabled = receivedCents >= totalCents,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = OureaGold, contentColor = MaterialTheme.colorScheme.onPrimary)
-                    ) { Text("Confirm") }
+                    ) { Text(stringResource(R.string.ourea_confirm)) }
                 }
             }
         }
@@ -678,15 +680,15 @@ fun OureaMemberDialog(onSubmit: (code: String) -> Unit, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = MaterialTheme.shapes.medium, color = OureaSurface, tonalElevation = 8.dp) {
             Column(modifier = Modifier.padding(24.dp).width(340.dp).verticalScroll(rememberScrollState())) {
-                Text("Member Card", color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.ourea_member_card), color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Enter or scan the 6-character member code", color = OureaTextSecondary, fontSize = 13.sp)
+                Text(stringResource(R.string.ourea_enter_or_scan_the_6), color = OureaTextSecondary, fontSize = 13.sp)
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(
                     value = code,
                     onValueChange = { if (it.length <= 6) code = it.uppercase() },
                     singleLine = true,
-                    placeholder = { Text("ABCD12", color = OureaTextSecondary) },
+                    placeholder = { Text(stringResource(R.string.ourea_abcd12), color = OureaTextSecondary) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = OureaSurfaceVariant,
                         unfocusedContainerColor = OureaSurfaceVariant,
@@ -699,13 +701,13 @@ fun OureaMemberDialog(onSubmit: (code: String) -> Unit, onDismiss: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(20.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.ourea_cancel)) }
                     Button(
                         onClick = { onSubmit(code) },
                         enabled = isValid,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = OureaGold, contentColor = MaterialTheme.colorScheme.onPrimary)
-                    ) { Text("Charge") }
+                    ) { Text(stringResource(R.string.ourea_charge)) }
                 }
             }
         }
@@ -727,7 +729,7 @@ fun OureaQrPaymentDialog(state: OureaQrUiState, onCancel: () -> Unit) {
                 modifier = Modifier.padding(24.dp).width(320.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Scan to Pay", color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.ourea_scan_to_pay), color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(16.dp))
                 when (state) {
                     is OureaQrUiState.Ready -> {
@@ -735,20 +737,20 @@ fun OureaQrPaymentDialog(state: OureaQrUiState, onCancel: () -> Unit) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Image(
                             bitmap = state.bitmap.asImageBitmap(),
-                            contentDescription = "Payment QR code",
+                            contentDescription = stringResource(R.string.ourea_payment_qr_code),
                             modifier = Modifier.size(240.dp).clip(RoundedCornerShape(8.dp)).background(Color.White).padding(8.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text("Waiting for customer to complete payment...", color = OureaTextSecondary, fontSize = 13.sp)
+                        Text(stringResource(R.string.ourea_waiting_for_customer_to_complete), color = OureaTextSecondary, fontSize = 13.sp)
                     }
                     else -> {
                         CircularProgressIndicator(color = OureaGold)
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text("Creating QR code...", color = OureaTextSecondary)
+                        Text(stringResource(R.string.ourea_creating_qr_code), color = OureaTextSecondary)
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+                OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.ourea_cancel)) }
             }
         }
     }
@@ -786,22 +788,22 @@ fun OureaDashboardScreen() {
     val avgOrderCents = if (orderCount > 0) revenueCents / orderCount else 0
 
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Text("Dashboard", color = OureaTextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.ourea_dashboard), color = OureaTextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(java.util.Date()),
+            SimpleDateFormat("EEEE, MMMM d", androidx.compose.ui.platform.LocalConfiguration.current.locales[0]).format(java.util.Date()),
             color = OureaTextSecondary, fontSize = 14.sp
         )
         Spacer(modifier = Modifier.height(20.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            OureaStatCard("Today's Revenue", formatCents(revenueCents), Icons.Default.AttachMoney, OureaGreen, Modifier.weight(1f))
-            OureaStatCard("Today's Orders", orderCount.toString(), Icons.Default.ShoppingCart, OureaSkyBlue, Modifier.weight(1f))
-            OureaStatCard("Avg. Order", formatCents(avgOrderCents), Icons.Default.TrendingUp, OureaGold, Modifier.weight(1f))
+            OureaStatCard(stringResource(R.string.ourea_todays_revenue), formatCents(revenueCents), Icons.Default.AttachMoney, OureaGreen, Modifier.weight(1f))
+            OureaStatCard(stringResource(R.string.ourea_todays_orders), orderCount.toString(), Icons.Default.ShoppingCart, OureaSkyBlue, Modifier.weight(1f))
+            OureaStatCard(stringResource(R.string.ourea_avg_order), formatCents(avgOrderCents), Icons.Default.TrendingUp, OureaGold, Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(24.dp))
-        Text("Recent Orders", color = OureaTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.ourea_recent_orders), color = OureaTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(12.dp))
 
         val recent = remember(orders) { orders.take(8) }
@@ -810,7 +812,7 @@ fun OureaDashboardScreen() {
                 modifier = Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(16.dp)).background(OureaSurface),
                 contentAlignment = Alignment.Center
             ) {
-                Text("No orders yet today", color = OureaTextSecondary)
+                Text(stringResource(R.string.ourea_no_orders_yet_today), color = OureaTextSecondary)
             }
         } else {
             LazyColumn(
@@ -843,10 +845,10 @@ private fun OureaStatCard(label: String, value: String, icon: ImageVector, accen
 @Composable
 private fun OureaRecentOrderRow(order: OrderEntity) {
     val (icon, methodLabel) = when (order.paymentMethod) {
-        "CREDIT_CARD" -> Icons.Default.CreditCard to "Card"
-        "CASH" -> Icons.Default.Payments to "Cash"
-        "QR_CODE" -> Icons.Default.QrCode to "QR"
-        "VIP_CARD" -> Icons.Default.Badge to "Member"
+        "CREDIT_CARD" -> Icons.Default.CreditCard to stringResource(R.string.ourea_method_card)
+        "CASH" -> Icons.Default.Payments to stringResource(R.string.ourea_method_cash)
+        "QR_CODE" -> Icons.Default.QrCode to stringResource(R.string.ourea_method_qr)
+        "VIP_CARD" -> Icons.Default.Badge to stringResource(R.string.ourea_method_member)
         else -> Icons.Default.Receipt to order.paymentMethod
     }
     val (statusColor, statusLabel) = when (order.status) {
@@ -895,10 +897,10 @@ fun OureaHeldOrdersDialog(orders: List<ParkedOrderEntity>, onResume: (ParkedOrde
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = MaterialTheme.shapes.medium, color = OureaSurface, tonalElevation = 8.dp) {
             Column(modifier = Modifier.padding(24.dp).width(360.dp).heightIn(max = 500.dp)) {
-                Text("Held Orders", color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.ourea_held_orders), color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(16.dp))
                 if (orders.isEmpty()) {
-                    Text("Nothing held right now", color = OureaTextSecondary)
+                    Text(stringResource(R.string.ourea_nothing_held_right_now), color = OureaTextSecondary)
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(orders) { order ->
@@ -913,7 +915,7 @@ fun OureaHeldOrdersDialog(orders: List<ParkedOrderEntity>, onResume: (ParkedOrde
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text(order.tableName ?: "Quick Order", color = OureaTextPrimary, fontWeight = FontWeight.Medium)
+                                    Text(order.tableName ?: stringResource(R.string.ourea_quick_order), color = OureaTextPrimary, fontWeight = FontWeight.Medium)
                                     Text(
                                         SimpleDateFormat("h:mm a", Locale.getDefault()).format(java.util.Date(order.createdAt)),
                                         color = OureaTextSecondary, fontSize = 12.sp
@@ -925,7 +927,7 @@ fun OureaHeldOrdersDialog(orders: List<ParkedOrderEntity>, onResume: (ParkedOrde
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.ourea_close)) }
             }
         }
     }

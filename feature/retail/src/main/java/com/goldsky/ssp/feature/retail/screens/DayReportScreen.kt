@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.layout.*
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import com.goldsky.ssp.ui.theme.GsTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -72,7 +74,7 @@ fun DayReportScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Day Settlement Report", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.retail_day_settlement_report), fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.primary,
@@ -81,7 +83,7 @@ fun DayReportScreen(
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.retail_back))
                     }
                 },
                 actions = {
@@ -97,7 +99,7 @@ fun DayReportScreen(
                                         ReceiptPrinterManager.printLines(context, formattedLines, vendor)
                                     }
                                     isPrinting = false
-                                    if (!ok) android.widget.Toast.makeText(context, "Print failed -- check the printer and paper", android.widget.Toast.LENGTH_LONG).show()
+                                    if (!ok) android.widget.Toast.makeText(context, context.getString(R.string.retail_print_failed), android.widget.Toast.LENGTH_LONG).show()
                                 }
                             }
                         }
@@ -105,7 +107,7 @@ fun DayReportScreen(
                         if (isPrinting) {
                             CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                         } else {
-                            Icon(Icons.Default.Print, contentDescription = "Print Report")
+                            Icon(Icons.Default.Print, contentDescription = stringResource(R.string.retail_print_report))
                         }
                     }
                 }
@@ -131,7 +133,7 @@ fun DayReportScreen(
                     c.add(Calendar.DAY_OF_MONTH, -1)
                     selectedCalendar = c
                 }) {
-                    Icon(Icons.Default.ChevronLeft, "Previous Day", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.ChevronLeft, stringResource(R.string.retail_previous_day), tint = MaterialTheme.colorScheme.primary)
                 }
 
                 Text(
@@ -147,7 +149,7 @@ fun DayReportScreen(
                     c.add(Calendar.DAY_OF_MONTH, 1)
                     selectedCalendar = c
                 }) {
-                    Icon(Icons.Default.ChevronRight, "Next Day", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.ChevronRight, stringResource(R.string.retail_next_day), tint = MaterialTheme.colorScheme.primary)
                 }
             }
 
@@ -160,13 +162,13 @@ fun DayReportScreen(
                 FilterChip(
                     selected = basis == DayReport.Basis.REFUND_DATE,
                     onClick = { basis = DayReport.Basis.REFUND_DATE },
-                    label = { Text("Refund Date (Drawer)") }
+                    label = { Text(stringResource(R.string.retail_refund_date_drawer)) }
                 )
                 Spacer(Modifier.width(8.dp))
                 FilterChip(
                     selected = basis == DayReport.Basis.SALE_DATE,
                     onClick = { basis = DayReport.Basis.SALE_DATE },
-                    label = { Text("Sale Date (Net)") }
+                    label = { Text(stringResource(R.string.retail_sale_date_net)) }
                 )
             }
 
@@ -177,7 +179,7 @@ fun DayReportScreen(
                 }
             } else if (report == null) {
                 Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                    Text("Could not fetch report data", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.retail_could_not_fetch_report_data), color = MaterialTheme.colorScheme.error)
                 }
             } else {
                 val r = report!!
@@ -189,7 +191,7 @@ fun DayReportScreen(
                     border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("SUMMARY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.retail_summary), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         ReportRow("Sales (${r.sales.count} txns)", "$${"%.2f".format(r.sales.cents / 100.0)}")
                         ReportRow("Refunds (${r.refunds.size} txns)", "-$${"%.2f".format(r.refundCents / 100.0)}", color = GsTheme.colors.danger)
                         Divider(color = MaterialTheme.colorScheme.outline)
@@ -205,9 +207,9 @@ fun DayReportScreen(
                     border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("BY PAYMENT METHOD", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.retail_by_payment_method), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         if (r.byMethod.isEmpty()) {
-                            Text("No transactions", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.retail_no_transactions), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             r.byMethod.forEach { (method, totals) ->
                                 ReportRow(method, "${totals.count} txns · $${"%.2f".format(totals.cents / 100.0)}")
@@ -223,9 +225,9 @@ fun DayReportScreen(
                     border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("BY STAFF", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.retail_by_staff), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         if (r.byStaff.isEmpty()) {
-                            Text("No staff data", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.retail_no_staff_data), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             r.byStaff.forEach { (staff, totals) ->
                                 ReportRow("$staff (${totals.count})", money(totals.cents), isBold = true)
@@ -243,7 +245,7 @@ fun DayReportScreen(
                     border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("TAX & TIPS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.retail_tax_tips), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         ReportRow("Total Tax", "$${"%.2f".format(r.taxCents / 100.0)}")
                         ReportRow("Total Tips", "$${"%.2f".format(r.tipCents / 100.0)}")
                         ReportRow("Taxable Amount", "$${"%.2f".format(r.taxableCents / 100.0)}")
@@ -258,13 +260,13 @@ fun DayReportScreen(
                     border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("REFUNDS & VOIDS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.retail_refunds_voids), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         if (r.refunds.isEmpty()) {
-                            Text("None", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.retail_none), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             r.refunds.forEach { f ->
-                                ReportRow("${localTime(f.at)}  ${methodShort(f.method)} ${if (f.status == "VOIDED") "void" else "refund"}", "-" + money(f.cents))
-                                Text("   approved by ${f.approvedBy ?: "-"} · sale by ${f.staff ?: "-"}", style = MaterialTheme.typography.bodySmall,
+                                ReportRow("${localTime(f.at)}  ${methodShort(f.method)} " + stringResource(if (f.status == "VOIDED") R.string.retail_void else R.string.retail_refund_word), "-" + money(f.cents))
+                                Text("   " + stringResource(R.string.retail_approved_by_sale_by, f.approvedBy ?: "-", f.staff ?: "-"), style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }

@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.background
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import com.goldsky.ssp.ui.theme.GsTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -30,8 +32,10 @@ import java.util.Locale
 private fun money(cents: Int) = "$%.2f".format(cents / 100.0)
 private val timeFmt = SimpleDateFormat("MMM d, HH:mm", Locale.US)
 
+@Composable
 private fun methodLabel(m: String) = when (m) {
-    "CASH" -> "Cash"; "CREDIT_CARD" -> "Card"; "DEBIT_CARD" -> "Debit"; "VIP_CARD" -> "VIP card"; else -> m
+    "CASH" -> stringResource(R.string.retail_method_cash); "CREDIT_CARD" -> stringResource(R.string.retail_method_card)
+    "DEBIT_CARD" -> stringResource(R.string.retail_method_debit); "VIP_CARD" -> stringResource(R.string.retail_method_vip); else -> m
 }
 
 /** Whole-sale refund is offered for paid card and cash sales. */
@@ -92,8 +96,7 @@ fun TransactionHistoryScreen(
                             tint = MaterialTheme.colorScheme.primary
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Day Settlement Report",
+                        Text(stringResource(R.string.retail_day_settlement_report),
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -109,7 +112,7 @@ fun TransactionHistoryScreen(
 
         if (transactions.isEmpty()) {
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Text("No sales yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.retail_no_sales_yet), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(Modifier.weight(1f).padding(horizontal = 8.dp)) {
@@ -198,8 +201,8 @@ private fun SaleDetailDialog(tx: OrderEntity, canRefund: Boolean, onRefund: (Sta
                 Divider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outline)
                 when {
                     items == null && !itemsFailed -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                    itemsFailed -> Text("Items unavailable offline", style = MaterialTheme.typography.bodySmall, color = subTextColor)
-                    items!!.isEmpty() -> Text("No item detail for this sale", style = MaterialTheme.typography.bodySmall, color = subTextColor)
+                    itemsFailed -> Text(stringResource(R.string.retail_items_unavailable_offline), style = MaterialTheme.typography.bodySmall, color = subTextColor)
+                    items!!.isEmpty() -> Text(stringResource(R.string.retail_no_item_detail_for_this), style = MaterialTheme.typography.bodySmall, color = subTextColor)
                     else -> items!!.forEach { i ->
                         Row {
                             Text("${i.quantity} × ${i.name}" + if (i.tax_rate_bps > 0) "  H" else "", Modifier.weight(1f),
@@ -209,10 +212,10 @@ private fun SaleDetailDialog(tx: OrderEntity, canRefund: Boolean, onRefund: (Sta
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                Row { Text("Subtotal", Modifier.weight(1f), color = subTextColor); Text(money(tx.subtotalCents), color = textColor) }
-                Row { Text("Tax", Modifier.weight(1f), color = subTextColor); Text(money(tx.taxCents), color = textColor) }
-                if (tx.tipCents > 0) Row { Text("Tip", Modifier.weight(1f), color = subTextColor); Text(money(tx.tipCents), color = textColor) }
-                Row { Text("Total", Modifier.weight(1f), fontWeight = FontWeight.Bold, color = textColor); Text(money(tx.amountCents), fontWeight = FontWeight.Bold, color = textColor) }
+                Row { Text(stringResource(R.string.retail_subtotal), Modifier.weight(1f), color = subTextColor); Text(money(tx.subtotalCents), color = textColor) }
+                Row { Text(stringResource(R.string.retail_tax), Modifier.weight(1f), color = subTextColor); Text(money(tx.taxCents), color = textColor) }
+                if (tx.tipCents > 0) Row { Text(stringResource(R.string.retail_tip), Modifier.weight(1f), color = subTextColor); Text(money(tx.tipCents), color = textColor) }
+                Row { Text(stringResource(R.string.retail_total), Modifier.weight(1f), fontWeight = FontWeight.Bold, color = textColor); Text(money(tx.amountCents), fontWeight = FontWeight.Bold, color = textColor) }
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (canRefund) {
@@ -222,23 +225,23 @@ private fun SaleDetailDialog(tx: OrderEntity, canRefund: Boolean, onRefund: (Sta
                             border = androidx.compose.foundation.BorderStroke(1.dp, GsTheme.colors.danger),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = GsTheme.colors.danger)
                         ) {
-                            Icon(Icons.Default.Undo, null); Spacer(Modifier.width(6.dp)); Text("REFUND", fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.Undo, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.retail_refund), fontWeight = FontWeight.Bold)
                         }
                     }
                     Button(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors()
-                    ) { Text("CLOSE", fontWeight = FontWeight.Bold) }
+                    ) { Text(stringResource(R.string.retail_close), fontWeight = FontWeight.Bold) }
                 }
             }
         }
     }
 
     if (approving) {
-        val how = if (tx.paymentMethod == "CASH") "hand back ${money(tx.amountCents)} in cash" else "refund ${money(tx.amountCents)} to the card"
         ManagerApprovalDialog(
-            action = "Refund the whole sale: $how.",
+            action = if (tx.paymentMethod == "CASH") stringResource(R.string.retail_refund_cash_action, money(tx.amountCents))
+                     else stringResource(R.string.retail_refund_card_action, money(tx.amountCents)),
             onApproved = { approving = false; onRefund(it) },
             onDismiss = { approving = false }
         )

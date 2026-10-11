@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.background
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,7 +43,7 @@ fun ManagementScreen() {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("MANAGEMENT", fontWeight = FontWeight.Black) },
+                title = { Text(stringResource(R.string.retail_management), fontWeight = FontWeight.Black) },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.primary
@@ -61,27 +63,25 @@ fun ManagementScreen() {
                 border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
-                    Text("TODAY'S OVERVIEW", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text(stringResource(R.string.retail_today_s_overview), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    AnalyticsRow("Gross Sales", totalSales + totalTax + totalTips)
-                    AnalyticsRow("Net Sales", totalSales)
-                    AnalyticsRow("Total Tax", totalTax)
-                    AnalyticsRow("Total Tips", totalTips)
+                    AnalyticsRow(stringResource(R.string.retail_gross_sales), totalSales + totalTax + totalTips)
+                    AnalyticsRow(stringResource(R.string.retail_net_sales), totalSales)
+                    AnalyticsRow(stringResource(R.string.retail_total_tax), totalTax)
+                    AnalyticsRow(stringResource(R.string.retail_total_tips), totalTips)
                 }
             }
 
             Spacer(modifier = Modifier.weight(1f))
             
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "DATA SYNCHRONIZATION",
+                Text(stringResource(R.string.retail_data_synchronization),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                Text(
-                    "Last synced: Just now",
+                Text(stringResource(R.string.retail_last_synced_just_now),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -106,7 +106,7 @@ fun ManagementScreen() {
                     } else {
                         Icon(Icons.Default.Sync, null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("SYNC CLOUD CATALOG", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.retail_sync_cloud_catalog), fontWeight = FontWeight.Bold)
                     }
                 }
             }

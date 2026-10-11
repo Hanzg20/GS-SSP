@@ -88,7 +88,10 @@ object ReminderRepository {
             }.decodeList<ReminderRow>()
             rows.forEach { r ->
                 val at = DayReportRepository.parseIsoMillis(r.due_at) ?: return@forEach
-                if (at > System.currentTimeMillis() - 60 * 60_000) schedule(context, r.id, r.text, at)
+                // Future ones only: an overdue reminder already notified (or was missed while
+                // the terminal was off) and is listed in 小海狸's brief -- re-posting it on every
+                // app start notified the same reminder again and again.
+                if (at > System.currentTimeMillis()) schedule(context, r.id, r.text, at)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Reminders not rescheduled: ${e.message}")

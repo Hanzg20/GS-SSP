@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.BorderStroke
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -61,9 +63,9 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("EXPENSES", fontWeight = FontWeight.Black) },
+                title = { Text(stringResource(R.string.retail_expenses), fontWeight = FontWeight.Black) },
                 actions = {
-                    IconButton(onClick = { adding = true }) { Icon(Icons.Default.Add, contentDescription = "Add expense") }
+                    IconButton(onClick = { adding = true }) { Icon(Icons.Default.Add, contentDescription = stringResource(R.string.retail_add_expense)) }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -78,7 +80,7 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Icon(Icons.Default.CameraAlt, contentDescription = "Scan Receipt")
+                Icon(Icons.Default.CameraAlt, contentDescription = stringResource(R.string.retail_scan_receipt))
             }
         }
     ) { padding ->
@@ -94,13 +96,13 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
             ) {
                 Icon(Icons.Default.Receipt, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("No expenses recorded.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.retail_no_expenses_recorded), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(
                     onClick = { adding = true },
                     modifier = Modifier.padding(top = 16.dp),
                     colors = ButtonDefaults.buttonColors()
                 ) {
-                    Text("ADD MANUALLY", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.retail_add_manually), fontWeight = FontWeight.Bold)
                 }
             }
         } else {
@@ -150,8 +152,8 @@ fun ExpenseCard(expense: ExpenseEntity) {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "$dateStr • ${ExpenseRepository.label(expense.category, false)}$via" +
-                        (expense.staffName?.let { " • $it" } ?: "") + (if (expense.synced) "" else " • not uploaded yet"),
+                    text = "$dateStr • ${ExpenseRepository.label(LocalContext.current, expense.category)}$via" +
+                        (expense.staffName?.let { " • $it" } ?: "") + (if (expense.synced) "" else " • " + stringResource(R.string.retail_not_uploaded_yet)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -180,22 +182,22 @@ private fun AddExpenseDialog(onDismiss: () -> Unit, onSaved: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = { if (!saving) onDismiss() },
-        title = { Text("Add expense") },
+        title = { Text(stringResource(R.string.retail_add_expense)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' }.take(10) }, Modifier.weight(1f),
                         label = { Text("Amount $") }, singleLine = true,
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
-                    OutlinedTextField(spentOn, { spentOn = it.take(10) }, Modifier.weight(1f), label = { Text("Date") }, singleLine = true)
+                    OutlinedTextField(spentOn, { spentOn = it.take(10) }, Modifier.weight(1f), label = { Text(stringResource(R.string.retail_date)) }, singleLine = true)
                 }
-                OutlinedTextField(vendor, { vendor = it.take(120) }, Modifier.fillMaxWidth(), label = { Text("Paid to") }, singleLine = true)
+                OutlinedTextField(vendor, { vendor = it.take(120) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.retail_paid_to)) }, singleLine = true)
                 androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(ExpenseRepository.CATEGORIES) { c ->
-                        FilterChip(selected = category == c, onClick = { category = c }, label = { Text(ExpenseRepository.label(c, false)) })
+                        FilterChip(selected = category == c, onClick = { category = c }, label = { Text(ExpenseRepository.label(LocalContext.current, c)) })
                     }
                 }
-                OutlinedTextField(note, { note = it.take(500) }, Modifier.fillMaxWidth(), label = { Text("Note") }, singleLine = true)
+                OutlinedTextField(note, { note = it.take(500) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.retail_note)) }, singleLine = true)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -212,6 +214,6 @@ private fun AddExpenseDialog(onDismiss: () -> Unit, onSaved: () -> Unit) {
                 }
             }) { Text(if (saving) "SAVING..." else "SAVE", fontWeight = FontWeight.Bold) }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text("CANCEL") } }
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text(stringResource(R.string.retail_cancel)) } }
     )
 }

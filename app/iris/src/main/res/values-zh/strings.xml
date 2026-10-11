@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 中文界面（Settings > Language > 中文）。 -->
+<resources>
+    <string name="iris_keypad">键盘</string>
+    <string name="iris_library">商品</string>
+    <string name="iris_delivery">送货</string>
+    <string name="iris_quick">收银</string>
+    <string name="iris_records">记录</string>
+    <string name="iris_expenses">费用</string>
+    <string name="iris_settings">设置</string>
+    <string name="iris_ok">确定</string>
+    <string name="iris_lock">锁定</string>
+    <string name="iris_battery">电量</string>
+    <string name="iris_checking_order">正在核对送货单 D%1$s…</string>
+    <string name="iris_order_unreachable">连不上服务器，无法核对送货单 D%1$s，请重试。</string>
+    <string name="iris_order_already_collected">送货单 D%1$s 已在本终端收过款。</string>
+    <string name="iris_order_not_open">送货单 D%1$s 状态是 %2$s，不能收款。</string>
+    <string name="iris_cash_received_for">D%1$s 已收现金</string>
+    <string name="iris_approved_code">已批准：%1$s</string>
+    <string name="iris_role_manager">经理</string>
+    <string name="iris_role_driver">司机</string>
+    <string name="iris_role_cashier">收银员</string>
+    <string name="iris_payment_success">付款成功</string>
+    <string name="iris_payment_failed">付款失败</string>
+</resources>

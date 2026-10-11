@@ -1,6 +1,7 @@
 package com.goldsky.ssp.payment
 
 import android.content.Context
+import com.goldsky.ssp.core.data.R
 import android.util.Log
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
@@ -35,6 +36,7 @@ object ApexRepository {
         val language: String,
         val timezone: String,
         val question: String? = null,
+        val name: String? = null, // the mascot's name in this language (res apex_name)
         val refresh: Boolean = false
     )
 
@@ -69,26 +71,22 @@ object ApexRepository {
         data class Failed(val message: String) : Result()
     }
 
-    /** "zh" or "en", remembered per terminal; Chinese first for the stores we serve. */
-    fun language(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LANGUAGE, "zh") ?: "zh"
-
-    fun setLanguage(context: Context, language: String) =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_LANGUAGE, language).apply()
-
     /** The day's numbers plus the cached (hourly) brief; [refresh] forces a new brief. */
-    suspend fun brief(staffId: String, language: String, refresh: Boolean = false): Result =
-        call(Request("brief", staffId, language, timezone(), refresh = refresh)) { body ->
+    // Every call takes the screen's (activity) context: its resources follow the
+    // interface language (UiLanguage), and so does the language 小海狸 answers in.
+
+    suspend fun brief(context: Context, staffId: String, refresh: Boolean = false): Result =
+        call(context, Request("brief", staffId, UiLanguage.current(context), timezone(), name = context.getString(R.string.apex_name), refresh = refresh)) { body ->
             val stats = body["stats"] as? JsonObject
             if (body["skipped"] != null) Result.Brief(null, stats, modelOff = true)
             else Result.Brief(body["brief"]?.jsonPrimitive?.contentOrNull, stats, modelOff = false)
         }
 
-    suspend fun ask(staffId: String, language: String, question: String): Result =
-        call(Request("ask", staffId, language, timezone(), question = question)) { body ->
+    suspend fun ask(context: Context, staffId: String, question: String): Result =
+        call(context, Request("ask", staffId, UiLanguage.current(context), timezone(), name = context.getString(R.string.apex_name), question = question)) { body ->
             when {
                 body["skipped"] != null -> Result.Failed(
-                    if (language == "zh") "小海狸还没开通（云端未配置模型）" else "Beaver isn't switched on yet (no model configured)"
+                    context.getString(R.string.apex_model_off)
                 )
                 body["proposal"] is JsonObject -> Result.Proposal(body["proposal"] as JsonObject)
                 else -> body["reply"]?.jsonPrimitive?.contentOrNull?.let { Result.Reply(it) }
@@ -97,8 +95,8 @@ object ApexRepository {
         }
 
     /** This staff member's earlier chat with 小海狸 (last 50 messages), to show on reopening. */
-    suspend fun history(staffId: String, language: String): Result =
-        call(Request("history", staffId, language, timezone())) { body ->
+    suspend fun history(context: Context, staffId: String): Result =
+        call(context, Request("history", staffId, UiLanguage.current(context), timezone(), name = context.getString(R.string.apex_name))) { body ->
             val turns = (body["messages"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { m ->
                 val o = m as? JsonObject ?: return@mapNotNull null
                 val text = o["content"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
@@ -108,26 +106,27 @@ object ApexRepository {
         }
 
     /** Speech to text for the hold-to-talk button; the caller shows the text for editing before sending. */
-    suspend fun transcribe(staffId: String, language: String, audio: java.io.File): Result {
+    suspend fun transcribe(context: Context, staffId: String, audio: java.io.File): Result {
+        val language = UiLanguage.current(context)
         val bytes = withContext(Dispatchers.IO) { audio.readBytes() }
         val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-        return call(TranscribeRequest("transcribe", staffId, language, b64, "audio/mp4"), language, "transcribe") { body ->
+        return call(context, TranscribeRequest("transcribe", staffId, language, b64, "audio/mp4"), "transcribe") { body ->
             when {
                 body["skipped"] != null -> Result.Failed(
-                    if (language == "zh") "语音输入还没开通（云端未配置识别服务）" else "Voice input isn't switched on yet (no speech service configured)"
+                    context.getString(R.string.apex_voice_off)
                 )
                 else -> body["text"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { Result.Transcript(it) }
-                    ?: Result.Failed(if (language == "zh") "没听清，请再说一次" else "Didn't catch that -- try again")
+                    ?: Result.Failed(context.getString(R.string.apex_didnt_catch))
             }
         }
     }
 
     private fun timezone(): String = java.util.TimeZone.getDefault().id
 
-    private suspend fun call(request: Request, parse: (JsonObject) -> Result): Result =
-        call(request, request.language, request.action, parse)
+    private suspend fun call(context: Context, request: Request, parse: (JsonObject) -> Result): Result =
+        call(context, request, request.action, parse)
 
-    private suspend fun call(request: Any, language: String, action: String, parse: (JsonObject) -> Result): Result = withContext(Dispatchers.IO) {
+    private suspend fun call(context: Context, request: Any, action: String, parse: (JsonObject) -> Result): Result = withContext(Dispatchers.IO) {
         try {
             SupabaseClientProvider.ensureAuthenticated()
             val response = SupabaseClientProvider.invokeFunction(FUNCTION, request)
@@ -141,7 +140,7 @@ object ApexRepository {
             parse(body)
         } catch (e: Exception) {
             Log.w(TAG, "$action failed: ${e.message}")
-            Result.Failed(if (language == "zh") "连不上服务器，请检查网络" else "Can't reach the server -- check the connection")
+            Result.Failed(context.getString(R.string.apex_offline))
         }
     }
 }

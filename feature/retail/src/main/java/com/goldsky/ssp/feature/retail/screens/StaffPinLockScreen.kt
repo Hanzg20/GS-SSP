@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.screens
 
 import androidx.compose.foundation.background
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -34,6 +36,7 @@ private const val PIN_LENGTH = 4
  */
 @Composable
 fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -67,16 +70,16 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
                     StaffRepository.signIn(result.staff)
                     onSignedIn(result.staff)
                 }
-                StaffRepository.PinResult.NoMatch -> error = "Wrong PIN"
-                StaffRepository.PinResult.Ambiguous -> error = "This PIN belongs to more than one person. Reset one of them in CMP."
+                StaffRepository.PinResult.NoMatch -> error = context.getString(R.string.retail_wrong_pin)
+                StaffRepository.PinResult.Ambiguous -> error = context.getString(R.string.retail_pin_ambiguous)
             }
         }
     }
 
     val notice: String? = when {
-        staffCount == null && syncing -> "Downloading staff list..."
-        staffCount == null -> "Can't reach the server to download the staff list. Check the connection and retry."
-        staffCount == 0 -> "No staff set up for this store yet. Add staff in CMP (Admin > Staff), then retry."
+        staffCount == null && syncing -> stringResource(R.string.retail_downloading_staff)
+        staffCount == null -> stringResource(R.string.retail_staff_unreachable)
+        staffCount == 0 -> stringResource(R.string.retail_no_staff)
         else -> null
     }
 
@@ -95,8 +98,7 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
                 tint = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                "STAFF LOGIN",
+            Text(stringResource(R.string.retail_staff_login),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onBackground
@@ -120,7 +122,7 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
                     notice != null -> Text(notice, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyMedium)
                     error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                    syncFailed -> Text("Offline: using the saved staff list", style = MaterialTheme.typography.bodySmall,
+                    syncFailed -> Text(stringResource(R.string.retail_offline_using_the_saved_staff), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -128,7 +130,7 @@ fun StaffPinLockScreen(onSignedIn: (StaffMember) -> Unit) {
                 TextButton(onClick = { refresh() }, enabled = !syncing) {
                     Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(6.dp))
-                    Text("RETRY", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.retail_retry), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))

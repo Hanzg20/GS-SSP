@@ -1,6 +1,8 @@
 package com.goldsky.ssp.ourea
 
 import android.graphics.Bitmap
+import com.goldsky.ssp.ourea.R
+import androidx.compose.ui.res.stringResource
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -50,6 +52,12 @@ class MainActivity : ComponentActivity() {
      * cancel handling in onCreate's setContent block.
      */
     private var activeQrTxId: String? = null
+
+    // Interface language from Settings (UiLanguage): strings and, for Arabic /
+    // Persian, a mirrored layout. Switching recreates the activity.
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.goldsky.ssp.payment.UiLanguage.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -327,7 +335,7 @@ class MainActivity : ComponentActivity() {
                         vendor = DeviceRepository.getPersistedHardwareVendor()
                     )
                 }
-                onStateChange(OureaPaymentUiState.Success("Approved: $authCode"))
+                onStateChange(OureaPaymentUiState.Success(getString(R.string.ourea_approved_code, authCode)))
             }
             override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                 CoroutineScope(Dispatchers.IO).launch {
@@ -355,7 +363,7 @@ class MainActivity : ComponentActivity() {
         val ref = "OUR-CASH-" + System.currentTimeMillis()
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
 
-        onStateChange(OureaPaymentUiState.Processing("Recording cash payment..."))
+        onStateChange(OureaPaymentUiState.Processing(getString(R.string.ourea_recording_cash)))
 
         CoroutineScope(Dispatchers.IO).launch {
             TransactionRepository.recordTransaction(
@@ -495,7 +503,7 @@ class MainActivity : ComponentActivity() {
         val total = subtotal + tax + tip
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
 
-        onStateChange(OureaPaymentUiState.Processing("Looking up member..."))
+        onStateChange(OureaPaymentUiState.Processing(getString(R.string.ourea_looking_up_member)))
 
         CoroutineScope(Dispatchers.IO).launch {
             val cardUid = VipRepository.resolveCardUidByQrCode(memberCode)
@@ -562,14 +570,14 @@ class MainActivity : ComponentActivity() {
                         ),
                         vendor = DeviceRepository.getPersistedHardwareVendor()
                     )
-                    val discountMsg = if (finalTotal < total) " (${card.tier} discount applied)" else ""
+                    val discountMsg = if (finalTotal < total) getString(R.string.ourea_discount_applied, card.tier) else ""
                     withContext(Dispatchers.Main) { onStateChange(OureaPaymentUiState.Success("Member payment approved$discountMsg")) }
                 }
                 is VipDeductResult.Rejected -> {
                     val message = when (result.reason) {
-                        "card_inactive" -> "This member card has been deactivated"
-                        "card_not_found" -> "Member card not recognized"
-                        else -> "Member card balance insufficient"
+                        "card_inactive" -> getString(R.string.ourea_card_inactive)
+                        "card_not_found" -> getString(R.string.ourea_card_not_found)
+                        else -> getString(R.string.ourea_card_insufficient)
                     }
                     withContext(Dispatchers.Main) { onStateChange(OureaPaymentUiState.Error(message)) }
                 }
@@ -615,9 +623,9 @@ fun OureaPaymentProcessingDialog(message: String) {
 fun OureaPaymentResultDialog(isSuccess: Boolean, message: String, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isSuccess) "Payment Success" else "Payment Failed") },
+        title = { Text(stringResource(if (isSuccess) R.string.ourea_payment_success else R.string.ourea_payment_failed)) },
         text = { Text(message) },
-        confirmButton = { Button(onClick = onDismiss) { Text("OK") } },
+        confirmButton = { Button(onClick = onDismiss) { Text(stringResource(R.string.ourea_ok)) } },
         containerColor = if (isSuccess) com.goldsky.ssp.ui.theme.SuccessSlab else com.goldsky.ssp.ui.theme.DangerSlab,
         titleContentColor = Color.White,
         textContentColor = Color.White

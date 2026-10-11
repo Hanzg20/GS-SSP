@@ -1,6 +1,8 @@
 package com.goldsky.ssp.feature.retail.ui
 
 import androidx.compose.foundation.layout.*
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.*
@@ -17,7 +19,7 @@ fun ReceiptDetailDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Receipt Details") },
+        title = { Text(stringResource(R.string.retail_receipt_details)) },
         text = {
             Column {
                 Text("Ref: ${transaction.ecrRefNum}")
@@ -27,12 +29,12 @@ fun ReceiptDetailDialog(
         confirmButton = {
             TextButton(onClick = onPrint) {
                 Icon(Icons.Default.Print, null)
-                Text("Print")
+                Text(stringResource(R.string.retail_print))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close")
+                Text(stringResource(R.string.retail_close_2))
             }
         }
     )

@@ -30,6 +30,11 @@ fun NumericKeypad(
 ) {
     val haptic = LocalHapticFeedback.current
 
+    // Digits stay 1-2-3 left to right even in an Arabic / Persian (RTL) interface,
+    // as on every phone keypad; mirrored it read 3-2-1.
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr
+    ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -71,6 +76,7 @@ fun NumericKeypad(
                 }
             }
         }
+    }
     }
 }
 

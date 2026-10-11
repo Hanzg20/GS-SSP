@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Expense categories (ExpenseRepository.CATEGORIES), shared by the Expenses page and 小海狸. -->
+<resources>
+    <string name="expense_cat_inventory">进货</string>
+    <string name="expense_cat_rent">房租</string>
+    <string name="expense_cat_utilities">水电网</string>
+    <string name="expense_cat_payroll">工资</string>
+    <string name="expense_cat_repairs">维修</string>
+    <string name="expense_cat_marketing">营销</string>
+    <string name="expense_cat_fees">手续费</string>
+    <string name="expense_cat_other">其他</string>
+    <string name="apex_model_off">小海狸还没开通（云端未配置模型）</string>
+    <string name="apex_voice_off">语音输入还没开通（云端未配置识别服务）</string>
+    <string name="apex_didnt_catch">没听清，请再说一次</string>
+    <string name="apex_offline">连不上服务器，请检查网络</string>
+    <!-- 小海狸 / Beaver: shown on the terminal and sent to apex-assistant as its name. -->
+    <string name="apex_name">小海狸</string>
+</resources>

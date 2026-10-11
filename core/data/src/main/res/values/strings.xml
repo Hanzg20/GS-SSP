@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Expense categories (ExpenseRepository.CATEGORIES), shared by the Expenses page and 小海狸. -->
+<resources>
+    <string name="expense_cat_inventory">Inventory</string>
+    <string name="expense_cat_rent">Rent</string>
+    <string name="expense_cat_utilities">Utilities</string>
+    <string name="expense_cat_payroll">Payroll</string>
+    <string name="expense_cat_repairs">Repairs</string>
+    <string name="expense_cat_marketing">Marketing</string>
+    <string name="expense_cat_fees">Fees</string>
+    <string name="expense_cat_other">Other</string>
+    <string name="apex_model_off">Beaver isn\'t switched on yet (no model configured)</string>
+    <string name="apex_voice_off">Voice input isn\'t switched on yet (no speech service configured)</string>
+    <string name="apex_didnt_catch">Didn\'t catch that -- try again</string>
+    <string name="apex_offline">Can\'t reach the server -- check the connection</string>
+    <!-- 小海狸 / Beaver: shown on the terminal and sent to apex-assistant as its name. -->
+    <string name="apex_name">Beaver</string>
+</resources>

@@ -1,5 +1,7 @@
 package com.goldsky.ssp.feature.retail.screens
 
+import com.goldsky.ssp.feature.retail.R
+import androidx.compose.ui.res.stringResource
 import android.util.Log
 import android.view.ViewGroup
 import androidx.camera.core.*
@@ -120,7 +122,7 @@ fun ReceiptScannerScreen(
                     Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = if (isProcessing) "PROCESSING..." else "AI SCANNING FOR TOTAL",
+                        text = stringResource(if (isProcessing) R.string.retail_processing else R.string.retail_ai_scanning_total),
                         color = Color.White,
                         fontWeight = FontWeight.Bold
                     )
