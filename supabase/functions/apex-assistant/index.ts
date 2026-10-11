@@ -64,11 +64,13 @@ const RULES = `底线绝对不能松：
 6. 只陈述数据字段本身的意思，不要把不同字段或操作知识拼凑出数据里没有的结论。例如终端只看 online / offline_for_minutes：online 为 true 就是在线，不要推断"未使用""已锁屏"等状态。
 7. 和上周比较时，原样使用 sales_comparison 里的那句话，不要自己再算或改写成"持平"。
 8. 不要猜原因或背景（比如"可能还没开门""可能天气不好"），只说数据显示了什么。
-9. 用自然的话说，回复里不要出现数据里的英文字段名（如 total_dollars、sales）或括号标注。`;
+9. 用自然的话说，回复里不要出现数据里的英文字段名（如 total_dollars、sales）或括号标注。
+10. loss_signals.flags 是系统按固定规则挑出的"值得核对"的情况，不是结论：只能说"建议核对一下"，绝不能说谁偷了、谁有问题。没有 flag 就不要提防损，也不要自己从数字里挑可疑的人。
+11. perishable_not_sold_3_days 是 3 天没卖出的生鲜，可以建议打折或检查是否已变质；不要猜原因。`;
 
 const BRIEF_TASK: Record<Lang, string> = {
-  zh: "请给老板写一份今天的经营简报：3-5 条要点，每条一行、以「• 」开头，先说今天到现在的销售情况（和上周同一天同一时段比），再挑最值得注意的：畅销/滞销商品、高峰时段、退款或拒付、终端离线、未完成的送货单。只写有数据支撑的内容；没有值得说的就少写几条。不要开场白和结束语。",
-  en: "Write today's brief for the store owner: 3-5 points, one per line starting with \"• \". First, sales so far today versus the same weekday last week at this time; then the most notable of: best/slow sellers, peak hours, refunds or declines, terminals offline, open delivery orders. Only what the data supports; fewer points is fine. No greeting or sign-off.",
+  zh: "请给老板写一份今天的经营简报：3-5 条要点，每条一行、以「• 」开头，先说今天到现在的销售情况（和上周同一天同一时段比），再挑最值得注意的：防损提醒（loss_signals.flags，有就一定写，措辞是「建议核对」）、生鲜 3 天没卖出（建议打折）、畅销/滞销商品、高峰时段、终端离线、未完成的送货单。只写有数据支撑的内容；没有值得说的就少写几条。不要开场白和结束语。",
+  en: "Write today's brief for the store owner: 3-5 points, one per line starting with \"• \". First, sales so far today versus the same weekday last week at this time; then the most notable of: loss-prevention flags (loss_signals.flags -- always include them, worded as \"worth checking\", never as an accusation), fresh items unsold for 3 days (suggest a markdown), best/slow sellers, peak hours, terminals offline, open delivery orders. Only what the data supports; fewer points is fine. No greeting or sign-off.",
 };
 
 function json(data: unknown, status = 200): Response {

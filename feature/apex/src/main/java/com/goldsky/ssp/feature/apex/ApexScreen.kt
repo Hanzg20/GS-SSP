@@ -334,20 +334,51 @@ private fun StatsPanel(stats: JsonObject, lang: String) {
             StatCard(t("近 7 天畅销", "Best sellers (7 days)"),
                 top.joinToString("\n") { "${it["name"]?.jsonPrimitive?.contentOrNull} × ${it.num("qty").toInt()}" }, Modifier.fillMaxWidth(), small = true)
         }
-        val unsold = (stats["not_sold_14_days"] as? JsonArray)?.size ?: 0
-        if (unsold > 0) {
+        // Loss prevention first: rule-based flags from the database, worded here.
+        val flags = stats.obj("loss_signals")?.arr("flags").orEmpty()
+        if (flags.isNotEmpty()) {
+            StatCard(t("防损提醒（近 7 天，值得核对）", "Worth a look (last 7 days)"),
+                flags.joinToString("\n") { "• " + lossFlagText(it, lang) }, Modifier.fillMaxWidth(), small = true,
+                accent = GsTheme.colors.warning)
+        }
+        val perishable = (stats["perishable_not_sold_3_days"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty()
+        if (perishable.isNotEmpty()) {
+            StatCard(t("生鲜 3 天没卖出（考虑打折）", "Fresh items unsold for 3 days (mark down?)"),
+                perishable.take(8).joinToString("、"), Modifier.fillMaxWidth(), small = true)
+        }
+        val unsold = (stats["not_sold_14_days"] as? JsonArray)?.mapNotNull { (it as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull }.orEmpty()
+        if (unsold.isNotEmpty()) {
             StatCard(t("14 天没卖出", "Not sold in 14 days"),
-                t("$unsold 个商品", "$unsold items"), Modifier.fillMaxWidth(),
-                sub = (stats["not_sold_14_days"] as JsonArray).take(5).joinToString("、") { it.jsonPrimitive.contentOrNull ?: "" })
+                t("${unsold.size} 个商品", "${unsold.size} items"), Modifier.fillMaxWidth(),
+                sub = unsold.take(5).joinToString("、"))
         }
     }
 }
 
+/** One loss-prevention flag (apex_loss_signals) in plain words. Never an accusation: "check this". */
+private fun lossFlagText(flag: JsonObject, lang: String): String {
+    val zh = lang == "zh"
+    val who = flag["staff"]?.jsonPrimitive?.contentOrNull ?: ""
+    val d = flag.obj("detail")
+    fun n(k: String) = d?.num(k) ?: 0.0
+    fun i(k: String) = n(k).toInt()
+    return when (flag["kind"]?.jsonPrimitive?.contentOrNull) {
+        "HIGH_REFUND_RATE" -> if (zh) "$who 经手的销售退款/撤销 ${i("refunds")} 笔（${n("rate_pct")}%，全店 ${n("store_rate_pct")}%），共 ${money(n("refund_cents"))}"
+            else "$who: ${i("refunds")} refunds/voids on their sales (${n("rate_pct")}% vs store ${n("store_rate_pct")}%), ${money(n("refund_cents"))}"
+        "SELF_APPROVED" -> if (zh) "$who 批准了自己经手的销售退款 ${i("count")} 笔" else "$who approved refunds of their own sales: ${i("count")}"
+        "CASH_REFUNDS" -> if (zh) "$who 经手的现金销售被退款 ${i("count")} 笔" else "$who: ${i("count")} cash refunds on their sales"
+        "HIGH_CASH_SHARE" -> if (zh) "$who 收现金比例 ${n("cash_share_pct")}%，明显高于全店 ${n("store_cash_share_pct")}%"
+            else "$who takes ${n("cash_share_pct")}% in cash vs store ${n("store_cash_share_pct")}%"
+        "DECLINES_TODAY" -> if (zh) "今天被拒付 ${i("count")} 笔，留意读卡器或可疑卡" else "${i("count")} declined card payments today -- check the reader or suspicious cards"
+        else -> flag["kind"]?.jsonPrimitive?.contentOrNull ?: ""
+    }
+}
+
 @Composable
-private fun StatCard(title: String, value: String, modifier: Modifier, sub: String? = null, subColor: Color? = null, small: Boolean = false) {
-    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surface, border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline), modifier = modifier) {
+private fun StatCard(title: String, value: String, modifier: Modifier, sub: String? = null, subColor: Color? = null, small: Boolean = false, accent: Color? = null) {
+    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surface, border = BorderStroke(if (accent != null) 1.dp else 0.5.dp, accent ?: MaterialTheme.colorScheme.outline), modifier = modifier) {
         Column(Modifier.padding(12.dp)) {
-            Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.labelMedium, color = accent ?: MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             Text(value, fontSize = if (small) 15.sp else 22.sp, fontWeight = if (small) FontWeight.Medium else FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, lineHeight = if (small) 21.sp else 28.sp)
             if (sub != null) {

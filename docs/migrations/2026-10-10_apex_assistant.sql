@@ -12,6 +12,83 @@
 --                              daily brief), for CMP review and chat history.
 
 -- ---------------------------------------------------------------------------
+-- Loss-prevention signals (last 7 days)
+-- ---------------------------------------------------------------------------
+-- Things worth a manager's second look, decided here by fixed rules -- never
+-- by the model, and never stated as wrongdoing (a flag means "check this").
+-- Shrink in independent grocery runs ~3.5% of sales, a large part of it
+-- staff-related, and refunds/voids and cash are where it hides. A refund is
+-- counted against the cashier who rang up the original sale (who started the
+-- refund isn't recorded).
+--   HIGH_REFUND_RATE  >= 2 refunds/voids, a rate >= 2x the store's and >= 5 points above it
+--   SELF_APPROVED     a refund approved by the same person who rang up the sale
+--   CASH_REFUNDS      >= 2 cash refunds on one cashier's sales
+--   HIGH_CASH_SHARE   >= 10 sales and a cash share >= 25 points above the store's
+--   DECLINES_TODAY    >= 3 declined card payments today
+CREATE OR REPLACE FUNCTION apex_loss_signals(p_org UUID, p_tz TEXT DEFAULT 'America/Toronto')
+RETURNS JSONB
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $fn$
+  WITH tx AS (
+    SELECT t.* FROM transactions t
+    WHERE t.device_sn IN (SELECT sn FROM devices WHERE org_id = p_org)
+      AND t.created_at >= now() - INTERVAL '7 days'
+  ),
+  rung AS (  -- sales per cashier, including those later refunded
+    SELECT coalesce(staff_name, '(no staff)') AS staff,
+           count(*) FILTER (WHERE payment_status IN ('PAID', 'REFUNDED', 'VOIDED')) AS sales,
+           count(*) FILTER (WHERE payment_status IN ('REFUNDED', 'VOIDED')) AS refunds,
+           coalesce(sum(amount) FILTER (WHERE payment_status IN ('REFUNDED', 'VOIDED')), 0) AS refund_cents,
+           count(*) FILTER (WHERE payment_status IN ('REFUNDED', 'VOIDED') AND payment_method = 'CASH') AS cash_refunds,
+           count(*) FILTER (WHERE payment_status IN ('REFUNDED', 'VOIDED') AND refund_approved_by_staff_id IS NOT NULL
+                              AND refund_approved_by_staff_id = staff_id) AS self_approved,
+           coalesce(sum(amount) FILTER (WHERE payment_status = 'PAID'), 0) AS paid_cents,
+           coalesce(sum(amount) FILTER (WHERE payment_status = 'PAID' AND payment_method = 'CASH'), 0) AS cash_cents
+    FROM tx GROUP BY 1
+  ),
+  store AS (
+    SELECT coalesce(sum(sales), 0) AS sales, coalesce(sum(refunds), 0) AS refunds,
+           CASE WHEN sum(sales) > 0 THEN round(100.0 * sum(refunds) / sum(sales), 1) ELSE 0 END AS refund_rate_pct,
+           CASE WHEN sum(paid_cents) > 0 THEN round(100.0 * sum(cash_cents) / sum(paid_cents), 1) ELSE 0 END AS cash_share_pct
+    FROM rung
+  ),
+  per AS (
+    SELECT r.*,
+           CASE WHEN r.sales > 0 THEN round(100.0 * r.refunds / r.sales, 1) ELSE 0 END AS refund_rate,
+           CASE WHEN r.paid_cents > 0 THEN round(100.0 * r.cash_cents / r.paid_cents, 1) ELSE 0 END AS cash_share
+    FROM rung r
+  ),
+  flags AS (
+    SELECT 'HIGH_REFUND_RATE' AS kind, p.staff, jsonb_build_object('refunds', p.refunds, 'sales', p.sales,
+             'rate_pct', p.refund_rate, 'store_rate_pct', s.refund_rate_pct, 'refund_cents', p.refund_cents) AS detail
+      FROM per p, store s
+      WHERE p.refunds >= 2 AND p.refund_rate >= 2 * s.refund_rate_pct AND p.refund_rate >= s.refund_rate_pct + 5
+    UNION ALL
+    SELECT 'SELF_APPROVED', p.staff, jsonb_build_object('count', p.self_approved) FROM per p WHERE p.self_approved >= 1
+    UNION ALL
+    SELECT 'CASH_REFUNDS', p.staff, jsonb_build_object('count', p.cash_refunds) FROM per p WHERE p.cash_refunds >= 2
+    UNION ALL
+    SELECT 'HIGH_CASH_SHARE', p.staff, jsonb_build_object('cash_share_pct', p.cash_share,
+             'store_cash_share_pct', s.cash_share_pct, 'sales', p.sales)
+      FROM per p, store s WHERE p.sales >= 10 AND p.cash_share >= s.cash_share_pct + 25
+    UNION ALL
+    SELECT 'DECLINES_TODAY', NULL, jsonb_build_object('count', count(*))
+      FROM transactions t
+      WHERE t.device_sn IN (SELECT sn FROM devices WHERE org_id = p_org) AND t.payment_status = 'DECLINED'
+        AND (t.created_at AT TIME ZONE p_tz)::date = (now() AT TIME ZONE p_tz)::date
+      HAVING count(*) >= 3
+  )
+  SELECT jsonb_build_object(
+    'window_days', 7,
+    'store', (SELECT to_jsonb(s) FROM store s),
+    'by_staff', (SELECT coalesce(jsonb_agg(jsonb_build_object('staff', staff, 'sales', sales, 'refunds', refunds,
+                   'refund_rate_pct', refund_rate, 'cash_share_pct', cash_share) ORDER BY refunds DESC, sales DESC), '[]') FROM per),
+    'flags', (SELECT coalesce(jsonb_agg(jsonb_build_object('kind', kind, 'staff', staff, 'detail', detail)), '[]') FROM flags)
+  );
+$fn$;
+REVOKE ALL ON FUNCTION apex_loss_signals(UUID, TEXT) FROM PUBLIC, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Store numbers
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION apex_store_stats(p_org UUID, p_tz TEXT DEFAULT 'America/Toronto')
@@ -66,10 +143,19 @@ BEGIN
         SELECT name, sum(quantity) AS qty, sum(line_total_cents) AS revenue_cents
         FROM items WHERE local_at::date > today - 28 GROUP BY name ORDER BY 2 DESC LIMIT 10) x),
     -- Active catalogue items with no sale in 14 days.
-    'not_sold_14_days', (SELECT coalesce(jsonb_agg(p.name ORDER BY p.name), '[]') FROM (
-        SELECT name FROM products pr
+    'not_sold_14_days', (SELECT coalesce(jsonb_agg(jsonb_build_object('name', p.name, 'category', p.category) ORDER BY p.name), '[]') FROM (
+        SELECT name, attributes->>'category' AS category FROM products pr
         WHERE pr.org_id = p_org AND pr.is_active
           AND NOT EXISTS (SELECT 1 FROM items i WHERE i.local_at::date > today - 14
+                          AND (i.product_id = pr.id OR (i.product_id IS NULL AND i.name = pr.name)))
+        ORDER BY name LIMIT 20) p),
+    -- Fresh produce / dairy / meat / bakery not sold in 3 days: spoilage risk,
+    -- worth a markdown (spoilage is a large share of grocery shrink).
+    'perishable_not_sold_3_days', (SELECT coalesce(jsonb_agg(p.name ORDER BY p.name), '[]') FROM (
+        SELECT name FROM products pr
+        WHERE pr.org_id = p_org AND pr.is_active
+          AND coalesce(attributes->>'category', '') ~* '(生鲜|fresh|乳|dairy|肉|meat|海鲜|seafood|面包|bakery|豆腐|tofu)'
+          AND NOT EXISTS (SELECT 1 FROM items i WHERE i.local_at::date > today - 3
                           AND (i.product_id = pr.id OR (i.product_id IS NULL AND i.name = pr.name)))
         ORDER BY name LIMIT 20) p),
     'catalogue_active_items', (SELECT count(*) FROM products WHERE org_id = p_org AND is_active),
@@ -83,6 +169,7 @@ BEGIN
         FROM tx WHERE payment_status IN ('REFUNDED', 'VOIDED') AND refunded_at >= now() - INTERVAL '7 days'
         LIMIT 30) x),
     'declined_today', (SELECT count(*) FROM tx WHERE payment_status = 'DECLINED' AND local_at::date = today),
+    'loss_signals', apex_loss_signals(p_org, tz),
     'delivery_open', (SELECT count(*) FROM delivery_orders WHERE org_id = p_org AND status = 'OPEN'),
     -- Online = a heartbeat within 35 min (they come every 15). Decided here, not
     -- left to the model: given raw minutes it called an 8-minute-old heartbeat
