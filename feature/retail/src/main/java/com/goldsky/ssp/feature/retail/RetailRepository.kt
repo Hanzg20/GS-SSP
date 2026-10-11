@@ -40,11 +40,24 @@ object RetailRepository {
 
     suspend fun syncWithCloud(context: Context) = withContext(Dispatchers.IO) {
         try {
+            // Only this store's products. RLS alone doesn't scope them: anonymous
+            // device sessions may read every org's active products (a deliberate
+            // pre-launch policy, see docs/supabase_full_schema.sql v2.34), so an
+            // unfiltered sync put other stores' items -- and GoldSky's org-less
+            // demo items -- on this store's screen (JiaJia's Q2 showed a test
+            // store's catalogue, 2026-10-10). Until the device knows its org,
+            // keep whatever is cached.
+            val orgId = DeviceRepository.getPersistedOrgId()
+            if (orgId == null) {
+                Log.w(TAG, "Product sync skipped: this device isn't linked to a store yet")
+                return@withContext
+            }
             Log.i(TAG, "Starting cloud product sync from Supabase...")
-            
+
             val response = SupabaseClientProvider.client.postgrest["products"]
                 .select {
                     filter {
+                        eq("org_id", orgId)
                         eq("vertical_type", "RETAIL")
                         eq("is_active", true)
                     }
