@@ -161,6 +161,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 // Insights, products and Settings: managers only (their rail icons are hidden too).
                                 OureaDestination.INSIGHTS -> if (signedIn.isManager) OureaDashboardScreen()
+                                OureaDestination.APEX -> if (signedIn.isManager) com.goldsky.ssp.feature.apex.ApexScreen(signedIn)
                                 OureaDestination.PRODUCTS -> if (signedIn.isManager) OureaProductsScreen()
                                 OureaDestination.TRANSACTIONS -> TransactionHistoryScreen(
                                     onlyStaffId = if (signedIn.isManager) null else signedIn.id,

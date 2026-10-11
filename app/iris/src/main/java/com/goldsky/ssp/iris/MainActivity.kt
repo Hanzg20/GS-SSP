@@ -35,7 +35,7 @@ import com.goldsky.ssp.feature.retail.ui.TipSelectionDialog
 import com.goldsky.ssp.feature.retail.ui.apexPulseGlow
 import com.goldsky.ssp.feature.retail.ui.GoldSkyCyan
 import com.goldsky.ssp.feature.retail.viewmodel.RetailViewModel
-import com.goldsky.ssp.feature.apex.InsightsScreen
+import com.goldsky.ssp.feature.apex.ApexScreen
 import androidx.compose.ui.draw.clip
 import kotlinx.coroutines.*
 
@@ -210,7 +210,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     )
                                 }
-                                composable("insights") { InsightsScreen() }
+                                composable("insights") { ApexScreen(signedIn) }
                                 composable("transactions") {
                                     TransactionHistoryScreen(
                                         onlyStaffId = if (signedIn.isManager) null else signedIn.id,

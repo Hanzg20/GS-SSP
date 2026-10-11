@@ -51,3 +51,8 @@ verify_jwt = true
 # Called by a Database Webhook on app_error_logs INSERT, not by a signed-in
 # user -- authenticated by the x-alert-secret header instead (see index.ts).
 verify_jwt = false
+
+[functions.apex-assistant]
+# Default (true): only a signed-in terminal's Supabase session. The function
+# then maps that session to its device and org (device_auth_map) itself.
+verify_jwt = true

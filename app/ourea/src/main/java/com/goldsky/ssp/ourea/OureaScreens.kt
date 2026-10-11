@@ -48,7 +48,7 @@ import java.util.Calendar
 import java.util.Locale
 
 /** Which of the sidebar's wired-up destinations is currently showing. */
-enum class OureaDestination { CHECKOUT, INSIGHTS, PRODUCTS, TRANSACTIONS, DAY_REPORT, SETTINGS }
+enum class OureaDestination { CHECKOUT, INSIGHTS, APEX, PRODUCTS, TRANSACTIONS, DAY_REPORT, SETTINGS }
 
 /**
  * Left icon rail modeled on the reference screenshots' sidebar. Only wired
@@ -76,6 +76,9 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
         // Cashiers: checkout and their own transactions; managers also insights, products, Settings.
         if (isManager) {
             SidebarIcon(Icons.Default.Dashboard, current == OureaDestination.INSIGHTS) { onSelect(OureaDestination.INSIGHTS) }
+            Spacer(modifier = Modifier.height(20.dp))
+            // Apex (小海狸 / Beaver): the AI assistant.
+            SidebarIcon(Icons.Default.AutoAwesome, current == OureaDestination.APEX) { onSelect(OureaDestination.APEX) }
             Spacer(modifier = Modifier.height(20.dp))
         }
         SidebarIcon(Icons.Default.ShoppingCart, current == OureaDestination.CHECKOUT) { onSelect(OureaDestination.CHECKOUT) }
