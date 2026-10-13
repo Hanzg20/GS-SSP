@@ -67,7 +67,7 @@ function provider(): { name: string; call: (system: string, turns: Turn[]) => Pr
         }
         const data = await res.json();
         const text: string | undefined = data?.choices?.[0]?.message?.content;
-        if (!res.ok || !text) throw new Error(`groq ${res.status}`);
+        if (!res.ok || !text) throw new Error(`groq ${res.status}: ${JSON.stringify(data?.error ?? data).slice(0, 200)}`);
         return text;
       },
     };
@@ -132,8 +132,20 @@ Deno.serve(async (req) => {
       .map((t: Turn) => ({ role: t.role, content: t.content.slice(0, 800) }));
     while (history.length && history[0].role !== "user") history.shift();
 
-    const raw = await llm.call(systemPrompt(menu.store.name, menu.table.name, dishes, browserLang), [...history, { role: "user", content: question }]);
-    const answer = parseAnswer(raw);
+    // The model now and then returns broken JSON (Groq then answers 400
+    // json_validate_failed): one more try before telling the customer.
+    const system = systemPrompt(menu.store.name, menu.table.name, dishes, browserLang);
+    const turns: Turn[] = [...history, { role: "user", content: question }];
+    let answer = null;
+    for (let attempt = 0; attempt < 2 && !answer; attempt++) {
+      try {
+        answer = parseAnswer(await llm.call(system, turns));
+        if (!answer) console.warn("[scan-assistant] unparsable answer, attempt", attempt + 1);
+      } catch (e) {
+        if (e instanceof BusyError || attempt === 1) throw e;
+        console.warn("[scan-assistant] model error, retrying:", (e as Error).message);
+      }
+    }
     if (!answer) throw new Error("unparsable answer");
     const suggestions = checkSuggestions(answer.suggestions, dishes);
     await db.rpc("scan_chat_record", { p_token: token, p_question: question, p_reply: answer.reply, p_language: answer.language, p_model: llm.name });
