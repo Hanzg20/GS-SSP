@@ -34,21 +34,22 @@ import kotlinx.coroutines.delay
 import java.io.File
 
 @Composable
-fun OureaEyeScreen(state: CfdDisplayState, rotationDegrees: Int = 0) {
+fun OureaEyeScreen(state: CfdDisplayState, rotationDegrees: Int = 0, paidCents: Int? = null) {
     Surface(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer(rotationZ = rotationDegrees.toFloat()),
         color = MaterialTheme.colorScheme.background
     ) {
+        // Fade between screens, not on every cart update (each scan is a new Cart).
         AnimatedContent(targetState = state, transitionSpec = {
             fadeIn() togetherWith fadeOut()
-        }, label = "CfdTransition") { targetState ->
+        }, contentKey = { it::class }, label = "CfdTransition") { targetState ->
             when (targetState) {
                 is CfdDisplayState.Idle -> IdleScreen()
                 is CfdDisplayState.Cart -> CartScreen(targetState)
                 is CfdDisplayState.Payment -> PaymentScreen(targetState)
-                is CfdDisplayState.ThankYou -> ThankYouScreen()
+                is CfdDisplayState.ThankYou -> ThankYouScreen(paidCents)
             }
         }
     }
@@ -165,128 +166,4 @@ private fun decodeScaled(file: File, maxPx: Int): android.graphics.Bitmap? = try
     android.graphics.BitmapFactory.decodeFile(file.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
 } catch (e: Exception) {
     null
-}
-
-@Composable
-fun CartScreen(state: CfdDisplayState.Cart) {
-    val listState = rememberLazyListState()
-
-    LaunchedEffect(state.items.size) {
-        if (state.items.isNotEmpty()) {
-            listState.animateScrollToItem(state.items.size - 1)
-        }
-    }
-
-    Row(modifier = Modifier.fillMaxSize().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-        // Left: Itemized List
-        Surface(
-            modifier = Modifier.weight(1.5f).fillMaxHeight(),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Current Order", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                Spacer(modifier = Modifier.height(12.dp))
-                LazyColumn(
-                    state = listState,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(state.items) { item ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp)).padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(item.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface)
-                                Text("Qty: ${item.qty}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text("$${"%.2f".format(item.priceCents / 100.0)}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Right: Totals summary
-        Surface(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.primaryContainer
-        ) {
-            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("Order Summary", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Divider(color = MaterialTheme.colorScheme.outlineVariant)
-                    SummaryRow("Subtotal", state.subtotalCents)
-                    SummaryRow("Tax", state.taxCents)
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Divider(color = MaterialTheme.colorScheme.outlineVariant)
-                    // Label above the amount: side by side, "$1.99" wrapped to "$1.9 / 9" on the 480px Q3mini.
-                    Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text(
-                        "$${"%.2f".format(state.totalCents / 100.0)}", style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary, maxLines = 1, softWrap = false
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun PaymentScreen(state: CfdDisplayState.Payment) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(Icons.Default.CreditCard, null, modifier = Modifier.size(80.dp), tint = MaterialTheme.colorScheme.primary)
-        Spacer(modifier = Modifier.height(20.dp))
-        Text(
-            text = "Total Due: $${"%.2f".format(state.amountCents / 100.0)}",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Black,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.primaryContainer
-        ) {
-            Text(
-                text = "Please Tap, Insert or Swipe Card",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun SummaryRow(label: String, cents: Int) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-        Text("$${"%.2f".format(cents / 100.0)}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-    }
-}
-
-@Composable
-fun ThankYouScreen() {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(96.dp), tint = Color(0xFF4CAF50))
-        Spacer(modifier = Modifier.height(24.dp))
-        Text("Payment Successful!", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onBackground)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Thank you for your visit. Have a wonderful day!", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
 }

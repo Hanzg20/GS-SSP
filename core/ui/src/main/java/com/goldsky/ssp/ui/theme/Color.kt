@@ -42,3 +42,4 @@ val DangerSlab = Color(0xFFB71C1C)
 // Decorative / fixed-context
 val BrandPurple = Color(0xFF7000FF)   // third stop of the Apex glow gradient
 val ScanFrameGold = Color(0xFFD4AF37) // receipt-scanner frame, drawn over the live camera (theme-independent)
+val GoldHighlight = Color(0xFFF5D77A) // light end of the gold gradient (Ourea Eye totals, thank-you)

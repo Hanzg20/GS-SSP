@@ -72,10 +72,6 @@ object SocketServerManager {
                     withContext(Dispatchers.Main) {
                         onStateChanged?.invoke(CfdDisplayState.ThankYou)
                     }
-                    CoroutineScope(Dispatchers.Main).launch {
-                        delay(3000)
-                        onStateChanged?.invoke(CfdDisplayState.Idle)
-                    }
                 }
                 "DisplayRotate" -> {
                     val rotation = root["Rotation"]?.jsonPrimitive?.int ?: 0
