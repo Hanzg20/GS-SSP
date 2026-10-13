@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,86 +54,117 @@ fun OureaEyeScreen(state: CfdDisplayState, rotationDegrees: Int = 0) {
     }
 }
 
+/** One playable idle-screen item from the store's ad playlist (CMP > Ads). */
+private sealed class EyeAd {
+    data class Video(val file: File) : EyeAd()
+    data class Image(val file: File) : EyeAd()
+    data class Text(val text: String) : EyeAd()
+}
+
+private const val STILL_MS = 8_000L // images and text announcements
+
+/**
+ * Idle screen: the store's ad playlist (videos, images, text announcements) in
+ * CMP's order, looping; a new playlist from AdManager's sync takes effect as it
+ * arrives. With no ads, a plain welcome -- never made-up offers (this screen
+ * used to cycle a "Premium Coffee & Pastry Combo -15%" that no store ran).
+ */
 @Composable
 fun IdleScreen() {
     val context = LocalContext.current
-    val playlist = remember { AdManager.getCachedPlaylist(context) }
+    var playlist by remember { mutableStateOf(AdManager.getCachedPlaylist(context)) }
+    LaunchedEffect(Unit) { AdManager.playlistUpdateFlow.collect { playlist = it } }
     val adsDir = remember { AdManager.getAdsDir(context) }
 
-    val videoFile = remember {
-        playlist.firstNotNullOfOrNull { ad ->
-            val file = File(adsDir, ad.media.id + ".mp4")
-            if (file.exists()) file else null
+    val items = remember(playlist) {
+        playlist.sortedBy { it.entry.play_order }.mapNotNull { ad ->
+            val media = ad.media
+            when (media.media_type) {
+                "TEXT", "TEXT_AD" -> media.text_content?.takeIf { it.isNotBlank() }?.let { EyeAd.Text(it) }
+                else -> adsDir.listFiles { f -> f.name.startsWith(media.id + ".") && !f.name.endsWith(".part") }?.firstOrNull()?.let { f ->
+                    if (media.media_type == "VIDEO") EyeAd.Video(f) else EyeAd.Image(f)
+                }
+            }
         }
     }
 
-    if (videoFile != null) {
-        AndroidView(
-            factory = { ctx ->
-                FillVideoView(ctx).apply {
-                    setVideoURI(android.net.Uri.fromFile(videoFile))
-                    setOnPreparedListener { mp ->
-                        setVideoSize(mp.videoWidth, mp.videoHeight)
-                        start()
+    if (items.isEmpty()) {
+        WelcomeScreen()
+        return
+    }
+
+    // step, not index, keys each showing: a one-item playlist must restart too.
+    var step by remember(items) { mutableStateOf(0) }
+    fun next() { step++ }
+    when (val ad = items[step % items.size]) {
+        is EyeAd.Video -> key(step) {
+            AndroidView(
+                factory = { ctx ->
+                    FillVideoView(ctx).apply {
+                        setVideoURI(android.net.Uri.fromFile(ad.file))
+                        setOnPreparedListener { mp ->
+                            setVideoSize(mp.videoWidth, mp.videoHeight)
+                            start()
+                        }
+                        setOnCompletionListener { next() }
+                        setOnErrorListener { _, _, _ -> next(); true }
                     }
-                    setOnCompletionListener { start() }
-                    setOnErrorListener { _, _, _ -> true }
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-    } else {
-        // Rotating promotional banners carousel fallback
-        var adIndex by remember { mutableStateOf(0) }
-        val ads = listOf(
-            "Welcome to GoldSky Ourea · Tap card when ready",
-            "Special Offer: Premium Coffee & Pastry Combo - 15% OFF",
-            "Join our VIP Member Program to earn rewards on every order!"
-        )
-
-        LaunchedEffect(Unit) {
-            while (true) {
-                delay(5000)
-                adIndex = (adIndex + 1) % ads.size
+                },
+                modifier = Modifier.fillMaxSize().background(Color.Black)
+            )
+        }
+        is EyeAd.Image -> key(step) {
+            val bitmap = remember(ad.file) { decodeScaled(ad.file, 1280) }
+            LaunchedEffect(Unit) { delay(STILL_MS); next() }
+            if (bitmap != null) {
+                androidx.compose.foundation.Image(
+                    bitmap = bitmap.asImageBitmap(), contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().background(Color.Black)
+                )
+            } else {
+                LaunchedEffect(Unit) { next() }
             }
         }
-
-        Column(
-            modifier = Modifier.fillMaxSize().padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Box(
-                modifier = Modifier.size(110.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.ShoppingCart, null, modifier = Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                text = "GoldSky Ourea POS",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
-            ) {
-                AnimatedContent(targetState = ads[adIndex], transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "AdBanner") { currentAd ->
-                    Text(
-                        text = currentAd,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
-                    )
-                }
+        is EyeAd.Text -> key(step) {
+            LaunchedEffect(Unit) { delay(STILL_MS); next() }
+            Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    ad.text, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary, textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
             }
         }
     }
+}
+
+/** No ads assigned: the GoldSky mark and a welcome, nothing invented. */
+@Composable
+private fun WelcomeScreen() {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(com.goldsky.ssp.core.ui.R.drawable.goldsky_logo),
+            contentDescription = null,
+            modifier = Modifier.size(120.dp)
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Text("欢迎光临 · Welcome", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+    }
+}
+
+/** Decodes an ad image no larger than [maxPx] on its long side (480x480 screen: no need for a 4K bitmap in memory). */
+private fun decodeScaled(file: File, maxPx: Int): android.graphics.Bitmap? = try {
+    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxPx) sample *= 2
+    android.graphics.BitmapFactory.decodeFile(file.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+} catch (e: Exception) {
+    null
 }
 
 @Composable

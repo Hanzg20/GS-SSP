@@ -25,7 +25,7 @@ android {
 
         buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
         buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
-        buildConfigField "boolean", "IS_MOCK", "true"
+        buildConfigField "boolean", "IS_MOCK", "false"
     }
 
     buildFeatures {
@@ -50,6 +50,7 @@ dependencies {
     implementation project(':core:ui')
     implementation project(':core:hardware')
     implementation project(':core:payment')
+    implementation project(':libs:wizarpos') // cloudpos SDK: the Q3mini serial number
 
     implementation 'androidx.activity:activity-compose:1.7.2'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1'

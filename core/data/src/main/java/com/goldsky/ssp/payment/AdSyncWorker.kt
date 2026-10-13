@@ -20,6 +20,7 @@ import io.ktor.utils.io.*
 import io.ktor.utils.io.jvm.javaio.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileOutputStream
@@ -33,7 +34,18 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
         }
     }
 
-    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+    companion object {
+        /**
+         * One sync at a time per process. The periodic sync (re-enqueued on start)
+         * and a "sync now" ran together on Ourea Eye and wrote the same file at
+         * once: the image came out corrupt, failed its MD5 and was discarded.
+         */
+        private val syncLock = kotlinx.coroutines.sync.Mutex()
+    }
+
+    override suspend fun doWork(): Result = syncLock.withLock { sync() }
+
+    private suspend fun sync(): Result = withContext(Dispatchers.IO) {
         try {
             Log.i("AdSyncWorker", "Starting Ad Sync...")
             SupabaseClientProvider.ensureAuthenticated()
@@ -120,8 +132,14 @@ class AdSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
             val response: HttpResponse = client.get(url)
             val channel: ByteReadChannel = response.bodyAsChannel()
             
-            FileOutputStream(file).use { output ->
+            // Into a temp file, renamed when complete: a player never opens a half-written ad.
+            val part = File(file.parentFile, file.name + ".part")
+            FileOutputStream(part).use { output ->
                 channel.copyTo(output)
+            }
+            if (!part.renameTo(file)) {
+                file.delete()
+                if (!part.renameTo(file)) throw java.io.IOException("Couldn't move ${part.name} into place")
             }
             Log.i("AdSyncWorker", "Download complete: ${file.name}")
         } catch (e: Exception) {
