@@ -11,11 +11,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -154,13 +156,28 @@ fun ApexScreen(staff: StaffMember) {
         asking = true
         scope.launch {
             val answer = when (val r = ApexRepository.ask(context, staff.id, q)) {
-                is ApexRepository.Result.Reply -> r.text
+                is ApexRepository.Result.Reply -> {
+                    if (DeliveryOrderParser.isDeliveryIntent(q)) {
+                        proposal = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { DeliveryOrderParser.parseFromText(q, context) }
+                        str(R.string.apex_please_check_the_card_below)
+                    } else {
+                        r.text
+                    }
+                }
                 is ApexRepository.Result.Proposal -> {
-                    proposal = r.data
+                    proposal = if (r.data["kind"]?.jsonPrimitive?.contentOrNull == "delivery_order")
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { DeliveryOrderParser.withCatalogPrices(r.data, context) } else r.data
                     if (r.data["kind"]?.jsonPrimitive?.contentOrNull == "reminder" && !notifyAllowed) askNotify.launch("android.permission.POST_NOTIFICATIONS")
                     str(R.string.apex_please_check_the_card_below)
                 }
-                is ApexRepository.Result.Failed -> "⚠ ${r.message}"
+                is ApexRepository.Result.Failed -> {
+                    if (DeliveryOrderParser.isDeliveryIntent(q)) {
+                        proposal = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { DeliveryOrderParser.parseFromText(q, context) }
+                        str(R.string.apex_please_check_the_card_below)
+                    } else {
+                        "⚠ ${r.message}"
+                    }
+                }
                 else -> ""
             }
             chat.add(false to answer)
@@ -213,7 +230,7 @@ fun ApexScreen(staff: StaffMember) {
                         when {
                             loading && brief == null -> Text(str(R.string.apex_beaver_is_looking_over_today), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             modelOff -> Text(str(R.string.apex_the_ai_brief_isn_t), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            brief != null -> Text(brief!!, color = MaterialTheme.colorScheme.onSurface, lineHeight = 22.sp)
+                            brief != null -> MarkdownText(markdown = brief!!, color = MaterialTheme.colorScheme.onSurface, lineHeight = 22.sp)
                             loadError != null -> Text("⚠ $loadError", color = GsTheme.colors.danger)
                         }
                     }
@@ -233,6 +250,17 @@ fun ApexScreen(staff: StaffMember) {
         // Quick questions + input
         val quick = androidx.compose.ui.res.stringArrayResource(R.array.apex_quick_questions).toList()
         LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                AssistChip(
+                    onClick = {
+                        proposal = DeliveryOrderParser.createEmptyProposal()
+                        chat.add(false to str(R.string.apex_please_check_the_card_below))
+                    },
+                    label = { Text(str(R.string.apex_quick_new_delivery)) },
+                    colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    enabled = !asking
+                )
+            }
             items(quick) { q -> AssistChip(onClick = { send(q) }, label = { Text(q) }, enabled = !asking) }
         }
         val note = when {
@@ -303,8 +331,9 @@ private fun ChatBubble(fromUser: Boolean, text: String, lang: String) {
             color = if (fromUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
             modifier = Modifier.widthIn(max = 520.dp)
         ) {
-            Text(
-                text, Modifier.padding(12.dp, 8.dp),
+            MarkdownText(
+                markdown = text,
+                modifier = Modifier.padding(12.dp, 8.dp),
                 color = if (fromUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                 lineHeight = 21.sp
             )
@@ -423,10 +452,17 @@ private fun StatCard(title: String, value: String, modifier: Modifier, sub: Stri
     }
 }
 
+data class EditableDeliveryItem(
+    val name: String,
+    val quantity: Int,
+    val unitPrice: String,
+    val productId: String? = null,
+    val taxRateBps: Int = 0
+)
+
 /**
- * 小海狸's understanding of a spoken expense or reminder, editable, saved only
- * on 确认. Fields the server flagged (amount re-read from the words didn't match,
- * date out of range, no time) are marked "请核对" and must be filled in.
+ * 小海狸's understanding of a spoken expense, reminder, or delivery order, editable, saved only
+ * on 确认. Fields the server flagged are marked "请核对" and must be filled in.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -437,6 +473,7 @@ private fun ProposalCard(p: JsonObject, staff: StaffMember, onCancel: () -> Unit
     fun field(k: String) = p[k]?.jsonPrimitive?.contentOrNull ?: ""
     val check = (p["check"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty()
     val isExpense = field("kind") == "expense"
+    val isDelivery = field("kind") == "delivery_order" || field("kind") == "delivery"
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -446,6 +483,32 @@ private fun ProposalCard(p: JsonObject, staff: StaffMember, onCancel: () -> Unit
     var category by remember(p) { mutableStateOf(field("category").ifBlank { "OTHER" }) }
     var spentOn by remember(p) { mutableStateOf(field("spentOn")) }
     var note by remember(p) { mutableStateOf(field("note")) }
+
+    // delivery order fields
+    var customerName by remember(p) { mutableStateOf(field("customer_name")) }
+    var customerPhone by remember(p) { mutableStateOf(field("customer_phone")) }
+    var address by remember(p) { mutableStateOf(field("address")) }
+    var deliveryNote by remember(p) { mutableStateOf(field("note")) }
+    val deliveryItems = remember(p) {
+        val arr = (p["items"] as? JsonArray)?.mapNotNull { it as? JsonObject } ?: emptyList()
+        val items = arr.map { itm ->
+            val priceStr = itm["unit_price_cents"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()?.let { "%.2f".format(it / 100.0) }
+                ?: itm["price"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.let { "%.2f".format(it) } ?: "0.00"
+            EditableDeliveryItem(
+                name = itm["name"]?.jsonPrimitive?.contentOrNull ?: "",
+                quantity = itm["quantity"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 1,
+                unitPrice = priceStr,
+                productId = itm["product_id"]?.jsonPrimitive?.contentOrNull,
+                taxRateBps = itm["tax_rate_bps"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+            )
+        }
+        if (items.isEmpty() && isDelivery) {
+            mutableStateListOf(EditableDeliveryItem(name = "", quantity = 1, unitPrice = "0.00"))
+        } else {
+            items.toMutableStateList()
+        }
+    }
+
     // reminder fields (store-local date and time)
     val dueMillis = field("dueAt").takeIf { it.isNotBlank() }?.let { com.goldsky.ssp.payment.DayReportRepository.parseIsoMillis(it) }
     var text by remember(p) { mutableStateOf(field("text")) }
@@ -462,8 +525,14 @@ private fun ProposalCard(p: JsonObject, staff: StaffMember, onCancel: () -> Unit
         border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (isExpense) str(R.string.apex_record_an_expense) else str(R.string.apex_set_a_reminder),
-                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(
+                when {
+                    isExpense -> str(R.string.apex_record_an_expense)
+                    isDelivery -> str(R.string.apex_create_delivery_order)
+                    else -> str(R.string.apex_set_a_reminder)
+                },
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary
+            )
             if (isExpense) {
                 val said = listOf(field("amountWords"), field("dateWords")).filter { it.isNotBlank() }.joinToString("，")
                 if (said.isNotBlank()) Text(str(R.string.apex_you_said) + said, style = MaterialTheme.typography.bodySmall)
@@ -481,6 +550,117 @@ private fun ProposalCard(p: JsonObject, staff: StaffMember, onCancel: () -> Unit
                     }
                 }
                 OutlinedTextField(note, { note = it.take(500) }, Modifier.fillMaxWidth(), label = { Text(str(R.string.apex_note)) }, singleLine = true)
+            } else if (isDelivery) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = customerName,
+                        onValueChange = { customerName = it.take(60) },
+                        modifier = Modifier.weight(1f),
+                        label = flagged("customer_name", str(R.string.apex_customer_name)),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = customerPhone,
+                        onValueChange = { customerPhone = it.take(20) },
+                        modifier = Modifier.weight(1f),
+                        label = { Text(str(R.string.apex_customer_phone)) },
+                        singleLine = true
+                    )
+                }
+                OutlinedTextField(
+                    value = address,
+                    onValueChange = { address = it.take(150) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = flagged("address", str(R.string.apex_delivery_address)),
+                    singleLine = true
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(str(R.string.apex_delivery_items), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = {
+                        deliveryItems.add(EditableDeliveryItem(name = "", quantity = 1, unitPrice = "0.00"))
+                    }) {
+                        Text(str(R.string.apex_add_item))
+                    }
+                }
+
+                if (deliveryItems.isEmpty()) {
+                    Text(str(R.string.apex_at_least_one_item), color = GsTheme.colors.warning, style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        deliveryItems.forEachIndexed { idx, item ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = item.name,
+                                    onValueChange = { newName ->
+                                        deliveryItems[idx] = item.copy(name = newName.take(60))
+                                    },
+                                    placeholder = { Text(str(R.string.apex_item_name)) },
+                                    modifier = Modifier.weight(1.5f),
+                                    singleLine = true
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = {
+                                            if (item.quantity > 1) deliveryItems[idx] = item.copy(quantity = item.quantity - 1)
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Text("-", fontWeight = FontWeight.Bold)
+                                    }
+                                    Text("${item.quantity}", Modifier.padding(horizontal = 2.dp), fontWeight = FontWeight.Bold)
+                                    IconButton(
+                                        onClick = {
+                                            deliveryItems[idx] = item.copy(quantity = item.quantity + 1)
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Text("+", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = item.unitPrice,
+                                    onValueChange = { newP ->
+                                        deliveryItems[idx] = item.copy(unitPrice = newP.filter { it.isDigit() || it == '.' }.take(7))
+                                    },
+                                    placeholder = { Text("0.00") },
+                                    modifier = Modifier.width(72.dp),
+                                    singleLine = true
+                                )
+                                IconButton(
+                                    onClick = { deliveryItems.removeAt(idx) },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = "Remove", tint = GsTheme.colors.danger, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = deliveryNote,
+                    onValueChange = { deliveryNote = it.take(200) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(str(R.string.apex_note)) },
+                    singleLine = true
+                )
+
+                val subtotalDollars = deliveryItems.sumOf { (it.unitPrice.toDoubleOrNull() ?: 0.0) * it.quantity }
+                Text(
+                    "${str(R.string.apex_items, deliveryItems.sumOf { it.quantity })} · Total: $${"%.2f".format(subtotalDollars)}",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
             } else {
                 OutlinedTextField(text, { text = it.take(300) }, Modifier.fillMaxWidth(), label = { Text(str(R.string.apex_what)) })
                 if (field("whenWords").isNotBlank()) Text(str(R.string.apex_you_said_2) + field("whenWords"), style = MaterialTheme.typography.bodySmall)
@@ -507,6 +687,49 @@ private fun ProposalCard(p: JsonObject, staff: StaffMember, onCancel: () -> Unit
                                 (if (vendor.isNotBlank()) " · $vendor" else "")
                             onSaved(if (online) str(R.string.apex_booked, what) else str(R.string.apex_saved_offline_uploads_when_back, what))
                         }
+                    } else if (isDelivery) {
+                        if (customerName.isBlank() || address.isBlank()) {
+                            error = str(R.string.apex_enter_customer_and_address)
+                            return@Button
+                        }
+                        val validItems = deliveryItems.filter { it.name.isNotBlank() && it.quantity > 0 }
+                        if (validItems.isEmpty()) {
+                            error = str(R.string.apex_at_least_one_item)
+                            return@Button
+                        }
+                        // A $0 line would be delivered free: every item needs its price.
+                        if (validItems.any { (it.unitPrice.toDoubleOrNull() ?: 0.0) <= 0.0 }) {
+                            error = str(R.string.apex_item_needs_price)
+                            return@Button
+                        }
+                        saving = true
+                        scope.launch {
+                            val inputs = validItems.map { itm ->
+                                val cents = Math.round((itm.unitPrice.toDoubleOrNull() ?: 0.0) * 100).toInt()
+                                com.goldsky.ssp.payment.DeliveryOrderRepository.DeliveryOrderItemInput(
+                                    name = itm.name,
+                                    quantity = itm.quantity,
+                                    unitPriceCents = cents,
+                                    productId = itm.productId,
+                                    taxRateBps = itm.taxRateBps
+                                )
+                            }
+                            val res = com.goldsky.ssp.payment.DeliveryOrderRepository.createOrder(
+                                context = context,
+                                customerName = customerName,
+                                customerPhone = customerPhone.ifBlank { null },
+                                address = address,
+                                note = deliveryNote.ifBlank { null },
+                                items = inputs
+                            )
+                            saving = false
+                            if (res.success) {
+                                val totalMoney = "$%.2f".format((res.subtotalCents + res.taxCents) / 100.0)
+                                onSaved(str(R.string.apex_delivery_created, res.orderNo ?: 0, customerName, totalMoney))
+                            } else {
+                                error = res.message ?: str(R.string.apex_couldn_t_save_check_the)
+                            }
+                        }
                     } else {
                         val at = runCatching {
                             java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).apply { isLenient = false }.parse("$dueDate $dueTime")?.time
@@ -526,3 +749,4 @@ private fun ProposalCard(p: JsonObject, staff: StaffMember, onCancel: () -> Unit
         }
     }
 }
+

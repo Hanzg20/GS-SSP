@@ -96,6 +96,56 @@ object DeliveryOrderRepository {
     @Serializable
     private data class StatusRow(val status: String)
 
+    @Serializable
+    data class DeliveryOrderItemInput(
+        val name: String,
+        val quantity: Int,
+        val unitPriceCents: Int,
+        val productId: String? = null,
+        val barcode: String? = null,
+        val taxRateBps: Int = 0
+    )
+
+    @Serializable
+    data class CreateDeliveryOrderResult(
+        val success: Boolean,
+        val id: String? = null,
+        val orderNo: Long? = null,
+        val subtotalCents: Int = 0,
+        val taxCents: Int = 0,
+        val message: String? = null
+    )
+
+    @Serializable
+    private data class RpcItem(
+        val name: String,
+        val quantity: Int,
+        val unit_price_cents: Int,
+        val product_id: String? = null,
+        val barcode: String? = null,
+        val tax_rate_bps: Int = 0
+    )
+
+    @Serializable
+    private data class CreateOrderRpcParams(
+        val p_customer_name: String,
+        val p_customer_phone: String? = null,
+        val p_address: String,
+        val p_note: String? = null,
+        val p_items: List<RpcItem>,
+        val p_assigned_device_sn: String? = null
+    )
+
+    @Serializable
+    private data class RpcCreateResult(
+        val success: Boolean,
+        val id: String? = null,
+        val order_no: Long? = null,
+        val subtotal_cents: Int? = null,
+        val tax_cents: Int? = null,
+        val message: String? = null
+    )
+
     /** Open orders, oldest first, minus ones collected here; null when the cloud can't be reached. */
     suspend fun fetchOpen(): List<DeliveryOrder>? = withContext(Dispatchers.IO) {
         try {
@@ -111,6 +161,61 @@ object DeliveryOrderRepository {
         } catch (e: Exception) {
             Log.e(TAG, "Fetch open orders failed: ${e.message}")
             null
+        }
+    }
+
+    /**
+     * Creates a delivery order (小海狸's confirmation card) through the
+     * create_delivery_order RPC, which places it in this device's own store and
+     * computes the totals server side. Nothing is kept locally on failure: an
+     * order that only lived on this terminal could be lost on restart while the
+     * staff believed it had been sent -- the caller says "not saved" instead.
+     */
+    suspend fun createOrder(
+        context: Context,
+        customerName: String,
+        customerPhone: String?,
+        address: String,
+        note: String?,
+        items: List<DeliveryOrderItemInput>,
+        assignedDeviceSn: String? = null
+    ): CreateDeliveryOrderResult = withContext(Dispatchers.IO) {
+        if (customerName.isBlank() || address.isBlank() || items.isEmpty()) {
+            return@withContext CreateDeliveryOrderResult(false, message = "Customer, address and items required")
+        }
+        if (items.any { it.quantity <= 0 || it.unitPriceCents <= 0 || it.name.isBlank() }) {
+            return@withContext CreateDeliveryOrderResult(false, message = "Every item needs a name, a quantity and a price")
+        }
+        try {
+            SupabaseClientProvider.ensureAuthenticated()
+            val rpcParams = CreateOrderRpcParams(
+                p_customer_name = customerName.trim(),
+                p_customer_phone = customerPhone?.trim()?.ifBlank { null },
+                p_address = address.trim(),
+                p_note = note?.trim()?.ifBlank { null },
+                p_items = items.map {
+                    RpcItem(
+                        name = it.name.trim(), quantity = it.quantity, unit_price_cents = it.unitPriceCents,
+                        product_id = it.productId, barcode = it.barcode, tax_rate_bps = it.taxRateBps
+                    )
+                },
+                p_assigned_device_sn = assignedDeviceSn
+            )
+            val res = SupabaseClientProvider.client.postgrest
+                .rpc("create_delivery_order", rpcParams)
+                .decodeAs<RpcCreateResult>()
+            if (res.success && res.id != null) {
+                CreateDeliveryOrderResult(
+                    success = true, id = res.id, orderNo = res.order_no,
+                    subtotalCents = res.subtotal_cents ?: 0, taxCents = res.tax_cents ?: 0
+                )
+            } else {
+                Log.w(TAG, "create_delivery_order refused: ${res.message}")
+                CreateDeliveryOrderResult(false, message = res.message ?: "Not saved")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "create_delivery_order failed: ${e.message}")
+            CreateDeliveryOrderResult(false, message = "Not saved -- check the connection and try again")
         }
     }
 

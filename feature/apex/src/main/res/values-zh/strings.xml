@@ -64,4 +64,17 @@
     <string name="apex_flag_high_cash_share">%1$s 收现金比例 %2$s%%，明显高于全店 %3$s%%</string>
     <string name="apex_flag_declines_today">今天被拒付 %1$d 笔，留意读卡器或可疑卡</string>
     <string name="apex_cash_card">现金 %1$s · 刷卡 %2$s</string>
+    <string name="apex_create_delivery_order">📦 生成送货单</string>
+    <string name="apex_customer_name">客户姓名</string>
+    <string name="apex_customer_phone">联系电话</string>
+    <string name="apex_delivery_address">送货地址</string>
+    <string name="apex_delivery_items">商品明细</string>
+    <string name="apex_add_item">+ 添加商品</string>
+    <string name="apex_item_name">商品名称</string>
+    <string name="apex_item_price">单价 $</string>
+    <string name="apex_delivery_created">已生成送货单 #%1$d（客户：%2$s），合计 %3$s。已同步至送货单列表。</string>
+    <string name="apex_enter_customer_and_address">请填写客户姓名和送货地址</string>
+    <string name="apex_at_least_one_item">请至少添加一件有效商品</string>
+    <string name="apex_quick_new_delivery">📦 生成送货单</string>
+    <string name="apex_item_needs_price">每件商品都要填价格</string>
 </resources>

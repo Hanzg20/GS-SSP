@@ -64,4 +64,17 @@
     <string name="apex_flag_high_cash_share">%1$s takes %2$s%% in cash vs store %3$s%%</string>
     <string name="apex_flag_declines_today">%1$d declined card payments today -- check the reader or suspicious cards</string>
     <string name="apex_cash_card">Cash %1$s · Card %2$s</string>
+    <string name="apex_create_delivery_order">📦 Create Delivery Order</string>
+    <string name="apex_customer_name">Customer Name</string>
+    <string name="apex_customer_phone">Phone Number</string>
+    <string name="apex_delivery_address">Delivery Address</string>
+    <string name="apex_delivery_items">Order Items</string>
+    <string name="apex_add_item">+ Add Item</string>
+    <string name="apex_item_name">Item name</string>
+    <string name="apex_item_price">Price $</string>
+    <string name="apex_delivery_created">Created delivery order #%1$d (%2$s), total %3$s. Added to Delivery Orders.</string>
+    <string name="apex_enter_customer_and_address">Please enter customer name and delivery address</string>
+    <string name="apex_at_least_one_item">Please add at least one item with valid quantity</string>
+    <string name="apex_quick_new_delivery">📦 New Delivery Order</string>
+    <string name="apex_item_needs_price">Every item needs a price</string>
 </resources>

@@ -11,8 +11,8 @@ export type ExpenseCategory = typeof EXPENSE_CATEGORIES[number];
 
 /** Words that make a message worth checking for an expense or a reminder (questions skip the extra step). */
 export function looksLikeCommand(q: string): boolean {
-  return /提醒|记得|别忘|待办|记一笔|记个账|记账|入账|花了|付了|支付了|交了|缴了|开支|费用|支出|买了|进货花/.test(q) ||
-    /\b(remind|reminder|to-?do|don'?t forget|spent|paid|expense|bought)\b/i.test(q);
+  return /提醒|记得|别忘|待办|记一笔|记个账|记账|入账|花了|付了|支付了|交了|缴了|开支|费用|支出|买了|进货花|送货单|送货|送单|外卖单|建送单|外卖|配送|外送/.test(q) ||
+    /\b(remind|reminder|to-?do|don'?t forget|spent|paid|expense|bought|delivery|delivery\s*order)\b/i.test(q);
 }
 
 const CN_DIGIT: Record<string, number> = {
@@ -131,11 +131,18 @@ export function calendarLines(tz: string, now = new Date()): string {
   return [week(-1, "Last week 上周"), week(0, "This week 本周"), week(1, "Next week 下周")].join("\n");
 }
 
+export type DeliveryItem = {
+  name: string;
+  quantity: number;
+  unitPrice?: number | null;
+};
+
 export type Proposal =
   | { kind: "expense"; vendor: string; category: ExpenseCategory; amount: number | null; amountWords: string; spentOn: string; dateWords: string; note: string; check: string[] }
-  | { kind: "reminder"; text: string; dueAt: string | null; whenWords: string; check: string[] };
+  | { kind: "reminder"; text: string; dueAt: string | null; whenWords: string; check: string[] }
+  | { kind: "delivery_order"; customer_name: string; customer_phone: string; address: string; note: string; items: DeliveryItem[]; check: string[] };
 
-/** The model's JSON -> a proposal with every number re-checked, or null if it isn't an expense/reminder. */
+/** The model's JSON -> a proposal with every number re-checked, or null if it isn't an expense/reminder/delivery. */
 // deno-lint-ignore no-explicit-any
 export function toProposal(raw: any, tz: string, now = new Date()): Proposal | null {
   if (!raw || typeof raw !== "object") return null;
@@ -171,6 +178,35 @@ export function toProposal(raw: any, tz: string, now = new Date()): Proposal | n
     }
     return { kind: "reminder", text, dueAt, whenWords: String(raw.when_text ?? "").slice(0, 60), check };
   }
+  if (raw.kind === "delivery_order" || raw.kind === "delivery") {
+    const check: string[] = [];
+    const customer_name = String(raw.customer_name ?? raw.customer ?? "").trim().slice(0, 100);
+    const customer_phone = String(raw.customer_phone ?? raw.phone ?? "").trim().slice(0, 30);
+    const address = String(raw.address ?? "").trim().slice(0, 200);
+    const note = String(raw.note ?? "").trim().slice(0, 200);
+    if (!customer_name) check.push("customer_name");
+    if (!address) check.push("address");
+
+    const items: DeliveryItem[] = Array.isArray(raw.items)
+      ? raw.items.map((it: any) => ({
+          name: String(it?.name ?? "").trim(),
+          quantity: Math.max(1, parseInt(it?.quantity ?? 1) || 1),
+          unitPrice: typeof it?.unit_price === "number" ? round2(it.unit_price) : typeof it?.price === "number" ? round2(it.price) : null
+        })).filter((it: DeliveryItem) => it.name.length > 0)
+      : [];
+
+    if (items.length === 0) check.push("items");
+
+    return {
+      kind: "delivery_order",
+      customer_name,
+      customer_phone,
+      address,
+      note,
+      items,
+      check
+    };
+  }
   return null;
 }
 
@@ -183,6 +219,8 @@ Reply with ONE JSON object and nothing else:
   Categories: INVENTORY = goods for resale / stock purchases; RENT; UTILITIES = hydro, water, gas, internet, phone; PAYROLL = wages; REPAIRS = maintenance, equipment fixes; MARKETING = ads, flyers, promotions; FEES = bank, card processing, licences, accounting; OTHER = anything else.
 - A to-do to be reminded of: {"kind":"reminder","text":"<the task, short, in their language, without the time words>","due":"<YYYY-MM-DDTHH:mm local time>","when_text":"<all the date and time words exactly as they said them>"}
   No time of day given: use 09:00. Only a time given: today if still ahead, else tomorrow. "下周X"/"next X" is the coming week's day.
+- A delivery order to create: {"kind":"delivery_order","customer_name":"<customer name>","customer_phone":"<phone number or \"\">","address":"<delivery destination/address>","note":"<special note or \"\">","items":[{"name":"<item name>","quantity":<integer quantity>,"price":<optional unit price in dollars>}]}
 - Anything else (a question, small talk): {"kind":"none"}
 Never invent an amount or a time that wasn't said: use null for amount, "" for due.`;
 }
+

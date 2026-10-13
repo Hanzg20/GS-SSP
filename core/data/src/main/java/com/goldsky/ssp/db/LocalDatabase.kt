@@ -58,6 +58,40 @@ data class ExpenseEntity(
     val synced: Boolean = false
 )
 
+@Entity(tableName = "local_notes")
+data class NoteEntity(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String = "",
+    val content: String,
+    val tagsJson: String = "[]",
+    val pinned: Boolean = false,
+    val staffName: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val synced: Boolean = false
+)
+
+@Dao
+interface NoteDao {
+    @Query("SELECT * FROM local_notes ORDER BY pinned DESC, createdAt DESC")
+    fun getAll(): List<NoteEntity>
+
+    @Query("SELECT * FROM local_notes WHERE synced = 0")
+    fun unsynced(): List<NoteEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insert(note: NoteEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertAll(notes: List<NoteEntity>)
+
+    @Query("DELETE FROM local_notes WHERE synced = 1")
+    fun deleteSynced()
+
+    @Query("DELETE FROM local_notes WHERE id = :id")
+    fun deleteById(id: String)
+}
+
 @Dao
 interface ProductDao {
     @Query("SELECT * FROM local_products WHERE isActive = 1")
@@ -129,12 +163,13 @@ interface ExpenseDao {
     fun delete(expense: ExpenseEntity)
 }
 
-@Database(entities = [ProductEntity::class, OrderEntity::class, ParkedOrderEntity::class, ExpenseEntity::class], version = 8, exportSchema = false)
+@Database(entities = [ProductEntity::class, OrderEntity::class, ParkedOrderEntity::class, ExpenseEntity::class, NoteEntity::class], version = 9, exportSchema = false)
 abstract class LocalDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
     abstract fun orderDao(): OrderDao
     abstract fun parkedOrderDao(): ParkedOrderDao
     abstract fun expenseDao(): ExpenseDao
+    abstract fun noteDao(): NoteDao
 
     companion object {
         @Volatile
@@ -142,6 +177,24 @@ abstract class LocalDatabase : RoomDatabase() {
 
         // Explicit so this upgrade doesn't fall through to the destructive
         // fallback, which would also wipe local orders and parked carts.
+        private val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS local_notes (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        title TEXT NOT NULL DEFAULT '',
+                        content TEXT NOT NULL,
+                        tagsJson TEXT NOT NULL DEFAULT '[]',
+                        pinned INTEGER NOT NULL DEFAULT 0,
+                        staffName TEXT,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        synced INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+
         private val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE local_expenses ADD COLUMN spentOn TEXT")
@@ -165,7 +218,7 @@ abstract class LocalDatabase : RoomDatabase() {
                     LocalDatabase::class.java,
                     "ssp_local_db"
                 )
-                .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

@@ -344,7 +344,9 @@ Deno.serve(async (req) => {
           await log("chat", "user", question);
           const summary = proposal.kind === "expense"
             ? (lang === "zh" ? `【待确认费用】${proposal.note || proposal.vendor} $${proposal.amount ?? "?"}` : `[Expense to confirm] ${proposal.note || proposal.vendor} $${proposal.amount ?? "?"}`)
-            : (lang === "zh" ? `【待确认提醒】${proposal.text}` : `[Reminder to confirm] ${proposal.text}`);
+            : proposal.kind === "reminder"
+            ? (lang === "zh" ? `【待确认提醒】${proposal.text}` : `[Reminder to confirm] ${proposal.text}`)
+            : (lang === "zh" ? `【待确认送货单】${proposal.customer_name} ${proposal.address} (${proposal.items.length}件商品)` : `[Delivery order to confirm] ${proposal.customer_name} ${proposal.address} (${proposal.items.length} items)`);
           await log("chat", "assistant", summary);
           return json({ proposal });
         }
