@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.goldsky.ssp.ourea.eye.CfdDisplayState
+import com.goldsky.ssp.ourea.eye.CfdItemData
 import com.goldsky.ssp.ui.theme.BrandBlue
 import com.goldsky.ssp.ui.theme.GoldHighlight
 import com.goldsky.ssp.ui.theme.BrandCyan
@@ -89,8 +90,15 @@ private fun EyeBackdrop(content: @Composable BoxScope.() -> Unit) {
 @Composable
 fun CartScreen(state: CfdDisplayState.Cart) {
     val listState = rememberLazyListState()
-    LaunchedEffect(state.items.size) {
-        if (state.items.isNotEmpty()) listState.animateScrollToItem(state.items.size - 1)
+    // The line that just changed: a new line, or one whose quantity went up
+    // (the same item scanned again). Lit gold and scrolled into view.
+    var previous by remember { mutableStateOf<List<CfdItemData>>(emptyList()) }
+    val changed = remember(state.items) {
+        state.items.indices.lastOrNull { i -> previous.getOrNull(i) != state.items[i] } ?: state.items.lastIndex
+    }
+    LaunchedEffect(state.items) {
+        previous = state.items
+        if (changed >= 0) listState.animateScrollToItem(changed)
     }
     val count = state.items.sumOf { it.qty }
 
@@ -111,7 +119,7 @@ fun CartScreen(state: CfdDisplayState.Cart) {
 
             // Items, newest last and lit
             LazyColumn(state = listState, modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                itemsIndexed(state.items) { i, item -> CartLine(item.name, item.qty, item.priceCents, newest = i == state.items.lastIndex) }
+                itemsIndexed(state.items) { i, item -> CartLine(i + 1, item.name, item.qty, item.priceCents, newest = i == changed) }
             }
             Spacer(Modifier.height(10.dp))
 
@@ -146,7 +154,7 @@ fun CartScreen(state: CfdDisplayState.Cart) {
 }
 
 @Composable
-private fun CartLine(name: String, qty: Int, priceCents: Int, newest: Boolean) {
+private fun CartLine(number: Int, name: String, qty: Int, priceCents: Int, newest: Boolean) {
     // The item just scanned glows briefly, so the customer sees what was added.
     val glow by animateFloatAsState(targetValue = if (newest) 1f else 0f, animationSpec = tween(600), label = "glow")
     Row(
@@ -158,14 +166,18 @@ private fun CartLine(name: String, qty: Int, priceCents: Int, newest: Boolean) {
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Line number in the badge (matches the cashier's list); quantity under the name.
         Box(
             Modifier.size(28.dp).clip(CircleShape).background(if (newest) Gold else Navy600),
             contentAlignment = Alignment.Center
         ) {
-            Text("$qty", color = if (newest) Navy950 else Slate100, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text("$number", color = if (newest) Navy950 else Slate100, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.width(10.dp))
-        Text(name, color = Slate100, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Column(Modifier.weight(1f)) {
+            Text(name, color = Slate100, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text("${money(priceCents)} × $qty", color = Slate400, fontSize = 12.sp)
+        }
         Spacer(Modifier.width(8.dp))
         Text(money(priceCents * qty), color = if (newest) Gold else Slate100, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
     }

@@ -216,9 +216,20 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
             }
             Divider(color = OureaSurfaceVariant)
             Spacer(modifier = Modifier.height(12.dp))
+            // Subtotal / tax / total, the same figures the customer sees on Ourea Eye.
+            val sale = viewModel.checkoutSale()
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(R.string.ourea_subtotal), color = OureaTextSecondary, fontSize = 13.sp)
+                Text("$${"%.2f".format(sale.subtotalCents / 100.0)}", color = OureaTextSecondary, fontSize = 13.sp)
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(R.string.ourea_tax), color = OureaTextSecondary, fontSize = 13.sp)
+                Text("$${"%.2f".format(sale.taxCents / 100.0)}", color = OureaTextSecondary, fontSize = 13.sp)
+            }
+            Spacer(modifier = Modifier.height(4.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(R.string.ourea_total), color = OureaTextSecondary)
-                Text("$${"%.2f".format(total / 100.0)}", color = OureaTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("$${"%.2f".format((sale.subtotalCents + sale.taxCents) / 100.0)}", color = OureaTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
             Spacer(modifier = Modifier.height(12.dp))
             if (cart.isNotEmpty()) {
@@ -453,7 +464,7 @@ private fun CartRow(number: Int, item: CartItem, onIncrement: () -> Unit, onDecr
             modifier = Modifier.width(24.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(item.product.name, color = OureaTextPrimary, fontWeight = FontWeight.Medium)
-            Text("$${"%.2f".format(item.unitPriceCents / 100.0)} each", color = OureaTextSecondary, fontSize = 12.sp)
+            Text("$${"%.2f".format(item.unitPriceCents / 100.0)} × ${item.quantity}", color = OureaTextSecondary, fontSize = 12.sp)
         }
         Text("$${"%.2f".format(item.totalPriceCents / 100.0)}", color = OureaTextPrimary)
         Spacer(modifier = Modifier.width(10.dp))
