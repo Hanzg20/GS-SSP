@@ -119,6 +119,8 @@ class MainActivity : ComponentActivity() {
             com.goldsky.ssp.ui.theme.GoldSkyTheme(dark = darkTheme) {
                 val navController = rememberNavController()
                 val retailViewModel: RetailViewModel = viewModel()
+                // The cart in progress comes back after a restart.
+                LaunchedEffect(Unit) { retailViewModel.restoreCart(this@MainActivity) }
                 var paymentStatus by remember { mutableStateOf<PaymentUiState>(PaymentUiState.Idle) }
                 // Staged while the tip dialog is up; the real sale only fires
                 // once the customer picks (or skips) a tip.

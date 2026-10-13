@@ -16,6 +16,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -114,19 +115,59 @@ class RetailViewModel : ViewModel() {
             db.parkedOrderDao().delete(entity)
             withContext(Dispatchers.Main) {
                 clearCart()
-                lines.forEach { line ->
-                    val product = RetailRepository.catalog.value.find { it.id == line.productId }
-                    if (product != null) {
-                        val allOptions = product.modifier_groups?.flatMap { it.options } ?: emptyList()
-                        val modifiers = line.modifierIds.mapNotNull { id -> allOptions.find { it.id == id } }
-                        repeat(line.quantity) { addItem(product, modifiers) }
-                    } else {
-                        Log.w(TAG, "Parked order referenced unknown product ${line.productId} (catalog changed since it was held?)")
-                    }
-                }
+                addLines(lines)
                 loadParkedOrders(context)
             }
         }
+    }
+
+    private fun addLines(lines: List<ParkedCartLine>) {
+        lines.forEach { line ->
+            val product = RetailRepository.catalog.value.find { it.id == line.productId }
+            if (product != null) {
+                val allOptions = product.modifier_groups?.flatMap { it.options } ?: emptyList()
+                val modifiers = line.modifierIds.mapNotNull { id -> allOptions.find { it.id == id } }
+                repeat(line.quantity) { addItem(product, modifiers) }
+            } else {
+                Log.w(TAG, "Cart line referenced unknown product ${line.productId} (catalog changed since?)")
+            }
+        }
+    }
+
+    // ---- The cart being rung up survives a restart (crash, update, power cut) ----
+
+    private var cartPrefs: android.content.SharedPreferences? = null
+    private var restoring = false
+
+    /**
+     * Brings back the cart the app had when it last stopped, and from then on
+     * saves it on every change. Once per ViewModel; waits (up to 15 s) for the
+     * catalog, which the lines are matched against.
+     */
+    fun restoreCart(context: Context) {
+        if (cartPrefs != null) return
+        val prefs = context.applicationContext.getSharedPreferences("retail_cart", Context.MODE_PRIVATE)
+        cartPrefs = prefs
+        val saved = prefs.getString("lines", null) ?: return
+        viewModelScope.launch {
+            val lines = try { Json.decodeFromString<List<ParkedCartLine>>(saved) } catch (e: Exception) { emptyList() }
+            if (lines.isEmpty()) return@launch
+            withTimeoutOrNull(15_000) { RetailRepository.catalog.first { it.isNotEmpty() } }
+            if (_cart.isNotEmpty()) return@launch // already ringing up something new
+            restoring = true
+            addLines(lines)
+            restoring = false
+            saveCart()
+        }
+    }
+
+    private fun saveCart() {
+        if (restoring) return
+        val prefs = cartPrefs ?: return
+        val json = Json.encodeToString(
+            _cart.map { ParkedCartLine(it.product.id, it.quantity, it.selectedModifiers.map { m -> m.id }) }
+        )
+        prefs.edit().putString("lines", json).apply()
     }
 
     private fun currentCartAsParked(tableName: String?) = ParkedOrderEntity(
@@ -224,6 +265,7 @@ class RetailViewModel : ViewModel() {
     private fun updateTotals() {
         _totalCents.value = _cart.sumOf { it.totalPriceCents }
         _itemCount.value = _cart.sumOf { it.quantity }
+        saveCart()
     }
 }
 

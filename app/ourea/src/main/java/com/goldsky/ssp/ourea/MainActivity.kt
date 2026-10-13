@@ -99,6 +99,8 @@ class MainActivity : ComponentActivity() {
                     StaffPinLockScreen(onSignedIn = { staff = it })
                 } else {
                     val retailViewModel: RetailViewModel = viewModel()
+                    // The cart in progress comes back after a restart.
+                    LaunchedEffect(Unit) { retailViewModel.restoreCart(this@MainActivity) }
                     var destination by remember { mutableStateOf(OureaDestination.CHECKOUT) }
                     var paymentStatus by remember { mutableStateOf<OureaPaymentUiState>(OureaPaymentUiState.Idle) }
                     var activeSaleData by remember { mutableStateOf<Pair<Int, Int>?>(null) }
