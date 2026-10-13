@@ -1,1 +1,6 @@
-export { default } from '../../.artifacts/scratch/postcss.config.js';
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
