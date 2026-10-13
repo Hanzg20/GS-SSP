@@ -152,7 +152,7 @@ Nobody registers these automatically — it's each app shell's `MainActivity.onC
 When adding a new cloud-synced feature, follow the existing pattern: a dedicated singleton in `core/data`, Ktor + `kotlinx.serialization` for the wire format, and graceful offline degradation (never crash or block the UI when Supabase is unreachable — log and continue with cached/default state). `ConfigManager`'s 3-tier degrade (cloud → `context.filesDir` cache → bundled `assets/default_config.json`) is still the model to follow for anything config-shaped.
 
 ### Database conventions
-New tables follow `docs/database_conventions.md`: one schema per business domain (e.g. `dine`), schemas other than
+New tables follow `docs/database_design.md` (§3 conventions, §2 inventory, §5 dine-in): one schema per business domain (e.g. `dine`), schemas other than
 `public` reached only through `public.<domain>_<verb>` RPCs, shared `sales.*` orders with per-vertical extension tables.
 
 ### Data models

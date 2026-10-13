@@ -1,5 +1,5 @@
 -- 2026-10-13: dine-in tables move into their own schema, `dine`
--- (docs/database_conventions.md: one schema per business domain).
+-- (docs/database_design.md §3: one schema per business domain).
 --
 --   public.dining_tables       -> dine.tables
 --   public.dine_checks         -> dine.checks

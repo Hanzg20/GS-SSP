@@ -1,127 +1,177 @@
-# GS-SSP Database Design Specification v2.6 (Nayax-Core Evolution)
+# GS-SSP Database Design Specification v3.0
 
-This document defines the backend data model for the GS-SSP platform, now evolved to support high-level fleet management, financial reconciliation, and hierarchical multi-tenancy inspired by **Nayax Core**.
+The shared Supabase (Postgres) database behind every GS-SSP app (Iris, Ourea,
+Ourea Eye, the Aegis kiosks) and the CMP web portal.
 
-## 1. Entity Relationship Diagram (ER Diagram)
+**v3.0 (2026-10-13)**: rewritten against the live database. Adds the table
+inventory by domain (§2), the naming / schema conventions every new table
+follows (§3), the shared-orders direction for new verticals (§4), and the
+dine-in schema (§5). The v2.6 "Nayax-Core" entities that were never built
+(`distributors`, `alert_rules`, `alert_history`, `payout_batches`) are kept
+as plans in §8, not as current tables.
+
+---
+
+## 1. Core model
 
 ```mermaid
 erDiagram
-    distributors ||--o{ organizations : "houses"
-    organizations ||--o{ locations : "manages"
-    organizations ||--o{ products : "defines"
+    organizations ||--o{ locations : "has"
+    organizations ||--o{ org_members : "CMP users"
+    organizations ||--o{ staff : "terminal staff (PIN)"
+    organizations ||--o{ products : "sells"
     locations ||--o{ devices : "houses"
-    
+    devices ||--o| device_auth_map : "device login -> store"
+    devices ||--o| device_shadows : "desired / reported"
     devices ||--o{ heartbeats : "reports"
-    devices ||--o{ app_error_logs : "records"
-    devices ||--o{ maintenance_records : "tracks"
-    devices ||--o| device_shadows : "state"
-    
-    organizations ||--o{ alert_rules : "defines"
-    alert_rules ||--o{ alert_history : "triggers"
-    devices ||--o{ alert_history : "affects"
-    
-    transactions ||--o| payout_batches : "settles"
-    organizations ||--o{ payout_batches : "receives"
-
-    distributors {
-        uuid id PK
-        string name
-        string region
-    }
-
-    organizations {
-        uuid id PK
-        uuid distributor_id FK
-        string name
-        string tier "FREE/PRO/ENT"
-    }
-
-    locations {
-        uuid id PK
-        uuid org_id FK
-        string name
-        string timezone
-    }
-
-    devices {
-        string sn PK "Physical Serial Number"
-        uuid loc_id FK
-        string vertical_type "WASH/LAUNDRY/EV/VEND"
-        string status "ONLINE/OFFLINE/FAULT"
-        string app_version
-        boolean is_active
-        timestamptz last_seen
-    }
-
-    alert_rules {
-        uuid id PK
-        uuid org_id FK
-        string event_type "OFFLINE/ACK_TIMEOUT"
-        jsonb thresholds
-        boolean is_enabled
-    }
-
-    payout_batches {
-        uuid id PK
-        uuid org_id FK
-        int total_cents
-        string status "PENDING/PAID"
-        timestamptz settled_at
-    }
+    devices ||--o{ transactions : "takes"
+    transactions ||--o{ transaction_items : "lines"
+    organizations ||--o{ delivery_orders : "phone / WeChat orders"
+    organizations ||--o{ vip_cards : "members"
+    vip_cards ||--o{ vip_card_ledger : "balance moves"
 ```
 
----
-
-## 2. Core CMP Table Definitions
-
-### 2.1 distributors (Global Hierarchy)
-Represents regional branches or master partners managing multiple operators.
-
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `id` | UUID | Primary Key. |
-| `name` | TEXT | Distributor Name. |
-| `settings` | JSONB | Global commissions and branding overrides. |
-
-### 2.2 alert_rules & alert_history (Proactive Monitoring)
-The "Smart Alerts" system to detect and notify staff of fleet issues.
-
-| Table | Column | Description |
-| :--- | :--- | :--- |
-| `alert_rules` | `event_type` | Trigger type: `OFFLINE`, `HARDWARE_FAULT`, `LOW_SALES`. |
-| `alert_history` | `status` | Alert lifecycle: `NEW`, `ACKNOWLEDGED`, `RESOLVED`. |
-
-### 2.3 profiles (RBAC Identity)
-Maps authentication users to specific scopes within the hierarchical model.
-
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `role` | TEXT | `SYS_ADMIN`, `DISTRIBUTOR`, `MERCHANT_ADMIN`, `LOC_MANAGER`. |
-| `scope_id` | UUID | FK to either distributor_id, org_id, or loc_id based on role. |
-
-### 2.4 audit_logs (Management Accountability)
-Captures every administrative action performed via the CMP web portal.
-
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `action` | TEXT | e.g., `CHANGE_PRICE`, `REMOTE_REBOOT`. |
-| `payload` | JSONB | Diff showing old vs. new values. |
+- **organizations**: a merchant (store owner). Everything a store owns has `org_id`.
+- **locations**: a site of the merchant; devices sit at a location.
+- **devices**: a physical terminal, keyed by serial number `sn`; `vertical_type`
+  (RETAIL / WASH / EV / VENDING / TIMER ...), `status`, `last_seen`, `remote_locked`.
+- **device_auth_map**: the device's anonymous Supabase login -> its `sn` and `org_id`.
+  Every device-side policy and RPC takes the store from here, never from a parameter.
+- **products**: one generic catalog with `vertical_type`; industry details ride in
+  `attributes` JSONB (category, tax_rate_bps, stock_qty, duration_sec, modifier_groups).
+- **transactions**: one payment attempt / sale (amount, subtotal / tax / tip cents,
+  payment_status, method, card AID / BIN / brand, staff, refund approval,
+  quick-service `order_number / order_type / order_note`, dine-in `check_id`).
 
 ---
 
-## 3. Row Level Security (RLS) & Multi-Tenancy
+## 2. Table inventory (live, 2026-10-13)
 
-The system enforces isolation at the **Organization (Operator)** level for all business data, while allowing **Distributors** and **SYS_ADMINs** to view aggregated data across multiple tenants.
+`public` unless noted. "→" marks the schema a table moves to under §3 (not yet moved).
 
-### 3.1 Policy Inheritance
-*   **Merchant Admin**: `profiles.org_id = current.org_id`.
-*   **Distributor**: `profiles.distributor_id = current_org.distributor_id`.
-*   **System Admin**: Bypass filters for global maintenance and diagnostics.
+| Domain | Tables | Written by |
+|---|---|---|
+| Tenancy & access | organizations, locations, org_members, invited_emails, profiles, permissions, capability_permissions, platform_settings | CMP |
+| Devices & ops → `ops` | devices, device_auth_map, device_shadows, device_commands, heartbeats, app_error_logs, system_health_logs, maintenance_records, audit_logs, app_configurations | apps (heartbeat, logs), CMP (commands, config) |
+| Staff | staff (PIN hash, role MANAGER / CASHIER / DRIVER) | CMP |
+| Catalog | products | CMP |
+| Sales & payment → `sales` | transactions, transaction_items, qr_payment_sessions, acquirer_settlement_records, merchant_acquirer_accounts, hardware_acquirer_map | apps (sales), back office (settlement) |
+| Retail delivery → `retail` | delivery_orders, delivery_order_items | CMP / Apex (create), Iris (collect) |
+| Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments** (§5) | Ourea, Iris via `dine_*` RPCs |
+| Members → `member` | vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions | apps, CMP |
+| Ads → `media` | advertisements, playlists, ad_playback_logs | CMP (ads), apps (playback) |
+| Store back office | expenses, reminders, notes | Iris / Ourea / Apex |
+| AI assistant → `apex` | apex_messages, apex_knowledge | apex-assistant edge function |
+| **Unidentified → `legacy`** | `gp_*` (appointments, order_items, orders, products, profiles, settings, vehicles), `jc_*` (advertisement_logs, advertisements, consumption_records, member_levels, members, membership_cards, points_transactions, system_config, transaction_history, vip_cards), `e_merchants`, `e_transactions` | not written by GS-SSP apps; owners to confirm, then move to `legacy` or drop |
 
 ---
 
-## 4. Digital Twin & Shadowing Strategy
+## 3. Conventions (every new table follows these)
+
+### 3.1 One schema per business domain
+`public` stops being the place for everything. A table lives in its domain's
+schema and its name does not repeat the domain: `dine.checks`, not
+`public.dine_checks`.
+
+| Schema | For | Status |
+|---|---|---|
+| `public` | platform core for now, and the RPC functions the apps call | existing |
+| `dine` | dine-in | **done 2026-10-13** |
+| `sales` | shared orders / lines / payments (§4) | with the next vertical |
+| `retail`, `wash`, `ev`, `parking`, `vending`, `timer` | each vertical's own extension tables | as each is built or migrated |
+| `member`, `media`, `apex`, `ops` | see §2 | to migrate |
+| `legacy` | the unidentified `gp_*`, `jc_*`, `e_*` | to decide |
+
+### 3.2 Access
+- A schema other than `public` is **not exposed through the API**. Apps reach it
+  only through `public.<domain>_<verb>` functions: SECURITY DEFINER, store taken
+  from `device_auth_map`, table privileges revoked from `anon` / `authenticated`.
+- Every store-owned row carries `org_id` (and `location_id` where it matters); RLS
+  as in §6 for the tables still read directly.
+
+### 3.3 Names and columns
+- Tables lower_snake_case plural (`checks`, `check_items`); foreign keys `<entity>_id`.
+- Money integer cents `*_cents`; tax rates basis points `*_bps`; times `timestamptz` `*_at`; dates `*_day` / `*_on`.
+- Status: `text` + `CHECK (status IN (...))`, upper-case values.
+- Functions `<domain>_<verb>[_<object>]` (`dine_open_check`): every argument sent
+  by the app (optional ones `DEFAULT NULL`, or PostgREST can't find the function),
+  results JSONB `{success, message, ...}`.
+- `COMMENT ON` every schema and table: what it is, which app writes it.
+
+### 3.4 JSONB or a column
+`attributes` / options JSONB for what is only displayed or configured (dish
+options). Once something is filtered, summed, constrained or reported on, it
+becomes a column. To promote: `products.attributes.tax_rate_bps`, `category`, `stock_qty`.
+
+### 3.5 Migrations
+One file per change in `docs/migrations/YYYY-MM-DD_<what>.sql`, idempotent where
+possible, applied in one transaction. Planned: Supabase CLI migrations
+(`supabase/migrations`, `supabase db push`) so each environment records what it has applied.
+
+---
+
+## 4. Shared orders for every vertical (direction)
+
+Today each flow has its own copy of "order, lines, payments": `transactions` +
+`transaction_items`, `delivery_orders` + items, dine checks + payments,
+`qr_payment_sessions`. New verticals (parking, EV, appointments) do not add
+another copy:
+
+- `sales.orders`: one sale (kind COUNTER / DELIVERY / DINE_IN / WASH / EV ...),
+  status, store, device, staff, totals
+- `sales.order_lines`: product, quantity, unit price, tax rate, options
+- `sales.payments`: one or more per order (split, mixed tender, tip)
+
+A vertical adds a 1:1 extension table keyed by `order_id` for what only it has
+(`dine.checks`: table, guests, rounds; `ev.sessions`: charger, kWh). Day close,
+HST, Apex and CMP reports read `sales.*` only. The existing flows move onto it
+one at a time, with views keeping old names readable during the move.
+
+---
+
+## 5. Dine-in (`dine` schema)
+
+| Table | Holds | Key rules |
+|---|---|---|
+| `dine.tables` | the floor: name, area, seats, sort | name unique per store among active tables; a table with a live check can't be removed |
+| `dine.checks` | a seated table's check: check_no (daily per store), guests, server, OPEN → BILLED → PAID / VOID | one live check per table (partial unique index) |
+| `dine.check_items` | lines sent to the kitchen, by `round`; options JSONB; VOID with `voided_by` | the round being taken stays on the device until sent |
+| `dine.payments` | payments on a check: `amount_cents` (food + tax), `tax_cents`, `tip_cents`, method, `ecr_ref_num` unique | the check closes when payments cover its total; split payments' tax adds up exactly to the check's |
+
+RPCs (all `public`): reads `dine_list_tables`, `dine_floor`, `dine_get_check`;
+writes `dine_save_table`, `dine_open_check`, `dine_send_items`, `dine_void_item`,
+`dine_update_check`, `dine_record_payment`; helpers `dine_device_org`,
+`dine_check_total` (tax once per rate, half up, as `SalesTax.kt`).
+`transactions.check_id` links each payment's transaction to its check.
+Migrations: `docs/migrations/2026-10-13_dine_in.sql`, `_dine_in_payment_tax.sql`, `_dine_schema.sql`.
+
+---
+
+## 6. Row Level Security & multi-tenancy
+
+Business data is isolated per **organization**.
+- **CMP users**: `org_id IN member_org_ids()`; `has_permission('<key>')` for writes
+  (`permissions` / `capability_permissions`).
+- **Devices**: `org_id = (SELECT org_id FROM device_auth_map WHERE auth_user_id = auth.uid())`;
+  device writes that need checks go through SECURITY DEFINER RPCs
+  (`create_delivery_order`, `mark_delivery_order_paid`, `dine_*`).
+- **System admin**: `is_sys_admin()` bypasses the org filter for maintenance.
+- Known gap: anonymous device sessions may read every org's active `products`
+  (pre-launch policy); apps filter by their own `org_id`.
+
+---
+
+## 7. Digital twin & shadowing
 Used for non-blocking remote configuration.
-1.  **Desired State**: Cloud writes to `device_shadows.desired`.
-2.  **Edge Sync**: Terminal receives realtime event, applies hardware change (e.g., set brightness), and writes to `reported`.
-3.  **Conflict Resolution**: Uses incremental version numbers to ensure stale cloud commands don't overwrite newer local technician changes.
+1. **Desired state**: cloud writes `device_shadows.desired`.
+2. **Edge sync**: the terminal gets a realtime event, applies it, writes `reported`.
+3. **Conflict resolution**: incremental versions, so a stale cloud command can't
+   overwrite a newer local technician change.
+
+---
+
+## 8. Planned, not built (from v2.6)
+- `distributors`: regional partners above organizations (`organizations.distributor_id`).
+- `alert_rules` / `alert_history`: smart alerts (OFFLINE, HARDWARE_FAULT, LOW_SALES; NEW → ACKNOWLEDGED → RESOLVED).
+- `payout_batches`: settlement batches per organization.
+These belong in `ops` / `sales` under §3 when built.
