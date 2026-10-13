@@ -64,7 +64,7 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
     Column(
         modifier = Modifier
             .fillMaxHeight()
-            .width(72.dp)
+            .width(64.dp)
             .background(OureaSidebar)
             .padding(vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -170,14 +170,20 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
 
     LaunchedEffect(Unit) { viewModel.loadParkedOrders(context) }
 
+    // Full width for selling: the cart column scales with the screen (about 26%,
+    // 260-340dp) and the categories are a chip row above the grid -- the fixed
+    // 320dp cart plus a 130dp category column on the right left the product grid
+    // squeezed between two dark side panels on narrower landscape screens.
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    val cartWidth = (maxWidth * 0.26f).coerceIn(260.dp, 340.dp)
     Row(modifier = Modifier.fillMaxSize()) {
         // Cart panel
         Column(
             modifier = Modifier
-                .width(320.dp)
+                .width(cartWidth)
                 .fillMaxHeight()
                 .background(OureaSurface)
-                .padding(16.dp)
+                .padding(12.dp)
         ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.ourea_cart), color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -245,7 +251,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
         }
 
         // Product grid
-        Column(modifier = Modifier.weight(1f).fillMaxHeight().background(OureaBackground).padding(16.dp)) {
+        Column(modifier = Modifier.weight(1f).fillMaxHeight().background(OureaBackground).padding(horizontal = 12.dp, vertical = 10.dp)) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
@@ -262,26 +268,54 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            if (categories.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                OureaCategoryChips(categories = categories, selected = selectedCategory, onSelect = { selectedCategory = it })
+            }
+            Spacer(modifier = Modifier.height(10.dp))
             if (filtered.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(stringResource(R.string.ourea_no_products_yet_add_some), color = OureaTextSecondary)
                 }
             } else {
-                LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 160.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 140.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(filtered) { product -> ProductCard(product) { viewModel.addItem(product) } }
                 }
             }
         }
+    }
+    }
+}
 
-        // Category rail (reference screenshots' right-side tab list) -- only
-        // rendered once at least one product actually has a category (see
-        // Product.category's doc comment: it rides in attributes JSONB and
-        // is null until something sets it), so an uncategorized catalog
-        // looks the same as before rather than showing a rail with only "All".
-        if (categories.isNotEmpty()) {
-            OureaCategoryRail(categories = categories, selected = selectedCategory, onSelect = { selectedCategory = it })
-        }
+/**
+ * Category filter as one scrollable chip row above the grid (was a 130dp column
+ * on the right). Only shown once a product has a category (Product.category
+ * rides in attributes JSONB and is null until something sets it).
+ */
+@Composable
+private fun OureaCategoryChips(categories: List<String>, selected: String?, onSelect: (String?) -> Unit) {
+    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item { OureaCategoryChip(stringResource(R.string.ourea_all), selected == null) { onSelect(null) } }
+        items(categories.size) { i -> OureaCategoryChip(categories[i], selected == categories[i]) { onSelect(categories[i]) } }
+    }
+}
+
+@Composable
+private fun OureaCategoryChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (isSelected) OureaGold else OureaSurface)
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp, horizontal = 14.dp)
+    ) {
+        Text(
+            label,
+            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else OureaTextPrimary,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            fontSize = 14.sp,
+            maxLines = 1
+        )
     }
 }
 
@@ -441,20 +475,13 @@ private fun ProductCard(product: Product, onAdd: (() -> Unit)? = null) {
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
             .background(OureaSurface)
-            .padding(14.dp)
+            // The whole card adds to the cart, not just the "+".
+            .let { if (onAdd != null && !outOfStock) it.clickable { onAdd() } else it }
+            .padding(12.dp)
             .let { if (outOfStock) it.alpha(0.5f) else it }
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(72.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(OureaSurfaceVariant),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.Inventory2, null, tint = OureaTextSecondary)
-        }
-        Spacer(modifier = Modifier.height(10.dp))
+        // No product photos in the catalog yet: no 72dp placeholder box either --
+        // it only made every card taller, i.e. fewer products per screen.
         Text(product.name, color = OureaTextPrimary, fontWeight = FontWeight.Medium, maxLines = 2)
         product.category?.let { Text(it, color = OureaTextSecondary, fontSize = 11.sp) }
         product.stockQty?.let { OureaStockBadge(it, Modifier.padding(top = 4.dp)) }
