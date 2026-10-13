@@ -79,6 +79,8 @@ class MainActivity : ComponentActivity() {
             SupabaseClientProvider.ensureAuthenticated()
             DeviceRepository.registerDevice(deviceSn, BuildConfig.VERSION_NAME)
             DeviceRepository.syncDeviceIdentity(deviceSn)
+            // Keep the customer display the way Settings says (it also remembers on its own).
+            paymentProvider.showEyeRotation(DeviceRepository.getEyeRotation())
             // Expenses saved offline go up; this terminal's reminders get their notifications back.
             ExpenseRepository.syncPending(this@MainActivity)
             ReminderRepository.rescheduleOpen(this@MainActivity)

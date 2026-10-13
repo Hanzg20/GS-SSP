@@ -16,7 +16,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             GoldSkyTheme(dark = true) {
                 var cfdState by remember { mutableStateOf<CfdDisplayState>(CfdDisplayState.Idle) }
-                var rotationAngle by remember { mutableStateOf(0) }
+                // Remembered here, so the display comes back the right way up after a restart
+                // without waiting for Ourea. 0 or 180 only.
+                val prefs = remember { getSharedPreferences("ourea_eye", MODE_PRIVATE) }
+                var rotationAngle by remember { mutableStateOf(if (prefs.getInt("rotation", 0) == 180) 180 else 0) }
                 // The total of the sale just paid, for the thank-you.
                 var lastTotal by remember { mutableStateOf<Int?>(null) }
                 val scope = rememberCoroutineScope()
@@ -51,7 +54,10 @@ class MainActivity : ComponentActivity() {
                     // Rotation turns the content only. Also switching the window's
                     // orientation, with the status bar still there, left a non-square
                     // window the rotated content couldn't cover: black strips left/right.
-                    SocketServerManager.onRotationChanged = { angle -> rotationAngle = angle }
+                    SocketServerManager.onRotationChanged = { angle ->
+                        rotationAngle = if (angle == 180) 180 else 0
+                        prefs.edit().putInt("rotation", rotationAngle).apply()
+                    }
                     onDispose {
                         SocketServerManager.onStateChanged = null
                         SocketServerManager.onRotationChanged = null

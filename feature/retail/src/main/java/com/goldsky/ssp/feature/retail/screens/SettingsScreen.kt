@@ -153,7 +153,8 @@ fun SettingsScreen() {
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            listOf(0, 90, 180, 270).forEach { deg ->
+                            // Upright, or upside down for a display mounted facing the customer.
+                            listOf(0, 180).forEach { deg ->
                                 FilterChip(
                                     selected = eyeRotation == deg,
                                     onClick = {

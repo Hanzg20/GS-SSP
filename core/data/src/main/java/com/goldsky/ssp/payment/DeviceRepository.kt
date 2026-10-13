@@ -123,7 +123,8 @@ object DeviceRepository {
         prefs()?.edit()?.putInt(KEY_EYE_ROTATION, degrees)?.apply()
     }
 
-    fun getEyeRotation(): Int = prefs()?.getInt(KEY_EYE_ROTATION, 0) ?: 0
+    /** 0 or 180 only (upright / upside down); an older 90/270 counts as 0. */
+    fun getEyeRotation(): Int = if (prefs()?.getInt(KEY_EYE_ROTATION, 0) == 180) 180 else 0
 
     fun persistRetailMode(mode: com.goldsky.ssp.model.RetailMode) {
         prefs()?.edit()?.putString(KEY_RETAIL_MODE, mode.name)?.apply()
