@@ -55,6 +55,7 @@ object DeviceRepository {
     private const val KEY_TIPS_ENABLED = "tips_enabled"
     private const val KEY_BUSINESS_TYPE = "business_type"
     private const val KEY_KITCHEN_PRINTER = "kitchen_printer"
+    private const val KEY_SCAN_SITE = "scan_site_url"
     private const val KEY_NUVEI_APP_ID = "nuvei_app_id"
     private const val KEY_REGION = "region"
     private const val KEY_THEME_STYLE = "theme_style"
@@ -183,6 +184,12 @@ object DeviceRepository {
     fun getKitchenPrinter(): String? = prefs()?.getString(KEY_KITCHEN_PRINTER, null)?.trim()?.ifBlank { null }
     fun getKitchenPrinterHost(): String? = getKitchenPrinter()?.substringBefore(':')?.ifBlank { null }
     fun getKitchenPrinterPort(): Int = getKitchenPrinter()?.substringAfter(':', "")?.toIntOrNull() ?: NetworkKitchenPrinter.DEFAULT_PORT
+    /** Base URL of the Ourea Scan site the table QR codes open (<site>/?t=<token>); null = not set. */
+    fun getScanSiteUrl(): String? = prefs()?.getString(KEY_SCAN_SITE, null)?.trim()?.trimEnd('/')?.ifBlank { null }
+    fun persistScanSiteUrl(value: String) {
+        prefs()?.edit()?.putString(KEY_SCAN_SITE, value.trim())?.apply()
+    }
+
     fun persistKitchenPrinter(value: String) {
         prefs()?.edit()?.putString(KEY_KITCHEN_PRINTER, value.trim())?.apply()
     }

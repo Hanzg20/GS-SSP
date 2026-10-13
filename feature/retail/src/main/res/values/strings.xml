@@ -238,4 +238,22 @@
     <string name="dine_round_send">Send to kitchen</string>
     <string name="dine_round_discard">Discard</string>
     <string name="dine_round_stay">Stay</string>
+    <string name="scan_pending_banner">%1$d QR orders from tables waiting</string>
+    <string name="scan_review">Review</string>
+    <string name="scan_dialog_title">QR orders (%1$d)</string>
+    <string name="scan_table">Table %1$s</string>
+    <string name="scan_note">Note: %1$s</string>
+    <string name="scan_total">Total %1$s</string>
+    <string name="scan_accept">Accept · send to kitchen</string>
+    <string name="scan_reject">Reject</string>
+    <string name="scan_reject_title">Reject the order from table %1$s?</string>
+    <string name="scan_reason_wrong_table">Wrong table: please ask a server</string>
+    <string name="scan_reason_sold_out">Something is sold out: please ask a server</string>
+    <string name="scan_reason_ask_staff">Please order with a server</string>
+    <string name="scan_site_label">QR ordering site (e.g. https://scan.example.com)</string>
+    <string name="scan_site_hint">The table QR codes open this site. Empty: no QR codes are shown.</string>
+    <string name="scan_qr_title">QR code · table %1$s</string>
+    <string name="scan_qr_desc">Print and place on the table. Customers scan it to order; orders wait for staff to accept.</string>
+    <string name="scan_qr_rotate">New code (old prints stop working)</string>
+    <string name="scan_qr_show">QR code</string>
 </resources>

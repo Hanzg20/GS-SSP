@@ -27,8 +27,39 @@ object DineRepository {
         val area: String? = null,
         val seats: Int = 4,
         val sort: Int = 0,
-        val is_active: Boolean = true
+        val is_active: Boolean = true,
+        // The secret in the table's QR (Ourea Scan): <scan site>/?t=<qr_token>.
+        val qr_token: String? = null
     )
+
+    /** A line of a customer's QR order, priced by the server. */
+    @Serializable
+    data class ScanLine(
+        val product_id: String? = null,
+        val name: String,
+        val options: List<String> = emptyList(),
+        val quantity: Int,
+        val unit_price_cents: Int,
+        val tax_rate_bps: Int = 0,
+        val note: String? = null
+    )
+
+    /** A customer's order from the table QR, waiting for staff (dine.scan_orders). */
+    @Serializable
+    data class ScanOrder(
+        val id: String,
+        val table_id: String,
+        val table_name: String = "?",
+        val status: String = "PENDING",
+        val items: List<ScanLine> = emptyList(),
+        val note: String? = null,
+        val subtotal_cents: Int = 0,
+        val tax_cents: Int = 0,
+        val created_at: String? = null
+    )
+
+    /** The floor and the customer orders waiting on it. */
+    data class Floor(val tables: List<FloorTable>, val scanPending: List<ScanOrder>)
 
     @Serializable
     data class Check(
@@ -114,7 +145,10 @@ object DineRepository {
     ) {
         fun check() = Check(id, table_id, check_no, status, guests, server_id, server_name, note, opened_at)
     }
-    @Serializable private data class FloorRpc(val tables: List<DiningTable> = emptyList(), val checks: List<FloorCheck> = emptyList())
+    @Serializable private data class FloorRpc(
+        val tables: List<DiningTable> = emptyList(), val checks: List<FloorCheck> = emptyList(),
+        val scan_pending: List<ScanOrder> = emptyList()
+    )
     @Serializable private data class CheckRpc(
         val check: Check, val table: DiningTable? = null,
         val items: List<Item> = emptyList(), val payments: List<Payment> = emptyList()
@@ -130,13 +164,13 @@ object DineRepository {
         }
     }
 
-    /** Tables plus live checks and their totals; null when the cloud can't be reached. */
-    suspend fun floor(): List<FloorTable>? = withContext(Dispatchers.IO) {
+    /** Tables, live checks with their totals, and pending QR orders; null when the cloud can't be reached. */
+    suspend fun floor(): Floor? = withContext(Dispatchers.IO) {
         try {
             SupabaseClientProvider.ensureAuthenticated()
             val f = SupabaseClientProvider.client.postgrest.rpc("dine_floor").decodeAs<FloorRpc>()
             val byTable = f.checks.associateBy { it.table_id }
-            f.tables.map { t -> byTable[t.id].let { c -> FloorTable(t, c?.check(), c?.total_cents ?: 0) } }
+            Floor(f.tables.map { t -> byTable[t.id].let { c -> FloorTable(t, c?.check(), c?.total_cents ?: 0) } }, f.scan_pending)
         } catch (e: Exception) {
             Log.w(TAG, "floor failed: ${e.message}"); null
         }
@@ -241,6 +275,37 @@ object DineRepository {
             null
         }
     }
+
+    // -------------------------------------------------------------- QR orders (Ourea Scan)
+
+    /** What accepting a QR order gives back: the round to print in the kitchen. */
+    @Serializable
+    data class AcceptedScan(
+        val success: Boolean = false, val message: String? = null,
+        val check_id: String? = null, val check_no: Int = 0, val guests: Int = 1, val round: Int = 1,
+        val table_name: String = "?", val items: List<ScanLine> = emptyList(), val note: String? = null
+    )
+    @Serializable private data class AcceptParams(val p_id: String, val p_staff_name: String?, val p_device_sn: String?)
+    @Serializable private data class RejectParams(val p_id: String, val p_staff_name: String?, val p_reason: String?)
+    @Serializable private data class TableIdParams(val p_table_id: String)
+
+    /** The order becomes the table's next round (check opened if needed). null = unreachable. */
+    suspend fun acceptScan(orderId: String, staffName: String?): AcceptedScan? = withContext(Dispatchers.IO) {
+        try {
+            SupabaseClientProvider.ensureAuthenticated()
+            SupabaseClientProvider.client.postgrest
+                .rpc("dine_accept_scan", AcceptParams(orderId, staffName, DeviceRepository.getPersistedDeviceSn()))
+                .decodeAs<AcceptedScan>()
+        } catch (e: Exception) {
+            Log.e(TAG, "dine_accept_scan failed: ${e.message}"); null
+        }
+    }
+
+    suspend fun rejectScan(orderId: String, staffName: String?, reason: String?): Result =
+        call("dine_reject_scan", RejectParams(orderId, staffName, reason))
+
+    /** A new QR secret for a table: codes already printed stop working. */
+    suspend fun rotateQr(tableId: String): Result = call("dine_rotate_table_qr", TableIdParams(tableId))
 
     // -------------------------------------------------------------- splitting
 

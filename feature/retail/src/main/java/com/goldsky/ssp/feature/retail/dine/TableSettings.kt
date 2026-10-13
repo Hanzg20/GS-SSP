@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -77,7 +78,16 @@ fun TableSettings() {
     fun reload() { scope.launch { tables = DineRepository.tables() } }
     LaunchedEffect(Unit) { reload() }
 
+    var site by remember { mutableStateOf(DeviceRepository.getScanSiteUrl() ?: "") }
+    var showingQr by remember { mutableStateOf<DineRepository.DiningTable?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = site, onValueChange = { site = it.trim(); DeviceRepository.persistScanSiteUrl(site) },
+            label = { Text(stringResource(R.string.scan_site_label)) },
+            supportingText = { Text(stringResource(R.string.scan_site_hint)) },
+            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            modifier = Modifier.fillMaxWidth()
+        )
         val list = tables
         when {
             list == null -> Text(stringResource(R.string.retail_tables_loading), style = MaterialTheme.typography.bodySmall)
@@ -127,7 +137,22 @@ fun TableSettings() {
             initial = t,
             onSave = { name, area, seats -> save(t?.id, name, area, seats, t?.sort ?: ((tables?.size ?: 0) + 1), true); adding = false; editing = null },
             onRemove = if (t != null) ({ save(t.id, t.name, t.area ?: "", t.seats, t.sort, false); editing = null }) else null,
+            onShowQr = if (t?.qr_token != null && DeviceRepository.getScanSiteUrl() != null) ({ editing = null; showingQr = t }) else null,
             onDismiss = { adding = false; editing = null }
+        )
+    }
+    showingQr?.let { t ->
+        TableQrDialog(
+            table = t,
+            onRotate = {
+                scope.launch {
+                    val r = DineRepository.rotateQr(t.id)
+                    if (!r.ok) message = r.message ?: offline
+                    tables = DineRepository.tables()
+                    showingQr = tables?.find { it.id == t.id }
+                }
+            },
+            onDismiss = { showingQr = null }
         )
     }
     if (bulk) {
@@ -151,7 +176,7 @@ fun TableSettings() {
 }
 
 @Composable
-private fun TableDialog(initial: DineRepository.DiningTable?, onSave: (String, String, Int) -> Unit, onRemove: (() -> Unit)?, onDismiss: () -> Unit) {
+private fun TableDialog(initial: DineRepository.DiningTable?, onSave: (String, String, Int) -> Unit, onRemove: (() -> Unit)?, onShowQr: (() -> Unit)?, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var area by remember { mutableStateOf(initial?.area ?: "") }
     var seats by remember { mutableStateOf((initial?.seats ?: 4).toString()) }
@@ -164,6 +189,7 @@ private fun TableDialog(initial: DineRepository.DiningTable?, onSave: (String, S
                 OutlinedTextField(area, { area = it.take(20) }, label = { Text(stringResource(R.string.retail_table_area)) }, singleLine = true)
                 OutlinedTextField(seats, { seats = it.filter(Char::isDigit).take(2) }, label = { Text(stringResource(R.string.retail_table_seats_label)) },
                     singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                onShowQr?.let { OutlinedButton(onClick = it) { Text(stringResource(R.string.scan_qr_show)) } }
             }
         },
         confirmButton = {
@@ -210,5 +236,28 @@ private fun BulkTablesDialog(onSave: (String, Int, Int, String, Int) -> Unit, on
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.retail_mod_cancel)) } }
+    )
+}
+
+/** The table's QR (<scan site>/?t=<token>), big enough to photograph or print. */
+@Composable
+private fun TableQrDialog(table: DineRepository.DiningTable, onRotate: () -> Unit, onDismiss: () -> Unit) {
+    val url = "${DeviceRepository.getScanSiteUrl()}/?t=${table.qr_token}"
+    val bitmap = remember(url) { com.goldsky.ssp.common.QrUtils.generateQrCode(url, 640, 640) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.scan_qr_title, table.name)) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                bitmap?.let {
+                    androidx.compose.foundation.Image(it.asImageBitmap(), contentDescription = url, modifier = Modifier.size(260.dp))
+                }
+                Text(table.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+                Text(stringResource(R.string.scan_qr_desc), style = MaterialTheme.typography.bodySmall)
+                Text(url, style = MaterialTheme.typography.labelSmall)
+                TextButton(onClick = onRotate) { Text(stringResource(R.string.scan_qr_rotate), color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = { Button(onClick = onDismiss) { Text(stringResource(R.string.retail_done)) } }
     )
 }

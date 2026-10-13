@@ -238,4 +238,22 @@
     <string name="dine_round_send">送厨房</string>
     <string name="dine_round_discard">丢掉</string>
     <string name="dine_round_stay">留下</string>
+    <string name="scan_pending_banner">有 %1$d 张扫码新单待处理</string>
+    <string name="scan_review">查看</string>
+    <string name="scan_dialog_title">扫码点单（%1$d）</string>
+    <string name="scan_table">%1$s 桌</string>
+    <string name="scan_note">备注：%1$s</string>
+    <string name="scan_total">合计 %1$s</string>
+    <string name="scan_accept">接单 · 送厨房</string>
+    <string name="scan_reject">拒绝</string>
+    <string name="scan_reject_title">拒绝 %1$s 桌的扫码单？</string>
+    <string name="scan_reason_wrong_table">桌号不对，请找服务员</string>
+    <string name="scan_reason_sold_out">有菜已售完，请找服务员</string>
+    <string name="scan_reason_ask_staff">请找服务员点餐</string>
+    <string name="scan_site_label">扫码点餐网址（例如 https://scan.example.com）</string>
+    <string name="scan_site_hint">桌上的二维码打开这个网址。不填：不显示二维码。</string>
+    <string name="scan_qr_title">%1$s 桌二维码</string>
+    <string name="scan_qr_desc">打印后放在桌上。顾客扫码点餐，订单要店员接单后才送厨房。</string>
+    <string name="scan_qr_rotate">换新二维码（旧的立即失效）</string>
+    <string name="scan_qr_show">二维码</string>
 </resources>

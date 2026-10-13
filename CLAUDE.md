@@ -61,6 +61,10 @@ app/ourea      -- Desktop POS, first real build 2026-08-27 (see `docs/system_arc
                   shared screens in `feature/retail/.../dine/`. Tables are managed in Ourea Settings. The round being taken is
                   a SEPARATE RetailViewModel (`viewModel(key = "dine-round")`), never the counter cart. Kitchen tickets go to the
                   network printer in Settings (`NetworkKitchenPrinter`, ESC/POS 9100, GBK), falling back to the terminal's own.
+                  QR ordering ("Ourea Scan", `web/ourea-scan`, Vite + React): customers order from the table QR
+                  (`<site>/?t=<dine.tables.qr_token>`) through anon `scan_*` RPCs; orders wait in `dine.scan_orders` until staff
+                  accept them on the floor (banner + chime), then they become the table's next round. Never show success the
+                  server didn't confirm, never invent menu items.
 app/aegis-wash, app/aegis-vend, app/aegis-ev
                -- the Aegis series (see taxonomy below): `com.goldsky.ssp.aegis.wash` (car wash, feature:wash),
                   `com.goldsky.ssp.aegis.vend` (self-service vending, feature:vending), `com.goldsky.ssp.aegis.ev`

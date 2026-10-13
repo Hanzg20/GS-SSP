@@ -57,7 +57,7 @@ erDiagram
 | Catalog | products | CMP |
 | Sales & payment → `sales` | transactions, transaction_items, qr_payment_sessions, acquirer_settlement_records, merchant_acquirer_accounts, hardware_acquirer_map | apps (sales), back office (settlement) |
 | Retail delivery → `retail` | delivery_orders, delivery_order_items | CMP / Apex (create), Iris (collect) |
-| Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments** (§5) | Ourea, Iris via `dine_*` RPCs |
+| Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
 | Members → `member` | vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions | apps, CMP |
 | Ads → `media` | advertisements, playlists, ad_playback_logs | CMP (ads), apps (playback) |
 | Store back office | expenses, reminders, notes | Iris / Ourea / Apex |
@@ -138,12 +138,23 @@ one at a time, with views keeping old names readable during the move.
 | `dine.check_items` | lines sent to the kitchen, by `round`; options JSONB; VOID with `voided_by` | the round being taken stays on the device until sent |
 | `dine.payments` | payments on a check: `amount_cents` (food + tax), `tax_cents`, `tip_cents`, method, `ecr_ref_num` unique | the check closes when payments cover its total; split payments' tax adds up exactly to the check's |
 
-RPCs (all `public`): reads `dine_list_tables`, `dine_floor`, `dine_get_check`;
+| `dine.scan_orders` | customer QR orders (Ourea Scan, `web/ourea-scan`): server-priced lines, note, PENDING → ACCEPTED / REJECTED, the check and round it became | never reaches the kitchen without staff; ≤ 3 pending and ≤ 8 per 10 min per table; a double tap (same `client_ref`) is one order |
+
+QR ordering: each `dine.tables` row has a secret `qr_token` (128-bit); the table's
+QR is `<scan site>/?t=<qr_token>` (scan site set in Ourea Settings > Tables).
+Customer RPCs, callable by `anon`: `scan_menu(token)`, `scan_submit_order(token,
+items, note, client_ref)` (prices / options / tax from `products`, never from
+the phone), `scan_orders(token, ids)` (status for the customer's page). Staff:
+`dine_scan_pending`, `dine_accept_scan` (opens the check if needed, adds the order
+as the next round, returns the kitchen ticket's content), `dine_reject_scan`
+(reason shown to the customer), `dine_rotate_table_qr` (old printed codes stop working).
+
+RPCs (all `public`): reads `dine_list_tables`, `dine_floor` (also returns pending QR orders), `dine_get_check`;
 writes `dine_save_table`, `dine_open_check`, `dine_send_items`, `dine_void_item`,
 `dine_update_check`, `dine_record_payment`; helpers `dine_device_org`,
 `dine_check_total` (tax once per rate, half up, as `SalesTax.kt`).
 `transactions.check_id` links each payment's transaction to its check.
-Migrations: `docs/migrations/2026-10-13_dine_in.sql`, `_dine_in_payment_tax.sql`, `_dine_schema.sql`.
+Migrations: `docs/migrations/2026-10-13_dine_in.sql`, `_dine_in_payment_tax.sql`, `_dine_schema.sql`, `_dine_scan_orders.sql`.
 
 ---
 

@@ -31,6 +31,12 @@ class DineViewModel : ViewModel() {
 
     var floor by mutableStateOf<List<DineRepository.FloorTable>?>(null)
         private set
+    /** Customers' QR orders waiting for staff (Ourea Scan). */
+    var scanPending by mutableStateOf<List<DineRepository.ScanOrder>>(emptyList())
+        private set
+    /** Bumped when a new QR order arrives, so the screen can chime once. */
+    var scanArrivals by mutableStateOf(0)
+        private set
     /** null = cloud unreachable on the last refresh. */
     var online by mutableStateOf(true)
         private set
@@ -62,7 +68,11 @@ class DineViewModel : ViewModel() {
     suspend fun refreshNow() {
         val f = DineRepository.floor()
         online = f != null
-        if (f != null) floor = f
+        if (f != null) {
+            floor = f.tables
+            if (f.scanPending.any { new -> scanPending.none { it.id == new.id } }) scanArrivals++
+            scanPending = f.scanPending
+        }
         check?.let { c ->
             DineRepository.check(c.check.id)?.let { fresh ->
                 // Closed elsewhere (paid at another terminal, or voided): back to the floor.
@@ -131,6 +141,40 @@ class DineViewModel : ViewModel() {
                 message = r.message ?: OFFLINE
             }
             busy = false
+        }
+    }
+
+    /**
+     * Accepts a customer's QR order: it becomes the table's next round, then the
+     * kitchen ticket prints here (or on the kitchen printer) like any round.
+     */
+    fun acceptScan(context: Context, order: DineRepository.ScanOrder, staffName: String?) {
+        if (busy) return
+        busy = true
+        viewModelScope.launch {
+            val r = DineRepository.acceptScan(order.id, staffName)
+            when {
+                r == null -> message = OFFLINE
+                !r.success -> message = r.message ?: OFFLINE
+                else -> withContext(Dispatchers.IO) {
+                    val ticket = KitchenTicket(
+                        number = r.check_no, takeout = false, note = listOfNotNull("扫码 QR", r.note).joinToString(" · "),
+                        lines = r.items.map { KitchenLine(it.name, it.quantity, it.options, it.note) },
+                        staffName = staffName, table = r.table_name, round = r.round, guests = r.guests
+                    )
+                    ReceiptPrinterManager.printKitchenTicket(context, ticket, DeviceRepository.getPersistedHardwareVendor())
+                }
+            }
+            refreshNow()
+            busy = false
+        }
+    }
+
+    fun rejectScan(order: DineRepository.ScanOrder, staffName: String?, reason: String?) {
+        viewModelScope.launch {
+            val r = DineRepository.rejectScan(order.id, staffName, reason)
+            if (!r.ok) message = r.message ?: OFFLINE
+            refreshNow()
         }
     }
 

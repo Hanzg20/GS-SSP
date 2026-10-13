@@ -1,507 +1,330 @@
-import React, { useState, useEffect } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { ShoppingCart, Plus, Minus, CheckCircle, ChevronRight, X, Utensils, Edit3, MapPin, MessageSquare, Send, Bot } from 'lucide-react'
+import { Plus, Minus, X, Utensils, Edit3, ChevronRight, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 
-// Initialize Supabase Client
-const SUPABASE_URL = "https://ttbtxxpnvkcbyugzdqfw.supabase.co"
-const SUPABASE_KEY = "sb_publishable_g4TGLHlVn3LfafRZFOAjnA_x9M0xyBi"
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+/*
+ * Ourea Scan: a customer scans the QR on their table and orders from their
+ * phone. The QR is <this site>/?t=<table secret>; the secret is all the page
+ * has. Menu, prices, options and tax come from the server (scan_menu); an
+ * order goes to the store as PENDING (scan_submit_order) and staff accept it
+ * on Ourea / Iris before it reaches the kitchen. The page shows that status
+ * (scan_orders) and never claims success it didn't get.
+ * docs/database_design.md §5, docs/migrations/2026-10-13_dine_scan_orders.sql.
+ */
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL || 'https://ttbtxxpnvkcbyugzdqfw.supabase.co',
+  import.meta.env.VITE_SUPABASE_KEY || 'sb_publishable_g4TGLHlVn3LfafRZFOAjnA_x9M0xyBi'
+)
+
+const money = (c) => '$' + (c / 100).toFixed(2)
+const zh = (navigator.language || '').toLowerCase().startsWith('zh')
+const T = zh ? {
+  scanFirst: '请扫描餐桌上的二维码点餐', badCode: '这个二维码已失效，请找服务员', loading: '正在加载菜单…', offline: '连不上网络，请稍后重试',
+  table: '桌', all: '全部', soldOut: '已售完', add: '加入', required: '必选', pickOne: '单选', upTo: (n) => `最多选 ${n} 项`, optional: '可选',
+  order: '我的点单', items: (n) => `${n} 件`, subtotal: '小计', tax: '税（估算）', total: '合计', note: '给厨房的备注', notePh: '例如：少辣、走葱',
+  itemNote: '这道菜的备注', send: '提交给店员', sending: '提交中…', save: '保存', cancel: '取消',
+  confirmHint: '店员确认后才会送到厨房，付款请在用餐后找服务员。', myOrders: '已提交的点单',
+  pending: '等待店员确认', accepted: '已送厨房', rejected: '未被接受', orderMore: '继续点菜',
+  errors: { too_many_orders: '提交太频繁了，请等店员处理后再点', sold_out: '有菜刚刚售完：', item_unavailable: '有菜已下架，请刷新菜单', bad_option: '请重新选择口味：', unknown_table: '这个二维码已失效，请找服务员' },
+  failed: '没有提交成功', retry: '重试',
+} : {
+  scanFirst: 'Scan the QR code on your table to order', badCode: 'This QR code is no longer valid. Please ask a server.', loading: 'Loading the menu…', offline: 'No connection. Please try again.',
+  table: 'Table', all: 'All', soldOut: 'Sold out', add: 'Add', required: 'Required', pickOne: 'Pick one', upTo: (n) => `Up to ${n}`, optional: 'Optional',
+  order: 'Your order', items: (n) => `${n} items`, subtotal: 'Subtotal', tax: 'Tax (est.)', total: 'Total', note: 'Note for the kitchen', notePh: 'e.g. less spicy, no green onion',
+  itemNote: 'Note for this dish', send: 'Send to staff', sending: 'Sending…', save: 'Save', cancel: 'Cancel',
+  confirmHint: 'A server confirms your order before it goes to the kitchen. Pay your server after the meal.', myOrders: 'Your orders',
+  pending: 'Waiting for a server to confirm', accepted: 'Sent to the kitchen', rejected: 'Not accepted', orderMore: 'Order more',
+  errors: { too_many_orders: 'Too many orders at once. Please wait for a server.', sold_out: 'Just sold out: ', item_unavailable: 'An item is no longer available. Please reload the menu.', bad_option: 'Please choose the options again: ', unknown_table: 'This QR code is no longer valid. Please ask a server.' },
+  failed: 'Your order was not sent', retry: 'Try again',
+}
+
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k) || 'null') } catch { return null } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* private mode: fine */ } },
+}
+
+const newRef = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2))
+
+function lineKey(productId, optionIds, note) {
+  return productId + '|' + [...optionIds].sort().join(',') + '|' + (note || '')
+}
+
+/** A dish's options: pick-one groups as radios, others as toggles up to max; required must be answered. */
+function OptionsSheet({ product, onAdd, onClose }) {
+  const groups = product.modifier_groups || []
+  const [picked, setPicked] = useState({})
+  const [note, setNote] = useState('')
+  const toggle = (g, o) => setPicked((p) => {
+    const now = p[g.id] || []
+    let next
+    if (now.includes(o.id)) next = g.required && g.max_select === 1 ? now : now.filter((x) => x !== o.id)
+    else if (g.max_select === 1) next = [o.id]
+    else if (g.max_select && now.length >= g.max_select) next = now
+    else next = [...now, o.id]
+    return { ...p, [g.id]: next }
+  })
+  const missing = groups.filter((g) => g.required && !(picked[g.id] || []).length)
+  const chosen = groups.flatMap((g) => g.options.filter((o) => (picked[g.id] || []).includes(o.id)))
+  const unit = product.price_cents + chosen.reduce((s, o) => s + (o.price_cents || 0), 0)
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-end sm:items-center sm:justify-center">
+      <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[88vh] flex flex-col">
+        <div className="px-5 pt-5 pb-3 flex items-start justify-between">
+          <div>
+            <h2 className="font-black text-xl text-slate-900">{product.name}</h2>
+            <p className="text-slate-500 font-bold">{money(product.price_cents)}</p>
+          </div>
+          <button onClick={onClose} className="p-2 text-slate-400"><X className="w-6 h-6" /></button>
+        </div>
+        <div className="px-5 overflow-y-auto flex-1 space-y-5 pb-4">
+          {groups.map((g) => (
+            <div key={g.id}>
+              <div className="flex justify-between items-baseline mb-2">
+                <h3 className="font-bold text-slate-900">{g.name}</h3>
+                <span className={`text-xs font-bold ${missing.includes(g) ? 'text-red-600' : 'text-slate-400'}`}>
+                  {g.required ? T.required : g.max_select === 1 ? T.pickOne : g.max_select ? T.upTo(g.max_select) : T.optional}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {g.options.map((o) => {
+                  const on = (picked[g.id] || []).includes(o.id)
+                  return (
+                    <button key={o.id} onClick={() => toggle(g, o)}
+                      className={`px-3.5 py-2 rounded-full text-sm font-bold border transition-all ${on ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}`}>
+                      {o.name}{o.price_cents ? ` +${money(o.price_cents)}` : ''}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+          <div>
+            <h3 className="font-bold text-slate-900 mb-2">{T.itemNote}</h3>
+            <input value={note} onChange={(e) => setNote(e.target.value.slice(0, 120))} placeholder={T.notePh}
+              className="w-full px-4 py-3 rounded-xl border border-slate-300" />
+          </div>
+        </div>
+        <div className="p-5 border-t border-slate-100">
+          <button disabled={missing.length > 0}
+            onClick={() => onAdd({ optionIds: chosen.map((o) => o.id), optionNames: chosen.map((o) => o.name), unit, note: note.trim() })}
+            className="w-full bg-emerald-600 disabled:bg-slate-300 text-white font-black py-4 rounded-2xl text-lg">
+            {T.add} · {money(unit)}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StatusBadge({ status, reason }) {
+  if (status === 'ACCEPTED') return <span className="flex items-center gap-1 text-emerald-700 font-bold"><CheckCircle2 className="w-4 h-4" />{T.accepted}</span>
+  if (status === 'REJECTED') return <span className="flex items-center gap-1 text-red-600 font-bold"><XCircle className="w-4 h-4" />{T.rejected}{reason ? ` · ${reason}` : ''}</span>
+  return <span className="flex items-center gap-1 text-amber-600 font-bold"><Clock className="w-4 h-4 animate-pulse" />{T.pending}</span>
+}
 
 export default function App() {
-  const [orgId, setOrgId] = useState("426431a4-8f4b-4e8e-afe1-9a0e67907c3e")
-  const [tableId, setTableId] = useState("")
-  const [tableName, setTableName] = useState("Table 4")
-  const [showTableModal, setShowTableModal] = useState(false)
-  const [customTableName, setCustomTableName] = useState("")
-
-  const [products, setProducts] = useState([])
-  const [categories, setCategories] = useState(["All"])
-  const [activeCategory, setActiveCategory] = useState("All")
-  const [cart, setCart] = useState([]) // [{ product, quantity, note }]
-  const [isCartOpen, setIsCartOpen] = useState(false)
-  const [orderSubmitted, setOrderSubmitted] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const token = useMemo(() => new URLSearchParams(window.location.search).get('t') || '', [])
+  const [menu, setMenu] = useState(null)        // {table, store, products}
+  const [state, setState] = useState(token ? 'loading' : 'no-token')  // loading | ready | bad-code | offline | no-token
+  const [category, setCategory] = useState(null)
+  const [cart, setCart] = useState([])          // [{key, product, optionIds, optionNames, unit, qty, note}]
+  const [optionsFor, setOptionsFor] = useState(null)
+  const [cartOpen, setCartOpen] = useState(false)
+  const [orderNote, setOrderNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+  const [orderIds, setOrderIds] = useState(() => store.get('scan_orders_' + token) || [])
+  const [orders, setOrders] = useState([])
+  const [clientRef, setClientRef] = useState(newRef)  // kept across retries: one submit = one order
 
-  // Item note modal state
-  const [notingItem, setNotingItem] = useState(null)
-  const [itemNote, setItemNote] = useState("")
+  const loadMenu = useCallback(async () => {
+    setState('loading')
+    const { data, error: e } = await supabase.rpc('scan_menu', { p_token: token })
+    if (e) { setState('offline'); return }
+    if (!data) { setState('bad-code'); return }
+    setMenu(data)
+    setState('ready')
+    document.title = `${data.store.name} · ${T.table} ${data.table.name}`
+  }, [token])
 
-  // Apex AI Assistant state
-  const [isAiOpen, setIsAiOpen] = useState(false)
-  const [aiMessages, setAiMessages] = useState([
-    { role: 'assistant', text: "Hello! I'm Apex, your AI Culinary Guide. Ask me anything about our menu, ingredients, or food pairings in any language!" }
-  ])
-  const [aiInput, setAiInput] = useState("")
+  useEffect(() => { if (token) loadMenu() }, [token, loadMenu])
 
+  // The status of this phone's orders at this table, every few seconds.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const oId = params.get('org_id')
-    const tId = params.get('table_id')
-    const tName = params.get('table_name')
-    if (oId) setOrgId(oId)
-    if (tId) setTableId(tId)
-    if (tName) setTableName(tName)
-    if (!tId) {
-      setShowTableModal(true)
+    if (!token || orderIds.length === 0) return
+    let stop = false
+    const poll = async () => {
+      const { data } = await supabase.rpc('scan_orders', { p_token: token, p_ids: orderIds })
+      if (!stop && Array.isArray(data)) setOrders(data)
     }
+    poll()
+    const id = setInterval(poll, 5000)
+    return () => { stop = true; clearInterval(id) }
+  }, [token, orderIds])
 
-    fetchMenu(oId || orgId)
-  }, [])
+  const categories = useMemo(() => menu ? [...new Set(menu.products.map((p) => p.category).filter(Boolean))] : [], [menu])
+  const shown = menu ? menu.products.filter((p) => !category || p.category === category) : []
 
-  const fetchMenu = async (currentOrgId) => {
-    setLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('org_id', currentOrgId)
-
-      if (error) throw error
-      if (data && data.length > 0) {
-        setProducts(data)
-        const cats = ["All", ...new Set(data.map(p => p.category || "Mains"))]
-        setCategories(cats)
-      } else {
-        const mockProducts = [
-          { id: '1', name: 'Truffle Wagyu Burger', price_cents: 1800, category: 'Mains', description: 'Juicy wagyu beef patty with black truffle mayo & artisan brioche.' },
-          { id: '2', name: 'Artisan Margherita Pizza', price_cents: 1550, category: 'Mains', description: 'San Marzano tomatoes, fresh fior di latte mozzarella & basil.' },
-          { id: '3', name: 'Crispy Calamari', price_cents: 1200, category: 'Appetizers', description: 'Lightly battered squid rings served with zesty lemon aioli.' },
-          { id: '4', name: 'Signature Cold Brew', price_cents: 550, category: 'Drinks', description: '12-hour slow steeped single-origin coffee beans.' },
-          { id: '5', name: 'Molten Lava Chocolate Cake', price_cents: 900, category: 'Desserts', description: 'Rich chocolate cake with a warm gooey center and vanilla gelato.' }
-        ]
-        setProducts(mockProducts)
-        setCategories(["All", "Mains", "Appetizers", "Drinks", "Desserts"])
-      }
-    } catch (err) {
-      console.error("Error fetching menu:", err)
-    } finally {
-      setLoading(false)
-    }
+  const addLine = (product, { optionIds = [], optionNames = [], unit = product.price_cents, note = '' } = {}) => {
+    const key = lineKey(product.id, optionIds, note)
+    setCart((c) => c.some((l) => l.key === key)
+      ? c.map((l) => l.key === key ? { ...l, qty: Math.min(l.qty + 1, 20) } : l)
+      : [...c, { key, product, optionIds, optionNames, unit, qty: 1, note }])
+    setError(null)
   }
+  const bump = (key, d) => setCart((c) => c.map((l) => l.key === key ? { ...l, qty: l.qty + d } : l).filter((l) => l.qty > 0))
+  const count = cart.reduce((s, l) => s + l.qty, 0)
+  const subtotal = cart.reduce((s, l) => s + l.unit * l.qty, 0)
+  // Display estimate; the server prices the order (same rule: per rate, rounded once).
+  const tax = Object.entries(cart.reduce((m, l) => ({ ...m, [l.product.tax_rate_bps]: (m[l.product.tax_rate_bps] || 0) + l.unit * l.qty }), {}))
+    .reduce((s, [bps, amt]) => s + Math.round(amt * Number(bps) / 10000), 0)
 
-  const addToCart = (product) => {
-    setCart(prev => {
-      const existing = prev.find(item => item.product.id === product.id && !item.note)
-      if (existing) {
-        return prev.map(item => (item.product.id === product.id && !item.note) ? { ...item, quantity: item.quantity + 1 } : item)
-      }
-      return [...prev, { product, quantity: 1, note: "" }]
+  const submit = async () => {
+    setSubmitting(true); setError(null)
+    const { data, error: e } = await supabase.rpc('scan_submit_order', {
+      p_token: token,
+      p_items: cart.map((l) => ({ product_id: l.product.id, quantity: l.qty, option_ids: l.optionIds, note: l.note || null })),
+      p_note: orderNote.trim() || null,
+      p_client_ref: clientRef,
     })
-  }
-
-  const updateQuantity = (index, delta) => {
-    setCart(prev => {
-      return prev.map((item, idx) => {
-        if (idx === index) {
-          const newQty = item.quantity + delta
-          return newQty > 0 ? { ...item, quantity: newQty } : null
-        }
-        return item
-      }).filter(Boolean)
-    })
-  }
-
-  const saveItemNote = () => {
-    if (notingItem !== null) {
-      setCart(prev => prev.map((item, idx) => idx === notingItem ? { ...item, note: itemNote } : item))
-      setNotingItem(null)
-      setItemNote("")
+    setSubmitting(false)
+    if (e) { setError(T.offline); return }
+    if (!data?.success) {
+      const m = data?.message
+      setError((T.errors[m] || T.failed) + (data?.product && (m === 'sold_out' || m === 'bad_option') ? data.product : ''))
+      if (m === 'unknown_table') setState('bad-code')
+      if (m === 'item_unavailable' || m === 'sold_out') loadMenu()
+      return
     }
+    const ids = [data.id, ...orderIds.filter((x) => x !== data.id)].slice(0, 20)
+    setOrderIds(ids); store.set('scan_orders_' + token, ids)
+    setCart([]); setOrderNote(''); setCartOpen(false); setClientRef(newRef())
   }
 
-  const subtotalCents = cart.reduce((sum, item) => sum + (item.product.price_cents * item.quantity), 0)
-  const taxCents = Math.round(subtotalCents * 0.13)
-  const totalCents = subtotalCents + taxCents
-  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0)
-
-  const submitOrder = async () => {
-    if (cart.length === 0) return
-    setSubmitting(true)
-    try {
-      // 1. Open check for this table via Supabase RPC
-      let activeTableId = tableId
-      if (!activeTableId || activeTableId.startsWith('custom-')) {
-        // Find first active table or create check
-        const { data: tables } = await supabase.from('dining_tables').select('id').eq('org_id', orgId).limit(1)
-        if (tables && tables.length > 0) {
-          activeTableId = tables[0].id
-        } else {
-          throw new Error("No dining tables available for this organization.")
-        }
-      }
-
-      const { data: checkData, error: checkErr } = await supabase.rpc('dine_open_check', {
-        p_table_id: activeTableId,
-        p_guests: 1,
-        p_server_id: null,
-        p_server_name: 'QR Scan Customer',
-        p_device_sn: 'OUREA-SCAN-WEB'
-      })
-
-      if (checkErr) throw checkErr
-
-      // Handle RPC result structure (can be object or array)
-      const checkResult = Array.isArray(checkData) ? checkData[0] : checkData
-      const checkId = checkResult?.id || checkResult
-
-      if (!checkId) throw new Error("Failed to open check for table.")
-
-      // 2. Send items round via Supabase RPC
-      const rpcItems = cart.map(item => ({
-        product_id: item.product.id,
-        name: item.product.name,
-        options: [],
-        quantity: item.quantity,
-        unit_price_cents: item.product.price_cents,
-        tax_rate_bps: item.product.tax_rate_bps || 1300,
-        note: item.note || null
-      }))
-
-      const { error: sendErr } = await supabase.rpc('dine_send_items', {
-        p_check_id: checkId,
-        p_items: rpcItems,
-        p_sent_by: 'Customer (Ourea Scan)'
-      })
-
-      if (sendErr) throw sendErr
-
-      setOrderSubmitted(true)
-      setCart([])
-    } catch (err) {
-      console.error("Order submission failed:", err)
-      // Even if RPC fails (e.g. offline/mock demo), show success for delightful UX
-      setOrderSubmitted(true)
-      setCart([])
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const sendAiMessage = (e) => {
-    e.preventDefault()
-    if (!aiInput.trim()) return
-    const userText = aiInput.trim()
-    setAiMessages(prev => [...prev, { role: 'user', text: userText }])
-    setAiInput("")
-
-    // Simulate Apex AI intelligent response
-    setTimeout(() => {
-      let reply = "I recommend trying our Truffle Wagyu Burger, it's our top chef special!"
-      const lower = userText.toLowerCase()
-      if (lower.includes('vegetarian') || lower.includes('vegan') || lower.includes('meat')) {
-        reply = "We offer great vegetarian options like our Artisan Margherita Pizza and Crispy Calamari!"
-      } else if (lower.includes('allergy') || lower.includes('nut') || lower.includes('gluten')) {
-        reply = "Our Cold Brew and Margherita Pizza are gluten-conscious. Please let us know if you have specific allergies in the item notes."
-      } else if (lower.includes('spicy') || lower.includes('hot')) {
-        reply = "Our dishes have a balanced flavor profile. You can also add a kitchen note requesting mild or extra spicy!"
-      }
-      setAiMessages(prev => [...prev, { role: 'assistant', text: reply }])
-    }, 800)
-  }
-
-  if (orderSubmitted) {
+  if (state === 'no-token' || state === 'bad-code' || state === 'offline') {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 text-center">
-        <CheckCircle className="w-20 h-20 text-emerald-400 mb-6 animate-bounce" />
-        <h1 className="text-3xl font-black mb-2">Order Sent to Kitchen!</h1>
-        <p className="text-slate-400 max-w-sm mb-8">Your order has been successfully placed for {tableName}. Our chef is preparing your dishes right now.</p>
-        <button
-          onClick={() => setOrderSubmitted(false)}
-          className="bg-emerald-500 hover:bg-emerald-600 font-bold px-8 py-3 rounded-full shadow-lg transition-all"
-        >
-          Order More Items
-        </button>
+      <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center bg-slate-50">
+        <Utensils className="w-14 h-14 text-slate-400 mb-4" />
+        <p className="text-lg font-bold text-slate-700">{state === 'no-token' ? T.scanFirst : state === 'bad-code' ? T.badCode : T.offline}</p>
+        {state === 'offline' && <button onClick={loadMenu} className="mt-6 bg-slate-900 text-white font-bold px-6 py-3 rounded-full">{T.retry}</button>}
       </div>
     )
   }
-
-  const filteredProducts = activeCategory === "All" ? products : products.filter(p => (p.category || "Mains") === activeCategory)
+  if (state === 'loading' || !menu) {
+    return <div className="min-h-screen flex items-center justify-center text-slate-400 gap-2"><Loader2 className="w-5 h-5 animate-spin" />{T.loading}</div>
+  }
 
   return (
-    <div className="min-h-screen pb-28 relative">
-      {/* Table Selection Modal if no table ID */}
-      {showTableModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4 text-center">
-            <div className="bg-emerald-100 text-emerald-800 w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-2">
-              <MapPin className="w-7 h-7" />
-            </div>
-            <h2 className="font-black text-2xl text-slate-900">Enter Your Table Number</h2>
-            <p className="text-sm text-slate-500">Please enter your table or seat identifier to start ordering.</p>
-            <input
-              type="text"
-              placeholder="e.g. Table 4 or Patio A"
-              value={customTableName}
-              onChange={(e) => setCustomTableName(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-center text-lg focus:outline-emerald-500"
-            />
-            <button
-              onClick={() => {
-                if (customTableName.trim()) {
-                  setTableName(customTableName.trim())
-                  setTableId("custom-" + Date.now())
-                  setShowTableModal(false)
-                }
-              }}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-xl shadow-md transition-all text-base"
-            >
-              Start Ordering
-            </button>
-          </div>
+    <div className="min-h-screen pb-28 bg-slate-50">
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+        <div className="min-w-0">
+          <h1 className="font-black text-lg text-slate-900 truncate">{menu.store.name}</h1>
+          <p className="text-xs text-slate-500">{T.confirmHint}</p>
         </div>
-      )}
-
-      {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-xs">
-        <div className="flex items-center space-x-2">
-          <div className="bg-slate-900 text-white p-2 rounded-xl">
-            <Utensils className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="font-black text-lg tracking-tight text-slate-900">Ourea Scan</h1>
-            <p className="text-xs text-slate-500">Table Ordering & Menu</p>
-          </div>
-        </div>
-        <div
-          onClick={() => setShowTableModal(true)}
-          className="bg-emerald-100 text-emerald-800 font-bold text-xs px-3 py-1.5 rounded-full border border-emerald-200 shadow-2xs cursor-pointer hover:bg-emerald-200 transition-all flex items-center space-x-1"
-        >
-          <MapPin className="w-3.5 h-3.5" />
-          <span>{tableName}</span>
-        </div>
+        <div className="ml-3 shrink-0 bg-emerald-100 text-emerald-800 font-black px-3 py-1.5 rounded-full">{T.table} {menu.table.name}</div>
       </header>
 
-      {/* Category Pills Bar */}
-      <nav className="sticky top-[57px] z-20 bg-slate-50/90 backdrop-blur-md px-4 py-2.5 overflow-x-auto flex space-x-2 border-b border-slate-200 no-scrollbar">
-        {categories.map(cat => (
-          <button
-            key={cat}
-            onClick={() => setActiveCategory(cat)}
-            className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${
-              activeCategory === cat
-                ? 'bg-slate-900 text-white shadow-md'
-                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </nav>
-
-      {/* Product Grid */}
-      <main className="max-w-3xl mx-auto p-4">
-        {loading ? (
-          <div className="flex justify-center items-center h-64 text-slate-400 font-medium">Loading Menu...</div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {filteredProducts.map(product => (
-              <div key={product.id} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col justify-between hover:shadow-md transition-all">
-                <div>
-                  <h3 className="font-bold text-slate-900 text-base mb-1">{product.name}</h3>
-                  <p className="text-xs text-slate-500 line-clamp-2 mb-4">{product.description || 'Freshly prepared with premium ingredients.'}</p>
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                  <span className="font-black text-slate-900 text-lg">${(product.price_cents / 100).toFixed(2)}</span>
-                  <button
-                    onClick={() => addToCart(product)}
-                    className="bg-slate-900 hover:bg-slate-800 text-white p-2.5 rounded-xl shadow-xs active:scale-95 transition-all flex items-center justify-center"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </button>
-                </div>
+      {orders.length > 0 && (
+        <section className="max-w-3xl mx-auto px-4 pt-4">
+          <h2 className="text-sm font-bold text-slate-500 mb-2">{T.myOrders}</h2>
+          <div className="space-y-2">
+            {orders.map((o) => (
+              <div key={o.id} className="bg-white rounded-2xl border border-slate-200 p-3">
+                <div className="flex justify-between text-sm"><StatusBadge status={o.status} reason={o.reject_reason} /><span className="font-bold">{money(o.subtotal_cents + o.tax_cents)}</span></div>
+                <p className="text-xs text-slate-500 mt-1">{o.items.map((l) => `${l.quantity}× ${l.name}`).join(' · ')}</p>
               </div>
             ))}
           </div>
-        )}
+        </section>
+      )}
+
+      {categories.length > 1 && (
+        <nav className="sticky top-[65px] z-20 bg-slate-50/95 px-4 py-2.5 overflow-x-auto flex gap-2 border-b border-slate-200">
+          {[null, ...categories].map((c) => (
+            <button key={c || 'all'} onClick={() => setCategory(c)}
+              className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap ${category === c ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>
+              {c || T.all}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      <main className="max-w-3xl mx-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {shown.map((p) => (
+          <div key={p.id} className={`bg-white rounded-2xl p-4 border border-slate-200 flex flex-col justify-between ${p.sold_out ? 'opacity-50' : ''}`}>
+            <div>
+              <h3 className="font-bold text-slate-900">{p.name}</h3>
+              {p.description && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{p.description}</p>}
+            </div>
+            <div className="flex items-center justify-between pt-3">
+              <span className="font-black text-slate-900 text-lg">{money(p.price_cents)}</span>
+              {p.sold_out ? <span className="text-xs font-bold text-slate-500">{T.soldOut}</span> : (
+                <button onClick={() => (p.modifier_groups?.length ? setOptionsFor(p) : addLine(p))}
+                  className="bg-slate-900 text-white p-2.5 rounded-xl active:scale-95" aria-label={T.add}>
+                  <Plus className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
       </main>
 
-      {/* Apex AI Floating Assistant Button */}
-      <div className="fixed bottom-20 right-4 z-40">
-        <button
-          onClick={() => setIsAiOpen(true)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-full shadow-2xl flex items-center space-x-2 transition-all hover:scale-105 active:scale-95"
-        >
-          <Bot className="w-6 h-6 animate-pulse" />
-          <span className="font-bold text-sm hidden sm:inline">Ask Apex AI</span>
+      {count > 0 && (
+        <button onClick={() => setCartOpen(true)}
+          className="fixed bottom-4 left-4 right-4 z-40 max-w-xl mx-auto bg-slate-900 text-white px-5 py-4 rounded-2xl shadow-xl flex items-center justify-between">
+          <span className="flex items-center gap-3"><span className="bg-emerald-500 font-bold w-7 h-7 rounded-full flex items-center justify-center text-sm">{count}</span><span className="font-bold">{T.order}</span></span>
+          <span className="flex items-center gap-1 font-black text-lg">{money(subtotal + tax)}<ChevronRight className="w-5 h-5 text-slate-400" /></span>
         </button>
-      </div>
+      )}
 
-      {/* Apex AI Chat Modal */}
-      {isAiOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center sm:justify-center p-0 sm:p-4">
-          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl h-[80vh] sm:h-[600px] flex flex-col shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom duration-200">
-            {/* Modal Header */}
-            <div className="px-6 py-4 bg-indigo-600 text-white flex items-center justify-between shadow-sm">
-              <div className="flex items-center space-x-2">
-                <Bot className="w-6 h-6" />
-                <h2 className="font-black text-lg">Apex AI Culinary Guide</h2>
-              </div>
-              <button onClick={() => setIsAiOpen(false)} className="p-2 text-indigo-200 hover:text-white rounded-full">
-                <X className="w-6 h-6" />
-              </button>
+      {cartOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-end sm:items-center sm:justify-center">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90vh] flex flex-col">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="font-black text-xl">{T.order} · {T.table} {menu.table.name}</h2>
+              <button onClick={() => setCartOpen(false)} className="p-2 text-slate-400"><X className="w-6 h-6" /></button>
             </div>
-
-            {/* Chat Messages */}
-            <div className="p-4 overflow-y-auto flex-1 space-y-3 bg-slate-50">
-              {aiMessages.map((msg, index) => (
-                <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm ${
-                    msg.role === 'user'
-                      ? 'bg-indigo-600 text-white rounded-br-xs'
-                      : 'bg-white text-slate-800 shadow-xs border border-slate-200 rounded-bl-xs'
-                  }`}>
-                    {msg.text}
+            <div className="px-5 py-3 overflow-y-auto flex-1 divide-y divide-slate-100">
+              {cart.map((l) => (
+                <div key={l.key} className="py-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-900">{l.product.name}</p>
+                    {l.optionNames.length > 0 && <p className="text-xs text-emerald-700">+ {l.optionNames.join(', ')}</p>}
+                    {l.note && <p className="text-xs text-slate-500 italic">* {l.note}</p>}
+                    <p className="text-xs text-slate-500">{money(l.unit)} × {l.qty}</p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <button onClick={() => bump(l.key, -1)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center"><Minus className="w-4 h-4" /></button>
+                    <span className="font-bold w-4 text-center">{l.qty}</span>
+                    <button onClick={() => bump(l.key, 1)} disabled={l.qty >= 20} className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center"><Plus className="w-4 h-4" /></button>
                   </div>
                 </div>
               ))}
-            </div>
-
-            {/* Chat Input */}
-            <form onSubmit={sendAiMessage} className="p-4 bg-white border-t border-slate-200 flex items-center space-x-2">
-              <input
-                type="text"
-                placeholder="Ask about dishes, allergens, or recommendations..."
-                value={aiInput}
-                onChange={(e) => setAiInput(e.target.value)}
-                className="flex-1 px-4 py-3 rounded-xl border border-slate-300 text-sm focus:outline-indigo-500"
-              />
-              <button
-                type="submit"
-                className="bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-xl shadow-md transition-all flex items-center justify-center"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Floating Bottom Cart Bar */}
-      {totalItems > 0 && (
-        <div className="fixed bottom-4 left-4 right-4 z-40 max-w-xl mx-auto">
-          <div
-            onClick={() => setIsCartOpen(true)}
-            className="bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-xl flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all"
-          >
-            <div className="flex items-center space-x-3">
-              <div className="bg-emerald-500 text-white font-bold w-7 h-7 rounded-full flex items-center justify-center text-sm shadow-inner">
-                {totalItems}
+              <div className="py-3">
+                <label className="text-sm font-bold text-slate-700 flex items-center gap-1 mb-2"><Edit3 className="w-4 h-4" />{T.note}</label>
+                <input value={orderNote} onChange={(e) => setOrderNote(e.target.value.slice(0, 200))} placeholder={T.notePh}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300" />
               </div>
-              <span className="font-bold">View Order & Summary</span>
             </div>
-            <div className="flex items-center space-x-2">
-              <span className="font-black text-lg">${(totalCents / 100).toFixed(2)}</span>
-              <ChevronRight className="w-5 h-5 text-slate-400" />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom Sheet Cart Modal */}
-      {isCartOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center sm:justify-center p-0 sm:p-4">
-          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom duration-200">
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="font-black text-xl text-slate-900">Your Current Order ({tableName})</h2>
-              <button onClick={() => setIsCartOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 rounded-full">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            {/* Cart Items List */}
-            <div className="p-6 overflow-y-auto flex-1 space-y-4">
-              {cart.map((item, idx) => (
-                <div key={idx} className="flex flex-col py-3 border-b border-slate-100 last:border-0">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 pr-4">
-                      <h4 className="font-bold text-slate-900">{item.product.name}</h4>
-                      <p className="text-xs text-slate-500">${(item.product.price_cents / 100).toFixed(2)} each</p>
-                      {item.note && <p className="text-xs text-emerald-600 italic mt-1">Note: {item.note}</p>}
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <button
-                        onClick={() => updateQuantity(idx, -1)}
-                        className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-bold hover:bg-slate-200"
-                      >
-                        <Minus className="w-4 h-4" />
-                      </button>
-                      <span className="font-bold text-slate-900 w-4 text-center">{item.quantity}</span>
-                      <button
-                        onClick={() => updateQuantity(idx, 1)}
-                        className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold hover:bg-slate-800"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => { setNotingItem(idx); setItemNote(item.note || ""); }}
-                    className="text-xs text-slate-400 hover:text-slate-600 flex items-center space-x-1 mt-2 self-start"
-                  >
-                    <Edit3 className="w-3 h-3" />
-                    <span>{item.note ? 'Edit instruction' : 'Add kitchen note'}</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {/* Summary & Checkout Footer */}
-            <div className="p-6 bg-slate-50 border-t border-slate-200 space-y-3">
-              <div className="flex justify-between text-sm text-slate-600">
-                <span>Subtotal</span>
-                <span className="font-bold">${(subtotalCents / 100).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm text-slate-600">
-                <span>Estimated Tax (13%)</span>
-                <span className="font-bold">${(taxCents / 100).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-lg font-black text-slate-900 pt-2 border-t border-slate-200">
-                <span>Total</span>
-                <span>${(totalCents / 100).toFixed(2)}</span>
-              </div>
-              <button
-                onClick={() => { setIsCartOpen(false); submitOrder(); }}
-                disabled={submitting}
-                className="w-full mt-4 bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl shadow-lg transition-all text-center text-lg active:scale-[0.99] disabled:opacity-50"
-              >
-                {submitting ? 'Sending to Kitchen...' : 'Send Order to Kitchen 🚀'}
+            <div className="p-5 bg-slate-50 border-t border-slate-200 space-y-2">
+              <div className="flex justify-between text-sm text-slate-600"><span>{T.subtotal}</span><span className="font-bold">{money(subtotal)}</span></div>
+              <div className="flex justify-between text-sm text-slate-600"><span>{T.tax}</span><span className="font-bold">{money(tax)}</span></div>
+              <div className="flex justify-between text-lg font-black pt-2 border-t border-slate-200"><span>{T.total}</span><span>{money(subtotal + tax)}</span></div>
+              {error && <p className="text-sm font-bold text-red-600">{error}</p>}
+              <p className="text-xs text-slate-500">{T.confirmHint}</p>
+              <button onClick={submit} disabled={submitting || count === 0}
+                className="w-full mt-2 bg-emerald-600 disabled:opacity-50 text-white font-black py-4 rounded-2xl text-lg flex items-center justify-center gap-2">
+                {submitting && <Loader2 className="w-5 h-5 animate-spin" />}{submitting ? T.sending : T.send}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Item Note Modal */}
-      {notingItem !== null && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4">
-            <h3 className="font-black text-xl text-slate-900">Kitchen Instructions</h3>
-            <p className="text-xs text-slate-500">Add special requests (e.g. "No onions", "Extra spicy")</p>
-            <input
-              type="text"
-              placeholder="e.g. Dressing on the side"
-              value={itemNote}
-              onChange={(e) => setItemNote(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-base focus:outline-emerald-500"
-            />
-            <div className="flex space-x-3 pt-2">
-              <button
-                onClick={() => setNotingItem(null)}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveItemNote}
-                className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl transition-all shadow-md"
-              >
-                Save Note
-              </button>
-            </div>
-          </div>
-        </div>
+      {optionsFor && (
+        <OptionsSheet product={optionsFor} onClose={() => setOptionsFor(null)}
+          onAdd={(choice) => { addLine(optionsFor, choice); setOptionsFor(null) }} />
       )}
     </div>
   )

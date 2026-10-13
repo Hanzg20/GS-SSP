@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -75,7 +76,19 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
     val floor = dine.floor
     var area by remember { mutableStateOf<String?>(null) }
     var seating by remember { mutableStateOf<DineRepository.DiningTable?>(null) }
+    var reviewingScans by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // A chime and a buzz when a customer's QR order comes in.
+    LaunchedEffect(dine.scanArrivals) {
+        if (dine.scanArrivals > 0) {
+            runCatching {
+                android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 90)
+                    .startTone(android.media.ToneGenerator.TONE_PROP_ACK, 400)
+            }
+            com.goldsky.ssp.common.FeedbackManager.vibrate(context, 300)
+        }
+    }
 
     Column(modifier.fillMaxSize()) {
         if (!dine.online) {
@@ -84,6 +97,19 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
                     Icon(Icons.Default.CloudOff, null, tint = scheme.onErrorContainer, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.dine_err_offline), color = scheme.onErrorContainer)
+                }
+            }
+        }
+        if (dine.scanPending.isNotEmpty()) {
+            Surface(
+                color = scheme.tertiary, contentColor = scheme.onTertiary,
+                modifier = Modifier.fillMaxWidth().clickable { reviewingScans = true }
+            ) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(androidx.compose.material.icons.Icons.Default.Notifications, null)
+                    Spacer(Modifier.width(10.dp))
+                    Text(stringResource(R.string.scan_pending_banner, dine.scanPending.size), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.scan_review), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -113,7 +139,7 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(floor.filter { area == null || it.table.area == area }, key = { it.table.id }) { ft ->
-                        TableCard(ft) {
+                        TableCard(ft, dine.scanPending.count { it.table_id == ft.table.id }) {
                             val c = ft.check
                             if (c != null) dine.openCheck(c.id) else seating = ft.table
                         }
@@ -123,13 +149,23 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
         }
     }
 
+    if (reviewingScans && dine.scanPending.isNotEmpty()) {
+        ScanOrdersDialog(
+            orders = dine.scanPending,
+            busy = dine.busy,
+            onAccept = { dine.acceptScan(context, it, staffName) },
+            onReject = { o, reason -> dine.rejectScan(o, staffName, reason) },
+            onDismiss = { reviewingScans = false }
+        )
+    }
+
     seating?.let { t ->
         SeatDialog(t, onSeat = { guests -> seating = null; dine.seat(t, guests, staffId, staffName) }, onDismiss = { seating = null })
     }
 }
 
 @Composable
-private fun TableCard(ft: DineRepository.FloorTable, onClick: () -> Unit) {
+private fun TableCard(ft: DineRepository.FloorTable, scanPending: Int, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val c = ft.check
     val (bg, fg) = when (c?.status) {
@@ -145,6 +181,13 @@ private fun TableCard(ft: DineRepository.FloorTable, onClick: () -> Unit) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(ft.table.name, fontSize = 22.sp, fontWeight = FontWeight.Black, color = fg, modifier = Modifier.weight(1f))
+                if (scanPending > 0) {
+                    Surface(color = scheme.tertiary, shape = RoundedCornerShape(50)) {
+                        Text("QR $scanPending", color = scheme.onTertiary, style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                    Spacer(Modifier.width(4.dp))
+                }
                 if (c != null) Text("#${c.check_no}", style = MaterialTheme.typography.labelSmall, color = fg)
             }
             if (c == null) {
@@ -323,4 +366,73 @@ fun CheckPayDialog(detail: DineRepository.CheckDetail, onPay: (CheckPay) -> Unit
         confirmButton = { Button(enabled = pay != null, onClick = { pay?.let(onPay) }) { Text(stringResource(R.string.dine_pay_go)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.retail_mod_cancel)) } }
     )
+}
+
+/**
+ * Customers' QR orders waiting for staff: check them (right table, nothing
+ * silly) and accept -- the order becomes the table's next round and prints in
+ * the kitchen -- or reject with a reason the customer sees on their phone.
+ */
+@Composable
+fun ScanOrdersDialog(
+    orders: List<DineRepository.ScanOrder>,
+    busy: Boolean,
+    onAccept: (DineRepository.ScanOrder) -> Unit,
+    onReject: (DineRepository.ScanOrder, String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var rejecting by remember { mutableStateOf<DineRepository.ScanOrder?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.scan_dialog_title, orders.size)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                orders.forEach { o ->
+                    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.scan_table, o.table_name), fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                                clock(o.created_at)?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+                            }
+                            o.items.forEach { l ->
+                                Row {
+                                    Text("${l.quantity} × ${l.name}", modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium)
+                                    Text(money(l.unit_price_cents * l.quantity))
+                                }
+                                if (l.options.isNotEmpty()) Text("+ " + l.options.joinToString(", "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                                l.note?.let { Text("* $it", style = MaterialTheme.typography.bodySmall) }
+                            }
+                            o.note?.let { Text(stringResource(R.string.scan_note, it), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold) }
+                            Text(stringResource(R.string.scan_total, money(o.subtotal_cents + o.tax_cents)), fontWeight = FontWeight.Bold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = { rejecting = o }, enabled = !busy, modifier = Modifier.weight(1f)) {
+                                    Text(stringResource(R.string.scan_reject), color = MaterialTheme.colorScheme.error)
+                                }
+                                Button(onClick = { onAccept(o) }, enabled = !busy, modifier = Modifier.weight(1.5f)) {
+                                    Text(stringResource(R.string.scan_accept), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.retail_done)) } }
+    )
+    rejecting?.let { o ->
+        val reasons = listOf(R.string.scan_reason_wrong_table, R.string.scan_reason_sold_out, R.string.scan_reason_ask_staff).map { stringResource(it) }
+        AlertDialog(
+            onDismissRequest = { rejecting = null },
+            title = { Text(stringResource(R.string.scan_reject_title, o.table_name)) },
+            text = {
+                Column {
+                    reasons.forEach { r ->
+                        TextButton(onClick = { rejecting = null; onReject(o, r) }, modifier = Modifier.fillMaxWidth()) { Text(r) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { rejecting = null }) { Text(stringResource(R.string.retail_mod_cancel)) } }
+        )
+    }
 }
