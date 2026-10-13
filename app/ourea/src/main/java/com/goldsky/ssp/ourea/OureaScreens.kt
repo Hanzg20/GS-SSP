@@ -254,6 +254,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
         if (showHeldOrders) {
             OureaHeldOrdersDialog(
                 orders = parkedOrders,
+                summary = viewModel::parkedSummary,
                 onResume = { entity ->
                     showHeldOrders = false
                     viewModel.resumeOrder(context, entity)
@@ -935,7 +936,7 @@ private fun OureaRecentOrderRow(order: OrderEntity) {
  * real bug fixed there while wiring this dialog up.
  */
 @Composable
-fun OureaHeldOrdersDialog(orders: List<ParkedOrderEntity>, onResume: (ParkedOrderEntity) -> Unit, onDismiss: () -> Unit) {
+fun OureaHeldOrdersDialog(orders: List<ParkedOrderEntity>, summary: (ParkedOrderEntity) -> String, onResume: (ParkedOrderEntity) -> Unit, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = MaterialTheme.shapes.medium, color = OureaSurface, tonalElevation = 8.dp) {
             Column(modifier = Modifier.padding(24.dp).width(360.dp).heightIn(max = 500.dp)) {
@@ -944,7 +945,7 @@ fun OureaHeldOrdersDialog(orders: List<ParkedOrderEntity>, onResume: (ParkedOrde
                 if (orders.isEmpty()) {
                     Text(stringResource(R.string.ourea_nothing_held_right_now), color = OureaTextSecondary)
                 } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LazyColumn(modifier = Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(orders) { order ->
                             Row(
                                 modifier = Modifier
@@ -956,13 +957,19 @@ fun OureaHeldOrdersDialog(orders: List<ParkedOrderEntity>, onResume: (ParkedOrde
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
-                                    Text(order.tableName ?: stringResource(R.string.ourea_quick_order), color = OureaTextPrimary, fontWeight = FontWeight.Medium)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    // The items, so held orders can be told apart (all are "Quick Order").
+                                    Text(
+                                        summary(order).ifBlank { order.tableName ?: stringResource(R.string.ourea_quick_order) },
+                                        color = OureaTextPrimary, fontWeight = FontWeight.Medium, maxLines = 2,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
                                     Text(
                                         SimpleDateFormat("h:mm a", Locale.getDefault()).format(java.util.Date(order.createdAt)),
                                         color = OureaTextSecondary, fontSize = 12.sp
                                     )
                                 }
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Text(formatCents(order.subtotalCents), color = OureaGold, fontWeight = FontWeight.Bold)
                             }
                         }

@@ -74,18 +74,8 @@ class RetailViewModel : ViewModel() {
      */
     fun parkCurrentOrder(context: Context, tableName: String? = null) {
         if (_cart.isEmpty()) return
-        
         val db = LocalDatabase.getInstance(context)
-        val cartJson = Json.encodeToString(
-            _cart.map { ParkedCartLine(it.product.id, it.quantity, it.selectedModifiers.map { m -> m.id }) }
-        )
-
-        val entity = ParkedOrderEntity(
-            tableName = tableName ?: "Quick Order",
-            cartJson = cartJson,
-            subtotalCents = _totalCents.value
-        )
-        
+        val entity = currentCartAsParked(tableName)
         viewModelScope.launch(Dispatchers.IO) {
             db.parkedOrderDao().insert(entity)
             withContext(Dispatchers.Main) {
@@ -109,7 +99,12 @@ class RetailViewModel : ViewModel() {
      */
     fun resumeOrder(context: Context, entity: ParkedOrderEntity) {
         val db = LocalDatabase.getInstance(context)
+        // Something already in the cart is held first (a swap), never thrown away:
+        // resuming B while A (itself resumed, so no longer held) was in the cart
+        // used to lose A for good.
+        val displaced = if (_cart.isNotEmpty()) currentCartAsParked(null) else null
         viewModelScope.launch(Dispatchers.IO) {
+            displaced?.let { db.parkedOrderDao().insert(it) }
             val lines = try {
                 Json.decodeFromString<List<ParkedCartLine>>(entity.cartJson)
             } catch (e: Exception) {
@@ -133,6 +128,22 @@ class RetailViewModel : ViewModel() {
             }
         }
     }
+
+    private fun currentCartAsParked(tableName: String?) = ParkedOrderEntity(
+        tableName = tableName ?: "Quick Order",
+        cartJson = Json.encodeToString(
+            _cart.map { ParkedCartLine(it.product.id, it.quantity, it.selectedModifiers.map { m -> m.id }) }
+        ),
+        subtotalCents = _totalCents.value
+    )
+
+    /** What a held order contains, e.g. "Soy Sauce x2, Tofu" -- every held order is "Quick Order" otherwise. */
+    fun parkedSummary(entity: ParkedOrderEntity): String = try {
+        Json.decodeFromString<List<ParkedCartLine>>(entity.cartJson).joinToString(", ") { line ->
+            val name = RetailRepository.catalog.value.find { it.id == line.productId }?.name ?: "?"
+            if (line.quantity > 1) "$name ×${line.quantity}" else name
+        }
+    } catch (e: Exception) { "" }
 
     /**
      * Adds an item to the cart using its barcode.
