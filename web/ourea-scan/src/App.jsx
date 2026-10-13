@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { Plus, Minus, X, Utensils, Edit3, ChevronRight, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { Plus, Minus, X, Utensils, Edit3, ChevronRight, Clock, CheckCircle2, XCircle, Loader2, Sparkles } from 'lucide-react'
+import Guide from './Guide.jsx'
 
 /*
  * Ourea Scan: a customer scans the QR on their table and orders from their
@@ -12,10 +13,24 @@ import { Plus, Minus, X, Utensils, Edit3, ChevronRight, Clock, CheckCircle2, XCi
  * docs/database_design.md §5, docs/migrations/2026-10-13_dine_scan_orders.sql.
  */
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || 'https://ttbtxxpnvkcbyugzdqfw.supabase.co',
-  import.meta.env.VITE_SUPABASE_KEY || 'sb_publishable_g4TGLHlVn3LfafRZFOAjnA_x9M0xyBi'
-)
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://ttbtxxpnvkcbyugzdqfw.supabase.co'
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || 'sb_publishable_g4TGLHlVn3LfafRZFOAjnA_x9M0xyBi'
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+
+/** The AI guide (supabase/functions/scan-assistant); the table's QR secret is the credential. */
+async function askGuide(body) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/scan-assistant`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json().catch(() => ({}))
+    return res.ok ? data : { error: data.error || 'failed' }
+  } catch {
+    return { error: 'offline' }
+  }
+}
 
 const money = (c) => '$' + (c / 100).toFixed(2)
 const zh = (navigator.language || '').toLowerCase().startsWith('zh')
@@ -28,6 +43,11 @@ const T = zh ? {
   pending: '等待店员确认', accepted: '已送厨房', rejected: '未被接受', orderMore: '继续点菜',
   errors: { too_many_orders: '提交太频繁了，请等店员处理后再点', sold_out: '有菜刚刚售完：', item_unavailable: '有菜已下架，请刷新菜单', bad_option: '请重新选择口味：', unknown_table: '这个二维码已失效，请找服务员' },
   failed: '没有提交成功', retry: '重试',
+  contains: '含', noAllergenData: '过敏原未标注，请问服务员',
+  guide: '问小海狸', guideTitle: '小海狸 · AI 点餐向导', guideHello: '你好！我是小海狸 🦫 用任何语言问我：菜是什么、辣不辣、有没有过敏原、几个人点多少。',
+  guideHint: '例如：我对花生过敏，哪些能吃？', ask: '发送', listening: '正在听…点一下停止', addSuggestion: '加入',
+  guideErrors: { busy: '小海狸有点忙，请过半分钟再试', table_limit: '问得有点多，请稍后再试', store_limit: '今天的提问已达上限，请问服务员', no_model: 'AI 向导暂时不可用，请问服务员', offline: '连不上网络，请稍后再试', failed: '没听明白，请换个说法再试', no_speech_service: '语音暂不可用，请打字', too_long: '录音太长了' },
+  aiNote: 'AI 回答仅供参考，过敏请务必告诉服务员。',
 } : {
   scanFirst: 'Scan the QR code on your table to order', badCode: 'This QR code is no longer valid. Please ask a server.', loading: 'Loading the menu…', offline: 'No connection. Please try again.',
   table: 'Table', all: 'All', soldOut: 'Sold out', add: 'Add', required: 'Required', pickOne: 'Pick one', upTo: (n) => `Up to ${n}`, optional: 'Optional',
@@ -37,6 +57,32 @@ const T = zh ? {
   pending: 'Waiting for a server to confirm', accepted: 'Sent to the kitchen', rejected: 'Not accepted', orderMore: 'Order more',
   errors: { too_many_orders: 'Too many orders at once. Please wait for a server.', sold_out: 'Just sold out: ', item_unavailable: 'An item is no longer available. Please reload the menu.', bad_option: 'Please choose the options again: ', unknown_table: 'This QR code is no longer valid. Please ask a server.' },
   failed: 'Your order was not sent', retry: 'Try again',
+  contains: 'Contains', noAllergenData: 'Allergens not listed: ask your server',
+  guide: 'Ask Beaver', guideTitle: 'Beaver · AI menu guide', guideHello: "Hi! I'm Beaver 🦫 Ask me in any language: what a dish is, how spicy, allergens, how much to order for your group.",
+  guideHint: "e.g. I'm allergic to peanuts, what can I eat?", ask: 'Send', listening: 'Listening… tap to stop', addSuggestion: 'Add',
+  guideErrors: { busy: 'Beaver is busy, try again in half a minute', table_limit: 'Lots of questions! Please wait a moment', store_limit: "Today's questions are used up, please ask your server", no_model: 'The AI guide is unavailable, please ask your server', offline: 'No connection, try again', failed: "Sorry, I didn't get that, try rephrasing", no_speech_service: 'Voice is unavailable, please type', too_long: 'That recording is too long' },
+  aiNote: 'AI answers are a guide only. Always tell your server about allergies.',
+}
+
+// Canada's priority allergens (products.attributes.allergens codes).
+const ALLERGENS = zh
+  ? { peanut: '花生', tree_nut: '坚果', milk: '奶', egg: '蛋', wheat: '小麦/麸质', soy: '大豆', fish: '鱼', crustacean: '甲壳类', mollusc: '贝类', sesame: '芝麻', mustard: '芥末', sulphite: '亚硫酸盐' }
+  : { peanut: 'peanut', tree_nut: 'tree nuts', milk: 'milk', egg: 'egg', wheat: 'wheat/gluten', soy: 'soy', fish: 'fish', crustacean: 'shellfish', mollusc: 'molluscs', sesame: 'sesame', mustard: 'mustard', sulphite: 'sulphites' }
+const DIETARY = zh
+  ? { vegetarian: '🌱 素食', vegan: '🌿 纯素', halal: '☪ 清真', gluten_free: '无麸质', no_pork: '不含猪肉', no_beef: '不含牛肉' }
+  : { vegetarian: '🌱 Vegetarian', vegan: '🌿 Vegan', halal: '☪ Halal', gluten_free: 'Gluten-free', no_pork: 'No pork', no_beef: 'No beef' }
+
+/** Diet, spice and allergen badges; a dish with no allergen data says so. */
+function DishFacts({ p }) {
+  return (
+    <div className="flex flex-wrap gap-1 mt-2">
+      {(p.dietary || []).map((d) => <span key={d} className="text-[11px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">{DIETARY[d] || d}</span>)}
+      {p.spice_level > 0 && <span className="text-[11px] font-bold bg-red-50 text-red-700 px-2 py-0.5 rounded-full">{'🌶'.repeat(Math.min(p.spice_level, 5))}</span>}
+      {Array.isArray(p.allergens)
+        ? p.allergens.length > 0 && <span className="text-[11px] font-bold bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full">{T.contains}: {p.allergens.map((a) => ALLERGENS[a] || a).join(', ')}</span>
+        : <span className="text-[11px] text-slate-400 px-1 py-0.5">{T.noAllergenData}</span>}
+    </div>
+  )
 }
 
 const store = {
@@ -74,6 +120,9 @@ function OptionsSheet({ product, onAdd, onClose }) {
           <div>
             <h2 className="font-black text-xl text-slate-900">{product.name}</h2>
             <p className="text-slate-500 font-bold">{money(product.price_cents)}</p>
+            {product.description && <p className="text-sm text-slate-600 mt-1">{product.description}</p>}
+            {product.guide && <p className="text-xs text-slate-500 mt-1">💡 {product.guide}</p>}
+            <DishFacts p={product} />
           </div>
           <button onClick={onClose} className="p-2 text-slate-400"><X className="w-6 h-6" /></button>
         </div>
@@ -137,6 +186,7 @@ export default function App() {
   const [orderIds, setOrderIds] = useState(() => store.get('scan_orders_' + token) || [])
   const [orders, setOrders] = useState([])
   const [clientRef, setClientRef] = useState(newRef)  // kept across retries: one submit = one order
+  const [guideOpen, setGuideOpen] = useState(false)
 
   const loadMenu = useCallback(async () => {
     setState('loading')
@@ -256,6 +306,7 @@ export default function App() {
             <div>
               <h3 className="font-bold text-slate-900">{p.name}</h3>
               {p.description && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{p.description}</p>}
+              <DishFacts p={p} />
             </div>
             <div className="flex items-center justify-between pt-3">
               <span className="font-black text-slate-900 text-lg">{money(p.price_cents)}</span>
@@ -320,6 +371,24 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      <button onClick={() => setGuideOpen(true)}
+        className={`fixed right-4 z-40 bg-indigo-600 text-white px-4 py-3 rounded-full shadow-xl flex items-center gap-2 font-bold ${count > 0 ? 'bottom-24' : 'bottom-4'}`}>
+        <Sparkles className="w-5 h-5" />{T.guide}
+      </button>
+
+      {guideOpen && (
+        <Guide token={token} products={menu.products} T={T} askGuide={askGuide} onClose={() => setGuideOpen(false)}
+          onAdd={(s) => {
+            const p = menu.products.find((x) => x.id === s.product_id)
+            if (!p) return
+            // Options the guide couldn't settle: the customer picks them.
+            if (s.needs_options || (p.modifier_groups?.length && !s.option_ids.length)) { setGuideOpen(false); setOptionsFor(p); return }
+            const opts = (p.modifier_groups || []).flatMap((g) => g.options).filter((o) => s.option_ids.includes(o.id))
+            const choice = { optionIds: opts.map((o) => o.id), optionNames: opts.map((o) => o.name), unit: p.price_cents + opts.reduce((a, o) => a + (o.price_cents || 0), 0) }
+            for (let i = 0; i < s.quantity; i++) addLine(p, choice)
+          }} />
       )}
 
       {optionsFor && (

@@ -57,7 +57,7 @@ erDiagram
 | Catalog | products | CMP |
 | Sales & payment → `sales` | transactions, transaction_items, qr_payment_sessions, acquirer_settlement_records, merchant_acquirer_accounts, hardware_acquirer_map | apps (sales), back office (settlement) |
 | Retail delivery → `retail` | delivery_orders, delivery_order_items | CMP / Apex (create), Iris (collect) |
-| Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
+| Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders, `dine`.scan_chats** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
 | Members → `member` | vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions | apps, CMP |
 | Ads → `media` | advertisements, playlists, ad_playback_logs | CMP (ads), apps (playback) |
 | Store back office | expenses, reminders, notes | Iris / Ourea / Apex |
@@ -148,6 +148,15 @@ the phone), `scan_orders(token, ids)` (status for the customer's page). Staff:
 `dine_scan_pending`, `dine_accept_scan` (opens the check if needed, adds the order
 as the next round, returns the kitchen ticket's content), `dine_reject_scan`
 (reason shown to the customer), `dine_rotate_table_qr` (old printed codes stop working).
+
+AI menu guide (`supabase/functions/scan-assistant`, no login, the QR secret is the credential): answers in
+the customer's own language from the dish facts in `products.attributes` -- `description`, `ingredients`,
+`allergens` (Canada's priority allergens: peanut, tree_nut, milk, egg, wheat, soy, fish, crustacean, mollusc,
+sesame, mustard, sulphite; `[]` = none, key absent = NOT RECORDED), `dietary` (vegetarian, vegan, halal,
+gluten_free, no_pork, no_beef), `spice_level` 0-5, `guide` -- and never beyond them. Suggestions are checked
+against the menu and only reach the cart when the customer taps Add. Every question and answer is kept in
+`dine.scan_chats` (limits: per table per 10 min, per store per day; service role only, via
+`scan_chat_allowed` / `scan_chat_record`). Migration `docs/migrations/2026-10-13_scan_assistant.sql`.
 
 RPCs (all `public`): reads `dine_list_tables`, `dine_floor` (also returns pending QR orders), `dine_get_check`;
 writes `dine_save_table`, `dine_open_check`, `dine_send_items`, `dine_void_item`,

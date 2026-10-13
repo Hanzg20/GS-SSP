@@ -56,3 +56,10 @@ verify_jwt = false
 # Default (true): only a signed-in terminal's Supabase session. The function
 # then maps that session to its device and org (device_auth_map) itself.
 verify_jwt = true
+
+[functions.scan-assistant]
+# Called by customers' phones from the Ourea Scan page (web/ourea-scan), who
+# have no Supabase login: the table's QR secret in the body is the credential
+# (checked against dine.tables on every call), with per-table and per-store
+# question limits in dine.scan_chats.
+verify_jwt = false
