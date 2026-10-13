@@ -170,7 +170,7 @@ class DineViewModel : ViewModel() {
 
     /** After a payment on the check went through (call off the main thread is fine). */
     suspend fun paymentDone(context: Context, pay: CheckPay, ecrRefNum: String, tipCents: Int, method: String, paidBy: String?) {
-        DineRepository.recordPayment(context, pay.checkId, ecrRefNum, pay.amountCents, tipCents, method, paidBy, pay.itemIds)
+        DineRepository.recordPayment(context, pay.checkId, ecrRefNum, pay.amountCents, pay.taxCents, tipCents, method, paidBy, pay.itemIds)
         withContext(Dispatchers.Main) { refreshNow() }
     }
 
@@ -222,10 +222,21 @@ data class CheckPay(
     val lines: List<SaleLine>,
     val label: String,
     val tableName: String,
-    val checkNo: Int
+    val checkNo: Int,
+    /** The amount's tax part (transaction row, HST report); see [taxOf]. */
+    val taxCents: Int = 0
 ) {
-    /** The amount's tax part, in the check's proportion (for the transaction row). */
-    fun taxPart(detail: DineRepository.CheckDetail): Int =
-        if (itemIds != null) SalesTax.cents(lines.map { it.lineTotalCents to it.taxRateBps }).coerceAtMost(amountCents)
-        else if (detail.totalCents == 0) 0 else (amountCents.toLong() * detail.taxCents / detail.totalCents).toInt()
+    companion object {
+        /**
+         * Tax inside a payment of [amount] on [detail]: lines paid on their own carry
+         * their own tax; a share carries the tax still owed in proportion; the payment
+         * that settles the check takes exactly the tax left -- so a split check's
+         * payments always add up to the check's tax (HST remittance).
+         */
+        fun taxOf(detail: DineRepository.CheckDetail, amount: Int, lines: List<SaleLine>?): Int =
+            DineRepository.taxOfPayment(detail, amount, lines?.map { it.lineTotalCents to it.taxRateBps })
+    }
+
+    /** Kept for callers: the tax part decided when the payment was chosen. */
+    fun taxPart(@Suppress("UNUSED_PARAMETER") detail: DineRepository.CheckDetail): Int = taxCents
 }

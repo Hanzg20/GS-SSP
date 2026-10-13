@@ -32,6 +32,7 @@ data class PendingOp(
     val authCode: String? = null,
     // Only on "dine_payment" ops (DineRepository.recordPayment): orderId = the check.
     val amountCents: Int? = null,
+    val taxCents: Int? = null,
     val tipCents: Int? = null,
     val itemIds: List<String>? = null,
     val paidBy: String? = null

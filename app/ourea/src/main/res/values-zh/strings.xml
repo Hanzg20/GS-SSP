@@ -83,4 +83,10 @@
         <item>少糖</item>
         <item>打包</item>
     </string-array>
+    <string name="ourea_member_not_for_checks">会员卡只用于柜台销售：桌台账单请用刷卡、现金或二维码。</string>
+    <string name="ourea_round_not_sent_title">还有 %1$d 道菜没送厨房</string>
+    <string name="ourea_round_not_sent_desc">离开这张桌之前，要现在送厨房，还是丢掉？</string>
+    <string name="ourea_round_send">送厨房</string>
+    <string name="ourea_round_discard">丢掉</string>
+    <string name="ourea_round_stay">留下</string>
 </resources>

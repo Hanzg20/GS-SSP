@@ -82,4 +82,10 @@
         <item>Less sugar</item>
         <item>Pack to go</item>
     </string-array>
+    <string name="ourea_member_not_for_checks">Member cards are for counter sales: a table\'s check is paid by card, cash or QR.</string>
+    <string name="ourea_round_not_sent_title">%1$d items not sent to the kitchen</string>
+    <string name="ourea_round_not_sent_desc">Send them now, or discard them before leaving this table?</string>
+    <string name="ourea_round_send">Send to kitchen</string>
+    <string name="ourea_round_discard">Discard</string>
+    <string name="ourea_round_stay">Stay</string>
 </resources>

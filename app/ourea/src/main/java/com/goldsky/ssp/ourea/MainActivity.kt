@@ -102,7 +102,15 @@ class MainActivity : ComponentActivity() {
                     val retailViewModel: RetailViewModel = viewModel()
                     // The cart in progress comes back after a restart.
                     LaunchedEffect(Unit) { retailViewModel.restoreCart(this@MainActivity) }
-                    var destination by remember { mutableStateOf(OureaDestination.CHECKOUT) }
+                    // Dine-in: the floor and open check, and the round being taken -- its own
+                    // cart, so a take-out sale half rung up never lands on a table's ticket.
+                    val dine: com.goldsky.ssp.feature.retail.dine.DineViewModel = viewModel()
+                    val roundViewModel: RetailViewModel = viewModel(key = "dine-round")
+                    var destination by remember { mutableStateOf(if (com.goldsky.ssp.feature.retail.ui.isDineIn()) OureaDestination.TABLES else OureaDestination.CHECKOUT) }
+                    // A payment on a table's check (whole, by items or a share), between the split dialog and the money.
+                    var checkPay by remember { mutableStateOf<com.goldsky.ssp.feature.retail.dine.CheckPay?>(null) }
+                    var choosingCheckPay by remember { mutableStateOf(false) }
+                    var leavingWithRound by remember { mutableStateOf(false) }
                     var paymentStatus by remember { mutableStateOf<OureaPaymentUiState>(OureaPaymentUiState.Idle) }
                     var activeSaleData by remember { mutableStateOf<Pair<Int, Int>?>(null) }
                     var confirmingPayment by remember { mutableStateOf<Triple<Int, Int, Int>?>(null) }
@@ -146,7 +154,7 @@ class MainActivity : ComponentActivity() {
                         if (state is OureaPaymentUiState.Success) {
                             paymentProvider.showThankYouScreen(number)
                             orderTicket = null
-                            retailViewModel.clearCart()
+                            if (checkPay != null) checkPay = null else retailViewModel.clearCart()
                             FeedbackManager.success(this@MainActivity)
                         }
                     }
@@ -160,25 +168,48 @@ class MainActivity : ComponentActivity() {
                         )
                         Box(modifier = Modifier.weight(1f).background(OureaBackground)) {
                             when (destination) {
-                                OureaDestination.CHECKOUT -> {
+                                OureaDestination.TABLES, OureaDestination.CHECKOUT -> {
                                     val confirming = confirmingPayment
+                                    val openCheck = dine.check
                                     if (confirming != null) {
                                         val (subtotal, tax, tip) = confirming
+                                        val extras = checkExtras(checkPay, dine, signedIn.name)
                                         OureaPaymentScreen(
                                             subtotalCents = subtotal,
                                             taxCents = tax,
                                             tipCents = tip,
                                             onChargeCard = {
                                                 confirmingPayment = null
-                                                triggerPaymentFlow(subtotal, tax, tip, saleLines, orderTicket, ::onPaymentSettled)
+                                                triggerPaymentFlow(subtotal, tax, tip, saleLines, orderTicket, ::onPaymentSettled, extras)
                                             },
                                             onCash = { showCashDialog = true },
                                             onQr = {
                                                 confirmingPayment = null
-                                                startQrPayment(subtotal, tax, tip, saleLines, orderTicket, onQrStateChange = { qrState = it }, onSettled = ::onPaymentSettled)
+                                                startQrPayment(subtotal, tax, tip, saleLines, orderTicket, onQrStateChange = { qrState = it }, onSettled = ::onPaymentSettled, extras = extras)
                                             },
-                                            onMember = { showMemberDialog = true },
-                                            onBack = { confirmingPayment = null }
+                                            // Member-card tier discounts would leave a check part-paid: counter sales only.
+                                            onMember = {
+                                                if (checkPay != null) paymentStatus = OureaPaymentUiState.Error(getString(R.string.ourea_member_not_for_checks))
+                                                else showMemberDialog = true
+                                            },
+                                            onBack = { confirmingPayment = null; checkPay = null }
+                                        )
+                                    } else if (destination == OureaDestination.TABLES && openCheck == null) {
+                                        com.goldsky.ssp.feature.retail.dine.DineFloor(dine, signedIn.id, signedIn.name, minCell = 150.dp)
+                                    } else if (destination == OureaDestination.TABLES && openCheck != null) {
+                                        OureaCheckoutScreen(
+                                            viewModel = roundViewModel,
+                                            onCheckout = {},
+                                            checkMode = OureaCheckMode(
+                                                detail = openCheck,
+                                                busy = dine.busy,
+                                                onSend = { dine.sendRound(this@MainActivity, roundViewModel, signedIn.name) },
+                                                onBill = { dine.printBill(this@MainActivity) },
+                                                onPay = { choosingCheckPay = true },
+                                                onBack = { if (roundViewModel.cart.isNotEmpty()) leavingWithRound = true else dine.closeCheck() },
+                                                onVoid = { item, approver -> dine.voidItem(item, approver) },
+                                                onCancelTable = { dine.cancelEmptyCheck() }
+                                            )
                                         )
                                     } else {
                                         OureaCheckoutScreen(
@@ -209,7 +240,7 @@ class MainActivity : ComponentActivity() {
                                     reloadKey = recordsReload
                                 )
                                 OureaDestination.DAY_REPORT -> if (signedIn.isManager) com.goldsky.ssp.feature.retail.screens.DayReportScreen(onBack = { destination = OureaDestination.TRANSACTIONS })
-                                OureaDestination.SETTINGS -> if (signedIn.isManager) SettingsScreen(showBusinessType = true)
+                                OureaDestination.SETTINGS -> if (signedIn.isManager) SettingsScreen(showBusinessType = true, manageTables = true)
                             }
                         }
                     }
@@ -241,6 +272,52 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
+                    // Dine-in: how this payment splits the check, then the usual tip / method / money.
+                    val payingCheck = dine.check
+                    if (choosingCheckPay && payingCheck != null) {
+                        com.goldsky.ssp.feature.retail.dine.CheckPayDialog(
+                            detail = payingCheck,
+                            onPay = { pay ->
+                                choosingCheckPay = false
+                                checkPay = pay
+                                saleLines = pay.lines
+                                orderTicket = null
+                                val tax = pay.taxPart(payingCheck)
+                                val sub = pay.amountCents - tax
+                                if (DeviceRepository.isTipsEnabled()) activeSaleData = sub to tax
+                                else confirmingPayment = Triple(sub, tax, 0)
+                            },
+                            onDismiss = { choosingCheckPay = false }
+                        )
+                    }
+                    if (leavingWithRound) {
+                        AlertDialog(
+                            onDismissRequest = { leavingWithRound = false },
+                            title = { Text(stringResource(R.string.ourea_round_not_sent_title, roundViewModel.cart.sumOf { it.quantity })) },
+                            text = { Text(stringResource(R.string.ourea_round_not_sent_desc)) },
+                            confirmButton = {
+                                Button(onClick = { leavingWithRound = false; dine.sendRound(this@MainActivity, roundViewModel, signedIn.name) }) {
+                                    Text(stringResource(R.string.ourea_round_send))
+                                }
+                            },
+                            dismissButton = {
+                                Row {
+                                    TextButton(onClick = { leavingWithRound = false; roundViewModel.clearCart(); dine.closeCheck() }) {
+                                        Text(stringResource(R.string.ourea_round_discard), color = MaterialTheme.colorScheme.error)
+                                    }
+                                    TextButton(onClick = { leavingWithRound = false }) { Text(stringResource(R.string.ourea_round_stay)) }
+                                }
+                            }
+                        )
+                    }
+                    dine.message?.let { code ->
+                        AlertDialog(
+                            onDismissRequest = { dine.clearMessage() },
+                            text = { Text(com.goldsky.ssp.feature.retail.dine.dineMessage(code)) },
+                            confirmButton = { Button(onClick = { dine.clearMessage() }) { Text(stringResource(R.string.ourea_ok)) } }
+                        )
+                    }
+
                     when (val state = paymentStatus) {
                         is OureaPaymentUiState.Processing -> OureaPaymentProcessingDialog(state.message)
                         is OureaPaymentUiState.Success -> OureaPaymentResultDialog(true, state.message, state.orderNumber) { paymentStatus = OureaPaymentUiState.Idle }
@@ -255,7 +332,7 @@ class MainActivity : ComponentActivity() {
                             onConfirm = { cashReceivedCents ->
                                 showCashDialog = false
                                 confirmingPayment = null
-                                triggerCashPayment(subtotal, tax, tip, cashReceivedCents, saleLines, orderTicket, ::onPaymentSettled)
+                                triggerCashPayment(subtotal, tax, tip, cashReceivedCents, saleLines, orderTicket, ::onPaymentSettled, checkExtras(checkPay, dine, signedIn.name))
                             },
                             onDismiss = { showCashDialog = false }
                         )
@@ -306,7 +383,7 @@ class MainActivity : ComponentActivity() {
      * payment dialogs aren't factored into a shared module in this codebase
      * yet (same as app/iris, which doesn't share them with anyone either).
      */
-    private fun triggerPaymentFlow(subtotal: Int, tax: Int, tip: Int, lines: List<com.goldsky.ssp.model.SaleLine>, ticket: com.goldsky.ssp.model.KitchenTicket?, onStateChange: (OureaPaymentUiState) -> Unit) {
+    private fun triggerPaymentFlow(subtotal: Int, tax: Int, tip: Int, lines: List<com.goldsky.ssp.model.SaleLine>, ticket: com.goldsky.ssp.model.KitchenTicket?, onStateChange: (OureaPaymentUiState) -> Unit, extras: PayExtras? = null) {
         val total = subtotal + tax + tip
         val ref = "OUR-" + System.currentTimeMillis()
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
@@ -347,6 +424,7 @@ class MainActivity : ComponentActivity() {
                         cardAid = c?.aid, cardBin = c?.bin, cardBrand = c?.brand,
                         authCode = authCode
                     )
+                    extras?.onPaid?.invoke(ref, "CARD", tip)
                     ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                         subtotalCents = subtotal,
                         taxCents = tax,
@@ -354,7 +432,8 @@ class MainActivity : ComponentActivity() {
                         amountCents = total,
                         refNum = ref,
                         deviceSn = sn,
-                        lines = lines
+                        lines = lines,
+                        banner = extras?.banner
                     ), DeviceRepository.getPersistedHardwareVendor())
                 }
                 onStateChange(OureaPaymentUiState.Success(getString(R.string.ourea_approved_code, authCode)))
@@ -380,7 +459,7 @@ class MainActivity : ComponentActivity() {
      * confirms). [cashReceivedCents] is only used to report change due; the
      * caller (OureaCashDialog) already guards against cashReceivedCents < total.
      */
-    private fun triggerCashPayment(subtotal: Int, tax: Int, tip: Int, cashReceivedCents: Int, lines: List<com.goldsky.ssp.model.SaleLine>, ticket: com.goldsky.ssp.model.KitchenTicket?, onStateChange: (OureaPaymentUiState) -> Unit) {
+    private fun triggerCashPayment(subtotal: Int, tax: Int, tip: Int, cashReceivedCents: Int, lines: List<com.goldsky.ssp.model.SaleLine>, ticket: com.goldsky.ssp.model.KitchenTicket?, onStateChange: (OureaPaymentUiState) -> Unit, extras: PayExtras? = null) {
         val total = subtotal + tax + tip
         val ref = "OUR-CASH-" + System.currentTimeMillis()
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
@@ -409,6 +488,7 @@ class MainActivity : ComponentActivity() {
                 ).withOrder(ticket)
             )
             TransactionRepository.recordItems(this@MainActivity, ref, sn, lines)
+            extras?.onPaid?.invoke(ref, "CASH", tip)
             ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                 subtotalCents = subtotal,
                 taxCents = tax,
@@ -416,7 +496,8 @@ class MainActivity : ComponentActivity() {
                 amountCents = total,
                 refNum = ref,
                 deviceSn = sn,
-                lines = lines
+                lines = lines,
+                banner = extras?.banner
             ), DeviceRepository.getPersistedHardwareVendor())
         }
     }
@@ -435,7 +516,8 @@ class MainActivity : ComponentActivity() {
         lines: List<com.goldsky.ssp.model.SaleLine>,
         ticket: com.goldsky.ssp.model.KitchenTicket?,
         onQrStateChange: (OureaQrUiState) -> Unit,
-        onSettled: (OureaPaymentUiState) -> Unit
+        onSettled: (OureaPaymentUiState) -> Unit,
+        extras: PayExtras? = null
     ) {
         val total = subtotal + tax + tip
         val txId = "OUR-QR-" + System.currentTimeMillis()
@@ -486,6 +568,7 @@ class MainActivity : ComponentActivity() {
             withContext(Dispatchers.Main) { onQrStateChange(OureaQrUiState.Hidden) }
             if (paid) {
                 TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "PAID")
+                extras?.onPaid?.invoke(txId, "QR_CODE", tip)
                 withContext(Dispatchers.Main) { onSettled(OureaPaymentUiState.Success("QR payment received")) }
                 ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                     subtotalCents = subtotal,
@@ -494,7 +577,8 @@ class MainActivity : ComponentActivity() {
                     amountCents = total,
                     refNum = txId,
                     deviceSn = sn,
-                    lines = lines
+                    lines = lines,
+                    banner = extras?.banner
                 ), DeviceRepository.getPersistedHardwareVendor())
             } else {
                 TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "CANCELLED")
@@ -599,6 +683,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+/** What a payment on a table's check adds: the receipt's banner, and recording it on the check. */
+class PayExtras(val banner: String?, val onPaid: suspend (ref: String, method: String, tip: Int) -> Unit)
+
+private fun MainActivity.checkExtras(pay: com.goldsky.ssp.feature.retail.dine.CheckPay?, dine: com.goldsky.ssp.feature.retail.dine.DineViewModel, staffName: String?): PayExtras? =
+    pay?.let {
+        PayExtras(
+            banner = "TABLE ${it.tableName}  #${it.checkNo}" + (if (it.label.isNotEmpty()) "  ${it.label}" else ""),
+            onPaid = { ref, method, tip -> dine.paymentDone(this, it, ref, tip, method, staffName) }
+        )
+    }
 
 sealed class OureaPaymentUiState {
     object Idle : OureaPaymentUiState()

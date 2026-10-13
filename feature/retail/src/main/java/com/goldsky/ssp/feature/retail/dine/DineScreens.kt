@@ -226,6 +226,7 @@ private fun CheckItemRow(item: DineRepository.Item, onVoid: ((DineRepository.Ite
             Text(stringResource(R.string.dine_item_paid), style = MaterialTheme.typography.labelSmall, color = scheme.primary,
                 modifier = Modifier.padding(end = 6.dp))
         }
+        Spacer(Modifier.width(8.dp))
         Text(money(item.lineTotalCents), textDecoration = struck, color = if (item.isVoid) scheme.onSurfaceVariant else scheme.onSurface)
         if (onVoid != null && !item.isVoid && item.paid_ecr_ref_num == null) {
             IconButton(onClick = { onVoid(item) }, modifier = Modifier.size(32.dp)) {
@@ -265,7 +266,7 @@ fun CheckPayDialog(detail: DineRepository.CheckDetail, onPay: (CheckPay) -> Unit
     val picked = remember { mutableStateListOf<String>() }
     var ways by remember { mutableStateOf(detail.check.guests.coerceIn(2, 20)) }
     val table = detail.table?.name ?: "?"
-    val pay: CheckPay? = when (mode) {
+    val chosen: CheckPay? = when (mode) {
         0 -> CheckPay(detail.check.id, detail.balanceCents, null,
             detail.unpaidItems.map { SaleLine(it.displayName, it.quantity, it.unit_price_cents, it.tax_rate_bps, it.product_id) },
             "", table, detail.check.check_no)
@@ -278,6 +279,7 @@ fun CheckPayDialog(detail: DineRepository.CheckDetail, onPay: (CheckPay) -> Unit
         else -> CheckPay(detail.check.id, DineRepository.equalShare(detail.balanceCents, detail.balanceCents, ways, ways),
             null, emptyList(), "1/$ways", table, detail.check.check_no)
     }?.takeIf { it.amountCents > 0 }
+    val pay = chosen?.let { it.copy(taxCents = CheckPay.taxOf(detail, it.amountCents, if (mode == 1) it.lines else null)) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

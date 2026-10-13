@@ -9,10 +9,27 @@ class DineSplitTest {
         DineRepository.Item(id = id, check_id = "c", round = 1, name = id, quantity = qty, unit_price_cents = cents,
             tax_rate_bps = bps, paid_ecr_ref_num = paid, status = status)
 
-    private fun detail(items: List<DineRepository.Item>, paid: List<Int> = emptyList()) = DineRepository.CheckDetail(
+    private fun detail(items: List<DineRepository.Item>, paid: List<Int> = emptyList(), paidTax: List<Int> = emptyList()) = DineRepository.CheckDetail(
         DineRepository.Check("c", "t", 1, "OPEN"), null, items,
-        paid.mapIndexed { i, a -> DineRepository.Payment("p$i", "c", "R$i", a) }
+        paid.mapIndexed { i, a -> DineRepository.Payment("p$i", "c", "R$i", a, tax_cents = paidTax.getOrElse(i) { 0 }) }
     )
+
+    @Test
+    fun `split payments add up to the check's tax`() {
+        // The T5 check of 2026-10-13: noodle (13%) paid alone, then the rest (two
+        // a zero-rated drink and two taxed ones) in two equal shares. Proportional-to-total tax
+        // reported $3.08 for a $2.86 check.
+        val items = listOf(item("noodle", 1449), item("tea", 599), item("soy", 349, bps = 0), item("herbal", 149))
+        val d0 = detail(items)
+        assertEquals(2832, d0.totalCents); assertEquals(286, d0.taxCents)
+        val t1 = DineRepository.taxOfPayment(d0, 1637, listOf(1449 to 1300))
+        assertEquals(188, t1)
+        val d1 = detail(items.map { if (it.id == "noodle") it.copy(paid_ecr_ref_num = "R0") else it }, paid = listOf(1637), paidTax = listOf(t1))
+        val t2 = DineRepository.taxOfPayment(d1, 598, null)
+        val d2 = detail(d1.items, paid = listOf(1637, 598), paidTax = listOf(t1, t2))
+        val t3 = DineRepository.taxOfPayment(d2, d2.balanceCents, null)
+        assertEquals(286, t1 + t2 + t3)
+    }
 
     @Test
     fun `total is food plus tax once per rate, void lines out`() {

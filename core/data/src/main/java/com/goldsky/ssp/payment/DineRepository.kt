@@ -75,6 +75,7 @@ object DineRepository {
         val check_id: String,
         val ecr_ref_num: String,
         val amount_cents: Int,
+        val tax_cents: Int = 0,
         val tip_cents: Int = 0,
         val method: String? = null,
         val paid_by: String? = null
@@ -87,6 +88,7 @@ object DineRepository {
         val taxCents: Int get() = SalesTax.cents(liveItems.map { it.lineTotalCents to it.tax_rate_bps })
         val totalCents: Int get() = subtotalCents + taxCents
         val paidCents: Int get() = payments.sumOf { it.amount_cents }
+        val paidTaxCents: Int get() = payments.sumOf { it.tax_cents }
         val balanceCents: Int get() = (totalCents - paidCents).coerceAtLeast(0)
         /** Lines nobody has paid for on their own yet (split by items). */
         val unpaidItems: List<Item> get() = liveItems.filter { it.paid_ecr_ref_num == null }
@@ -172,7 +174,7 @@ object DineRepository {
     @Serializable private data class SendParams(val p_check_id: String, val p_items: List<RpcLine>, val p_sent_by: String?)
     @Serializable private data class VoidParams(val p_item_id: String, val p_voided_by: String?)
     @Serializable private data class UpdateParams(val p_check_id: String, val p_status: String?, val p_guests: Int?, val p_note: String?)
-    @Serializable private data class PayParams(val p_check_id: String, val p_ecr_ref_num: String, val p_amount_cents: Int, val p_tip_cents: Int,
+    @Serializable private data class PayParams(val p_check_id: String, val p_ecr_ref_num: String, val p_amount_cents: Int, val p_tax_cents: Int, val p_tip_cents: Int,
                                                val p_method: String?, val p_paid_by: String?, val p_item_ids: List<String>?)
 
     private suspend inline fun <reified P : Any> call(fn: String, params: P): Result = withContext(Dispatchers.IO) {
@@ -209,15 +211,15 @@ object DineRepository {
      * the customer has paid, the check must end up knowing it.
      */
     suspend fun recordPayment(
-        context: Context, checkId: String, ecrRefNum: String, amountCents: Int, tipCents: Int,
+        context: Context, checkId: String, ecrRefNum: String, amountCents: Int, taxCents: Int, tipCents: Int,
         method: String?, paidBy: String?, itemIds: List<String>?
     ): Boolean = withContext(Dispatchers.IO) {
-        val ok = recordPaymentRemote(checkId, ecrRefNum, amountCents, tipCents, method, paidBy, itemIds)
+        val ok = recordPaymentRemote(checkId, ecrRefNum, amountCents, taxCents, tipCents, method, paidBy, itemIds)
         if (ok == null) {
             OfflineQueueManager.enqueue(
                 context.filesDir,
                 PendingOp(type = "dine_payment", orderId = checkId, ecrRefNum = ecrRefNum, paymentMethod = method,
-                    amountCents = amountCents, tipCents = tipCents, itemIds = itemIds, paidBy = paidBy)
+                    amountCents = amountCents, taxCents = taxCents, tipCents = tipCents, itemIds = itemIds, paidBy = paidBy)
             )
             Log.w(TAG, "Check payment queued offline: $checkId <- $ecrRefNum")
         }
@@ -226,13 +228,13 @@ object DineRepository {
 
     /** true = recorded; false = refused (final); null = unreachable, worth retrying. */
     suspend fun recordPaymentRemote(
-        checkId: String, ecrRefNum: String, amountCents: Int, tipCents: Int,
+        checkId: String, ecrRefNum: String, amountCents: Int, taxCents: Int, tipCents: Int,
         method: String?, paidBy: String?, itemIds: List<String>?
     ): Boolean? = withContext(Dispatchers.IO) {
         try {
             SupabaseClientProvider.ensureAuthenticated()
             val r = SupabaseClientProvider.client.postgrest
-                .rpc("dine_record_payment", PayParams(checkId, ecrRefNum, amountCents, tipCents, method, paidBy, itemIds))
+                .rpc("dine_record_payment", PayParams(checkId, ecrRefNum, amountCents, taxCents, tipCents, method, paidBy, itemIds))
                 .decodeAs<RpcResult>()
             if (!r.success) Log.e(TAG, "dine_record_payment refused for $checkId ($ecrRefNum): ${r.message}")
             else Log.i(TAG, "Check $checkId paid $amountCents ($ecrRefNum), balance ${r.balance_cents}, closed=${r.closed}")
@@ -262,6 +264,22 @@ object DineRepository {
      * One of [ways] equal shares of what's still owed when the split started
      * ([startBalance]); the last share ([sharesLeft] == 1) takes whatever is left.
      */
+    /**
+     * Tax inside a payment of [amount]: lines paid on their own ([lines]: total to
+     * rate) carry their own tax; a share carries the tax still owed in proportion;
+     * the payment that settles the check takes exactly the tax left -- so a split
+     * check's payments always add up to the check's tax (HST remittance).
+     */
+    fun taxOfPayment(detail: CheckDetail, amount: Int, lines: List<Pair<Int, Int>>?): Int {
+        val taxLeft = (detail.taxCents - detail.paidTaxCents).coerceAtLeast(0)
+        return when {
+            amount >= detail.balanceCents -> taxLeft
+            lines != null -> SalesTax.cents(lines).coerceAtMost(minOf(amount, taxLeft))
+            detail.balanceCents == 0 -> 0
+            else -> ((amount.toLong() * taxLeft + detail.balanceCents / 2) / detail.balanceCents).toInt()
+        }
+    }
+
     fun equalShare(balanceNow: Int, startBalance: Int, ways: Int, sharesLeft: Int): Int =
         if (sharesLeft <= 1) balanceNow else minOf(balanceNow, (startBalance + ways - 1) / ways)
 }

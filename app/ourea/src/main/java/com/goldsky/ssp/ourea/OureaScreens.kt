@@ -41,6 +41,7 @@ import androidx.compose.ui.window.Dialog
 import com.goldsky.ssp.db.OrderEntity
 import com.goldsky.ssp.db.ParkedOrderEntity
 import com.goldsky.ssp.feature.retail.RetailRepository
+import com.goldsky.ssp.feature.retail.dine.checkItemRows
 import com.goldsky.ssp.feature.retail.viewmodel.RetailViewModel
 import com.goldsky.ssp.model.CartItem
 import com.goldsky.ssp.model.Product
@@ -52,7 +53,7 @@ import java.util.Calendar
 import java.util.Locale
 
 /** Which of the sidebar's wired-up destinations is currently showing. */
-enum class OureaDestination { CHECKOUT, INSIGHTS, APEX, PRODUCTS, TRANSACTIONS, DAY_REPORT, SETTINGS }
+enum class OureaDestination { TABLES, CHECKOUT, INSIGHTS, APEX, PRODUCTS, TRANSACTIONS, DAY_REPORT, SETTINGS }
 
 /**
  * Left icon rail modeled on the reference screenshots' sidebar. Only wired
@@ -83,6 +84,11 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
             Spacer(modifier = Modifier.height(20.dp))
             // Apex (小海狸 / Beaver): the AI assistant.
             SidebarIcon(Icons.Default.AutoAwesome, current == OureaDestination.APEX) { onSelect(OureaDestination.APEX) }
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+        // Dine-in: the floor first; the cart stays for take-out at the counter.
+        if (com.goldsky.ssp.feature.retail.ui.isDineIn()) {
+            SidebarIcon(Icons.Default.TableRestaurant, current == OureaDestination.TABLES) { onSelect(OureaDestination.TABLES) }
             Spacer(modifier = Modifier.height(20.dp))
         }
         SidebarIcon(Icons.Default.ShoppingCart, current == OureaDestination.CHECKOUT) { onSelect(OureaDestination.CHECKOUT) }
@@ -152,8 +158,23 @@ fun OureaGradientButton(
  * placeholder icon instead of fabricating stock photography like the
  * reference mockups show.
  */
+/**
+ * Dine-in: the checkout screen works one table's check. The cart is the round
+ * being taken; what the kitchen already has is listed above it.
+ */
+class OureaCheckMode(
+    val detail: com.goldsky.ssp.payment.DineRepository.CheckDetail,
+    val busy: Boolean,
+    val onSend: () -> Unit,
+    val onBill: () -> Unit,
+    val onPay: () -> Unit,
+    val onBack: () -> Unit,
+    val onVoid: (com.goldsky.ssp.payment.DineRepository.Item, String) -> Unit,
+    val onCancelTable: () -> Unit
+)
+
 @Composable
-fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
+fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, checkMode: OureaCheckMode? = null) {
     val context = LocalContext.current
     val catalog by RetailRepository.catalog.collectAsState()
     val cart = viewModel.cart
@@ -163,7 +184,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
     var showHeldOrders by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf<String?>(null) } // null = "All"
     var optionsFor by remember { mutableStateOf<Product?>(null) }
-    val quickService = com.goldsky.ssp.payment.DeviceRepository.getBusinessType() == com.goldsky.ssp.payment.DeviceRepository.BusinessType.QUICK_SERVICE
+    val quickService = com.goldsky.ssp.feature.retail.ui.isQuickService() && checkMode == null
     val categories = remember(catalog) { catalog.mapNotNull { it.category }.distinct().sorted() }
     val filtered = remember(catalog, query, selectedCategory) {
         catalog.filter { product ->
@@ -189,6 +210,9 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
                 .background(OureaSurface)
                 .padding(12.dp)
         ) {
+            if (checkMode != null) {
+                OureaCheckPanel(checkMode, viewModel)
+            } else {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.ourea_cart), color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 if (parkedOrders.isNotEmpty()) {
@@ -253,6 +277,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
                 enabled = total > 0,
                 modifier = Modifier.fillMaxWidth().height(52.dp)
             )
+            }
         }
 
         optionsFor?.let { product ->
@@ -1078,5 +1103,99 @@ private fun OureaNoteDialog(initial: String, onDone: (String) -> Unit) {
                 }
             }
         }
+    }
+}
+
+/**
+ * The check side of the dine-in screen: table header, what the kitchen has
+ * (round by round, voids need a manager), the round being taken, totals, and
+ * Send / Bill / Pay.
+ */
+@Composable
+private fun ColumnScope.OureaCheckPanel(mode: OureaCheckMode, viewModel: RetailViewModel) {
+    val d = mode.detail
+    val cart = viewModel.cart
+    var voiding by remember { mutableStateOf<com.goldsky.ssp.payment.DineRepository.Item?>(null) }
+    var editingNote by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = mode.onBack, contentPadding = PaddingValues(horizontal = 6.dp)) {
+            Icon(Icons.Default.ArrowBack, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(stringResource(com.goldsky.ssp.feature.retail.R.string.dine_back_to_floor))
+        }
+        Spacer(Modifier.weight(1f))
+        Text(
+            stringResource(com.goldsky.ssp.feature.retail.R.string.dine_table_header, d.table?.name ?: "?", d.check.guests, d.check.check_no),
+            color = OureaTextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp
+        )
+    }
+    Spacer(Modifier.height(6.dp))
+    LazyColumn(modifier = Modifier.weight(1f)) {
+        checkItemRows(d) { voiding = it }
+        if (cart.isNotEmpty()) {
+            item {
+                Text(stringResource(com.goldsky.ssp.feature.retail.R.string.dine_new_items), color = OureaGold, fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp, bottom = 2.dp))
+            }
+            itemsIndexed(cart, key = { _, item -> "new-" + item.id }) { index, item ->
+                CartRow(index + 1, item, onIncrement = { viewModel.addItem(item.product, item.selectedModifiers) }, onDecrement = { viewModel.removeItem(item.id) })
+            }
+        } else if (d.items.isEmpty()) {
+            item {
+                Text(stringResource(com.goldsky.ssp.feature.retail.R.string.dine_nothing_yet), color = OureaTextSecondary,
+                    modifier = Modifier.padding(vertical = 16.dp))
+            }
+        }
+    }
+    if (cart.isNotEmpty()) {
+        // A note for this round's kitchen ticket.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(10.dp))
+                .border(1.dp, OureaSurfaceVariant, RoundedCornerShape(10.dp)).clickable { editingNote = true }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Edit, null, tint = OureaTextSecondary, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(viewModel.orderNote.ifBlank { stringResource(com.goldsky.ssp.feature.retail.R.string.dine_round_note) },
+                color = if (viewModel.orderNote.isBlank()) OureaTextSecondary else OureaTextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+    Divider(color = OureaSurfaceVariant)
+    Spacer(Modifier.height(8.dp))
+    com.goldsky.ssp.feature.retail.dine.CheckTotals(d)
+    Spacer(Modifier.height(10.dp))
+    if (cart.isNotEmpty()) {
+        OureaGradientButton(
+            text = stringResource(com.goldsky.ssp.feature.retail.R.string.dine_send_kitchen, cart.sumOf { it.quantity }),
+            onClick = mode.onSend, enabled = !mode.busy,
+            icon = Icons.Default.Send,
+            modifier = Modifier.fillMaxWidth().height(52.dp)
+        )
+    } else if (d.items.isEmpty()) {
+        OutlinedButton(onClick = mode.onCancelTable, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+            Text(stringResource(com.goldsky.ssp.feature.retail.R.string.dine_cancel_table))
+        }
+    } else {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = mode.onBill, modifier = Modifier.weight(1f).height(52.dp)) {
+                Icon(Icons.Default.Receipt, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(com.goldsky.ssp.feature.retail.R.string.dine_print_bill))
+            }
+            OureaGradientButton(
+                text = stringResource(com.goldsky.ssp.feature.retail.R.string.dine_pay_check, "$" + "%.2f".format(d.balanceCents / 100.0)),
+                onClick = mode.onPay, enabled = d.balanceCents > 0,
+                modifier = Modifier.weight(1.4f).height(52.dp)
+            )
+        }
+    }
+    if (editingNote) OureaNoteDialog(initial = viewModel.orderNote, onDone = { viewModel.orderNote = it.trim(); editingNote = false })
+    voiding?.let { item ->
+        com.goldsky.ssp.feature.retail.ui.ManagerApprovalDialog(
+            action = stringResource(com.goldsky.ssp.feature.retail.R.string.dine_void_title, "${item.quantity} × ${item.displayName}"),
+            onApproved = { approver -> voiding = null; mode.onVoid(item, approver.name) },
+            onDismiss = { voiding = null }
+        )
     }
 }
