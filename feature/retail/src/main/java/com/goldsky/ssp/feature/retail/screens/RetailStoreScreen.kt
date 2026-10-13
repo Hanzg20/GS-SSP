@@ -29,6 +29,7 @@ private fun money(cents: Int) = "$%.2f".format(cents / 100.0)
  * come from GoldSkyTheme (it used to be two different layouts, and the dark
  * one had lost the scan-result banner).
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RetailStoreScreen(
     onCheckout: (Int) -> Unit = {},
@@ -43,6 +44,9 @@ fun RetailStoreScreen(
     val lastScan by viewModel.lastScan.collectAsState()
     val scheme = MaterialTheme.colorScheme
     val gs = GsTheme.colors
+    val quickService = com.goldsky.ssp.feature.retail.ui.isQuickService()
+    // A dish with options (spice, add-ons) asks for them before it goes in.
+    var optionsFor by remember { mutableStateOf<com.goldsky.ssp.model.Product?>(null) }
 
     // Show each scan's result for a few seconds; a new scan (new seq) restarts it.
     var visibleScan by remember { mutableStateOf<RetailViewModel.ScanFeedback?>(null) }
@@ -54,13 +58,28 @@ fun RetailStoreScreen(
         }
     }
 
+    // Category chips (attributes.category), as on Ourea: a menu or a store is too
+    // long to scroll on a handheld.
+    val categories = remember(catalog) { catalog.mapNotNull { it.category }.distinct().sorted() }
+    var category by remember { mutableStateOf<String?>(null) }
+    val shown = remember(catalog, category) { if (category == null) catalog else catalog.filter { it.category == category } }
+
     Column(modifier = Modifier.fillMaxSize()) {
+        if (categories.size > 1) {
+            androidx.compose.foundation.lazy.LazyRow(
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item { FilterChip(selected = category == null, onClick = { category = null }, label = { Text(stringResource(R.string.retail_all)) }) }
+                items(categories) { c -> FilterChip(selected = category == c, onClick = { category = c }, label = { Text(c) }) }
+            }
+        }
         LazyColumn(
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            items(catalog) { product ->
+            items(shown) { product ->
                 // Summed across modifier variants of the same product.
                 val qty = cart.filter { it.product.id == product.id }.sumOf { it.quantity }
                 Surface(
@@ -77,6 +96,11 @@ fun RetailStoreScreen(
                             Text(product.name, fontWeight = FontWeight.Bold, color = scheme.onSurface)
                             Text(money(product.price_cents), color = gs.emphasis, fontWeight = FontWeight.SemiBold,
                                 style = MaterialTheme.typography.bodyMedium)
+                            // What's been ordered of this dish, option by option.
+                            cart.filter { it.product.id == product.id && it.selectedModifiers.isNotEmpty() }.forEach { line ->
+                                Text("+ " + line.selectedModifiers.joinToString(", ") { it.name } + "  ×${line.quantity}",
+                                    color = scheme.primary, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                         if (qty > 0) {
                             IconButton(onClick = {
@@ -86,7 +110,7 @@ fun RetailStoreScreen(
                             }
                             Text("×$qty", fontWeight = FontWeight.Bold, color = scheme.primary)
                         }
-                        IconButton(onClick = { viewModel.addItem(product) }) {
+                        IconButton(onClick = { if (product.modifierGroups.isNotEmpty()) optionsFor = product else viewModel.addItem(product) }) {
                             Icon(Icons.Default.Add, contentDescription = stringResource(R.string.retail_add_one), tint = scheme.primary)
                         }
                     }
@@ -116,6 +140,12 @@ fun RetailStoreScreen(
             }
         }
 
+        if (quickService && cart.isNotEmpty()) {
+            Surface(color = scheme.surface) {
+                com.goldsky.ssp.feature.retail.ui.QuickServiceOrderBar(viewModel, Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
+            }
+        }
+
         Surface(color = scheme.surface, shadowElevation = 6.dp) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
@@ -135,5 +165,13 @@ fun RetailStoreScreen(
                 }
             }
         }
+    }
+
+    optionsFor?.let { product ->
+        com.goldsky.ssp.feature.retail.ui.ModifierSelectionSheet(
+            product = product,
+            onConfirm = { mods -> viewModel.addItem(product, mods); optionsFor = null },
+            onDismiss = { optionsFor = null }
+        )
     }
 }

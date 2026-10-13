@@ -125,6 +125,8 @@ class MainActivity : ComponentActivity() {
                 // Staged while the tip dialog is up; the real sale only fires
                 // once the customer picks (or skips) a tip.
                 var activeSaleData by remember { mutableStateOf<CheckoutSale?>(null) }
+                // Quick-service: the order (call number, dine-in/take-out, note) behind the sale being paid.
+                var orderTicket by remember { mutableStateOf<com.goldsky.ssp.model.KitchenTicket?>(null) }
                 var staff by remember { mutableStateOf(StaffRepository.current) }
                 fun lock() {
                     StaffRepository.signOut()
@@ -148,9 +150,11 @@ class MainActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
 
                 fun pay(sale: CheckoutSale, tip: Int) {
-                    triggerPaymentFlow(sale, tip) {
-                        paymentStatus = it
+                    val ticket = orderTicket
+                    triggerPaymentFlow(sale, tip, ticket) {
+                        paymentStatus = if (it is PaymentUiState.Success) it.copy(orderNumber = ticket?.number) else it
                         if (it is PaymentUiState.Success) {
+                            orderTicket = null
                             // A delivery collection leaves whatever is in the cart alone.
                             val orderId = sale.deliveryOrderId
                             if (orderId == null) retailViewModel.clearCart()
@@ -160,7 +164,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                fun checkout(sale: CheckoutSale) {
+                fun checkout(sale: CheckoutSale, ticket: com.goldsky.ssp.model.KitchenTicket? = null) {
+                    orderTicket = ticket
                     // No tip step unless the store asks for tips (off for retail).
                     if (DeviceRepository.isTipsEnabled()) activeSaleData = sale else pay(sale, 0)
                 }
@@ -210,6 +215,12 @@ class MainActivity : ComponentActivity() {
                                         deliveryOnly = signedIn.isDriver,
                                         onScan = { if (scanning.value) stopScanSession() else startScanSession(retailViewModel) },
                                         onCheckout = { checkout(it) },
+                                        // The cart (library tab): on a quick-service counter it's an order for the kitchen.
+                                        onCartCheckout = {
+                                            val ticket = if (com.goldsky.ssp.feature.retail.ui.isQuickService())
+                                                retailViewModel.kitchenTicket(this@MainActivity, signedIn.name) else null
+                                            checkout(retailViewModel.checkoutSale(), ticket)
+                                        },
                                         deliveryReload = deliveryReload,
                                         onCollectCard = { order -> withOpenOrder(order) { checkout(saleOf(order)) } },
                                         onCollectCash = { order ->
@@ -261,7 +272,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                                 // Managers only (the nav item is hidden for cashiers too).
-                                composable("settings") { if (signedIn.isManager) SettingsScreen() }
+                                composable("settings") { if (signedIn.isManager) SettingsScreen(showBusinessType = true) }
                             }
                         }
 
@@ -280,7 +291,7 @@ class MainActivity : ComponentActivity() {
 
                         when (val state = paymentStatus) {
                             is PaymentUiState.Processing -> PaymentProcessingDialog(state.message)
-                            is PaymentUiState.Success -> PaymentResultDialog(true, stringResource(R.string.iris_approved_code, state.authCode)) { paymentStatus = PaymentUiState.Idle }
+                            is PaymentUiState.Success -> PaymentResultDialog(true, stringResource(R.string.iris_approved_code, state.authCode), state.orderNumber) { paymentStatus = PaymentUiState.Idle }
                             is PaymentUiState.Done -> PaymentResultDialog(true, state.message) { paymentStatus = PaymentUiState.Idle }
                             is PaymentUiState.RefundNeedsCard -> com.goldsky.ssp.feature.retail.RefundNeedsCardDialog(
                                 amountCents = state.order.amountCents,
@@ -410,7 +421,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun triggerPaymentFlow(sale: CheckoutSale, tip: Int, onStateChange: (PaymentUiState) -> Unit) {
+    private fun triggerPaymentFlow(sale: CheckoutSale, tip: Int, ticket: com.goldsky.ssp.model.KitchenTicket?, onStateChange: (PaymentUiState) -> Unit) {
         val subtotal = sale.subtotalCents
         val tax = sale.taxCents
         val total = subtotal + tax + tip
@@ -428,7 +439,7 @@ class MainActivity : ComponentActivity() {
             payment_method = "CREDIT_CARD",
             staff_id = StaffRepository.current?.id,
             staff_name = StaffRepository.current?.name
-        )
+        ).withOrder(ticket)
 
         CoroutineScope(Dispatchers.IO).launch {
             TransactionRepository.recordTransaction(this@MainActivity, record)
@@ -456,19 +467,16 @@ class MainActivity : ComponentActivity() {
                         authCode = authCode
                     )
                     sale.deliveryOrderId?.let { DeliveryOrderRepository.markPaid(this@MainActivity, it, ref, "CARD") }
-                    ReceiptPrinterManager.printReceipt(
-                        this@MainActivity,
-                        ReceiptPrinterManager.ReceiptData(
-                            subtotalCents = subtotal,
-                            taxCents = tax,
-                            tipCents = tip,
-                            amountCents = total,
-                            refNum = ref,
-                            deviceSn = sn,
-                            lines = sale.lines
-                        ),
-                        vendor = DeviceRepository.getPersistedHardwareVendor()
-                    )
+                    // Quick-service: the kitchen ticket first, then the receipt with the call number.
+                    ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
+                        subtotalCents = subtotal,
+                        taxCents = tax,
+                        tipCents = tip,
+                        amountCents = total,
+                        refNum = ref,
+                        deviceSn = sn,
+                        lines = sale.lines
+                    ), DeviceRepository.getPersistedHardwareVendor())
                 }
                 onStateChange(PaymentUiState.Success(authCode))
             }
@@ -493,7 +501,7 @@ class MainActivity : ComponentActivity() {
  * collects the sale -- restored from the old retail flavor's CheckoutScreen
  * (a container, not a screen of its own; unrelated to the standalone
  * feature.retail.screens.CheckoutScreen file, which nothing currently
- * navigates to). Without this, DineInScreen/DeliveryScreen/ManualAmountScreen
+ * navigates to). Without this, DeliveryScreen/ManualAmountScreen
  * were fully-written but unreachable -- RetailStoreScreen was the only thing
  * ever wired to the "checkout" route.
  */
@@ -505,6 +513,7 @@ fun CheckoutContainer(
     // Drivers: the DELIVERY tab only -- no keypad (arbitrary amounts) or library.
     deliveryOnly: Boolean,
     onCheckout: (CheckoutSale) -> Unit,
+    onCartCheckout: () -> Unit,
     deliveryReload: Int,
     onCollectCard: (DeliveryOrder) -> Unit,
     onCollectCash: (DeliveryOrder) -> Unit
@@ -516,7 +525,6 @@ fun CheckoutContainer(
     }
     var selectedTab by remember { mutableStateOf(if (deliveryOnly) 2 else 0) }
     if (deliveryOnly && selectedTab != 2) selectedTab = 2
-    val retailMode = remember { DeviceRepository.getPersistedRetailMode() }
 
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -548,15 +556,15 @@ fun CheckoutContainer(
                     if (cents > 0) atDeviceRate("Keypad amount", cents)
                 })
             } else {
-                when (retailMode) {
-                    com.goldsky.ssp.model.RetailMode.RESTAURANT -> DineInScreen(onTableSelected = { atDeviceRate("Table", 5000) })
-                    else -> RetailStoreScreen(
-                        onCheckout = { onCheckout(retailViewModel.checkoutSale()) },
-                        viewModel = retailViewModel,
-                        onScan = onScan,
-                        isScanning = isScanning
-                    )
-                }
+                // Restaurants use the same list (Settings > Business type = quick-service adds
+                // dish options, dine-in/take-out, note and the kitchen ticket). The old
+                // RESTAURANT mode here was a fixed $50.00 "table" with nothing behind it.
+                RetailStoreScreen(
+                    onCheckout = { onCartCheckout() },
+                    viewModel = retailViewModel,
+                    onScan = onScan,
+                    isScanning = isScanning
+                )
             }
         }
     }
@@ -704,7 +712,7 @@ private fun RefundFlow.RefundState.toUi(): PaymentUiState = when (this) {
 
 sealed class PaymentUiState {
     object Idle : PaymentUiState()
-    data class Success(val authCode: String) : PaymentUiState()
+    data class Success(val authCode: String, val orderNumber: Int? = null) : PaymentUiState()
     data class Error(val message: String) : PaymentUiState()
     data class Processing(val message: String) : PaymentUiState()
     // A non-sale outcome to confirm (e.g. a refund), shown as-is.
@@ -737,11 +745,17 @@ fun PaymentProcessingDialog(message: String) {
 }
 
 @Composable
-fun PaymentResultDialog(isSuccess: Boolean, message: String, onDismiss: () -> Unit) {
+fun PaymentResultDialog(isSuccess: Boolean, message: String, orderNumber: Int? = null, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(if (isSuccess) R.string.iris_payment_success else R.string.iris_payment_failed)) },
-        text = { Text(message) },
+        text = {
+            Column {
+                // Quick-service: the call number to tell the customer.
+                orderNumber?.let { com.goldsky.ssp.feature.retail.ui.OrderNumberBlock(it); Spacer(Modifier.height(8.dp)) }
+                Text(message)
+            }
+        },
         confirmButton = {
             Button(
                 onClick = onDismiss,

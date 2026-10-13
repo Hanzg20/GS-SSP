@@ -20,7 +20,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.goldsky.ssp.model.RetailMode
 import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.payment.NuveiOnboardingRepository
 import com.goldsky.ssp.feature.retail.RetailRepository
@@ -32,7 +31,6 @@ fun SettingsScreen(showBusinessType: Boolean = false) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    var selectedMode by remember { mutableStateOf(DeviceRepository.getPersistedRetailMode()) }
     var storeName by remember { mutableStateOf(DeviceRepository.getStoreName()) }
     var storeAddr by remember { mutableStateOf(DeviceRepository.getStoreAddress()) }
     var storePhone by remember { mutableStateOf(DeviceRepository.getStorePhone()) }
@@ -219,16 +217,9 @@ fun SettingsScreen(showBusinessType: Boolean = false) {
                 Text(stringResource(R.string.retail_force_sync_catalog))
             }
             
-            RetailMode.values().forEach { mode ->
-                ModeSelectionItem(
-                    title = mode.name,
-                    selected = selectedMode == mode,
-                    onClick = {
-                        selectedMode = mode
-                        DeviceRepository.persistRetailMode(mode)
-                    }
-                )
-            }
+            // (The old mode list -- QUICK_PAY, AI_INSIGHTS, RECORDS... RESTAURANT -- mixed
+            // page names with business types and only ever switched the library tab to a
+            // fixed $50 "table". Business type at the top replaces it.)
 
             // Interface language (UiLanguage). Applying it recreates the activity;
             // Arabic / Persian also mirror the layout once their translations ship.

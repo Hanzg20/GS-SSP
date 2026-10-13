@@ -53,6 +53,10 @@ data class TransactionRecord(
     val order_note: String? = null
 )
 
+/** A quick-service order's call number, type and note on the transaction row. */
+fun TransactionRecord.withOrder(t: com.goldsky.ssp.model.KitchenTicket?): TransactionRecord =
+    if (t == null) this else copy(order_number = t.number, order_type = t.orderType, order_note = t.note.trim().ifBlank { null })
+
 /** One row of transaction_items (docs/migrations/2026-10-10_transaction_items.sql). */
 @Serializable
 data class TransactionItem(

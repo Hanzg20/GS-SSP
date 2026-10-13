@@ -139,4 +139,23 @@
     <string name="retail_business_retail_desc">Scan and sell, no kitchen</string>
     <string name="retail_business_qsr">Quick-service restaurant</string>
     <string name="retail_business_qsr_desc">Dine-in or take-out, order note, call number, kitchen ticket</string>
+    <string name="retail_dine_in">Dine-in</string>
+    <string name="retail_takeout">Take-out</string>
+    <string name="retail_order_note">Order note</string>
+    <string name="retail_add_note">Add note</string>
+    <string name="retail_note_hint">e.g. no green onion, less spicy</string>
+    <string name="retail_done">Done</string>
+    <string name="retail_clear">Clear</string>
+    <string name="retail_order_number">Order number</string>
+    <string-array name="retail_quick_notes">
+        <item>Less spicy</item>
+        <item>Not spicy</item>
+        <item>No green onion</item>
+        <item>No cilantro</item>
+        <item>Less ice</item>
+        <item>No ice</item>
+        <item>Less sugar</item>
+        <item>Pack to go</item>
+    </string-array>
+    <string name="retail_all">All</string>
 </resources>

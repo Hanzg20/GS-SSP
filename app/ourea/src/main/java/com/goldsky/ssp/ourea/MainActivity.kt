@@ -347,7 +347,7 @@ class MainActivity : ComponentActivity() {
                         cardAid = c?.aid, cardBin = c?.bin, cardBrand = c?.brand,
                         authCode = authCode
                     )
-                    printOrder(ticket, ReceiptPrinterManager.ReceiptData(
+                    ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                         subtotalCents = subtotal,
                         taxCents = tax,
                         tipCents = tip,
@@ -355,7 +355,7 @@ class MainActivity : ComponentActivity() {
                         refNum = ref,
                         deviceSn = sn,
                         lines = lines
-                    ))
+                    ), DeviceRepository.getPersistedHardwareVendor())
                 }
                 onStateChange(OureaPaymentUiState.Success(getString(R.string.ourea_approved_code, authCode)))
             }
@@ -371,25 +371,6 @@ class MainActivity : ComponentActivity() {
                 onStateChange(OureaPaymentUiState.Processing(message))
             }
         })
-    }
-
-    /** The quick-service order's call number, type and note on the transaction row. */
-    private fun TransactionRecord.withOrder(t: com.goldsky.ssp.model.KitchenTicket?) =
-        if (t == null) this else copy(order_number = t.number, order_type = t.orderType, order_note = t.note.trim().ifBlank { null })
-
-    /**
-     * After a paid sale: on a quick-service counter the kitchen ticket first,
-     * then the customer's receipt with the call number on top and the note.
-     */
-    private fun printOrder(t: com.goldsky.ssp.model.KitchenTicket?, receipt: ReceiptPrinterManager.ReceiptData) {
-        val vendor = DeviceRepository.getPersistedHardwareVendor()
-        if (t != null) ReceiptPrinterManager.printKitchenTicket(this, t, vendor)
-        ReceiptPrinterManager.printReceipt(
-            this,
-            if (t == null) receipt
-            else receipt.copy(banner = ReceiptPrinterManager.orderBanner(t), footer = receipt.footer + ReceiptPrinterManager.orderFooter(t)),
-            vendor
-        )
     }
 
     /**
@@ -428,7 +409,7 @@ class MainActivity : ComponentActivity() {
                 ).withOrder(ticket)
             )
             TransactionRepository.recordItems(this@MainActivity, ref, sn, lines)
-            printOrder(ticket, ReceiptPrinterManager.ReceiptData(
+            ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                 subtotalCents = subtotal,
                 taxCents = tax,
                 tipCents = tip,
@@ -436,7 +417,7 @@ class MainActivity : ComponentActivity() {
                 refNum = ref,
                 deviceSn = sn,
                 lines = lines
-            ))
+            ), DeviceRepository.getPersistedHardwareVendor())
         }
     }
 
@@ -506,7 +487,7 @@ class MainActivity : ComponentActivity() {
             if (paid) {
                 TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "PAID")
                 withContext(Dispatchers.Main) { onSettled(OureaPaymentUiState.Success("QR payment received")) }
-                printOrder(ticket, ReceiptPrinterManager.ReceiptData(
+                ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                     subtotalCents = subtotal,
                     taxCents = tax,
                     tipCents = tip,
@@ -514,7 +495,7 @@ class MainActivity : ComponentActivity() {
                     refNum = txId,
                     deviceSn = sn,
                     lines = lines
-                ))
+                ), DeviceRepository.getPersistedHardwareVendor())
             } else {
                 TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "CANCELLED")
                 withContext(Dispatchers.Main) { onSettled(OureaPaymentUiState.Error("QR payment was not completed in time")) }
@@ -594,14 +575,14 @@ class MainActivity : ComponentActivity() {
                     )
                     val discountMsg = if (finalTotal < total) getString(R.string.ourea_discount_applied, card.tier) else ""
                     withContext(Dispatchers.Main) { onStateChange(OureaPaymentUiState.Success("Member payment approved$discountMsg")) }
-                    printOrder(ticket, ReceiptPrinterManager.ReceiptData(
+                    ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                         subtotalCents = discSubtotal,
                         taxCents = discTax,
                         tipCents = discTip,
                         amountCents = finalTotal,
                         refNum = ref,
                         deviceSn = sn
-                    ))
+                    ), DeviceRepository.getPersistedHardwareVendor())
                 }
                 is VipDeductResult.Rejected -> {
                     val message = when (result.reason) {

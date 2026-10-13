@@ -97,6 +97,21 @@ object ReceiptPrinterManager {
         return out
     }
 
+    /**
+     * After a paid sale: on a quick-service counter ([ticket] set) the kitchen
+     * ticket first, then the customer's receipt with the call number on top
+     * and the note at the bottom; otherwise just the receipt.
+     */
+    fun printOrder(context: Context, ticket: com.goldsky.ssp.model.KitchenTicket?, receipt: ReceiptData, vendor: String) {
+        if (ticket != null) printKitchenTicket(context, ticket, vendor)
+        printReceipt(
+            context,
+            if (ticket == null) receipt
+            else receipt.copy(banner = orderBanner(ticket), footer = receipt.footer + orderFooter(ticket)),
+            vendor
+        )
+    }
+
     /** The order number, type and note at the top/bottom of the customer's receipt. */
     fun orderBanner(t: com.goldsky.ssp.model.KitchenTicket): String =
         "ORDER #%03d  %s".format(t.number, if (t.takeout) "TAKE-OUT 外带" else "DINE-IN 堂食")

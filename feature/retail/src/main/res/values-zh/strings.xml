@@ -139,4 +139,23 @@
     <string name="retail_business_retail_desc">扫码销售，不出厨房单</string>
     <string name="retail_business_qsr">快餐 / 外带</string>
     <string name="retail_business_qsr_desc">堂食或外带、订单备注、取餐号、厨房单</string>
+    <string name="retail_dine_in">堂食</string>
+    <string name="retail_takeout">外带</string>
+    <string name="retail_order_note">订单备注</string>
+    <string name="retail_add_note">加备注</string>
+    <string name="retail_note_hint">例如：走葱、少辣</string>
+    <string name="retail_done">完成</string>
+    <string name="retail_clear">清除</string>
+    <string name="retail_order_number">取餐号</string>
+    <string-array name="retail_quick_notes">
+        <item>少辣</item>
+        <item>不要辣</item>
+        <item>走葱</item>
+        <item>不要香菜</item>
+        <item>少冰</item>
+        <item>去冰</item>
+        <item>少糖</item>
+        <item>打包</item>
+    </string-array>
+    <string name="retail_all">全部</string>
 </resources>
