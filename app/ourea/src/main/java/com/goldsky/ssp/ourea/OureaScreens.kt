@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -205,9 +206,9 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
             }
             Spacer(modifier = Modifier.height(12.dp))
             LazyColumn(modifier = Modifier.weight(1f)) {
-                items(cart) { item ->
+                itemsIndexed(cart, key = { _, item -> item.id }) { index, item ->
                     CartRow(
-                        item,
+                        index + 1, item,
                         onIncrement = { viewModel.addItem(item.product, item.selectedModifiers) },
                         onDecrement = { viewModel.removeItem(item.id) }
                     )
@@ -441,12 +442,15 @@ private fun OureaCategoryRailItem(label: String, isSelected: Boolean, onClick: (
  * the old single X button did, just also exposed as an explicit "+" now.
  */
 @Composable
-private fun CartRow(item: CartItem, onIncrement: () -> Unit, onDecrement: () -> Unit) {
+private fun CartRow(number: Int, item: CartItem, onIncrement: () -> Unit, onDecrement: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Line number, so the cashier and customer can point at "line 3".
+        Text("$number", color = OureaTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.width(24.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(item.product.name, color = OureaTextPrimary, fontWeight = FontWeight.Medium)
             Text("$${"%.2f".format(item.unitPriceCents / 100.0)} each", color = OureaTextSecondary, fontSize = 12.sp)

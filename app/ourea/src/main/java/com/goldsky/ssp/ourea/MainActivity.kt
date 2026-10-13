@@ -122,7 +122,8 @@ class MainActivity : ComponentActivity() {
 
                     // Sync Customer Facing Display (CFD) on Q3mini as cart items change
                     val cartList = retailViewModel.cart
-                    LaunchedEffect(cartList.size, cartList.sumOf { it.quantity }) {
+                    // Keyed on every line and quantity: size + total qty missed changes that kept both.
+                    LaunchedEffect(cartList.map { Triple(it.id, it.quantity, it.unitPriceCents) }) {
                         if (cartList.isEmpty()) {
                             paymentProvider.showIdleScreen()
                         } else {

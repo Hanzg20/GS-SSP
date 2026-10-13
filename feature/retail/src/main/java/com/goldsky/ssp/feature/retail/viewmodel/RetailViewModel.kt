@@ -153,9 +153,10 @@ class RetailViewModel : ViewModel() {
     fun addItem(product: Product, modifiers: List<ProductModifier> = emptyList()) {
         val existing = _cart.find { it.product.id == product.id && it.selectedModifiers == modifiers }
         if (existing != null) {
-            existing.quantity++
-            val index = _cart.indexOf(existing)
-            _cart[index] = existing.copy(quantity = existing.quantity)
+            // A new item, never the old one changed in place: an in-place ++ made
+            // old == new, so the change could be missed by what watches the cart
+            // (the row, the Ourea Eye sync).
+            _cart[_cart.indexOf(existing)] = existing.copy(quantity = existing.quantity + 1)
         } else {
             _cart.add(CartItem(product = product, selectedModifiers = modifiers))
         }

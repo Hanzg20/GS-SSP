@@ -383,14 +383,29 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         }
     }
 
+    /**
+     * Ourea Eye commands, sent one at a time in the order issued. Each used to
+     * get its own coroutine and socket, so quick taps on "+" could land out of
+     * order and the display stuck on an older quantity.
+     */
+    private val eyeQueue = kotlinx.coroutines.channels.Channel<suspend () -> Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED).also { q ->
+        CoroutineScope(Dispatchers.IO).launch { for (send in q) runCatching { send() } }
+    }
+
+    private fun toEye(send: suspend () -> Unit) { eyeQueue.trySend(send) }
+
+    // The Eye takes about a second per command: with quick scans only the newest
+    // cart still waiting is sent, older ones are skipped (idle/thank-you never are).
+    private val cartVersion = java.util.concurrent.atomic.AtomicLong()
+
     override fun showIdleScreen() {
-        CoroutineScope(Dispatchers.IO).launch {
-            WizarPosSocketClient.sendDisplayIdle()
-        }
+        toEye { WizarPosSocketClient.sendDisplayIdle() }
     }
 
     override fun updateLiveCart(items: List<IPaymentProvider.CfdItem>, subtotalCents: Int, taxCents: Int) {
-        CoroutineScope(Dispatchers.IO).launch {
+        val version = cartVersion.incrementAndGet()
+        toEye {
+            if (version != cartVersion.get()) return@toEye // a newer cart is queued
             val totalCents = subtotalCents + taxCents
             val itemsJsonList = items.map { item ->
                 kotlinx.serialization.json.JsonObject(
@@ -416,13 +431,13 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
     }
 
     override fun showThankYouScreen() {
-        CoroutineScope(Dispatchers.IO).launch {
+        toEye {
             WizarPosSocketClient.sendDisplayThankYou()
         }
     }
 
     override fun showEyeRotation(degrees: Int) {
-        CoroutineScope(Dispatchers.IO).launch {
+        toEye {
             val payload = """{"TransType":"DisplayRotate","Rotation":$degrees,"CallerName":"GS-SSP"}"""
             WizarPosSocketClient.sendEyeRequest(payload)
         }
