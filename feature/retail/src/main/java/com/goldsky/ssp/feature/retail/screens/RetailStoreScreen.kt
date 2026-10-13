@@ -157,7 +157,7 @@ fun RetailStoreScreen(
                         else Icon(Icons.Default.QrCodeScanner, contentDescription = stringResource(R.string.retail_scan), tint = scheme.primary)
                     }
                 }
-                Text("Total: ${money(total)}", color = scheme.onSurface, fontWeight = FontWeight.Bold,
+                Text(stringResource(R.string.retail_total) + ": " + money(total), color = scheme.onSurface, fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
                 Spacer(modifier = Modifier.weight(1f))
                 Button(onClick = { if (total > 0) onCheckout(total) }, enabled = total > 0, shape = RoundedCornerShape(12.dp)) {
