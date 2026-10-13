@@ -54,6 +54,12 @@ app/ourea      -- Desktop POS, first real build 2026-08-27 (see `docs/system_arc
                   order note, daily call number (`OrderNumbers`), kitchen ticket (`ReceiptPrinterManager.printKitchenTicket`)
                   and `transactions.order_number/order_type/order_note`. Dish options are `products.attributes.modifier_groups`
                   (no CMP editor; format in `docs/migrations/2026-10-13_quick_service_orders.sql`).
+                  Dine-in (Business type = DINE_IN, 2026-10-13): floor / checks / rounds / split payments in
+                  `dining_tables`, `dine_checks`, `dine_check_items`, `dine_check_payments` (all writes via `dine_*` SECURITY
+                  DEFINER RPCs, `docs/migrations/2026-10-13_dine_in*.sql`); `DineRepository` (core/data), `DineViewModel` +
+                  shared screens in `feature/retail/.../dine/`. Tables are managed in Ourea Settings. The round being taken is
+                  a SEPARATE RetailViewModel (`viewModel(key = "dine-round")`), never the counter cart. Kitchen tickets go to the
+                  network printer in Settings (`NetworkKitchenPrinter`, ESC/POS 9100, GBK), falling back to the terminal's own.
 app/aegis-wash, app/aegis-vend, app/aegis-ev
                -- the Aegis series (see taxonomy below): `com.goldsky.ssp.aegis.wash` (car wash, feature:wash),
                   `com.goldsky.ssp.aegis.vend` (self-service vending, feature:vending), `com.goldsky.ssp.aegis.ev`

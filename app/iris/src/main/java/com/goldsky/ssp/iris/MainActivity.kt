@@ -121,6 +121,12 @@ class MainActivity : ComponentActivity() {
                 val retailViewModel: RetailViewModel = viewModel()
                 // The cart in progress comes back after a restart.
                 LaunchedEffect(Unit) { retailViewModel.restoreCart(this@MainActivity) }
+                // Dine-in: the floor / open check, and the round being taken in its own cart.
+                val dine: com.goldsky.ssp.feature.retail.dine.DineViewModel = viewModel()
+                val roundViewModel: RetailViewModel = viewModel(key = "dine-round")
+                // A payment on a table's check, between the split dialog and the money.
+                var checkPay by remember { mutableStateOf<com.goldsky.ssp.feature.retail.dine.CheckPay?>(null) }
+                var choosingCheckPay by remember { mutableStateOf(false) }
                 var paymentStatus by remember { mutableStateOf<PaymentUiState>(PaymentUiState.Idle) }
                 // Staged while the tip dialog is up; the real sale only fires
                 // once the customer picks (or skips) a tip.
@@ -151,9 +157,19 @@ class MainActivity : ComponentActivity() {
 
                 fun pay(sale: CheckoutSale, tip: Int) {
                     val ticket = orderTicket
-                    triggerPaymentFlow(sale, tip, ticket) {
+                    val forCheck = checkPay
+                    val extras = forCheck?.let { cp ->
+                        PayExtras(
+                            banner = "TABLE ${cp.tableName}  #${cp.checkNo}" + (if (cp.label.isNotEmpty()) "  ${cp.label}" else ""),
+                            onPaid = { ref, method, t -> dine.paymentDone(this@MainActivity, cp, ref, t, method, signedInName()) }
+                        )
+                    }
+                    triggerPaymentFlow(sale, tip, ticket, extras) {
                         paymentStatus = if (it is PaymentUiState.Success) it.copy(orderNumber = ticket?.number) else it
-                        if (it is PaymentUiState.Success) {
+                        if (it is PaymentUiState.Success && forCheck != null) {
+                            checkPay = null
+                            FeedbackManager.success(this@MainActivity)
+                        } else if (it is PaymentUiState.Success) {
                             orderTicket = null
                             // A delivery collection leaves whatever is in the cart alone.
                             val orderId = sale.deliveryOrderId
@@ -223,6 +239,11 @@ class MainActivity : ComponentActivity() {
                                         },
                                         deliveryReload = deliveryReload,
                                         onCollectCard = { order -> withOpenOrder(order) { checkout(saleOf(order)) } },
+                                        dine = dine,
+                                        roundViewModel = roundViewModel,
+                                        staffId = signedIn.id,
+                                        staffName = signedIn.name,
+                                        onCheckPay = { choosingCheckPay = true },
                                         onCollectCash = { order ->
                                             withOpenOrder(order) {
                                                 DeliveryOrderRepository.markCollectedLocally(order.id)
@@ -286,6 +307,26 @@ class MainActivity : ComponentActivity() {
                                     pay(sale, tip)
                                 },
                                 onDismiss = { activeSaleData = null }
+                            )
+                        }
+
+                        val payingCheck = dine.check
+                        if (choosingCheckPay && payingCheck != null) {
+                            com.goldsky.ssp.feature.retail.dine.CheckPayDialog(
+                                detail = payingCheck,
+                                onPay = { cp ->
+                                    choosingCheckPay = false
+                                    checkPay = cp
+                                    checkout(CheckoutSale(cp.amountCents - cp.taxCents, cp.taxCents, cp.lines))
+                                },
+                                onDismiss = { choosingCheckPay = false }
+                            )
+                        }
+                        dine.message?.let { code ->
+                            AlertDialog(
+                                onDismissRequest = { dine.clearMessage() },
+                                text = { Text(com.goldsky.ssp.feature.retail.dine.dineMessage(code)) },
+                                confirmButton = { Button(onClick = { dine.clearMessage() }) { Text(stringResource(R.string.iris_ok)) } }
                             )
                         }
 
@@ -421,7 +462,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun triggerPaymentFlow(sale: CheckoutSale, tip: Int, ticket: com.goldsky.ssp.model.KitchenTicket?, onStateChange: (PaymentUiState) -> Unit) {
+    private fun triggerPaymentFlow(sale: CheckoutSale, tip: Int, ticket: com.goldsky.ssp.model.KitchenTicket?, extras: PayExtras?, onStateChange: (PaymentUiState) -> Unit) {
         val subtotal = sale.subtotalCents
         val tax = sale.taxCents
         val total = subtotal + tax + tip
@@ -467,6 +508,7 @@ class MainActivity : ComponentActivity() {
                         authCode = authCode
                     )
                     sale.deliveryOrderId?.let { DeliveryOrderRepository.markPaid(this@MainActivity, it, ref, "CARD") }
+                    extras?.onPaid?.invoke(ref, "CARD", tip)
                     // Quick-service: the kitchen ticket first, then the receipt with the call number.
                     ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                         subtotalCents = subtotal,
@@ -475,7 +517,8 @@ class MainActivity : ComponentActivity() {
                         amountCents = total,
                         refNum = ref,
                         deviceSn = sn,
-                        lines = sale.lines
+                        lines = sale.lines,
+                        banner = extras?.banner
                     ), DeviceRepository.getPersistedHardwareVendor())
                 }
                 onStateChange(PaymentUiState.Success(authCode))
@@ -515,6 +558,11 @@ fun CheckoutContainer(
     onCheckout: (CheckoutSale) -> Unit,
     onCartCheckout: () -> Unit,
     deliveryReload: Int,
+    dine: com.goldsky.ssp.feature.retail.dine.DineViewModel,
+    roundViewModel: RetailViewModel,
+    staffId: String?,
+    staffName: String?,
+    onCheckPay: () -> Unit,
     onCollectCard: (DeliveryOrder) -> Unit,
     onCollectCash: (DeliveryOrder) -> Unit
 ) {
@@ -523,16 +571,23 @@ fun CheckoutContainer(
         val bps = SalesTax.deviceRateBps()
         onCheckout(CheckoutSale(cents, SalesTax.cents(cents, bps), listOf(SaleLine(name, 1, cents, bps))))
     }
-    var selectedTab by remember { mutableStateOf(if (deliveryOnly) 2 else 0) }
+    // Dine-in: a Tables tab (3), first and selected.
+    val dineIn = !deliveryOnly && com.goldsky.ssp.feature.retail.ui.isDineIn()
+    var selectedTab by remember { mutableStateOf(if (deliveryOnly) 2 else if (dineIn) 3 else 0) }
     if (deliveryOnly && selectedTab != 2) selectedTab = 2
 
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (!deliveryOnly) TabRow(
-            selectedTabIndex = selectedTab,
+            // Row positions: Tables (if any) comes first, ahead of keypad / library / delivery.
+            selectedTabIndex = if (dineIn) (if (selectedTab == 3) 0 else selectedTab + 1) else selectedTab,
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary
         ) {
+            if (dineIn) Tab(
+                selected = selectedTab == 3, onClick = { selectedTab = 3 },
+                text = { Text(stringResource(com.goldsky.ssp.feature.retail.R.string.dine_tables), fontWeight = FontWeight.Bold, color = if (selectedTab == 3) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+            )
             Tab(
                 selected = selectedTab == 0, onClick = { selectedTab = 0 },
                 text = { Text(stringResource(R.string.iris_keypad), fontWeight = FontWeight.Bold, color = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -548,7 +603,10 @@ fun CheckoutContainer(
         }
 
         Box(modifier = Modifier.weight(1f)) {
-            if (selectedTab == 2) {
+            if (selectedTab == 3) {
+                if (dine.check == null) com.goldsky.ssp.feature.retail.dine.DineFloor(dine, staffId, staffName, minCell = 100.dp)
+                else com.goldsky.ssp.feature.retail.dine.HandheldCheck(dine, roundViewModel, staffName, onPay = onCheckPay, onScan = onScan, isScanning = isScanning)
+            } else if (selectedTab == 2) {
                 DeliveryScreen(reloadKey = deliveryReload, onCollectCard = onCollectCard, onCollectCash = onCollectCash)
             } else if (selectedTab == 0) {
                 ManualAmountScreen(onInitiatePayment = { amountStr ->
@@ -709,6 +767,11 @@ private fun RefundFlow.RefundState.toUi(): PaymentUiState = when (this) {
     is RefundFlow.RefundState.Failed -> PaymentUiState.Error(message)
     is RefundFlow.RefundState.NeedsCard -> PaymentUiState.RefundNeedsCard(order, approver)
 }
+
+/** What a payment on a table's check adds: the receipt banner, and recording it on the check. */
+class PayExtras(val banner: String?, val onPaid: suspend (ref: String, method: String, tip: Int) -> Unit)
+
+private fun signedInName(): String? = StaffRepository.current?.name
 
 sealed class PaymentUiState {
     object Idle : PaymentUiState()

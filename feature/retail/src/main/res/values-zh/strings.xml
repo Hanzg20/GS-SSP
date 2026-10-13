@@ -229,4 +229,13 @@
     <string name="dine_void_desc">这道菜已送厨房，作废需要经理 PIN 批准。</string>
     <string name="dine_round_note">给厨房的备注</string>
     <string name="dine_check_closed">%1$s 桌已结清，已空出</string>
+    <string name="dine_tab_ordered">已点 · %1$s</string>
+    <string name="dine_tab_order">点菜</string>
+    <string name="dine_tab_order_n">点菜（+%1$d）</string>
+    <string name="dine_nothing_yet_handheld">还没点菜：点“点菜”开始。</string>
+    <string name="dine_round_not_sent_title">还有 %1$d 道菜没送厨房</string>
+    <string name="dine_round_not_sent_desc">离开这张桌之前，要现在送厨房，还是丢掉？</string>
+    <string name="dine_round_send">送厨房</string>
+    <string name="dine_round_discard">丢掉</string>
+    <string name="dine_round_stay">留下</string>
 </resources>

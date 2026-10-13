@@ -229,4 +229,13 @@
     <string name="dine_void_desc">Already sent to the kitchen. A manager\'s PIN approves the void.</string>
     <string name="dine_round_note">Note for the kitchen</string>
     <string name="dine_check_closed">Table %1$s is paid and free again</string>
+    <string name="dine_tab_ordered">Ordered · %1$s</string>
+    <string name="dine_tab_order">Order</string>
+    <string name="dine_tab_order_n">Order (+%1$d)</string>
+    <string name="dine_nothing_yet_handheld">Nothing ordered yet: tap Order.</string>
+    <string name="dine_round_not_sent_title">%1$d items not sent to the kitchen</string>
+    <string name="dine_round_not_sent_desc">Send them now, or discard them before leaving this table?</string>
+    <string name="dine_round_send">Send to kitchen</string>
+    <string name="dine_round_discard">Discard</string>
+    <string name="dine_round_stay">Stay</string>
 </resources>

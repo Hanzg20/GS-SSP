@@ -36,7 +36,11 @@ fun RetailStoreScreen(
     viewModel: RetailViewModel = viewModel(),
     // Starts a scan run, or stops it while [isScanning]. Null hides the button.
     onScan: (() -> Unit)? = null,
-    isScanning: Boolean = false
+    isScanning: Boolean = false,
+    // Dine-in round: "Send to kitchen (n)" instead of Checkout, and its own bar
+    // (the round's note) instead of the counter's dine-in / take-out bar.
+    checkoutLabel: String? = null,
+    bottomBar: (@Composable () -> Unit)? = null
 ) {
     val catalog by RetailRepository.catalog.collectAsState()
     val cart = viewModel.cart
@@ -140,7 +144,9 @@ fun RetailStoreScreen(
             }
         }
 
-        if (quickService && cart.isNotEmpty()) {
+        if (bottomBar != null) {
+            if (cart.isNotEmpty()) Surface(color = scheme.surface) { Box(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) { bottomBar() } }
+        } else if (quickService && cart.isNotEmpty()) {
             Surface(color = scheme.surface) {
                 com.goldsky.ssp.feature.retail.ui.QuickServiceOrderBar(viewModel, Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
             }
@@ -161,7 +167,7 @@ fun RetailStoreScreen(
                     style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
                 Spacer(modifier = Modifier.weight(1f))
                 Button(onClick = { if (total > 0) onCheckout(total) }, enabled = total > 0, shape = RoundedCornerShape(12.dp)) {
-                    Text(stringResource(R.string.retail_checkout), fontWeight = FontWeight.Black)
+                    Text(checkoutLabel ?: stringResource(R.string.retail_checkout), fontWeight = FontWeight.Black)
                 }
             }
         }
