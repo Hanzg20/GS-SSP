@@ -30,6 +30,7 @@ import com.goldsky.ssp.ourea.eye.CfdDisplayState
 import com.goldsky.ssp.ourea.eye.CfdItemData
 import com.goldsky.ssp.payment.AdManager
 import com.goldsky.ssp.ui.FillVideoView
+import com.goldsky.ssp.ui.SignboardView
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -59,7 +60,8 @@ fun OureaEyeScreen(state: CfdDisplayState, rotationDegrees: Int = 0, paidCents: 
 private sealed class EyeAd {
     data class Video(val file: File) : EyeAd()
     data class Image(val file: File) : EyeAd()
-    data class Text(val text: String) : EyeAd()
+    /** TEXT = store announcement, TEXT_AD = text ad: drawn as Aegis draws them (SignboardView). */
+    data class Text(val text: String, val billboard: Boolean) : EyeAd()
 }
 
 private const val STILL_MS = 8_000L // images and text announcements
@@ -81,7 +83,7 @@ fun IdleScreen() {
         playlist.sortedBy { it.entry.play_order }.mapNotNull { ad ->
             val media = ad.media
             when (media.media_type) {
-                "TEXT", "TEXT_AD" -> media.text_content?.takeIf { it.isNotBlank() }?.let { EyeAd.Text(it) }
+                "TEXT", "TEXT_AD" -> media.text_content?.takeIf { it.isNotBlank() }?.let { EyeAd.Text(it, billboard = media.media_type == "TEXT_AD") }
                 else -> adsDir.listFiles { f -> f.name.startsWith(media.id + ".") && !f.name.endsWith(".part") }?.firstOrNull()?.let { f ->
                     if (media.media_type == "VIDEO") EyeAd.Video(f) else EyeAd.Image(f)
                 }
@@ -129,10 +131,16 @@ fun IdleScreen() {
         }
         is EyeAd.Text -> key(step) {
             LaunchedEffect(Unit) { delay(STILL_MS); next() }
-            Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    ad.text, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary, textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            // Same as the Aegis ad screen: a pinned notice board (announcement) or a
+            // backlit marquee billboard (text ad), square, 24dp in from the edges.
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
+                AndroidView(
+                    factory = { ctx -> SignboardView(ctx) },
+                    update = { v ->
+                        v.style = if (ad.billboard) SignboardView.Style.BILLBOARD else SignboardView.Style.NOTICE
+                        v.text = ad.text
+                    },
+                    modifier = Modifier.padding(24.dp).aspectRatio(1f)
                 )
             }
         }

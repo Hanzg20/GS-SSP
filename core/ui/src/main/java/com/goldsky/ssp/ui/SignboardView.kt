@@ -81,6 +81,7 @@ class SignboardView @JvmOverloads constructor(
         val r = 18 * d
 
         // Steel frame.
+        paint.color = Color.BLACK // shaders take the paint's alpha
         paint.shader = LinearGradient(0f, outer.top, 0f, outer.bottom,
             intArrayOf(Color.parseColor("#4A4A52"), Color.parseColor("#26262B"), Color.parseColor("#141417")), null, Shader.TileMode.CLAMP)
         c.drawRoundRect(outer, r, r, paint)
@@ -156,6 +157,7 @@ class SignboardView @JvmOverloads constructor(
         val frame = RectF(m, m, w - m, h - m)
 
         // Wooden frame.
+        paint.color = Color.BLACK // shaders take the paint's alpha
         paint.shader = LinearGradient(frame.left, frame.top, frame.right, frame.bottom,
             intArrayOf(Color.parseColor("#8D6E63"), Color.parseColor("#5D4037"), Color.parseColor("#4E342E")), null, Shader.TileMode.CLAMP)
         c.drawRoundRect(frame, 10 * d, 10 * d, paint)
@@ -182,6 +184,9 @@ class SignboardView @JvmOverloads constructor(
         c.rotate(-1.4f, paper.centerX(), paper.centerY())
         paint.color = Color.argb(70, 0, 0, 0)
         c.drawRect(RectF(paper.left + 4 * d, paper.top + 5 * d, paper.right + 4 * d, paper.bottom + 5 * d), paint)
+        // A shader still takes the paint's alpha: reset it after the translucent shadow,
+        // or the paper came out at 70/255 (grey, cork showing through).
+        paint.color = Color.BLACK
         paint.shader = LinearGradient(0f, paper.top, 0f, paper.bottom, Color.parseColor("#FFFBEE"), Color.parseColor("#F6EDD3"), Shader.TileMode.CLAMP)
         c.drawRect(paper, paint)
         paint.shader = null
@@ -206,6 +211,7 @@ class SignboardView @JvmOverloads constructor(
         val px = paper.centerX(); val py = paper.top + 2 * d
         paint.color = Color.argb(80, 0, 0, 0)
         c.drawCircle(px + 2.5f * d, py + 3 * d, 9 * d, paint)
+        paint.color = Color.BLACK // opaque again for the pin's shader
         paint.shader = RadialGradient(px - 3 * d, py - 3 * d, 11 * d, Color.parseColor("#FF6B6B"), Color.parseColor("#B71C1C"), Shader.TileMode.CLAMP)
         c.drawCircle(px, py, 9 * d, paint)
         paint.shader = null
