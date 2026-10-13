@@ -55,8 +55,9 @@ app/ourea      -- Desktop POS, first real build 2026-08-27 (see `docs/system_arc
                   and `transactions.order_number/order_type/order_note`. Dish options are `products.attributes.modifier_groups`
                   (no CMP editor; format in `docs/migrations/2026-10-13_quick_service_orders.sql`).
                   Dine-in (Business type = DINE_IN, 2026-10-13): floor / checks / rounds / split payments in
-                  `dining_tables`, `dine_checks`, `dine_check_items`, `dine_check_payments` (all writes via `dine_*` SECURITY
-                  DEFINER RPCs, `docs/migrations/2026-10-13_dine_in*.sql`); `DineRepository` (core/data), `DineViewModel` +
+                  schema `dine` (`dine.tables`, `dine.checks`, `dine.check_items`, `dine.payments`; NOT exposed through the API --
+                  reads and writes only via the public `dine_*` RPCs, `docs/migrations/2026-10-13_dine_*.sql`); `DineRepository`
+                  (core/data), `DineViewModel` +
                   shared screens in `feature/retail/.../dine/`. Tables are managed in Ourea Settings. The round being taken is
                   a SEPARATE RetailViewModel (`viewModel(key = "dine-round")`), never the counter cart. Kitchen tickets go to the
                   network printer in Settings (`NetworkKitchenPrinter`, ESC/POS 9100, GBK), falling back to the terminal's own.
@@ -149,6 +150,10 @@ Nobody registers these automatically — it's each app shell's `MainActivity.onC
 - `OfflineQueueManager`, `VipRepository`, `AdManager`/`AdSyncWorker`, `AnalyticsManager`, `CouponRepository` — offline transaction queue, VIP/membership, ad playlist sync, analytics, coupons.
 
 When adding a new cloud-synced feature, follow the existing pattern: a dedicated singleton in `core/data`, Ktor + `kotlinx.serialization` for the wire format, and graceful offline degradation (never crash or block the UI when Supabase is unreachable — log and continue with cached/default state). `ConfigManager`'s 3-tier degrade (cloud → `context.filesDir` cache → bundled `assets/default_config.json`) is still the model to follow for anything config-shaped.
+
+### Database conventions
+New tables follow `docs/database_conventions.md`: one schema per business domain (e.g. `dine`), schemas other than
+`public` reached only through `public.<domain>_<verb>` RPCs, shared `sales.*` orders with per-vertical extension tables.
 
 ### Data models
 `AppConfig`, `Product`, `DeviceShadow` mirror the Supabase schema described in `docs/database_design.md` (multi-tenant: `organizations` → `locations` → `devices`, generic `products` table with a `vertical_type` discriminator and JSONB `attributes` for industry-specific params).

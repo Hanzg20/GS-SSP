@@ -3,7 +3,6 @@ package com.goldsky.ssp.payment
 import android.content.Context
 import android.util.Log
 import io.github.jan.supabase.postgrest.postgrest
-import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.rpc
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -106,13 +105,26 @@ object DineRepository {
 
     // -------------------------------------------------------------- reads
 
+    // Reads go through RPCs too: the tables live in the `dine` schema, which the
+    // API doesn't expose (docs/migrations/2026-10-13_dine_schema.sql).
+    @Serializable private data class FloorCheck(
+        val id: String, val table_id: String, val check_no: Int, val status: String, val guests: Int = 1,
+        val server_id: String? = null, val server_name: String? = null, val note: String? = null,
+        val opened_at: String? = null, val total_cents: Int = 0
+    ) {
+        fun check() = Check(id, table_id, check_no, status, guests, server_id, server_name, note, opened_at)
+    }
+    @Serializable private data class FloorRpc(val tables: List<DiningTable> = emptyList(), val checks: List<FloorCheck> = emptyList())
+    @Serializable private data class CheckRpc(
+        val check: Check, val table: DiningTable? = null,
+        val items: List<Item> = emptyList(), val payments: List<Payment> = emptyList()
+    )
+    @Serializable private data class CheckIdParams(val p_check_id: String)
+
     suspend fun tables(): List<DiningTable>? = withContext(Dispatchers.IO) {
         try {
             SupabaseClientProvider.ensureAuthenticated()
-            SupabaseClientProvider.client.postgrest["dining_tables"]
-                .select { filter { eq("is_active", true) } }
-                .decodeList<DiningTable>()
-                .sortedWith(compareBy<DiningTable>({ it.area ?: "" }, { it.sort }, { it.name.padStart(6, '0') }))
+            SupabaseClientProvider.client.postgrest.rpc("dine_list_tables").decodeAs<List<DiningTable>>()
         } catch (e: Exception) {
             Log.w(TAG, "tables failed: ${e.message}"); null
         }
@@ -120,22 +132,11 @@ object DineRepository {
 
     /** Tables plus live checks and their totals; null when the cloud can't be reached. */
     suspend fun floor(): List<FloorTable>? = withContext(Dispatchers.IO) {
-        val tables = tables() ?: return@withContext null
         try {
-            val checks = SupabaseClientProvider.client.postgrest["dine_checks"]
-                .select { filter { isIn("status", listOf("OPEN", "BILLED")) } }
-                .decodeList<Check>()
-            val items = if (checks.isEmpty()) emptyList() else SupabaseClientProvider.client.postgrest["dine_check_items"]
-                .select(Columns.raw("id,check_id,round,name,quantity,unit_price_cents,tax_rate_bps,status")) {
-                    filter { isIn("check_id", checks.map { it.id }) }
-                }.decodeList<Item>()
-            val byTable = checks.associateBy { it.table_id }
-            tables.map { t ->
-                val c = byTable[t.id]
-                val lines = items.filter { it.check_id == c?.id && !it.isVoid }
-                val sub = lines.sumOf { it.lineTotalCents }
-                FloorTable(t, c, sub + SalesTax.cents(lines.map { it.lineTotalCents to it.tax_rate_bps }))
-            }
+            SupabaseClientProvider.ensureAuthenticated()
+            val f = SupabaseClientProvider.client.postgrest.rpc("dine_floor").decodeAs<FloorRpc>()
+            val byTable = f.checks.associateBy { it.table_id }
+            f.tables.map { t -> byTable[t.id].let { c -> FloorTable(t, c?.check(), c?.total_cents ?: 0) } }
         } catch (e: Exception) {
             Log.w(TAG, "floor failed: ${e.message}"); null
         }
@@ -144,13 +145,9 @@ object DineRepository {
     suspend fun check(checkId: String): CheckDetail? = withContext(Dispatchers.IO) {
         try {
             SupabaseClientProvider.ensureAuthenticated()
-            val pg = SupabaseClientProvider.client.postgrest
-            val check = pg["dine_checks"].select { filter { eq("id", checkId) } }.decodeSingleOrNull<Check>() ?: return@withContext null
-            val table = pg["dining_tables"].select { filter { eq("id", check.table_id) } }.decodeSingleOrNull<DiningTable>()
-            val items = pg["dine_check_items"].select { filter { eq("check_id", checkId) } }.decodeList<Item>()
-                .sortedWith(compareBy({ it.round }, { it.sent_at ?: "" }))
-            val payments = pg["dine_check_payments"].select { filter { eq("check_id", checkId) } }.decodeList<Payment>()
-            CheckDetail(check, table, items, payments)
+            val r = SupabaseClientProvider.client.postgrest.rpc("dine_get_check", CheckIdParams(checkId)).decodeAsOrNull<CheckRpc>()
+                ?: return@withContext null
+            CheckDetail(r.check, r.table, r.items, r.payments)
         } catch (e: Exception) {
             Log.w(TAG, "check $checkId failed: ${e.message}"); null
         }
