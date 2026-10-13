@@ -55,7 +55,10 @@ object DineRepository {
         val note: String? = null,
         val subtotal_cents: Int = 0,
         val tax_cents: Int = 0,
-        val created_at: String? = null
+        val created_at: String? = null,
+        /** Approved by a manager in Cael: a terminal on the floor accepts and prints it. */
+        val approved_at: String? = null,
+        val approved_by: String? = null
     )
 
     /** The floor and the customer orders waiting on it. */

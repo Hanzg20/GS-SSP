@@ -72,13 +72,13 @@ fun dineMessage(code: String): String = when (code) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifier: Modifier = Modifier, minCell: Dp = 130.dp) {
-    DisposableEffect(Unit) { dine.startRefreshing(); onDispose { dine.stopRefreshing() } }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    DisposableEffect(Unit) { dine.startRefreshing(context); onDispose { dine.stopRefreshing() } }
     val floor = dine.floor
     var area by remember { mutableStateOf<String?>(null) }
     var seating by remember { mutableStateOf<DineRepository.DiningTable?>(null) }
     var reviewingScans by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
-    val context = androidx.compose.ui.platform.LocalContext.current
     // A chime and a buzz when a customer's QR order comes in.
     LaunchedEffect(dine.scanArrivals) {
         if (dine.scanArrivals > 0) {

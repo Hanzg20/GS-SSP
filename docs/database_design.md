@@ -149,6 +149,12 @@ the phone), `scan_orders(token, ids)` (status for the customer's page). Staff:
 as the next round, returns the kitchen ticket's content), `dine_reject_scan`
 (reason shown to the customer), `dine_rotate_table_qr` (old printed codes stop working).
 
+Cael (CMP, signed-in users; read = org member, write = `dine.manage`): `cmp_dine_tables`,
+`cmp_dine_save_table`, `cmp_dine_rotate_qr` (tables and table cards), `cmp_dine_floor` (live floor),
+`cmp_dine_approve_scan`, `cmp_dine_reject_scan`. A browser can't print in the kitchen, so approving only
+sets `scan_orders.approved_at/approved_by`; the next Ourea / Iris on its floor screen accepts it through
+`dine_accept_scan` and prints the ticket. Until then the order stays PENDING for the customer.
+
 AI menu guide (`supabase/functions/scan-assistant`, no login, the QR secret is the credential): answers in
 the customer's own language from the dish facts in `products.attributes` -- `description`, `ingredients`,
 `allergens` (Canada's priority allergens: peanut, tree_nut, milk, egg, wheat, soy, fish, crustacean, mollusc,

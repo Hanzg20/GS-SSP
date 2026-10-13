@@ -49,11 +49,16 @@ class DineViewModel : ViewModel() {
         private set
 
     private var poller: Job? = null
+    /** For the kitchen tickets of orders approved in Cael (accepted here without a tap). */
+    private var appContext: Context? = null
+    /** Approved orders this terminal already tried, so a refusal isn't retried every 4 s. */
+    private val approvedTried = mutableSetOf<String>()
 
     fun clearMessage() { message = null }
 
     /** Keep the floor and the open check fresh while a dine-in screen shows. */
-    fun startRefreshing() {
+    fun startRefreshing(context: Context) {
+        appContext = context.applicationContext
         if (poller?.isActive == true) return
         poller = viewModelScope.launch {
             while (isActive) {
@@ -72,6 +77,7 @@ class DineViewModel : ViewModel() {
             floor = f.tables
             if (f.scanPending.any { new -> scanPending.none { it.id == new.id } }) scanArrivals++
             scanPending = f.scanPending
+            acceptApproved(f.scanPending)
         }
         check?.let { c ->
             DineRepository.check(c.check.id)?.let { fresh ->
@@ -167,6 +173,29 @@ class DineViewModel : ViewModel() {
             }
             refreshNow()
             busy = false
+        }
+    }
+
+    /**
+     * Orders a manager approved in Cael: the browser can't print in the kitchen,
+     * so the first terminal showing the floor accepts them (dine_accept_scan
+     * locks the order -- another terminal that got there first makes this one's
+     * call fail with "order_accepted", which is fine) and prints the ticket.
+     */
+    private suspend fun acceptApproved(pending: List<DineRepository.ScanOrder>) {
+        val context = appContext ?: return
+        for (order in pending.filter { it.approved_at != null && it.id !in approvedTried }) {
+            approvedTried += order.id
+            val r = DineRepository.acceptScan(order.id, order.approved_by) ?: run { approvedTried -= order.id; return }
+            if (!r.success) continue
+            withContext(Dispatchers.IO) {
+                val ticket = KitchenTicket(
+                    number = r.check_no, takeout = false, note = listOfNotNull("扫码 QR", r.note).joinToString(" · "),
+                    lines = r.items.map { KitchenLine(it.name, it.quantity, it.options, it.note) },
+                    staffName = order.approved_by, table = r.table_name, round = r.round, guests = r.guests
+                )
+                ReceiptPrinterManager.printKitchenTicket(context, ticket, DeviceRepository.getPersistedHardwareVendor())
+            }
         }
     }
 
