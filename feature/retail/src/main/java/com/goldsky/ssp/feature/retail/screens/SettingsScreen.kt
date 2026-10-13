@@ -27,7 +27,9 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(showBusinessType: Boolean = false) {
+// showBusinessType: restaurant options (business type, kitchen printer). manageTables: the
+// floor is managed here (Ourea; Iris only uses it).
+fun SettingsScreen(showBusinessType: Boolean = false, manageTables: Boolean = false) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -82,7 +84,8 @@ fun SettingsScreen(showBusinessType: Boolean = false) {
                     Column(modifier = Modifier.padding(8.dp)) {
                         listOf(
                             Triple(DeviceRepository.BusinessType.RETAIL, R.string.retail_business_retail, R.string.retail_business_retail_desc),
-                            Triple(DeviceRepository.BusinessType.QUICK_SERVICE, R.string.retail_business_qsr, R.string.retail_business_qsr_desc)
+                            Triple(DeviceRepository.BusinessType.QUICK_SERVICE, R.string.retail_business_qsr, R.string.retail_business_qsr_desc),
+                            Triple(DeviceRepository.BusinessType.DINE_IN, R.string.retail_business_dine_in, R.string.retail_business_dine_in_desc)
                         ).forEach { (type, title, desc) ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().clickable {
@@ -99,6 +102,31 @@ fun SettingsScreen(showBusinessType: Boolean = false) {
                                 })
                             }
                         }
+                    }
+                }
+
+                // Restaurants: where kitchen tickets go.
+                if (businessType != DeviceRepository.BusinessType.RETAIL) {
+                    Text(stringResource(R.string.retail_kitchen_printer), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(Modifier.padding(16.dp)) { com.goldsky.ssp.feature.retail.dine.KitchenPrinterSettings() }
+                    }
+                }
+                // Dine-in: the floor (shared by every terminal of the store).
+                if (businessType == DeviceRepository.BusinessType.DINE_IN && manageTables) {
+                    Text(stringResource(R.string.retail_tables), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(Modifier.padding(16.dp)) { com.goldsky.ssp.feature.retail.dine.TableSettings() }
                     }
                 }
             }

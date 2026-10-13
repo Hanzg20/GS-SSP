@@ -54,6 +54,7 @@ object DeviceRepository {
     private const val KEY_TAX_RATE = "tax_rate"
     private const val KEY_TIPS_ENABLED = "tips_enabled"
     private const val KEY_BUSINESS_TYPE = "business_type"
+    private const val KEY_KITCHEN_PRINTER = "kitchen_printer"
     private const val KEY_NUVEI_APP_ID = "nuvei_app_id"
     private const val KEY_REGION = "region"
     private const val KEY_THEME_STYLE = "theme_style"
@@ -169,13 +170,21 @@ object DeviceRepository {
      * restaurant counter's steps to checkout: dine-in / take-out, an order note,
      * an order (call) number, and a kitchen ticket.
      */
-    enum class BusinessType { RETAIL, QUICK_SERVICE }
+    enum class BusinessType { RETAIL, QUICK_SERVICE, DINE_IN }
 
     fun getBusinessType(): BusinessType =
         prefs()?.getString(KEY_BUSINESS_TYPE, null)?.let { runCatching { BusinessType.valueOf(it) }.getOrNull() } ?: BusinessType.RETAIL
 
     fun persistBusinessType(type: BusinessType) {
         prefs()?.edit()?.putString(KEY_BUSINESS_TYPE, type.name)?.apply()
+    }
+
+    /** "host" or "host:port" of the kitchen's network printer (ESC/POS); null = print on this terminal. */
+    fun getKitchenPrinter(): String? = prefs()?.getString(KEY_KITCHEN_PRINTER, null)?.trim()?.ifBlank { null }
+    fun getKitchenPrinterHost(): String? = getKitchenPrinter()?.substringBefore(':')?.ifBlank { null }
+    fun getKitchenPrinterPort(): Int = getKitchenPrinter()?.substringAfter(':', "")?.toIntOrNull() ?: NetworkKitchenPrinter.DEFAULT_PORT
+    fun persistKitchenPrinter(value: String) {
+        prefs()?.edit()?.putString(KEY_KITCHEN_PRINTER, value.trim())?.apply()
     }
 
     fun persistTipsEnabled(enabled: Boolean) {
@@ -188,7 +197,7 @@ object DeviceRepository {
      */
     fun isTipsEnabled(): Boolean {
         val default = getPersistedRetailMode() == com.goldsky.ssp.model.RetailMode.RESTAURANT ||
-            getBusinessType() == BusinessType.QUICK_SERVICE
+            getBusinessType() != BusinessType.RETAIL
         return prefs()?.getBoolean(KEY_TIPS_ENABLED, default) ?: default
     }
 

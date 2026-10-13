@@ -34,7 +34,7 @@ object ReceiptPrinterManager {
     private fun money(cents: Int) = "%.2f".format(cents / 100.0)
 
     /** [left] and [right] on one 32-column line; ASCII only (CJK is double width). */
-    internal fun row(left: String, right: String): String =
+    fun row(left: String, right: String): String =
         left + " ".repeat((WIDTH - left.length - right.length).coerceAtLeast(1)) + right
 
     private fun rateLabel(bps: Int): String {
@@ -47,7 +47,7 @@ object ReceiptPrinterManager {
      * width the column math can't know), then "qty x price ... total" with a
      * trailing H on taxed lines -- the usual Canadian receipt marking.
      */
-    internal fun itemLines(lines: List<com.goldsky.ssp.model.SaleLine>): List<String> {
+    fun itemLines(lines: List<com.goldsky.ssp.model.SaleLine>): List<String> {
         if (lines.isEmpty()) return emptyList()
         val out = mutableListOf<String>()
         for (l in lines) {
@@ -71,22 +71,37 @@ object ReceiptPrinterManager {
      * big and boxed, dine-in / take-out, each dish with its options indented
      * under it, the order note last. No prices -- the kitchen doesn't need them.
      */
-    fun printKitchenTicket(context: Context, ticket: com.goldsky.ssp.model.KitchenTicket, vendor: String): Boolean =
-        printLines(context, kitchenTicketLines(ticket), vendor)
+    fun printKitchenTicket(context: Context, ticket: com.goldsky.ssp.model.KitchenTicket, vendor: String): Boolean {
+        // The kitchen's network printer when one is set (Settings); if it can't be
+        // reached the ticket still comes out here, so the order isn't lost.
+        DeviceRepository.getKitchenPrinterHost()?.let { host ->
+            if (NetworkKitchenPrinter.printTicket(host, DeviceRepository.getKitchenPrinterPort(), ticket)) return true
+            Log.w(TAG, "Kitchen printer unreachable, ticket printed on this terminal")
+            return printLines(context, listOf("!! 厨房打印机连不上 !!", "!! KITCHEN PRINTER OFFLINE !!") + kitchenTicketLines(ticket), vendor)
+        }
+        return printLines(context, kitchenTicketLines(ticket), vendor)
+    }
 
     internal fun kitchenTicketLines(t: com.goldsky.ssp.model.KitchenTicket): List<String> {
         val out = mutableListOf<String>()
         val time = SimpleDateFormat("MM-dd HH:mm", Locale.US).format(Date())
         out += "=".repeat(WIDTH)
-        out += "    厨房单  KITCHEN"
-        out += "      ##  %03d  ##".format(t.number)
-        out += if (t.takeout) "    外带  TAKE-OUT" else "    堂食  DINE-IN"
+        if (t.isDineIn) {
+            out += if (t.round > 1) "    加菜 ADD (第${t.round}轮)" else "    厨房单  KITCHEN"
+            out += "      ##  桌 ${t.table}  ##"
+            out += "    " + listOfNotNull(t.guests?.let { "${it}位" }, "单号 ${t.number}").joinToString(" · ")
+        } else {
+            out += "    厨房单  KITCHEN"
+            out += "      ##  %03d  ##".format(t.number)
+            out += if (t.takeout) "    外带  TAKE-OUT" else "    堂食  DINE-IN"
+        }
         out += "=".repeat(WIDTH)
         out += row(time, t.staffName?.take(14) ?: "")
         out += "-".repeat(WIDTH)
         t.lines.forEach { line ->
             out += "${line.quantity} x ${line.name}"
             line.options.forEach { out += "    + $it" }
+            line.note?.takeIf { it.isNotBlank() }?.let { out += "    * $it" }
         }
         out += "-".repeat(WIDTH)
         if (t.note.isNotBlank()) {

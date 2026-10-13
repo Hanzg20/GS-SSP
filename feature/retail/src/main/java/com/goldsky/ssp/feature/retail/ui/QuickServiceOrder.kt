@@ -24,8 +24,11 @@ import com.goldsky.ssp.feature.retail.R
 import com.goldsky.ssp.feature.retail.viewmodel.RetailViewModel
 import com.goldsky.ssp.payment.DeviceRepository
 
-/** Settings > Business type is a quick-service restaurant. */
-fun isQuickService() = DeviceRepository.getBusinessType() == DeviceRepository.BusinessType.QUICK_SERVICE
+/** A restaurant counter (quick-service, or a dine-in restaurant's take-out counter): options, note, number, kitchen ticket. */
+fun isQuickService() = DeviceRepository.getBusinessType() != DeviceRepository.BusinessType.RETAIL
+
+/** Settings > Business type is a dine-in restaurant (tables, checks, rounds). */
+fun isDineIn() = DeviceRepository.getBusinessType() == DeviceRepository.BusinessType.DINE_IN
 
 /**
  * Quick-service checkout extras in the Material theme (Iris): dine-in /

@@ -29,6 +29,16 @@ class TransactionReplayWorker(appContext: Context, params: WorkerParameters) : C
                             true // malformed entry, drop it rather than retry forever
                         }
                     }
+                    "dine_payment" -> {
+                        val id = op.orderId
+                        val ref = op.ecrRefNum
+                        val amount = op.amountCents
+                        if (id != null && ref != null && amount != null) {
+                            DineRepository.recordPaymentRemote(id, ref, amount, op.tipCents ?: 0, op.paymentMethod, op.paidBy, op.itemIds) != null
+                        } else {
+                            true // malformed entry, drop it rather than retry forever
+                        }
+                    }
                     "refund" -> {
                         val ref = op.ecrRefNum
                         val status = op.status

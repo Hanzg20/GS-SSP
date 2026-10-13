@@ -10,7 +10,7 @@ import java.io.File
 
 @Serializable
 data class PendingOp(
-    val type: String, // "insert" | "insert_items" | "update_hw" | "update_status" | "delivery_paid"
+    val type: String, // "insert" | "insert_items" | "update_hw" | "update_status" | "delivery_paid" | "dine_payment"
     val record: TransactionRecord? = null,
     // Only on "insert_items" ops (see TransactionRepository.recordItems).
     val items: List<TransactionItem>? = null,
@@ -29,7 +29,12 @@ data class PendingOp(
     val cardBin: String? = null,
     val cardBrand: String? = null,
     val clearPaymentMethod: Boolean = false,
-    val authCode: String? = null
+    val authCode: String? = null,
+    // Only on "dine_payment" ops (DineRepository.recordPayment): orderId = the check.
+    val amountCents: Int? = null,
+    val tipCents: Int? = null,
+    val itemIds: List<String>? = null,
+    val paidBy: String? = null
 )
 
 /**
