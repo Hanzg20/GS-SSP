@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
 
 @Serializable
 data class Product(
@@ -51,7 +52,21 @@ data class Product(
      * callers fall back to the device's configured tax rate.
      */
     val taxRateBps: Int? get() = attributes?.get("tax_rate_bps")?.jsonPrimitive?.intOrNull
+
+    /**
+     * A dish's options (spice level, add-ons, sweetness...). products has no
+     * modifier_groups column, so they ride in `attributes` like [category]:
+     * attributes.modifier_groups = [{"id","name","max_select","required",
+     * "options":[{"id","name","price_cents"}]}]. See
+     * docs/migrations/2026-10-13_quick_service_orders.sql for an example.
+     */
+    val modifierGroups: List<ModifierGroup>
+        get() = modifier_groups ?: attributes?.get("modifier_groups")?.let {
+            try { modifierJson.decodeFromJsonElement<List<ModifierGroup>>(it) } catch (e: Exception) { null }
+        } ?: emptyList()
 }
+
+private val modifierJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
 /**
  * The products one vertical's terminal may sell. app_configurations is
@@ -67,7 +82,11 @@ fun List<Product>.forVertical(verticalType: String): List<Product> =
 data class ModifierGroup(
     val id: String,
     val name: String,
-    val options: List<ProductModifier>
+    val options: List<ProductModifier>,
+    // 1 = pick one (spice level); null = any number (add-ons).
+    val max_select: Int? = null,
+    // Must pick before adding to the cart.
+    val required: Boolean = false
 )
 
 @Serializable

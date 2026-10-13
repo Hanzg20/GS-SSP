@@ -53,6 +53,7 @@ object DeviceRepository {
     private const val KEY_STORE_PHONE = "store_phone"
     private const val KEY_TAX_RATE = "tax_rate"
     private const val KEY_TIPS_ENABLED = "tips_enabled"
+    private const val KEY_BUSINESS_TYPE = "business_type"
     private const val KEY_NUVEI_APP_ID = "nuvei_app_id"
     private const val KEY_REGION = "region"
     private const val KEY_THEME_STYLE = "theme_style"
@@ -163,6 +164,20 @@ object DeviceRepository {
 
     fun getTaxRate(): Float = prefs()?.getFloat(KEY_TAX_RATE, 0.0f) ?: 0.0f
 
+    /**
+     * What this counter sells (Settings > Business type). QUICK_SERVICE adds a
+     * restaurant counter's steps to checkout: dine-in / take-out, an order note,
+     * an order (call) number, and a kitchen ticket.
+     */
+    enum class BusinessType { RETAIL, QUICK_SERVICE }
+
+    fun getBusinessType(): BusinessType =
+        prefs()?.getString(KEY_BUSINESS_TYPE, null)?.let { runCatching { BusinessType.valueOf(it) }.getOrNull() } ?: BusinessType.RETAIL
+
+    fun persistBusinessType(type: BusinessType) {
+        prefs()?.edit()?.putString(KEY_BUSINESS_TYPE, type.name)?.apply()
+    }
+
     fun persistTipsEnabled(enabled: Boolean) {
         prefs()?.edit()?.putBoolean(KEY_TIPS_ENABLED, enabled)?.apply()
     }
@@ -172,7 +187,8 @@ object DeviceRepository {
      * RESTAURANT mode -- a store sale (line-busting, delivery) has no tip step.
      */
     fun isTipsEnabled(): Boolean {
-        val default = getPersistedRetailMode() == com.goldsky.ssp.model.RetailMode.RESTAURANT
+        val default = getPersistedRetailMode() == com.goldsky.ssp.model.RetailMode.RESTAURANT ||
+            getBusinessType() == BusinessType.QUICK_SERVICE
         return prefs()?.getBoolean(KEY_TIPS_ENABLED, default) ?: default
     }
 

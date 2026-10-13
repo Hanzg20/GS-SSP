@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.goldsky.ssp.common.FeedbackManager
@@ -109,6 +110,8 @@ class MainActivity : ComponentActivity() {
                     var showMemberDialog by remember { mutableStateOf(false) }
                     // Lines of the sale being paid (taken at checkout), for transaction_items and the receipt.
                     var saleLines by remember { mutableStateOf<List<com.goldsky.ssp.model.SaleLine>>(emptyList()) }
+                    // Quick-service counter: the order (call number, dine-in/take-out, note, dishes) being paid.
+                    var orderTicket by remember { mutableStateOf<com.goldsky.ssp.model.KitchenTicket?>(null) }
                     // Refunds (shared RefundFlow): records reload after one; NeedsCard asks how to refund a settled card sale.
                     var recordsReload by remember { mutableStateOf(0) }
                     var refundNeedsCard by remember { mutableStateOf<com.goldsky.ssp.feature.retail.RefundFlow.RefundState.NeedsCard?>(null) }
@@ -138,9 +141,11 @@ class MainActivity : ComponentActivity() {
                     }
 
                     fun onPaymentSettled(state: OureaPaymentUiState) {
-                        paymentStatus = state
+                        val number = orderTicket?.number
+                        paymentStatus = if (state is OureaPaymentUiState.Success) state.copy(orderNumber = number) else state
                         if (state is OureaPaymentUiState.Success) {
-                            paymentProvider.showThankYouScreen()
+                            paymentProvider.showThankYouScreen(number)
+                            orderTicket = null
                             retailViewModel.clearCart()
                             FeedbackManager.success(this@MainActivity)
                         }
@@ -165,12 +170,12 @@ class MainActivity : ComponentActivity() {
                                             tipCents = tip,
                                             onChargeCard = {
                                                 confirmingPayment = null
-                                                triggerPaymentFlow(subtotal, tax, tip, saleLines, ::onPaymentSettled)
+                                                triggerPaymentFlow(subtotal, tax, tip, saleLines, orderTicket, ::onPaymentSettled)
                                             },
                                             onCash = { showCashDialog = true },
                                             onQr = {
                                                 confirmingPayment = null
-                                                startQrPayment(subtotal, tax, tip, saleLines, onQrStateChange = { qrState = it }, onSettled = ::onPaymentSettled)
+                                                startQrPayment(subtotal, tax, tip, saleLines, orderTicket, onQrStateChange = { qrState = it }, onSettled = ::onPaymentSettled)
                                             },
                                             onMember = { showMemberDialog = true },
                                             onBack = { confirmingPayment = null }
@@ -182,6 +187,8 @@ class MainActivity : ComponentActivity() {
                                                 val sale = retailViewModel.checkoutSale()
                                                 saleLines = sale.lines
                                                 val tax = sale.taxCents
+                                                orderTicket = if (DeviceRepository.getBusinessType() == DeviceRepository.BusinessType.QUICK_SERVICE)
+                                                    retailViewModel.kitchenTicket(this@MainActivity, signedIn.name) else null
                                                 // No tip step unless the store asks for tips (off for retail).
                                                 if (DeviceRepository.isTipsEnabled()) activeSaleData = subtotal to tax
                                                 else confirmingPayment = Triple(subtotal, tax, 0)
@@ -202,7 +209,7 @@ class MainActivity : ComponentActivity() {
                                     reloadKey = recordsReload
                                 )
                                 OureaDestination.DAY_REPORT -> if (signedIn.isManager) com.goldsky.ssp.feature.retail.screens.DayReportScreen(onBack = { destination = OureaDestination.TRANSACTIONS })
-                                OureaDestination.SETTINGS -> if (signedIn.isManager) SettingsScreen()
+                                OureaDestination.SETTINGS -> if (signedIn.isManager) SettingsScreen(showBusinessType = true)
                             }
                         }
                     }
@@ -236,7 +243,7 @@ class MainActivity : ComponentActivity() {
 
                     when (val state = paymentStatus) {
                         is OureaPaymentUiState.Processing -> OureaPaymentProcessingDialog(state.message)
-                        is OureaPaymentUiState.Success -> OureaPaymentResultDialog(true, state.message) { paymentStatus = OureaPaymentUiState.Idle }
+                        is OureaPaymentUiState.Success -> OureaPaymentResultDialog(true, state.message, state.orderNumber) { paymentStatus = OureaPaymentUiState.Idle }
                         is OureaPaymentUiState.Error -> OureaPaymentResultDialog(false, state.message) { paymentStatus = OureaPaymentUiState.Idle }
                         else -> {}
                     }
@@ -248,7 +255,7 @@ class MainActivity : ComponentActivity() {
                             onConfirm = { cashReceivedCents ->
                                 showCashDialog = false
                                 confirmingPayment = null
-                                triggerCashPayment(subtotal, tax, tip, cashReceivedCents, saleLines, ::onPaymentSettled)
+                                triggerCashPayment(subtotal, tax, tip, cashReceivedCents, saleLines, orderTicket, ::onPaymentSettled)
                             },
                             onDismiss = { showCashDialog = false }
                         )
@@ -260,7 +267,7 @@ class MainActivity : ComponentActivity() {
                             onSubmit = { code ->
                                 showMemberDialog = false
                                 confirmingPayment = null
-                                triggerVipPayment(subtotal, tax, tip, code, ::onPaymentSettled)
+                                triggerVipPayment(subtotal, tax, tip, code, orderTicket, ::onPaymentSettled)
                             },
                             onDismiss = { showMemberDialog = false }
                         )
@@ -299,7 +306,7 @@ class MainActivity : ComponentActivity() {
      * payment dialogs aren't factored into a shared module in this codebase
      * yet (same as app/iris, which doesn't share them with anyone either).
      */
-    private fun triggerPaymentFlow(subtotal: Int, tax: Int, tip: Int, lines: List<com.goldsky.ssp.model.SaleLine>, onStateChange: (OureaPaymentUiState) -> Unit) {
+    private fun triggerPaymentFlow(subtotal: Int, tax: Int, tip: Int, lines: List<com.goldsky.ssp.model.SaleLine>, ticket: com.goldsky.ssp.model.KitchenTicket?, onStateChange: (OureaPaymentUiState) -> Unit) {
         val total = subtotal + tax + tip
         val ref = "OUR-" + System.currentTimeMillis()
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
@@ -315,7 +322,7 @@ class MainActivity : ComponentActivity() {
             payment_method = "CREDIT_CARD",
             staff_id = StaffRepository.current?.id,
             staff_name = StaffRepository.current?.name
-        )
+        ).withOrder(ticket)
 
         CoroutineScope(Dispatchers.IO).launch {
             TransactionRepository.recordTransaction(this@MainActivity, record)
@@ -340,19 +347,15 @@ class MainActivity : ComponentActivity() {
                         cardAid = c?.aid, cardBin = c?.bin, cardBrand = c?.brand,
                         authCode = authCode
                     )
-                    ReceiptPrinterManager.printReceipt(
-                        this@MainActivity,
-                        ReceiptPrinterManager.ReceiptData(
-                            subtotalCents = subtotal,
-                            taxCents = tax,
-                            tipCents = tip,
-                            amountCents = total,
-                            refNum = ref,
-                            deviceSn = sn,
-                            lines = lines
-                        ),
-                        vendor = DeviceRepository.getPersistedHardwareVendor()
-                    )
+                    printOrder(ticket, ReceiptPrinterManager.ReceiptData(
+                        subtotalCents = subtotal,
+                        taxCents = tax,
+                        tipCents = tip,
+                        amountCents = total,
+                        refNum = ref,
+                        deviceSn = sn,
+                        lines = lines
+                    ))
                 }
                 onStateChange(OureaPaymentUiState.Success(getString(R.string.ourea_approved_code, authCode)))
             }
@@ -370,6 +373,25 @@ class MainActivity : ComponentActivity() {
         })
     }
 
+    /** The quick-service order's call number, type and note on the transaction row. */
+    private fun TransactionRecord.withOrder(t: com.goldsky.ssp.model.KitchenTicket?) =
+        if (t == null) this else copy(order_number = t.number, order_type = t.orderType, order_note = t.note.trim().ifBlank { null })
+
+    /**
+     * After a paid sale: on a quick-service counter the kitchen ticket first,
+     * then the customer's receipt with the call number on top and the note.
+     */
+    private fun printOrder(t: com.goldsky.ssp.model.KitchenTicket?, receipt: ReceiptPrinterManager.ReceiptData) {
+        val vendor = DeviceRepository.getPersistedHardwareVendor()
+        if (t != null) ReceiptPrinterManager.printKitchenTicket(this, t, vendor)
+        ReceiptPrinterManager.printReceipt(
+            this,
+            if (t == null) receipt
+            else receipt.copy(banner = ReceiptPrinterManager.orderBanner(t), footer = receipt.footer + ReceiptPrinterManager.orderFooter(t)),
+            vendor
+        )
+    }
+
     /**
      * Cash has no gateway/hardware round trip -- staff is attesting the cash
      * was physically received -- so this records PAID directly (unlike the
@@ -377,7 +399,7 @@ class MainActivity : ComponentActivity() {
      * confirms). [cashReceivedCents] is only used to report change due; the
      * caller (OureaCashDialog) already guards against cashReceivedCents < total.
      */
-    private fun triggerCashPayment(subtotal: Int, tax: Int, tip: Int, cashReceivedCents: Int, lines: List<com.goldsky.ssp.model.SaleLine>, onStateChange: (OureaPaymentUiState) -> Unit) {
+    private fun triggerCashPayment(subtotal: Int, tax: Int, tip: Int, cashReceivedCents: Int, lines: List<com.goldsky.ssp.model.SaleLine>, ticket: com.goldsky.ssp.model.KitchenTicket?, onStateChange: (OureaPaymentUiState) -> Unit) {
         val total = subtotal + tax + tip
         val ref = "OUR-CASH-" + System.currentTimeMillis()
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
@@ -399,26 +421,23 @@ class MainActivity : ComponentActivity() {
                     entry_mode = "CASH",
                     staff_id = StaffRepository.current?.id,
                     staff_name = StaffRepository.current?.name
-                )
+                ).withOrder(ticket)
             )
             TransactionRepository.recordItems(this@MainActivity, ref, sn, lines)
-            ReceiptPrinterManager.printReceipt(
-                this@MainActivity,
-                ReceiptPrinterManager.ReceiptData(
-                    subtotalCents = subtotal,
-                    taxCents = tax,
-                    tipCents = tip,
-                    amountCents = total,
-                    refNum = ref,
-                    deviceSn = sn,
-                    lines = lines
-                ),
-                vendor = DeviceRepository.getPersistedHardwareVendor()
-            )
             val change = cashReceivedCents - total
             withContext(Dispatchers.Main) {
                 onStateChange(OureaPaymentUiState.Success("Cash received. Change due: $${"%.2f".format(change / 100.0)}"))
             }
+            // Printing after the dialog: the cashier shouldn't wait on the printer (two tickets on a quick-service counter).
+            printOrder(ticket, ReceiptPrinterManager.ReceiptData(
+                subtotalCents = subtotal,
+                taxCents = tax,
+                tipCents = tip,
+                amountCents = total,
+                refNum = ref,
+                deviceSn = sn,
+                lines = lines
+            ))
         }
     }
 
@@ -434,6 +453,7 @@ class MainActivity : ComponentActivity() {
         tax: Int,
         tip: Int,
         lines: List<com.goldsky.ssp.model.SaleLine>,
+        ticket: com.goldsky.ssp.model.KitchenTicket?,
         onQrStateChange: (OureaQrUiState) -> Unit,
         onSettled: (OureaPaymentUiState) -> Unit
     ) {
@@ -458,7 +478,7 @@ class MainActivity : ComponentActivity() {
                     payment_method = "QR_CODE",
                     staff_id = StaffRepository.current?.id,
                     staff_name = StaffRepository.current?.name
-                )
+                ).withOrder(ticket)
             )
             TransactionRepository.recordItems(this@MainActivity, txId, sn, lines)
 
@@ -486,20 +506,16 @@ class MainActivity : ComponentActivity() {
             withContext(Dispatchers.Main) { onQrStateChange(OureaQrUiState.Hidden) }
             if (paid) {
                 TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "PAID")
-                ReceiptPrinterManager.printReceipt(
-                    this@MainActivity,
-                    ReceiptPrinterManager.ReceiptData(
-                        subtotalCents = subtotal,
-                        taxCents = tax,
-                        tipCents = tip,
-                        amountCents = total,
-                        refNum = txId,
-                        deviceSn = sn,
-                        lines = lines
-                    ),
-                    vendor = DeviceRepository.getPersistedHardwareVendor()
-                )
                 withContext(Dispatchers.Main) { onSettled(OureaPaymentUiState.Success("QR payment received")) }
+                printOrder(ticket, ReceiptPrinterManager.ReceiptData(
+                    subtotalCents = subtotal,
+                    taxCents = tax,
+                    tipCents = tip,
+                    amountCents = total,
+                    refNum = txId,
+                    deviceSn = sn,
+                    lines = lines
+                ))
             } else {
                 TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "CANCELLED")
                 withContext(Dispatchers.Main) { onSettled(OureaPaymentUiState.Error("QR payment was not completed in time")) }
@@ -518,7 +534,7 @@ class MainActivity : ComponentActivity() {
      * discount logic (PLATINUM/GOLD) mirrors feature/wash's initVipPayment
      * verbatim, applied to the cart total rather than a single wash price.
      */
-    private fun triggerVipPayment(subtotal: Int, tax: Int, tip: Int, memberCode: String, onStateChange: (OureaPaymentUiState) -> Unit) {
+    private fun triggerVipPayment(subtotal: Int, tax: Int, tip: Int, memberCode: String, ticket: com.goldsky.ssp.model.KitchenTicket?, onStateChange: (OureaPaymentUiState) -> Unit) {
         val total = subtotal + tax + tip
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
 
@@ -575,22 +591,18 @@ class MainActivity : ComponentActivity() {
                             // totals, so undiscounted lines wouldn't add up to them.
                             staff_id = StaffRepository.current?.id,
                             staff_name = StaffRepository.current?.name
-                        )
-                    )
-                    ReceiptPrinterManager.printReceipt(
-                        this@MainActivity,
-                        ReceiptPrinterManager.ReceiptData(
-                            subtotalCents = discSubtotal,
-                            taxCents = discTax,
-                            tipCents = discTip,
-                            amountCents = finalTotal,
-                            refNum = ref,
-                            deviceSn = sn
-                        ),
-                        vendor = DeviceRepository.getPersistedHardwareVendor()
+                        ).withOrder(ticket)
                     )
                     val discountMsg = if (finalTotal < total) getString(R.string.ourea_discount_applied, card.tier) else ""
                     withContext(Dispatchers.Main) { onStateChange(OureaPaymentUiState.Success("Member payment approved$discountMsg")) }
+                    printOrder(ticket, ReceiptPrinterManager.ReceiptData(
+                        subtotalCents = discSubtotal,
+                        taxCents = discTax,
+                        tipCents = discTip,
+                        amountCents = finalTotal,
+                        refNum = ref,
+                        deviceSn = sn
+                    ))
                 }
                 is VipDeductResult.Rejected -> {
                     val message = when (result.reason) {
@@ -610,7 +622,7 @@ class MainActivity : ComponentActivity() {
 
 sealed class OureaPaymentUiState {
     object Idle : OureaPaymentUiState()
-    data class Success(val message: String) : OureaPaymentUiState()
+    data class Success(val message: String, val orderNumber: Int? = null) : OureaPaymentUiState()
     data class Error(val message: String) : OureaPaymentUiState()
     data class Processing(val message: String) : OureaPaymentUiState()
 }
@@ -639,11 +651,21 @@ fun OureaPaymentProcessingDialog(message: String) {
 }
 
 @Composable
-fun OureaPaymentResultDialog(isSuccess: Boolean, message: String, onDismiss: () -> Unit) {
+fun OureaPaymentResultDialog(isSuccess: Boolean, message: String, orderNumber: Int? = null, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(if (isSuccess) R.string.ourea_payment_success else R.string.ourea_payment_failed)) },
-        text = { Text(message) },
+        text = {
+            Column {
+                // Quick-service: the call number, big, to tell the customer.
+                if (orderNumber != null) {
+                    Text(stringResource(R.string.ourea_order_number), fontSize = 16.sp)
+                    Text("%03d".format(orderNumber), fontSize = 56.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.height(8.dp))
+                }
+                Text(message)
+            }
+        },
         confirmButton = { Button(onClick = onDismiss) { Text(stringResource(R.string.ourea_ok)) } },
         containerColor = if (isSuccess) com.goldsky.ssp.ui.theme.SuccessSlab else com.goldsky.ssp.ui.theme.DangerSlab,
         titleContentColor = Color.White,

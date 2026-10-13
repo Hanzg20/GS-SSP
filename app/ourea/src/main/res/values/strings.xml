@@ -64,4 +64,22 @@
     <string name="ourea_card_insufficient">Member card balance insufficient</string>
     <string name="ourea_payment_success">Payment Success</string>
     <string name="ourea_payment_failed">Payment Failed</string>
+    <string name="ourea_dine_in">Dine-in</string>
+    <string name="ourea_takeout">Take-out</string>
+    <string name="ourea_order_note">Order note</string>
+    <string name="ourea_add_note">Add note</string>
+    <string name="ourea_note_hint">e.g. no green onion, less spicy</string>
+    <string name="ourea_done">Done</string>
+    <string name="ourea_clear">Clear</string>
+    <string name="ourea_order_number">Order number</string>
+    <string-array name="ourea_quick_notes">
+        <item>Less spicy</item>
+        <item>Not spicy</item>
+        <item>No green onion</item>
+        <item>No cilantro</item>
+        <item>Less ice</item>
+        <item>No ice</item>
+        <item>Less sugar</item>
+        <item>Pack to go</item>
+    </string-array>
 </resources>

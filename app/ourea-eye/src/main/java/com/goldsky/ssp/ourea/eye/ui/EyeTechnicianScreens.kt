@@ -198,7 +198,7 @@ fun TechnicianPanel(
             )
             ToolRow(listOf(
                 "Preview cart" to { onPreview(demo) },
-                "Preview thank-you" to { onPreview(CfdDisplayState.ThankYou) },
+                "Preview thank-you" to { onPreview(CfdDisplayState.ThankYou(23)) },
             ))
             ToolRow(listOf(
                 "Preview payment" to { onPreview(CfdDisplayState.Payment(1862)) },

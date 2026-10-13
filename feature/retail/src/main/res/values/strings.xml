@@ -129,4 +129,14 @@
     <string name="retail_wizarpos_terminal_ip_e_g">WizarPOS Terminal IP (e.g. 10.0.0.52)</string>
     <string name="retail_ip_address_of_customer_facing">IP address of customer-facing Q3mini/UPT on local Wi-Fi, or 127.0.0.1 for local POS</string>
     <string name="retail_ourea_eye_display_rotation">Ourea Eye Display Rotation</string>
+    <string name="retail_mod_required">Required</string>
+    <string name="retail_mod_pick_one">Pick one</string>
+    <string name="retail_mod_optional">Optional</string>
+    <string name="retail_mod_cancel">Cancel</string>
+    <string name="retail_mod_add">Add to order · %1$s</string>
+    <string name="retail_business_type">Business type</string>
+    <string name="retail_business_retail">Retail store</string>
+    <string name="retail_business_retail_desc">Scan and sell, no kitchen</string>
+    <string name="retail_business_qsr">Quick-service restaurant</string>
+    <string name="retail_business_qsr_desc">Dine-in or take-out, order note, call number, kitchen ticket</string>
 </resources>

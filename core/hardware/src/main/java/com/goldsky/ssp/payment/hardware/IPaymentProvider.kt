@@ -161,8 +161,8 @@ interface IPaymentProvider {
     /** Shows idle/welcome/ad screen on customer facing display. */
     fun showIdleScreen() {}
 
-    /** Shows thank-you screen on customer facing display after successful payment. */
-    fun showThankYouScreen() {}
+    /** Shows thank-you screen on customer facing display after successful payment; [orderNumber] = quick-service call number. */
+    fun showThankYouScreen(orderNumber: Int? = null) {}
 
     /** Shows screen rotation on customer facing display (e.g. 0, 90, 180, 270). */
     fun showEyeRotation(degrees: Int) {}

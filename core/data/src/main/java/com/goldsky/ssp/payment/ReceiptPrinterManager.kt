@@ -66,6 +66,44 @@ object ReceiptPrinterManager {
         return out
     }
 
+    /**
+     * The kitchen's copy of a quick-service order, Chinese first: call number
+     * big and boxed, dine-in / take-out, each dish with its options indented
+     * under it, the order note last. No prices -- the kitchen doesn't need them.
+     */
+    fun printKitchenTicket(context: Context, ticket: com.goldsky.ssp.model.KitchenTicket, vendor: String): Boolean =
+        printLines(context, kitchenTicketLines(ticket), vendor)
+
+    internal fun kitchenTicketLines(t: com.goldsky.ssp.model.KitchenTicket): List<String> {
+        val out = mutableListOf<String>()
+        val time = SimpleDateFormat("MM-dd HH:mm", Locale.US).format(Date())
+        out += "=".repeat(WIDTH)
+        out += "    厨房单  KITCHEN"
+        out += "      ##  %03d  ##".format(t.number)
+        out += if (t.takeout) "    外带  TAKE-OUT" else "    堂食  DINE-IN"
+        out += "=".repeat(WIDTH)
+        out += row(time, t.staffName?.take(14) ?: "")
+        out += "-".repeat(WIDTH)
+        t.lines.forEach { line ->
+            out += "${line.quantity} x ${line.name}"
+            line.options.forEach { out += "    + $it" }
+        }
+        out += "-".repeat(WIDTH)
+        if (t.note.isNotBlank()) {
+            out += "备注 NOTE:"
+            out += t.note.trim()
+            out += "-".repeat(WIDTH)
+        }
+        return out
+    }
+
+    /** The order number, type and note at the top/bottom of the customer's receipt. */
+    fun orderBanner(t: com.goldsky.ssp.model.KitchenTicket): String =
+        "ORDER #%03d  %s".format(t.number, if (t.takeout) "TAKE-OUT 外带" else "DINE-IN 堂食")
+
+    fun orderFooter(t: com.goldsky.ssp.model.KitchenTicket): List<String> =
+        if (t.note.isBlank()) emptyList() else listOf("Note 备注: ${t.note.trim()}")
+
     /** Prints [lines] as they are (reports), then feeds and cuts. */
     fun printLines(context: Context, lines: List<String>, vendor: String): Boolean {
         val printer = HardwareFactory.getPrinterProvider(context, vendor)

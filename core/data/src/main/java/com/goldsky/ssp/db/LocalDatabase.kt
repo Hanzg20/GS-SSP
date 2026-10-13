@@ -14,7 +14,9 @@ data class ProductEntity(
     // null = "not tracked" (mirrors Product.stockQty), distinct from a real 0 (out of stock).
     val stockQty: Int? = null,
     // Mirrors Product.taxRateBps; null = fall back to the device tax rate.
-    val taxRateBps: Int? = null
+    val taxRateBps: Int? = null,
+    // attributes.modifier_groups as JSON, so a dish keeps its options offline.
+    val modifierGroupsJson: String? = null
 )
 
 @Entity(tableName = "local_orders")
@@ -163,7 +165,7 @@ interface ExpenseDao {
     fun delete(expense: ExpenseEntity)
 }
 
-@Database(entities = [ProductEntity::class, OrderEntity::class, ParkedOrderEntity::class, ExpenseEntity::class, NoteEntity::class], version = 9, exportSchema = false)
+@Database(entities = [ProductEntity::class, OrderEntity::class, ParkedOrderEntity::class, ExpenseEntity::class, NoteEntity::class], version = 10, exportSchema = false)
 abstract class LocalDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
     abstract fun orderDao(): OrderDao
@@ -195,6 +197,12 @@ abstract class LocalDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_products ADD COLUMN modifierGroupsJson TEXT")
+            }
+        }
+
         private val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE local_expenses ADD COLUMN spentOn TEXT")
@@ -218,7 +226,7 @@ abstract class LocalDatabase : RoomDatabase() {
                     LocalDatabase::class.java,
                     "ssp_local_db"
                 )
-                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

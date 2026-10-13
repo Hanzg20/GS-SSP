@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(showBusinessType: Boolean = false) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -70,7 +70,41 @@ fun SettingsScreen() {
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Spacer(modifier = Modifier.height(8.dp))
-            
+
+            // Counter terminals (Ourea) only: a quick-service counter adds the kitchen steps.
+            if (showBusinessType) {
+                var businessType by remember { mutableStateOf(DeviceRepository.getBusinessType()) }
+                Text(stringResource(R.string.retail_business_type), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        listOf(
+                            Triple(DeviceRepository.BusinessType.RETAIL, R.string.retail_business_retail, R.string.retail_business_retail_desc),
+                            Triple(DeviceRepository.BusinessType.QUICK_SERVICE, R.string.retail_business_qsr, R.string.retail_business_qsr_desc)
+                        ).forEach { (type, title, desc) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    businessType = type; DeviceRepository.persistBusinessType(type)
+                                }.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(stringResource(title), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                    Text(stringResource(desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                RadioButton(selected = businessType == type, onClick = {
+                                    businessType = type; DeviceRepository.persistBusinessType(type)
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+
             Text(stringResource(R.string.retail_receipt_settings), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             
             Surface(

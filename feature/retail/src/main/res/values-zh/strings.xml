@@ -129,4 +129,14 @@
     <plurals name="retail_open_orders">
         <item quantity="other">%1$d 张待处理送货单</item>
     </plurals>
+    <string name="retail_mod_required">必选</string>
+    <string name="retail_mod_pick_one">单选</string>
+    <string name="retail_mod_optional">可选</string>
+    <string name="retail_mod_cancel">取消</string>
+    <string name="retail_mod_add">加入订单 · %1$s</string>
+    <string name="retail_business_type">业务类型</string>
+    <string name="retail_business_retail">零售商店</string>
+    <string name="retail_business_retail_desc">扫码销售，不出厨房单</string>
+    <string name="retail_business_qsr">快餐 / 外带</string>
+    <string name="retail_business_qsr_desc">堂食或外带、订单备注、取餐号、厨房单</string>
 </resources>

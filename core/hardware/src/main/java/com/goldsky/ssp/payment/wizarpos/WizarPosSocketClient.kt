@@ -154,8 +154,9 @@ object WizarPosSocketClient {
     /**
      * Sends a DISPLAY_THANKYOU command to the customer terminal.
      */
-    suspend fun sendDisplayThankYou(): Boolean = withContext(Dispatchers.IO) {
-        val payload = """{"TransType":"DisplayThankYou","CallerName":"GS-SSP"}"""
+    suspend fun sendDisplayThankYou(orderNumber: Int? = null): Boolean = withContext(Dispatchers.IO) {
+        val number = orderNumber?.let { ""","OrderNumber":$it""" } ?: ""
+        val payload = """{"TransType":"DisplayThankYou","CallerName":"GS-SSP"$number}"""
         val resp = sendEyeRequest(payload)
         resp != null
     }

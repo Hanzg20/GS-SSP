@@ -95,16 +95,20 @@ object RetailRepository {
      */
     private fun ProductEntity.toModel() = Product(
         id = id, name = name, price_cents = priceCents, vertical_type = "RETAIL", barcode = barcode,
-        attributes = if (category != "UNSET" || stockQty != null || taxRateBps != null) buildJsonObject {
+        attributes = if (category != "UNSET" || stockQty != null || taxRateBps != null || modifierGroupsJson != null) buildJsonObject {
             if (category != "UNSET") put("category", JsonPrimitive(category))
             if (stockQty != null) put("stock_qty", JsonPrimitive(stockQty))
             if (taxRateBps != null) put("tax_rate_bps", JsonPrimitive(taxRateBps))
+            modifierGroupsJson?.let { json ->
+                runCatching { kotlinx.serialization.json.Json.parseToJsonElement(json) }.getOrNull()?.let { put("modifier_groups", it) }
+            }
         } else null
     )
 
     private fun Product.toEntity() = ProductEntity(
         id = id, name = name, priceCents = price_cents, barcode = barcode, category = category ?: "UNSET",
-        stockQty = stockQty, taxRateBps = taxRateBps
+        stockQty = stockQty, taxRateBps = taxRateBps,
+        modifierGroupsJson = attributes?.get("modifier_groups")?.toString()
     )
 
     fun getProductByBarcode(barcode: String): Product? {

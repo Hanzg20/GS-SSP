@@ -50,7 +50,7 @@ fun OureaEyeScreen(state: CfdDisplayState, rotationDegrees: Int = 0, paidCents: 
                 is CfdDisplayState.Idle -> IdleScreen()
                 is CfdDisplayState.Cart -> CartScreen(targetState)
                 is CfdDisplayState.Payment -> PaymentScreen(targetState)
-                is CfdDisplayState.ThankYou -> ThankYouScreen(paidCents)
+                is CfdDisplayState.ThankYou -> ThankYouScreen(paidCents, targetState.orderNumber)
             }
         }
     }

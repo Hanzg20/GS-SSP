@@ -231,7 +231,7 @@ const val THANK_YOU_MS = 10_000L
 private class Flake(val x: Float, val speed: Float, val drift: Float, val phase: Float, val size: Float, val color: Color, val spin: Float)
 
 @Composable
-fun ThankYouScreen(paidCents: Int?) {
+fun ThankYouScreen(paidCents: Int?, orderNumber: Int? = null) {
     // One shared clock for every animation on the page.
     var t by remember { mutableStateOf(0f) } // seconds since shown
     LaunchedEffect(Unit) {
@@ -268,7 +268,8 @@ fun ThankYouScreen(paidCents: Int?) {
         }
 
         Column(Modifier.fillMaxSize().padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Box(Modifier.size(132.dp).scale(0.85f + 0.15f * ringIn), contentAlignment = Alignment.Center) {
+            // Smaller check when the call number needs the room.
+            Box(Modifier.size(if (orderNumber != null) 84.dp else 132.dp).scale(0.85f + 0.15f * ringIn), contentAlignment = Alignment.Center) {
                 Canvas(Modifier.fillMaxSize()) {
                     val r = size.minDimension / 2
                     // soft halo, breathing
@@ -296,8 +297,16 @@ fun ThankYouScreen(paidCents: Int?) {
                         Text("Paid  ${money(paidCents)}", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp))
                     }
                 }
-                Spacer(Modifier.height(12.dp))
-                Text("See you again soon", color = Slate400, fontSize = 13.sp, textAlign = TextAlign.Center)
+                if (orderNumber != null) {
+                    // Quick-service: the number the counter will call.
+                    Spacer(Modifier.height(12.dp))
+                    Text("YOUR ORDER NUMBER", color = Slate400, fontSize = 12.sp, letterSpacing = 3.sp, fontWeight = FontWeight.SemiBold)
+                    Text("%03d".format(orderNumber), style = TextStyle(brush = goldText, fontSize = 72.sp, fontWeight = FontWeight.Black))
+                    Text("Please wait for your number", color = Slate400, fontSize = 13.sp, textAlign = TextAlign.Center)
+                } else {
+                    Spacer(Modifier.height(12.dp))
+                    Text("See you again soon", color = Slate400, fontSize = 13.sp, textAlign = TextAlign.Center)
+                }
             }
         }
 

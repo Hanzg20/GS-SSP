@@ -45,7 +45,12 @@ data class TransactionRecord(
     // Who took the payment on an attended terminal (docs/migrations/2026-10-10_staff.sql);
     // null on unattended ones, and then left out of the insert.
     val staff_id: String? = null,
-    val staff_name: String? = null
+    val staff_name: String? = null,
+    // Quick-service counter only (docs/migrations/2026-10-13_quick_service_orders.sql):
+    // the call number, DINE_IN / TAKEOUT, and the order note. Null = left out.
+    val order_number: Int? = null,
+    val order_type: String? = null,
+    val order_note: String? = null
 )
 
 /** One row of transaction_items (docs/migrations/2026-10-10_transaction_items.sql). */

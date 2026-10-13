@@ -5,6 +5,7 @@ import com.goldsky.ssp.ourea.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -161,6 +162,8 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
     var query by remember { mutableStateOf("") }
     var showHeldOrders by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf<String?>(null) } // null = "All"
+    var optionsFor by remember { mutableStateOf<Product?>(null) }
+    val quickService = com.goldsky.ssp.payment.DeviceRepository.getBusinessType() == com.goldsky.ssp.payment.DeviceRepository.BusinessType.QUICK_SERVICE
     val categories = remember(catalog) { catalog.mapNotNull { it.category }.distinct().sorted() }
     val filtered = remember(catalog, query, selectedCategory) {
         catalog.filter { product ->
@@ -214,6 +217,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
                     )
                 }
             }
+            if (quickService && cart.isNotEmpty()) OureaOrderOptions(viewModel)
             Divider(color = OureaSurfaceVariant)
             Spacer(modifier = Modifier.height(12.dp))
             // Subtotal / tax / total, the same figures the customer sees on Ourea Eye.
@@ -248,6 +252,14 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
                 onClick = { if (total > 0) onCheckout(total) },
                 enabled = total > 0,
                 modifier = Modifier.fillMaxWidth().height(52.dp)
+            )
+        }
+
+        optionsFor?.let { product ->
+            com.goldsky.ssp.feature.retail.ui.ModifierSelectionSheet(
+                product = product,
+                onConfirm = { mods -> viewModel.addItem(product, mods); optionsFor = null },
+                onDismiss = { optionsFor = null }
             )
         }
 
@@ -292,7 +304,12 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit) {
                 }
             } else {
                 LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 140.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(filtered) { product -> ProductCard(product) { viewModel.addItem(product) } }
+                    items(filtered) { product ->
+                        ProductCard(product) {
+                            // A dish with options (spice, add-ons) asks for them first.
+                            if (product.modifierGroups.isNotEmpty()) optionsFor = product else viewModel.addItem(product)
+                        }
+                    }
                 }
             }
         }
@@ -465,6 +482,9 @@ private fun CartRow(number: Int, item: CartItem, onIncrement: () -> Unit, onDecr
             modifier = Modifier.width(24.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(item.product.name, color = OureaTextPrimary, fontWeight = FontWeight.Medium)
+            if (item.selectedModifiers.isNotEmpty()) {
+                Text("+ " + item.selectedModifiers.joinToString(", ") { it.name }, color = OureaSkyBlue, fontSize = 12.sp)
+            }
             Text("$${"%.2f".format(item.unitPriceCents / 100.0)} × ${item.quantity}", color = OureaTextSecondary, fontSize = 12.sp)
         }
         Text("$${"%.2f".format(item.totalPriceCents / 100.0)}", color = OureaTextPrimary)
@@ -977,6 +997,85 @@ fun OureaHeldOrdersDialog(orders: List<ParkedOrderEntity>, summary: (ParkedOrder
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.ourea_close)) }
+            }
+        }
+    }
+}
+
+/**
+ * Quick-service counter: dine-in / take-out and the order note, both printed
+ * on the kitchen ticket. Only shown when Settings > Business type says so.
+ */
+@Composable
+private fun OureaOrderOptions(viewModel: RetailViewModel) {
+    var editingNote by remember { mutableStateOf(false) }
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(OureaSurfaceVariant).padding(3.dp)
+        ) {
+            listOf(false to R.string.ourea_dine_in, true to R.string.ourea_takeout).forEach { (takeout, label) ->
+                val selected = viewModel.takeout == takeout
+                Box(
+                    modifier = Modifier.weight(1f).height(38.dp).clip(RoundedCornerShape(8.dp))
+                        .background(if (selected) OureaSkyBlue else Color.Transparent)
+                        .clickable { viewModel.takeout = takeout },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(stringResource(label), color = if (selected) Color.White else OureaTextPrimary, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                .border(1.dp, OureaSurfaceVariant, RoundedCornerShape(10.dp))
+                .clickable { editingNote = true }.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Edit, null, tint = OureaTextSecondary, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            val note = viewModel.orderNote
+            Text(
+                note.ifBlank { stringResource(R.string.ourea_add_note) },
+                color = if (note.isBlank()) OureaTextSecondary else OureaTextPrimary,
+                fontWeight = if (note.isBlank()) FontWeight.Normal else FontWeight.Medium,
+                maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 14.sp
+            )
+        }
+    }
+    if (editingNote) OureaNoteDialog(initial = viewModel.orderNote, onDone = { viewModel.orderNote = it.trim(); editingNote = false })
+}
+
+/** The order note: free text, plus one-tap common requests ("no green onion"). */
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun OureaNoteDialog(initial: String, onDone: (String) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    val quick = androidx.compose.ui.res.stringArrayResource(R.array.ourea_quick_notes)
+    Dialog(onDismissRequest = { onDone(text) }) {
+        Surface(shape = RoundedCornerShape(20.dp), color = OureaSurface, tonalElevation = 8.dp) {
+            Column(modifier = Modifier.widthIn(max = 520.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(stringResource(R.string.ourea_order_note), color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it.take(120) },
+                    placeholder = { Text(stringResource(R.string.ourea_note_hint), color = OureaTextSecondary) },
+                    modifier = Modifier.fillMaxWidth(), minLines = 2,
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OureaTextPrimary, unfocusedTextColor = OureaTextPrimary)
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    quick.forEach { q ->
+                        AssistChip(onClick = {
+                            text = when {
+                                text.isBlank() -> q
+                                text.contains(q) -> text
+                                else -> text.trimEnd().trimEnd(',', '\uFF0C') + ", " + q
+                            }
+                        }, label = { Text(q, modifier = Modifier.padding(vertical = 6.dp)) })
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = { text = "" }, modifier = Modifier.weight(1f).height(48.dp)) { Text(stringResource(R.string.ourea_clear)) }
+                    Button(onClick = { onDone(text) }, modifier = Modifier.weight(2f).height(48.dp)) { Text(stringResource(R.string.ourea_done), fontWeight = FontWeight.Bold) }
+                }
             }
         }
     }

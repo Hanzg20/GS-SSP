@@ -16,7 +16,8 @@ sealed class CfdDisplayState {
     object Idle : CfdDisplayState()
     data class Cart(val items: List<CfdItemData>, val subtotalCents: Int, val taxCents: Int, val totalCents: Int) : CfdDisplayState()
     data class Payment(val amountCents: Int) : CfdDisplayState()
-    object ThankYou : CfdDisplayState()
+    /** [orderNumber]: a quick-service counter's call number, shown big. */
+    data class ThankYou(val orderNumber: Int? = null) : CfdDisplayState()
 }
 
 object SocketServerManager {
@@ -83,7 +84,7 @@ object SocketServerManager {
                 }
                 "DisplayThankYou" -> {
                     withContext(Dispatchers.Main) {
-                        onStateChanged?.invoke(CfdDisplayState.ThankYou)
+                        onStateChanged?.invoke(CfdDisplayState.ThankYou(root["OrderNumber"]?.jsonPrimitive?.intOrNull))
                     }
                 }
                 "DisplayRotate" -> {

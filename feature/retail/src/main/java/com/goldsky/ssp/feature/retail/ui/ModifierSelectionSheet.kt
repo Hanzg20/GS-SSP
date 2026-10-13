@@ -1,120 +1,115 @@
 package com.goldsky.ssp.feature.retail.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.goldsky.ssp.feature.retail.R
 import com.goldsky.ssp.model.ModifierGroup
 import com.goldsky.ssp.model.Product
 import com.goldsky.ssp.model.ProductModifier
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * A dish's options before it goes into the cart (spice level, add-ons,
+ * sweetness): a "pick one" group behaves as radio buttons, other groups as
+ * toggles up to their max; a required group must be answered before Add.
+ */
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ModifierSelectionSheet(
     product: Product,
     onConfirm: (List<ProductModifier>) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val selectedModifiers = remember { mutableStateListOf<ProductModifier>() }
+    val groups = remember(product) { product.modifierGroups }
+    // Selected options per group, in the menu's order.
+    val picked = remember(product) { mutableStateMapOf<String, List<ProductModifier>>() }
+    val missing = groups.filter { it.required && picked[it.id].isNullOrEmpty() }
+    val extra = picked.values.flatten().sumOf { it.price_cents }
 
+    fun toggle(group: ModifierGroup, option: ProductModifier) {
+        val now = picked[group.id].orEmpty()
+        val max = group.max_select
+        picked[group.id] = when {
+            option in now -> if (group.required && max == 1) now else now - option
+            max == 1 -> listOf(option)
+            max != null && now.size >= max -> now
+            else -> now + option
+        }
+    }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 12.dp,
-        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
-        ) {
-            Text(
-                text = "CUSTOMIZE ${product.name.uppercase()}",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.primary,
-                letterSpacing = 1.sp
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-
-            LazyColumn(
-                modifier = Modifier.weight(1f, fill = false),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
-                val groups = product.modifier_groups ?: emptyList()
-                items(groups) { group ->
-                    ModifierGroupSection(
-                        group = group,
-                        selected = selectedModifiers,
-                        onToggle = { mod ->
-                            if (selectedModifiers.contains(mod)) {
-                                selectedModifiers.remove(mod)
-                            } else {
-                                selectedModifiers.add(mod)
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 8.dp) {
+            Column(Modifier.widthIn(max = 560.dp).padding(24.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(product.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(money(product.price_cents), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                }
+                Spacer(Modifier.height(16.dp))
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    groups.forEach { group ->
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(group.name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                val hint = when {
+                                    group.required -> stringResource(R.string.retail_mod_required)
+                                    group.max_select == 1 -> stringResource(R.string.retail_mod_pick_one)
+                                    else -> stringResource(R.string.retail_mod_optional)
+                                }
+                                Text(hint, fontSize = 12.sp,
+                                    color = if (group in missing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                group.options.forEach { option ->
+                                    FilterChip(
+                                        selected = option in picked[group.id].orEmpty(),
+                                        onClick = { toggle(group, option) },
+                                        // Clearly on or off from a step back: filled when picked.
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary
+                                        ),
+                                        leadingIcon = if (option in picked[group.id].orEmpty()) {
+                                            { Icon(androidx.compose.material.icons.Icons.Filled.Done, null, Modifier.size(18.dp)) }
+                                        } else null,
+                                        label = {
+                                            Text(if (option.price_cents > 0) "${option.name}  +${money(option.price_cents)}" else option.name,
+                                                modifier = Modifier.padding(vertical = 8.dp))
+                                        }
+                                    )
+                                }
                             }
                         }
-                    )
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).height(52.dp)) {
+                        Text(stringResource(R.string.retail_mod_cancel))
+                    }
+                    Button(
+                        onClick = { onConfirm(groups.flatMap { g -> picked[g.id].orEmpty() }) },
+                        enabled = missing.isEmpty(),
+                        modifier = Modifier.weight(2f).height(52.dp)
+                    ) {
+                        Text(stringResource(R.string.retail_mod_add, money(product.price_cents + extra)), fontWeight = FontWeight.Bold)
+                    }
                 }
             }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Button(
-                onClick = { onConfirm(selectedModifiers.toList()) },
-                modifier = Modifier.fillMaxWidth().height(64.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors()
-            ) {
-                val extraPrice = selectedModifiers.sumOf { it.price_cents }
-                Text(
-                    text = "ADD TO CART (+$${"%.2f".format(extraPrice / 100.0)})",
-                    fontWeight = FontWeight.Bold
-                )
-            }
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
-@Composable
-private fun ModifierGroupSection(
-    group: ModifierGroup,
-    selected: List<ProductModifier>,
-    onToggle: (ProductModifier) -> Unit
-) {
-    Column {
-        Text(
-            text = group.name.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            group.options.forEach { modifier ->
-                val isSelected = selected.contains(modifier)
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { onToggle(modifier) },
-                    label = { Text(modifier.name) }
-                )
-            }
-        }
-    }
-}
+private fun money(cents: Int) = "$" + "%.2f".format(cents / 100.0)

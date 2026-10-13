@@ -430,9 +430,9 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         }
     }
 
-    override fun showThankYouScreen() {
+    override fun showThankYouScreen(orderNumber: Int?) {
         toEye {
-            WizarPosSocketClient.sendDisplayThankYou()
+            WizarPosSocketClient.sendDisplayThankYou(orderNumber)
         }
     }
 

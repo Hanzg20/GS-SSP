@@ -3,6 +3,8 @@ package com.goldsky.ssp.feature.retail.viewmodel
 import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.goldsky.ssp.common.FeedbackManager
@@ -125,7 +127,7 @@ class RetailViewModel : ViewModel() {
         lines.forEach { line ->
             val product = RetailRepository.catalog.value.find { it.id == line.productId }
             if (product != null) {
-                val allOptions = product.modifier_groups?.flatMap { it.options } ?: emptyList()
+                val allOptions = product.modifierGroups.flatMap { it.options }
                 val modifiers = line.modifierIds.mapNotNull { id -> allOptions.find { it.id == id } }
                 repeat(line.quantity) { addItem(product, modifiers) }
             } else {
@@ -228,7 +230,32 @@ class RetailViewModel : ViewModel() {
         updateTotals()
     }
 
+    // ---- Quick-service order details (Settings > Business type) ----
+
+    /** Order note for the kitchen ("no green onion"), and dine-in vs take-out. Reset with the cart. */
+    var orderNote by androidx.compose.runtime.mutableStateOf("")
+    var takeout by androidx.compose.runtime.mutableStateOf(false)
+    private var reservedNumber: Int? = null
+
+    /**
+     * The order as the kitchen sees it. The call number is taken once per
+     * order, at checkout, and kept if the payment fails and is retried.
+     */
+    fun kitchenTicket(context: Context, staffName: String?): com.goldsky.ssp.model.KitchenTicket {
+        val number = reservedNumber ?: com.goldsky.ssp.payment.OrderNumbers.next(context).also { reservedNumber = it }
+        return com.goldsky.ssp.model.KitchenTicket(
+            number = number,
+            takeout = takeout,
+            note = orderNote,
+            lines = _cart.map { item -> com.goldsky.ssp.model.KitchenLine(item.product.name, item.quantity, item.selectedModifiers.map { it.name }) },
+            staffName = staffName
+        )
+    }
+
     fun clearCart() {
+        orderNote = ""
+        takeout = false
+        reservedNumber = null
         _cart.clear()
         updateTotals()
         _lastScan.value = null
