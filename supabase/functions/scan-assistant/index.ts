@@ -26,10 +26,10 @@ function json(data: unknown, status = 200): Response {
 
 class BusyError extends Error {}
 
-/** Same providers as the store's Beaver (apex-assistant); SCAN_* overrides let the two use different keys/models. */
+/** Same providers as the store's Beaver (apex-assistant), but its own Groq key (SCAN_ORDER_GROQ_API_KEY): customers' questions must not use up the owners' rate limit. */
 function provider(): { name: string; call: (system: string, turns: Turn[]) => Promise<string> } | null {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
-  const groqKey = Deno.env.get("SCAN_GROQ_API_KEY") ?? Deno.env.get("GROQ_API_KEY");
+  const groqKey = Deno.env.get("SCAN_ORDER_GROQ_API_KEY") ?? Deno.env.get("SCAN_GROQ_API_KEY") ?? Deno.env.get("GROQ_API_KEY");
   const wanted = Deno.env.get("SCAN_PROVIDER") ?? Deno.env.get("APEX_PROVIDER") ?? (anthropicKey ? "anthropic" : groqKey ? "groq" : "");
   if (wanted === "anthropic" && anthropicKey) {
     const model = Deno.env.get("SCAN_ANTHROPIC_MODEL") ?? "claude-haiku-5-5";
@@ -57,7 +57,13 @@ function provider(): { name: string; call: (system: string, turns: Turn[]) => Pr
         const send = () => fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model, max_tokens: 900, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, ...turns] }),
+          // gpt-oss reasons before answering and those tokens count against the per-minute
+          // limit: low effort is plenty for menu questions and keeps more customers in.
+          body: JSON.stringify({
+            model, max_tokens: 900, response_format: { type: "json_object" },
+            ...(model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
+            messages: [{ role: "system", content: system }, ...turns],
+          }),
         });
         let res = await send();
         if (res.status === 429) {
@@ -77,7 +83,7 @@ function provider(): { name: string; call: (system: string, turns: Turn[]) => Pr
 
 /** Speech to text, any language (Whisper detects it): customers speak their own. */
 async function transcribe(audioB64: string, mime: string): Promise<string | null> {
-  const groqKey = Deno.env.get("SCAN_GROQ_API_KEY") ?? Deno.env.get("GROQ_API_KEY");
+  const groqKey = Deno.env.get("SCAN_ORDER_GROQ_API_KEY") ?? Deno.env.get("SCAN_GROQ_API_KEY") ?? Deno.env.get("GROQ_API_KEY");
   const openaiKey = Deno.env.get("OPENAI_API_KEY");
   if (!groqKey && !openaiKey) return null;
   const bytes = Uint8Array.from(atob(audioB64), (c) => c.charCodeAt(0));
