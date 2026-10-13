@@ -2,6 +2,7 @@ package com.goldsky.ssp.ourea.eye.ui
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.background
@@ -189,6 +190,7 @@ fun TechnicianPanel(
                 Line("System", "${Build.MODEL} · Android ${Build.VERSION.RELEASE}")
             }
         }
+        Section("Volume") { VolumeRow() }
         Section("Tests") {
             val demo = CfdDisplayState.Cart(
                 listOf(CfdItemData("Test item A", 2, 199), CfdItemData("Test item B", 1, 1250)),
@@ -216,6 +218,48 @@ fun TechnicianPanel(
             ))
         }
     }
+}
+
+/**
+ * Media volume (ad videos, sounds): the system's own, so it holds across
+ * restarts. Steps of the stream's real range, shown as a bar.
+ */
+@Composable
+private fun VolumeRow() {
+    val context = LocalContext.current
+    val audio = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val max = remember { audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+    var level by remember { mutableStateOf(audio.getStreamVolume(AudioManager.STREAM_MUSIC)) }
+    // Follows changes made elsewhere too (hardware keys, PAYWizard).
+    LaunchedEffect(Unit) { while (true) { delay(1000); level = audio.getStreamVolume(AudioManager.STREAM_MUSIC) } }
+    fun set(v: Int) {
+        level = v.coerceIn(0, max)
+        // FLAG_PLAY_SOUND: a click at the new level, so the technician hears it.
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, level, AudioManager.FLAG_PLAY_SOUND)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        VolumeButton("−") { set(level - 1) }
+        Box(Modifier.weight(1f).height(10.dp).background(Navy600, RoundedCornerShape(5.dp))) {
+            Box(Modifier.fillMaxWidth(if (max > 0) level / max.toFloat() else 0f).fillMaxHeight().background(ScanFrameGold, RoundedCornerShape(5.dp)))
+        }
+        VolumeButton("+") { set(level + 1) }
+        Text(if (level == 0) "Mute" else "${level * 100 / max.coerceAtLeast(1)}%", color = Slate100, fontSize = 13.sp,
+            fontWeight = FontWeight.Bold, modifier = Modifier.width(44.dp))
+    }
+    ToolRow(listOf(
+        "Mute" to { set(0) },
+        "50%" to { set((max + 1) / 2) },
+        "Max" to { set(max) },
+    ))
+}
+
+@Composable
+private fun VolumeButton(label: String, onClick: () -> Unit) {
+    Box(
+        Modifier.size(44.dp).background(Navy600.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+            .border(0.5.dp, ScanFrameGold.copy(alpha = 0.4f), RoundedCornerShape(10.dp)).clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) { Text(label, color = Slate100, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
 }
 
 private fun openPayWizard(context: Context) {
