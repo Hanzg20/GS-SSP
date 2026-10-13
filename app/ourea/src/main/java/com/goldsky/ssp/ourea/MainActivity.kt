@@ -404,7 +404,11 @@ class MainActivity : ComponentActivity() {
         val ref = "OUR-CASH-" + System.currentTimeMillis()
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
 
-        onStateChange(OureaPaymentUiState.Processing(getString(R.string.ourea_recording_cash)))
+        // The cashier has the cash in hand: done now. Upload (queued offline if the
+        // network is down) and printing follow in the background -- waiting on two
+        // cloud writes kept the dialog away 6-9 s.
+        val change = cashReceivedCents - total
+        onStateChange(OureaPaymentUiState.Success("Cash received. Change due: $${"%.2f".format(change / 100.0)}"))
 
         CoroutineScope(Dispatchers.IO).launch {
             TransactionRepository.recordTransaction(
@@ -424,11 +428,6 @@ class MainActivity : ComponentActivity() {
                 ).withOrder(ticket)
             )
             TransactionRepository.recordItems(this@MainActivity, ref, sn, lines)
-            val change = cashReceivedCents - total
-            withContext(Dispatchers.Main) {
-                onStateChange(OureaPaymentUiState.Success("Cash received. Change due: $${"%.2f".format(change / 100.0)}"))
-            }
-            // Printing after the dialog: the cashier shouldn't wait on the printer (two tickets on a quick-service counter).
             printOrder(ticket, ReceiptPrinterManager.ReceiptData(
                 subtotalCents = subtotal,
                 taxCents = tax,

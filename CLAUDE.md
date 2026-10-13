@@ -50,6 +50,10 @@ app/ourea      -- Desktop POS, first real build 2026-08-27 (see `docs/system_arc
                   reference's cash/QR/member-card payment buttons don't exist here, deliberately not built as non-functional
                   decoration. Verified: builds, installs, runs on emulator, no crash; full cart-to-real-payment flow not yet
                   exercised end-to-end (no synced catalog data on the test device yet).
+                  Quick-service restaurant mode (2026-10-13): Settings > Business type = QUICK_SERVICE adds dine-in/take-out,
+                  order note, daily call number (`OrderNumbers`), kitchen ticket (`ReceiptPrinterManager.printKitchenTicket`)
+                  and `transactions.order_number/order_type/order_note`. Dish options are `products.attributes.modifier_groups`
+                  (no CMP editor; format in `docs/migrations/2026-10-13_quick_service_orders.sql`).
 app/aegis-wash, app/aegis-vend, app/aegis-ev
                -- the Aegis series (see taxonomy below): `com.goldsky.ssp.aegis.wash` (car wash, feature:wash),
                   `com.goldsky.ssp.aegis.vend` (self-service vending, feature:vending), `com.goldsky.ssp.aegis.ev`
