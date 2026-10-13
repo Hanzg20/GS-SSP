@@ -124,4 +124,9 @@
     <string name="retail_processing">PROCESSING...</string>
     <string name="retail_ai_scanning_total">AI SCANNING FOR TOTAL</string>
     <string name="retail_not_uploaded_yet">not uploaded yet</string>
+    <string name="retail_hardware_payment_terminal">Hardware &amp; Payment Terminal</string>
+    <string name="retail_payment_hardware_vendor">Payment Hardware Vendor</string>
+    <string name="retail_wizarpos_terminal_ip_e_g">WizarPOS Terminal IP (e.g. 10.0.0.52)</string>
+    <string name="retail_ip_address_of_customer_facing">IP address of customer-facing Q3mini/UPT on local Wi-Fi, or 127.0.0.1 for local POS</string>
+    <string name="retail_ourea_eye_display_rotation">Ourea Eye Display Rotation</string>
 </resources>

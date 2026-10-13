@@ -151,4 +151,19 @@ interface IPaymentProvider {
             override fun onProgress(message: String) {}
         })
     }
+
+    /** Customer Facing Display item summary. */
+    data class CfdItem(val name: String, val qty: Int, val priceCents: Int)
+
+    /** Updates customer facing display (CFD) with live cart summary. */
+    fun updateLiveCart(items: List<CfdItem>, subtotalCents: Int, taxCents: Int) {}
+
+    /** Shows idle/welcome/ad screen on customer facing display. */
+    fun showIdleScreen() {}
+
+    /** Shows thank-you screen on customer facing display after successful payment. */
+    fun showThankYouScreen() {}
+
+    /** Shows screen rotation on customer facing display (e.g. 0, 90, 180, 270). */
+    fun showEyeRotation(degrees: Int) {}
 }

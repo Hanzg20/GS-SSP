@@ -39,9 +39,8 @@ import kotlinx.coroutines.*
  */
 class MainActivity : ComponentActivity() {
 
-    private val paymentProvider by lazy {
-        PaymentProviderFactory.getPaymentProvider(this, DeviceRepository.getPersistedHardwareVendor())
-    }
+    private val paymentProvider: IPaymentProvider
+        get() = PaymentProviderFactory.getPaymentProvider(this, DeviceRepository.getPersistedHardwareVendor())
 
     /** Only one QR session can be in flight; cancelled if the staff backs out of the dialog. */
     private var qrPollJob: Job? = null
@@ -119,9 +118,24 @@ class MainActivity : ComponentActivity() {
                     }
                     var qrState by remember { mutableStateOf<OureaQrUiState>(OureaQrUiState.Hidden) }
 
+                    // Sync Customer Facing Display (CFD) on Q3mini as cart items change
+                    val cartList = retailViewModel.cart
+                    LaunchedEffect(cartList.size, cartList.sumOf { it.quantity }) {
+                        if (cartList.isEmpty()) {
+                            paymentProvider.showIdleScreen()
+                        } else {
+                            val sale = retailViewModel.checkoutSale()
+                            val cfdItems = sale.lines.map { line ->
+                                IPaymentProvider.CfdItem(line.name, line.quantity, line.unitPriceCents)
+                            }
+                            paymentProvider.updateLiveCart(cfdItems, sale.subtotalCents, sale.taxCents)
+                        }
+                    }
+
                     fun onPaymentSettled(state: OureaPaymentUiState) {
                         paymentStatus = state
                         if (state is OureaPaymentUiState.Success) {
+                            paymentProvider.showThankYouScreen()
                             retailViewModel.clearCart()
                             FeedbackManager.success(this@MainActivity)
                         }

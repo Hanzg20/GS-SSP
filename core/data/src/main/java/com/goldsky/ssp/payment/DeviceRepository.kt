@@ -56,6 +56,8 @@ object DeviceRepository {
     private const val KEY_NUVEI_APP_ID = "nuvei_app_id"
     private const val KEY_REGION = "region"
     private const val KEY_THEME_STYLE = "theme_style"
+    private const val KEY_TERMINAL_IP = "terminal_ip"
+    private const val KEY_EYE_ROTATION = "eye_rotation"
 
     enum class UiThemeStyle { CLASSIC, CYBER }
 
@@ -70,6 +72,7 @@ object DeviceRepository {
         appContext = context.applicationContext
         cachedToken = prefs()?.getString(KEY_TOKEN, null)
         com.goldsky.ssp.common.CoreConfig.region = getRegion()
+        com.goldsky.ssp.payment.wizarpos.WizarPosSocketClient.targetHost = getTerminalIp()
     }
 
     /**
@@ -107,6 +110,20 @@ object DeviceRepository {
 
     fun getPersistedHardwareVendor(): String = prefs()?.getString(KEY_HARDWARE_VENDOR, com.goldsky.ssp.DeviceAdapter.getRecommendedVendor()) 
             ?: com.goldsky.ssp.DeviceAdapter.getRecommendedVendor()
+
+    fun persistTerminalIp(ip: String) {
+        prefs()?.edit()?.putString(KEY_TERMINAL_IP, ip)?.apply()
+        com.goldsky.ssp.payment.wizarpos.WizarPosSocketClient.targetHost = ip
+    }
+
+    fun getTerminalIp(): String =
+        prefs()?.getString(KEY_TERMINAL_IP, "127.0.0.1") ?: "127.0.0.1"
+
+    fun persistEyeRotation(degrees: Int) {
+        prefs()?.edit()?.putInt(KEY_EYE_ROTATION, degrees)?.apply()
+    }
+
+    fun getEyeRotation(): Int = prefs()?.getInt(KEY_EYE_ROTATION, 0) ?: 0
 
     fun persistRetailMode(mode: com.goldsky.ssp.model.RetailMode) {
         prefs()?.edit()?.putString(KEY_RETAIL_MODE, mode.name)?.apply()

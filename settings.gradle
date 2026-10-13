@@ -36,6 +36,7 @@ include ':libs:wizarpos'
 
 include ':app:iris'
 include ':app:ourea'
+include ':app:ourea-eye'
 include ':app:aegis-wash'
 include ':app:aegis-vend'
 include ':app:aegis-ev'

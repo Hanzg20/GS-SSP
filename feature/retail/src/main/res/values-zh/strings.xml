@@ -121,6 +121,11 @@
     <string name="retail_processing">处理中…</string>
     <string name="retail_ai_scanning_total">AI 正在识别总额</string>
     <string name="retail_not_uploaded_yet">尚未上传</string>
+    <string name="retail_hardware_payment_terminal">硬件与支付终端</string>
+    <string name="retail_payment_hardware_vendor">支付硬件厂商</string>
+    <string name="retail_wizarpos_terminal_ip_e_g">慧银支付终端 IP（例如 10.0.0.52）</string>
+    <string name="retail_ip_address_of_customer_facing">局域网里面向顾客的 Q3mini/UPT 的 IP；本机收银填 127.0.0.1</string>
+    <string name="retail_ourea_eye_display_rotation">Ourea Eye 客显屏旋转</string>
     <plurals name="retail_open_orders">
         <item quantity="other">%1$d 张待处理送货单</item>
     </plurals>

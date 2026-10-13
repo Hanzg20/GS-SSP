@@ -39,6 +39,10 @@ fun SettingsScreen() {
     var taxRateText by remember { mutableStateOf(DeviceRepository.getTaxRate().let { if (it == 0f) "" else it.toString() }) }
     var tipsEnabled by remember { mutableStateOf(DeviceRepository.isTipsEnabled()) }
 
+    var hardwareVendor by remember { mutableStateOf(DeviceRepository.getPersistedHardwareVendor()) }
+    var terminalIpText by remember { mutableStateOf(DeviceRepository.getTerminalIp()) }
+    var eyeRotation by remember { mutableStateOf(DeviceRepository.getEyeRotation()) }
+
     var selectedRegion by remember { mutableStateOf(DeviceRepository.getRegion()) }
     var nuveiAppId by remember { mutableStateOf(DeviceRepository.getNuveiAppId()) }
     val onboardingStatus by NuveiOnboardingRepository.currentStatus.collectAsState()
@@ -102,6 +106,66 @@ fun SettingsScreen() {
                             Text(stringResource(R.string.retail_show_the_tip_screen_before), style = MaterialTheme.typography.bodySmall)
                         }
                         Switch(checked = tipsEnabled, onCheckedChange = { tipsEnabled = it; DeviceRepository.persistTipsEnabled(it) })
+                    }
+                }
+            }
+
+            Text(stringResource(R.string.retail_hardware_payment_terminal), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(stringResource(R.string.retail_payment_hardware_vendor), fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("WIZARPOS", "PAX", "IDTECH").forEach { vendor ->
+                            FilterChip(
+                                selected = hardwareVendor == vendor,
+                                onClick = {
+                                    hardwareVendor = vendor
+                                    DeviceRepository.persistHardwareVendor(vendor)
+                                },
+                                label = { Text(vendor) }
+                            )
+                        }
+                    }
+                    if (hardwareVendor == "WIZARPOS") {
+                        OutlinedTextField(
+                            value = terminalIpText,
+                            onValueChange = { ip ->
+                                terminalIpText = ip
+                                DeviceRepository.persistTerminalIp(ip.trim())
+                            },
+                            label = { Text(stringResource(R.string.retail_wizarpos_terminal_ip_e_g)) },
+                            supportingText = { Text(stringResource(R.string.retail_ip_address_of_customer_facing)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(stringResource(R.string.retail_ourea_eye_display_rotation), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(0, 90, 180, 270).forEach { deg ->
+                                FilterChip(
+                                    selected = eyeRotation == deg,
+                                    onClick = {
+                                        eyeRotation = deg
+                                        DeviceRepository.persistEyeRotation(deg)
+                                        val provider = com.goldsky.ssp.payment.PaymentProviderFactory.getPaymentProvider(context, "WIZARPOS")
+                                        provider.showEyeRotation(deg)
+                                    },
+                                    label = { Text("$deg°") }
+                                )
+                            }
+                        }
                     }
                 }
             }

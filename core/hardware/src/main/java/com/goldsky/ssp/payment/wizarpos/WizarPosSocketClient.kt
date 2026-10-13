@@ -15,7 +15,7 @@ import java.nio.ByteOrder
  */
 object WizarPosSocketClient {
     private const val TAG = "WizarPosSocket"
-    private const val HOST = "127.0.0.1"
+    @Volatile var targetHost: String = "127.0.0.1"
     // OPC's listening port depends on how the terminal was configured: 6031 is
     // WizarPOS's standard value (OPC_DEMO default, the TMS OPC template), while
     // bay5 was set up locally on 6666. Try both, in this order, so a terminal
@@ -43,16 +43,17 @@ object WizarPosSocketClient {
      * submit a transaction twice.
      */
     private fun connect(): Socket? {
+        val host = targetHost.ifBlank { "127.0.0.1" }
         val order = lastGoodPort?.let { listOf(it) + (PORTS - it) } ?: PORTS
         for (port in order) {
             val socket = Socket()
             try {
-                socket.connect(InetSocketAddress(HOST, port), CONNECT_TIMEOUT_MS)
-                if (lastGoodPort != port) Log.i(TAG, "PAYWizard service found on port $port")
+                socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+                if (lastGoodPort != port) Log.i(TAG, "PAYWizard service found on $host:$port")
                 lastGoodPort = port
                 return socket
             } catch (e: Exception) {
-                Log.w(TAG, "No PAYWizard service on $HOST:$port (${e.message})")
+                Log.w(TAG, "No PAYWizard service on $host:$port (${e.message})")
                 try { socket.close() } catch (_: Exception) {}
             }
         }
@@ -65,7 +66,7 @@ object WizarPosSocketClient {
     suspend fun sendRequest(payload: Any, ctrlPath: Byte = WizarPosP3Protocol.CTRL_FROM_CASHIER): ByteArray? = withContext(Dispatchers.IO) {
         var socket: Socket? = null
         try {
-            Log.d(TAG, "Connecting to Localhost PAYWizard Service ($HOST:$PORTS)...")
+            Log.d(TAG, "Connecting to Localhost PAYWizard Service ($targetHost:$PORTS)...")
             socket = connect() ?: run {
                 Log.e(TAG, "Connection Refused. Is PAYWizard running on one of $PORTS?")
                 return@withContext null
@@ -102,6 +103,61 @@ object WizarPosSocketClient {
                 Log.d(TAG, "Socket Closed.")
             } catch (e: Exception) {}
         }
+    }
+
+    /**
+     * Sends a P3 request to Ourea Eye (Customer Facing Display) on port 6032,
+     * separate from PAYWizard's port 6031.
+     */
+    suspend fun sendEyeRequest(payload: Any, port: Int = 6032): ByteArray? = withContext(Dispatchers.IO) {
+        var socket: Socket? = null
+        try {
+            val host = targetHost.ifBlank { "127.0.0.1" }
+            socket = Socket().apply {
+                connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+                soTimeout = READ_TIMEOUT_MS
+            }
+            val outputStream = socket.getOutputStream()
+            val inputStream = socket.getInputStream()
+
+            val frame = WizarPosP3Protocol.pack(WizarPosP3Protocol.CTRL_FROM_CASHIER, sequenceNumber++, payload)
+            outputStream.write(frame)
+            outputStream.flush()
+
+            val responseFrame = readP3Frame(inputStream) ?: return@withContext null
+            WizarPosP3Protocol.unpackBytes(responseFrame)
+        } catch (e: Exception) {
+            Log.e(TAG, "Ourea Eye Socket Failure on port $port: ${e.message}")
+            null
+        } finally {
+            try { socket?.close() } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Sends a DISPLAY_IDLE / Welcome screen command to the customer terminal.
+     */
+    suspend fun sendDisplayIdle(): Boolean = withContext(Dispatchers.IO) {
+        val payload = """{"TransType":"DisplayIdle","CallerName":"GS-SSP"}"""
+        val resp = sendEyeRequest(payload)
+        resp != null
+    }
+
+    /**
+     * Sends a LIVE_CART update command to the customer terminal with itemized list and totals.
+     */
+    suspend fun sendDisplayCart(jsonPayload: String): Boolean = withContext(Dispatchers.IO) {
+        val resp = sendEyeRequest(jsonPayload)
+        resp != null
+    }
+
+    /**
+     * Sends a DISPLAY_THANKYOU command to the customer terminal.
+     */
+    suspend fun sendDisplayThankYou(): Boolean = withContext(Dispatchers.IO) {
+        val payload = """{"TransType":"DisplayThankYou","CallerName":"GS-SSP"}"""
+        val resp = sendEyeRequest(payload)
+        resp != null
     }
 
     /**

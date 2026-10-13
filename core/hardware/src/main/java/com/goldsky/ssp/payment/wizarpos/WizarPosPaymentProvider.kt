@@ -68,8 +68,8 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         val OriInvoiceNum: String? = null,
         val OriTransId: String? = null,
         val OriRrn: String? = null,
-        val EnableReceipt: Boolean = true,
-        val isPrint: String = "true"
+        val EnableReceipt: Boolean = false,
+        val isPrint: String = "false"
     )
 
     /** ISO 4217 numeric code for this terminal's region (CA -> CAD 124, else USD 840). */
@@ -207,13 +207,17 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
             // Step 2 & 3: Handshake Request (CTRL=0xF1) with 4 random bytes
             val randomBytes = ByteArray(4).apply { java.util.Random().nextBytes(this) }
             val handshakeRes = WizarPosSocketClient.sendRequest(randomBytes, WizarPosP3Protocol.CTRL_HANDSHAKE_REQ)
-            
-            if (handshakeRes == null) {
-                // No answer: PAYWizard busy (or not running). Nothing sent yet,
-                // nothing charged -- fail now rather than wait 200 s on the sale.
+            val localPayWizard = WizarPosSocketClient.targetHost.ifBlank { "127.0.0.1" } == "127.0.0.1"
+
+            if (handshakeRes == null && localPayWizard) {
+                // No answer from this terminal's own PAYWizard: busy (or not running).
+                // Nothing sent yet, nothing charged -- fail now rather than wait 200 s on the sale.
                 Log.w(TAG, "P3 Handshake got no reply; not sending the sale")
                 callback.onFailure("Payment service busy (P3 handshake no reply)", true)
                 return
+            } else if (handshakeRes == null) {
+                // A networked UPT (Q3mini over Wi-Fi): its firmware doesn't answer the handshake.
+                Log.w(TAG, "P3 Handshake got no reply from the remote terminal; sending the sale directly")
             } else if (!handshakeRes.contentEquals(randomBytes)) {
                 Log.w(TAG, "P3 Handshake mismatch, attempting to proceed anyway...")
             } else {
@@ -376,6 +380,51 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
             )
             
             executeRequest(request, "SETTLE", callback)
+        }
+    }
+
+    override fun showIdleScreen() {
+        CoroutineScope(Dispatchers.IO).launch {
+            WizarPosSocketClient.sendDisplayIdle()
+        }
+    }
+
+    override fun updateLiveCart(items: List<IPaymentProvider.CfdItem>, subtotalCents: Int, taxCents: Int) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val totalCents = subtotalCents + taxCents
+            val itemsJsonList = items.map { item ->
+                kotlinx.serialization.json.JsonObject(
+                    mapOf(
+                        "name" to kotlinx.serialization.json.JsonPrimitive(item.name),
+                        "qty" to kotlinx.serialization.json.JsonPrimitive(item.qty),
+                        "priceCents" to kotlinx.serialization.json.JsonPrimitive(item.priceCents)
+                    )
+                )
+            }
+            val payloadObj = kotlinx.serialization.json.JsonObject(
+                mapOf(
+                    "TransType" to kotlinx.serialization.json.JsonPrimitive("DisplayCart"),
+                    "CallerName" to kotlinx.serialization.json.JsonPrimitive("GS-SSP"),
+                    "SubtotalCents" to kotlinx.serialization.json.JsonPrimitive(subtotalCents),
+                    "TaxCents" to kotlinx.serialization.json.JsonPrimitive(taxCents),
+                    "TotalCents" to kotlinx.serialization.json.JsonPrimitive(totalCents),
+                    "Items" to kotlinx.serialization.json.JsonArray(itemsJsonList)
+                )
+            )
+            WizarPosSocketClient.sendDisplayCart(payloadObj.toString())
+        }
+    }
+
+    override fun showThankYouScreen() {
+        CoroutineScope(Dispatchers.IO).launch {
+            WizarPosSocketClient.sendDisplayThankYou()
+        }
+    }
+
+    override fun showEyeRotation(degrees: Int) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val payload = """{"TransType":"DisplayRotate","Rotation":$degrees,"CallerName":"GS-SSP"}"""
+            WizarPosSocketClient.sendEyeRequest(payload)
         }
     }
 }
