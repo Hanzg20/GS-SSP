@@ -225,10 +225,12 @@ fun CartScreen(state: CfdDisplayState.Cart) {
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Divider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Total", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text("$${"%.2f".format(state.totalCents / 100.0)}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
-                    }
+                    // Label above the amount: side by side, "$1.99" wrapped to "$1.9 / 9" on the 480px Q3mini.
+                    Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(
+                        "$${"%.2f".format(state.totalCents / 100.0)}", style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary, maxLines = 1, softWrap = false
+                    )
                 }
             }
         }

@@ -28,7 +28,7 @@ android {
 
         buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
         buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
-        buildConfigField "boolean", "IS_MOCK", "true"
+        buildConfigField "boolean", "IS_MOCK", "false"
     }
 
     buildFeatures {
