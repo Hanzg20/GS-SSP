@@ -14,6 +14,7 @@ python make_app_icon.py <goldsky_logo.png> <RobotoFlex-Regular.ttf> <out_dir> <W
 |-------|-------|-----------|
 | Iris  | IRIS  | `#00E5FF` |
 | Ourea | OUREA | `#FFD54F` |
+| Ourea Eye | EYE | `#FFD54F` (Ourea's gold: it is Ourea's customer display) |
 
 It writes `ic_launcher_foreground.png` (copy it to `src/main/res/drawable/`),
 `ic_launcher.png` / `ic_launcher_round.png` (legacy icons for API 25, copy them
