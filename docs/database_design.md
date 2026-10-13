@@ -62,7 +62,7 @@ erDiagram
 | Ads → `media` | advertisements, playlists, ad_playback_logs | CMP (ads), apps (playback) |
 | Store back office | expenses, reminders, notes | Iris / Ourea / Apex |
 | AI assistant → `apex` | apex_messages, apex_knowledge | apex-assistant edge function |
-| **Unidentified → `legacy`** | `gp_*` (appointments, order_items, orders, products, profiles, settings, vehicles), `jc_*` (advertisement_logs, advertisements, consumption_records, member_levels, members, membership_cards, points_transactions, system_config, transaction_history, vip_cards), `e_merchants`, `e_transactions` | not written by GS-SSP apps; owners to confirm, then move to `legacy` or drop |
+| **Pending (待处理)** | `gp_*` (appointments, order_items, orders, products, profiles, settings, vehicles), `jc_*` (advertisement_logs, advertisements, consumption_records, member_levels, members, membership_cards, points_transactions, system_config, transaction_history, vip_cards), `e_merchants`, `e_transactions` | not read or written by GS-SSP apps. Marked pending 2026-10-13 (`COMMENT ON TABLE ... 'PENDING: ...'`). Don't build on them; to be moved to `legacy` or dropped once their owners are known |
 
 ---
 
@@ -80,7 +80,7 @@ schema and its name does not repeat the domain: `dine.checks`, not
 | `sales` | shared orders / lines / payments (§4) | with the next vertical |
 | `retail`, `wash`, `ev`, `parking`, `vending`, `timer` | each vertical's own extension tables | as each is built or migrated |
 | `member`, `media`, `apex`, `ops` | see §2 | to migrate |
-| `legacy` | the unidentified `gp_*`, `jc_*`, `e_*` | to decide |
+| `legacy` | the pending `gp_*`, `jc_*`, `e_*` (§2) | pending |
 
 ### 3.2 Access
 - A schema other than `public` is **not exposed through the API**. Apps reach it
