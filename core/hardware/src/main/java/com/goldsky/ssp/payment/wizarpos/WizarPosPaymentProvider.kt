@@ -276,7 +276,13 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                     if (cardRead) callback.onCardInfo(info)
                     // -139 "cancelled by user": cancel key or payment-screen timeout.
                     if (resultCode == RESP_CANCELLED) callback.onCancelled()
-                    callback.onFailure("Payment Error: $resultMsg ($resultCode)")
+                    if (!cardRead && resultMsg.contains("payment package", ignoreCase = true)) {
+                        // OPC has no payment app set (seen right after leaving debug mode,
+                        // 2026-10-13): no card screen, nothing charged; retrying won't help.
+                        callback.onFailure("Card terminal not set up: OPC has no payment app selected ($resultMsg)", isHardwareFault = true)
+                    } else {
+                        callback.onFailure("Payment Error: $resultMsg ($resultCode)")
+                    }
                 }
             } else {
                 callback.onFailure("Communication Timeout (P3)", true)
