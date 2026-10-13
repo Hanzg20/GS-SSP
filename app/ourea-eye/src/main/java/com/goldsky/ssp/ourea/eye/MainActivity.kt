@@ -20,6 +20,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SocketServerManager.start()
+        // The customer display is this terminal's HOME, so it comes back by itself after a reboot.
+        com.goldsky.ssp.payment.LauncherClaim.ensureDefault(this, "WIZARPOS")
+        // WizarPOS OPC opens on top of HOME ~9 s after boot; this brings the Eye back.
+        com.goldsky.ssp.ui.BootFrontGuard.install(this)
 
         setContent {
             GoldSkyTheme(dark = true) {
@@ -39,6 +43,8 @@ class MainActivity : ComponentActivity() {
 
                 DisposableEffect(Unit) {
                     SocketServerManager.onStateChanged = { newState ->
+                        // A sale has started: never pull the Eye over PAYWizard's card screen.
+                        if (newState !is CfdDisplayState.Idle) com.goldsky.ssp.ui.BootFrontGuard.onTouch()
                         when (newState) {
                             // The thank-you stays THANK_YOU_MS: Ourea sends "idle" the moment
                             // its cart empties, which used to cut it off at once. "Idle" during

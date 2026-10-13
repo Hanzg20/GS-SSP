@@ -118,6 +118,8 @@ class RetailViewModel : ViewModel() {
             withContext(Dispatchers.Main) {
                 clearCart()
                 addLines(lines)
+                orderNote = entity.orderNote.orEmpty()
+                takeout = entity.takeout
                 loadParkedOrders(context)
             }
         }
@@ -177,7 +179,9 @@ class RetailViewModel : ViewModel() {
         cartJson = Json.encodeToString(
             _cart.map { ParkedCartLine(it.product.id, it.quantity, it.selectedModifiers.map { m -> m.id }) }
         ),
-        subtotalCents = _totalCents.value
+        subtotalCents = _totalCents.value,
+        orderNote = orderNote.ifBlank { null },
+        takeout = takeout
     )
 
     /** What a held order contains, e.g. "Soy Sauce x2, Tofu" -- every held order is "Quick Order" otherwise. */

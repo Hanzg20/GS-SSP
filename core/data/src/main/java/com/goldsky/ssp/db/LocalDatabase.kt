@@ -40,7 +40,10 @@ data class ParkedOrderEntity(
     val tableName: String? = null,
     val cartJson: String, // Serialized Map<ProductId, Qty>
     val subtotalCents: Int,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    // Quick-service: the order note and take-out flag come back with the cart.
+    val orderNote: String? = null,
+    val takeout: Boolean = false
 )
 
 @Entity(tableName = "local_expenses")
@@ -165,7 +168,7 @@ interface ExpenseDao {
     fun delete(expense: ExpenseEntity)
 }
 
-@Database(entities = [ProductEntity::class, OrderEntity::class, ParkedOrderEntity::class, ExpenseEntity::class, NoteEntity::class], version = 10, exportSchema = false)
+@Database(entities = [ProductEntity::class, OrderEntity::class, ParkedOrderEntity::class, ExpenseEntity::class, NoteEntity::class], version = 11, exportSchema = false)
 abstract class LocalDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
     abstract fun orderDao(): OrderDao
@@ -194,6 +197,13 @@ abstract class LocalDatabase : RoomDatabase() {
                         synced INTEGER NOT NULL DEFAULT 0
                     )
                 """.trimIndent())
+            }
+        }
+
+        private val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE parked_orders ADD COLUMN orderNote TEXT")
+                db.execSQL("ALTER TABLE parked_orders ADD COLUMN takeout INTEGER NOT NULL DEFAULT 0")
             }
         }
 
@@ -226,7 +236,7 @@ abstract class LocalDatabase : RoomDatabase() {
                     LocalDatabase::class.java,
                     "ssp_local_db"
                 )
-                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

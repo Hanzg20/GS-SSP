@@ -214,6 +214,10 @@ fun TechnicianPanel(
             ))
             ToolRow(listOf(
                 "Wi-Fi settings" to { context.startActivity(Intent(Settings.ACTION_WIFI_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                // The Eye is HOME, so this is the way to the rest of the system.
+                "Android settings" to { context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
+            ))
+            ToolRow(listOf(
                 "Exit" to onExit,
             ))
         }
