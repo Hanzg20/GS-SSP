@@ -54,6 +54,8 @@ class OureaEyeApp : Application() {
             SupabaseClientProvider.ensureAuthenticated()
             DeviceRepository.registerDevice(sn, BuildConfig.VERSION_NAME)
             DeviceRepository.syncDeviceIdentity(sn)
+            // The store's kiosk settings, for the technician PIN (same as the Aegis kiosks).
+            runCatching { com.goldsky.ssp.payment.ConfigManager.loadConfig(this@OureaEyeApp, DeviceRepository.getPersistedOrgId()) }
             AdManager.syncNow(this@OureaEyeApp) // the playlist right away, not in 2 h
         }
     }

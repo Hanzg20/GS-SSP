@@ -25,6 +25,10 @@ class HeartbeatWorker(appContext: Context, params: WorkerParameters) : Coroutine
         if (send(applicationContext)) Result.success() else Result.retry()
 
     companion object {
+        /** When this process last delivered a heartbeat (0 = not yet); for diagnostics screens. */
+        @Volatile var lastSentAt = 0L
+            private set
+
         /**
          * Sends one heartbeat now; true when it reached Supabase. Shared by the
          * worker and [AdManager]'s on-network-available path, which calls it
@@ -43,6 +47,7 @@ class HeartbeatWorker(appContext: Context, params: WorkerParameters) : Coroutine
                 )
                 SupabaseClientProvider.ensureAuthenticated()
                 SupabaseClientProvider.client.postgrest["heartbeats"].insert(heartbeat)
+                lastSentAt = System.currentTimeMillis()
                 true
             } catch (e: Exception) {
                 Log.e("HeartbeatWorker", "Failed to send heartbeat: ${e.message}")

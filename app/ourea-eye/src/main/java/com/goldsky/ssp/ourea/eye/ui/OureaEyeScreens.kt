@@ -153,7 +153,7 @@ private fun WelcomeScreen() {
             modifier = Modifier.size(120.dp)
         )
         Spacer(modifier = Modifier.height(24.dp))
-        Text("欢迎光临 · Welcome", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+        Text("Welcome", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
     }
 }
 

@@ -26,6 +26,13 @@ object SocketServerManager {
     private var serverSocket: ServerSocket? = null
 
     var onStateChanged: ((CfdDisplayState) -> Unit)? = null
+
+    // For the technician panel: is the listener up, and who talked to it last.
+    @Volatile var isListening = false; private set
+    @Volatile var lastClientIp: String? = null; private set
+    @Volatile var lastCommand: String? = null; private set
+    @Volatile var lastCommandAt = 0L; private set
+    const val LISTEN_PORT = PORT
     var onRotationChanged: ((Int) -> Unit)? = null
 
     fun start() {
@@ -33,6 +40,7 @@ object SocketServerManager {
         serverJob = CoroutineScope(Dispatchers.IO).launch {
             try {
                 serverSocket = ServerSocket(PORT)
+                isListening = true
                 Log.i(TAG, "Ourea Eye TCP Server started on port $PORT")
                 while (isActive) {
                     val socket = serverSocket?.accept() ?: break
@@ -40,6 +48,8 @@ object SocketServerManager {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Server error: ${e.message}")
+            } finally {
+                isListening = false
             }
         }
     }
@@ -51,10 +61,13 @@ object SocketServerManager {
             val frame = readP3Frame(inputStream) ?: return
             val jsonStr = WizarPosP3Protocol.unpack(frame) ?: return
             Log.i(TAG, "Received P3 JSON: $jsonStr")
+            lastClientIp = socket.inetAddress?.hostAddress
 
             val json = Json { ignoreUnknownKeys = true }
             val root = json.parseToJsonElement(jsonStr).jsonObject
             val transType = root["TransType"]?.jsonPrimitive?.content ?: ""
+            lastCommand = transType
+            lastCommandAt = System.currentTimeMillis()
 
             when (transType) {
                 "DisplayIdle" -> {

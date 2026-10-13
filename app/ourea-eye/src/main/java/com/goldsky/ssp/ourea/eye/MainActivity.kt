@@ -3,9 +3,17 @@ package com.goldsky.ssp.ourea.eye
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
 import com.goldsky.ssp.ourea.eye.ui.OureaEyeScreen
+import com.goldsky.ssp.ourea.eye.ui.TechnicianHotspot
+import com.goldsky.ssp.ourea.eye.ui.TechnicianPanel
+import com.goldsky.ssp.ourea.eye.ui.TechnicianPinPad
+import com.goldsky.ssp.payment.ConfigManager
 import com.goldsky.ssp.ui.theme.GoldSkyTheme
 
 class MainActivity : ComponentActivity() {
@@ -24,6 +32,10 @@ class MainActivity : ComponentActivity() {
                 var lastTotal by remember { mutableStateOf<Int?>(null) }
                 val scope = rememberCoroutineScope()
                 var holdJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+                // Technician mode: PIN once, then the hotspot reopens the panel (after a
+                // preview) until Exit or a real sale arrives.
+                var techScreen by remember { mutableStateOf<String?>(null) } // "pin" | "panel"
+                var techUnlocked by remember { mutableStateOf(false) }
 
                 DisposableEffect(Unit) {
                     SocketServerManager.onStateChanged = { newState ->
@@ -42,6 +54,7 @@ class MainActivity : ComponentActivity() {
                             is CfdDisplayState.Idle -> if (holdJob?.isActive != true) cfdState = newState
                             else -> {
                                 holdJob?.cancel()
+                                techScreen = null; techUnlocked = false // a sale always wins
                                 when (newState) {
                                     is CfdDisplayState.Cart -> lastTotal = newState.totalCents
                                     is CfdDisplayState.Payment -> lastTotal = newState.amountCents
@@ -65,6 +78,33 @@ class MainActivity : ComponentActivity() {
                 }
 
                 OureaEyeScreen(state = cfdState, rotationDegrees = rotationAngle, paidCents = lastTotal)
+
+                Box(Modifier.fillMaxSize().graphicsLayer(rotationZ = rotationAngle.toFloat())) {
+                    when (techScreen) {
+                        "pin" -> TechnicianPinPad(
+                            onSubmit = { pin ->
+                                val expected = ConfigManager.getConfig()?.settings?.maintenance_pin?.takeIf { it.isNotBlank() } ?: "1234"
+                                (pin == expected).also { if (it) { techUnlocked = true; techScreen = "panel" } }
+                            },
+                            onDismiss = { techScreen = null }
+                        )
+                        "panel" -> TechnicianPanel(
+                            rotation = rotationAngle,
+                            onRotate = { angle ->
+                                rotationAngle = angle
+                                prefs.edit().putInt("rotation", angle).apply()
+                            },
+                            onPreview = { preview ->
+                                holdJob?.cancel()
+                                if (preview is CfdDisplayState.ThankYou) lastTotal = 1862
+                                cfdState = preview
+                                techScreen = null
+                            },
+                            onExit = { techScreen = null; techUnlocked = false }
+                        )
+                        else -> TechnicianHotspot { techScreen = if (techUnlocked) "panel" else "pin" }
+                    }
+                }
             }
         }
     }

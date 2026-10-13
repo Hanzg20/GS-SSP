@@ -101,11 +101,10 @@ fun CartScreen(state: CfdDisplayState.Cart) {
                 Image(painterResource(com.goldsky.ssp.core.ui.R.drawable.goldsky_logo), null, Modifier.size(26.dp))
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("您的订单", color = Slate100, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Text("YOUR ORDER", color = Gold, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Your Order", color = Slate100, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
                 Surface(shape = RoundedCornerShape(50), color = Navy800, border = BorderStroke(0.5.dp, Gold.copy(alpha = 0.6f))) {
-                    Text("$count 件 · items", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                    Text("$count items", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
                 }
             }
             Spacer(Modifier.height(10.dp))
@@ -127,14 +126,13 @@ fun CartScreen(state: CfdDisplayState.Cart) {
             ) {
                 Column {
                     Row(Modifier.fillMaxWidth()) {
-                        SmallFigure("小计 Subtotal", state.subtotalCents, Modifier.weight(1f))
-                        SmallFigure("税 Tax", state.taxCents, Modifier.weight(1f))
+                        SmallFigure("Subtotal", state.subtotalCents, Modifier.weight(1f))
+                        SmallFigure("Tax", state.taxCents, Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.Bottom) {
                         Column(Modifier.weight(1f)) {
-                            Text("合计", color = Slate100, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text("TOTAL", color = Slate400, fontSize = 10.sp, letterSpacing = 2.sp)
+                            Text("Total", color = Slate100, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         }
                         Text(
                             money(state.totalCents), maxLines = 1, softWrap = false,
@@ -191,7 +189,7 @@ fun PaymentScreen(state: CfdDisplayState.Payment) {
     val ring by pulse.animateFloat(0f, 1f, infiniteRepeatable(tween(1600, easing = LinearEasing)), label = "ring")
     EyeBackdrop {
         Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text("应付 · AMOUNT DUE", color = Slate400, fontSize = 12.sp, letterSpacing = 2.sp)
+            Text("AMOUNT DUE", color = Slate400, fontSize = 12.sp, letterSpacing = 2.sp)
             Text(money(state.amountCents), style = TextStyle(brush = goldText, fontSize = 52.sp, fontWeight = FontWeight.Black), maxLines = 1, softWrap = false)
             Spacer(Modifier.height(18.dp))
             Box(Modifier.size(150.dp), contentAlignment = Alignment.Center) {
@@ -205,7 +203,7 @@ fun PaymentScreen(state: CfdDisplayState.Payment) {
                 Text(")))", color = Slate100, fontSize = 30.sp, fontWeight = FontWeight.Black)
             }
             Spacer(Modifier.height(14.dp))
-            Text("请刷卡、插卡或手机支付", color = Slate100, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Tap, insert or swipe your card", color = Slate100, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Text("Tap, insert or use your phone", color = Slate400, fontSize = 13.sp)
         }
     }
@@ -279,16 +277,15 @@ fun ThankYouScreen(paidCents: Int?) {
             }
             Spacer(Modifier.height(14.dp))
             Column(Modifier.alpha(textIn).offset(y = (12 * (1 - textIn)).dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("谢谢惠顾", style = TextStyle(brush = goldText, fontSize = 36.sp, fontWeight = FontWeight.Black))
-                Text("THANK YOU", color = Slate100, fontSize = 14.sp, letterSpacing = 6.sp, fontWeight = FontWeight.SemiBold)
+                Text("Thank You", style = TextStyle(brush = goldText, fontSize = 36.sp, fontWeight = FontWeight.Black))
                 if (paidCents != null && paidCents > 0) {
                     Spacer(Modifier.height(10.dp))
                     Surface(shape = RoundedCornerShape(50), color = Navy800.copy(alpha = 0.9f), border = BorderStroke(0.5.dp, Gold.copy(alpha = 0.6f))) {
-                        Text("已支付 Paid  ${money(paidCents)}", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp))
+                        Text("Paid  ${money(paidCents)}", color = Gold, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp))
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                Text("欢迎再次光临 · See you again soon", color = Slate400, fontSize = 13.sp, textAlign = TextAlign.Center)
+                Text("See you again soon", color = Slate400, fontSize = 13.sp, textAlign = TextAlign.Center)
             }
         }
 
