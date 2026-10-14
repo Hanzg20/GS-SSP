@@ -3,6 +3,17 @@
 > [!NOTE]
 > **版本号说明**: 本文档实际由两条独立演进线合并而成（CMP/Supabase 后端的 RLS 修复线，与 Android HAL/产品线的架构演进线），两条线各自独立递增版本号，合并后出现了 `v2.23`/`v2.24`/`v2.27` 各被使用两次、且部分条目未按日期严格排序的情况（例如 `v2.27 (2026-08-20)` 实际是全文最新的一次修改，却排在 `v2.28 (2026-08-09)` 之后）。**版本号不是可靠的时间/依赖排序依据，请以每条目标题里的日期为准**；正文中散落的 `[v2.1]` 等内联标记同理，指的是该版本条目引入的变更，不代表这是当前最新状态。
 
+### v2.52 (2026-10-14) — 优惠与小费 (Discounts & Customer-Chosen Tips)
+
+设计稿：https://claude.ai/artifact/B4cXVxmX1HRKfHdRcxo34q
+
+*   **优惠**：先单品后整单（整单优惠按金额比例分摊到各行，最大余数法），税按优惠后价格算（`core/data` `Pricing`）。门店预设在 Cael「目录 › 优惠」（`discount_presets`，`docs/migrations/2026-10-14_discounts.sql`），终端随目录同步并缓存（`DiscountPresetRepository`）。店员手输优惠超过 10% 或 $10、或预设标了「需要经理」，要经理 PIN；手输必须选原因。记录：`transactions.discount_cents/discounts`（含原因、批准人）、`transaction_items.discount_cents`（含整单分摊）。Ourea 已接入；Iris 还没有优惠入口；会员卡支付路径不带优惠。
+*   **小费由顾客选**（加拿大通行做法）：15% / 18% / 20%，按**税前、优惠后**金额算，每项下面显示金额；税前不满 $10 时改为 $1 / $2 / $3；可自定义（$ 或 %，上限为订单金额与 $20 取大）。为了让少给或不给不尴尬：文案中性（"Tip (optional)"），"No tip" 与其他选项同样大小，不预选，没有倒计时，选完后的画面对任何小费都一样，店员屏只显示「顾客正在选择小费」，不显示选了多少。计算在 `core/common` `Tipping`（有单测），界面是共享的 `core/ui` `CustomerTipPanel`。
+*   **Ourea + Ourea Eye**：Ourea 发 `DisplayTip`（经 Eye 队列，保证在购物车更新之后），然后不断发 `TipStatus`；Eye 会把每个 `TipStatus` 最多挂 9 秒，顾客一点就立即回复，所以不是每秒轮询。店员取消 → `CancelTip`，Eye 回到购物车。Eye 不在、是旧版本（`DisplayTip` 没回 `"Tip":"READY"`）、或连续 3 次无应答 → Ourea 改在本机弹同一个面板（`CustomerTipDialog`，提示把屏幕转向顾客）；店员也可以点「改在本机选择」。Eye 的购物车现在也显示优惠行。
+*   **Iris**：员工把设备交给顾客，全屏显示同一个面板；分单付款时每一份按自己那部分算小费。
+*   零售模式默认不问小费（Settings 开关不变）。
+*   顺带修复：重启后恢复的购物车没算上整单优惠（结账会按原价收）；同一购物车「返回订单」后再结账，交易记录丢了优惠；Iris 在桌单付款时取消小费，下一笔柜台单会被记到那张桌单上。
+
 ### v2.51 (2026-10-13 ~ 10-14) — 设备身份与门店归属收紧、终端换店、堂食双终端联动修复 (Device Identity, Store Moves, Dine-In Multi-Terminal Fixes)
 
 本条目汇总 10-13 至 10-14 的架构调整。表结构与 RPC 细节以 `docs/database_design.md` v3.1（§1、§5、§6.1）为准，这里只记架构层面的决定和原因。
