@@ -3,6 +3,19 @@
 > [!NOTE]
 > **版本号说明**: 本文档实际由两条独立演进线合并而成（CMP/Supabase 后端的 RLS 修复线，与 Android HAL/产品线的架构演进线），两条线各自独立递增版本号，合并后出现了 `v2.23`/`v2.24`/`v2.27` 各被使用两次、且部分条目未按日期严格排序的情况（例如 `v2.27 (2026-08-20)` 实际是全文最新的一次修改，却排在 `v2.28 (2026-08-09)` 之后）。**版本号不是可靠的时间/依赖排序依据，请以每条目标题里的日期为准**；正文中散落的 `[v2.1]` 等内联标记同理，指的是该版本条目引入的变更，不代表这是当前最新状态。
 
+### v2.51 (2026-10-13 ~ 10-14) — 设备身份与门店归属收紧、终端换店、堂食双终端联动修复 (Device Identity, Store Moves, Dine-In Multi-Terminal Fixes)
+
+本条目汇总 10-13 至 10-14 的架构调整。表结构与 RPC 细节以 `docs/database_design.md` v3.1（§1、§5、§6.1）为准，这里只记架构层面的决定和原因。
+
+*   **设备身份（安全）**：`sync_device_identity` 以前只凭序列号（SN）就把匿名会话绑定为该终端——知道 SN（印在机身上，模拟器还是固定的 `unknown`）的任何人都能冒充终端，读该门店的员工 PIN 哈希、菜单、桌台，并以终端身份写交易。现改为**首次绑定发放设备密钥（TOFU）**：设备第一次连上时服务端生成随机密钥返回给终端保存，之后绑定必须出示；只存 SHA-256（`device_secrets`，任何 API 角色不可读）。终端代码 09-18 起就会发送/保存密钥，所以**现场设备无需升级**。被拒次数记在设备上，Cael 显示；重装或清数据的终端由系统管理员在 Cael 重置身份（同时解绑该设备的所有会话）。剩余缺口：尚未登记的 SN 可被任何人抢先注册认领，要彻底封堵需改为管理员预登记设备。
+*   **`devices` 表写权限（安全）**：原 RLS 策略 `USING (true)` 且列授权包含 `org_id`、`acquirer_account_id`、`is_active`、`payment_test_enabled`——持有公开 key（扫码点餐网页里就有）即可把任意终端挪到别的门店、改其收单账户。现在 `anon` 无任何权限；终端只能读写**自己那一行**的自报字段（版本、状态、在线时间、锁定状态）；门店/位置/收单只能经 `cmp_assign_device` / `cmp_set_device_acquirer`（系统管理员）修改。已用公开 key 实测各类改写全部被拒，终端注册与心跳不受影响。
+*   **终端换店（Cael 自由切换）**：Cael「商户 → 资产清单 → 划拨设备」可选任意设备（含其他门店的）。**设备有交易记录时拒绝跨店移动**——`transactions` 没有自己的 `org_id`，报表按 `devices.org_id` 归属，挪设备会把全部历史营业额一起挪走；根本解法是交易落单时记门店，随 `sales.*` 规划。移动时同步改 `device_auth_map`（门店范围的数据立即切换）、清空旧店收单账户、下发 `SYNC_CONFIG`、写审计日志。Ourea / Iris 每分钟自查身份，发现换店即清员工缓存并弹窗请店员「重新载入」（清购物车、拉新店菜单、回 PIN 登录）——不自动重启，避免打断付款。Ourea Eye 与 Aegis 系列暂无此检测。
+*   **堂食：扫码单只在 Ourea 上处理**：Cael 的堂食「现场」页改为只读（看桌台、未结桌单、待处理扫码单）。原 Cael「批准」只是给订单打标记、仍需店内终端接单出票：有 Ourea 的店与终端上的「接受」重复，没有 Ourea 的店（第三方收银机）又走不通。第三方收银机对接另行设计，等有真实需求时再做。
+*   **堂食双终端联动（Iris 手持 + Ourea 收银，同一门店）**：Q2 真机 + Ourea 模拟器实测发现并修复三个问题——① 只有桌台图在 4 秒轮询，**已打开的桌单不刷新**：另一台加的菜看不到，按旧金额收款会少收（已改为桌台图与桌单页都刷新）；② Iris 的共享菜单列表不看库存，**售罄菜能送进厨房**（列表置灰 + `dine_send_items` 服务端拒绝 `sold_out`，与扫码点餐规则一致）；③ 另一台抢先操作时提示显示原始错误码（如 `order_accepted`），已改为中英文说明。并发由数据库裁决：同一扫码单只能被接一次，同一桌同时开台进入同一张桌单。
+*   **测试工具**：`tools/scan-e2e/`——独立测试门店（菜单含加料/售罄/0% 税、桌台、测试员工）、服务端 32 项自动检查（顾客匿名 RPC）、假厨房打印机（ESC/POS 9100，解码 GBK 小票）、模拟器换店脚本。测试数据分界：Eagleson Coin Wash 自终端激活起是真实门店数据（交易数据显示约为 10-07，待确认；255 为开发测试机），其余组织均为测试数据。
+*   **数据清理**：删除 49 台 7–9 月的旧模拟设备（`MOCK_SN_*` 等）及其 257 笔模拟交易，删除前已导出备份（`C:\workspace\backups\2026-10-14_mock_devices\`）。
+*   **验证**：迁移均已在生产库执行并实测；Cael 切换门店（成功与拒绝两条路径）在 cael.si-sky.com 实测；终端换店、身份重置、联动场景在 Ourea 模拟器与 WizarPOS Q2 真机实测。**未覆盖**：跨终端分摊付款（Q2 付一部分、Ourea 付剩余）、真实网络厨打、Ourea Eye 换店。
+
 ### v2.50 (2026-09-23) — 打通 CMP→终端的品牌信息（Logo/商户名/欢迎语）字段名不匹配 bug (Branding Pipeline Field-Name Mismatch Fixed)
 
 排查商户在终端上"看到自己品牌"这条链路时发现：`gs-ssp-cmp` 的 `ConfigPricingManager`（Branding 标签页）一直在往 `app_configurations.branding` 发布 `{logoUrl, themeColor, announcement}`（驼峰命名，`announcement` 这个字段名 Kotlin 侧压根没有），而终端 `core/data`'s `Branding` 数据类期待的是 `{logo_url, brand_name, primary_color_hex}`（下划线命名）——`kotlinx.serialization` 默认精确匹配 key，不做驼峰/下划线转换，所以商户不管怎么在 CMP 上传 logo、改欢迎语、点发布，终端侧的反序列化全部静默回落到默认值，从未真正生效过。
@@ -542,6 +555,35 @@ sequenceDiagram
     end
     
     App->>Cloud: POST /online (汇报上线: SN, AppVersion, NetType)
+```
+
+#### 2.1.1 设备身份与门店归属 (Device Identity & Store Binding, v2.51)
+
+上图是早期 IM30 的配置拉取示意。现行做法：终端匿名登录 Supabase，再用 SN + 设备密钥把这次登录绑定到设备；此后所有「这台终端属于哪家店」的判断都由服务端从 `device_auth_map` 取，终端从不自报门店。
+
+```mermaid
+sequenceDiagram
+    participant T as 终端 (Ourea / Iris / Aegis)
+    participant DB as Supabase
+    participant C as Cael (系统管理员)
+
+    T->>DB: 匿名登录 (每次重装/会话过期都是新用户)
+    T->>DB: registerDevice: upsert 自己那一行 (版本/状态)
+    T->>DB: sync_device_identity(SN, 本地密钥)
+    alt 设备还没有密钥 (首次)
+        DB-->>T: 新密钥 + org_id，终端保存密钥
+    else 密钥正确
+        DB-->>T: org_id, is_active
+    else 密钥缺失/错误
+        DB-->>T: invalid_secret (设备上记一次被拒)
+        Note over C,DB: Cael 显示「身份被拒」→ 重置身份后下一台连上的终端认领
+    end
+    C->>DB: cmp_assign_device (有交易则拒绝跨店)
+    DB-->>DB: 改 devices + device_auth_map，下发 SYNC_CONFIG，写审计
+    loop 每 60 秒 (Ourea / Iris)
+        T->>DB: sync_device_identity
+        DB-->>T: org_id 变了 → 弹窗「已移到其他门店」→ 重新载入
+    end
 ```
 
 ### 2.2 交易闭环与硬件联动 (Transaction & Hardware)

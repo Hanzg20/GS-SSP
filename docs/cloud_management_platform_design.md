@@ -126,6 +126,34 @@ The media module manages the distribution of high-definition marketing content a
 *   **Payout Calculation**: Aggregating transactions into merchant settlement batches.
 *   **Commission Engine**: Automated fee splitting between GoldSky and distributors.
 
+### 3.8 [BUILT 2026-10-13/14] Device Assignment, Store Moves & Identity
+Sys admins only (Organizations → a store → Assets / 资产清单). Data model and rules:
+`docs/database_design.md` §6.1.
+*   **Assign / move a device**: the dialog lists every device not in this store -- unassigned
+    ones first, then other stores' devices labelled with their store -- and warns what a move
+    does (the terminal switches to the new store's staff and products; its acquirer account is
+    cleared). Calls `cmp_assign_device`. **A device that has transactions can't move to
+    another store** (transactions carry no store of their own, so its sales history would
+    follow it); Cael says how many it has. Each move is audit-logged and queues `SYNC_CONFIG`;
+    Ourea / Iris notice within a minute and ask staff to reload.
+*   **Acquirer account**: `cmp_set_device_acquirer` (the account must belong to the device's store).
+*   **Identity**: a device row shows "identity refused N times" when a session tried to link to
+    it without its secret (a reinstalled terminal, or someone using its serial number). The key
+    icon (click twice) resets the identity (`cmp_reset_device_identity`) so the next terminal
+    to connect claims it.
+*   Cael never writes `devices` directly any more: API clients lost those column grants
+    (2026-10-13 lockdown), so every change goes through these RPCs.
+
+### 3.9 [BUILT 2026-10-13] Dine-In: Tables, QR Table Cards, Live Floor (read-only)
+*   **Tables & table cards** (`dine.manage`): add / rename / retire tables, print each table's
+    QR card, rotate a table's code (old prints stop working).
+*   **Live floor** (any member of the store): seated tables with check, guests, total and time;
+    customers' QR orders still waiting; refreshes every 5 s. **Read-only by decision
+    (2026-10-14)**: QR orders are accepted or turned down on the Ourea in the store, which
+    prints the kitchen ticket. Approving from Cael only flagged an order for a terminal to pick
+    up -- a duplicate of the terminal's Accept, and useless for a store without one. Connecting
+    a third-party POS is a separate design, for when a real store needs it.
+
 ---
 
 ## 4. Dashboard & Visualization Design (Inspired by Nayax Core)

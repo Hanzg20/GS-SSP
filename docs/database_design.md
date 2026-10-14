@@ -1,4 +1,4 @@
-# GS-SSP Database Design Specification v3.0
+# GS-SSP Database Design Specification v3.1
 
 The shared Supabase (Postgres) database behind every GS-SSP app (Iris, Ourea,
 Ourea Eye, the Aegis kiosks) and the CMP web portal.
@@ -9,6 +9,12 @@ follows (§3), the shared-orders direction for new verticals (§4), and the
 dine-in schema (§5). The v2.6 "Nayax-Core" entities that were never built
 (`distributors`, `alert_rules`, `alert_history`, `payout_batches`) are kept
 as plans in §8, not as current tables.
+
+**v3.1 (2026-10-14)**: device identity and device writes (§6.1): terminals prove
+who they are with a per-device secret (`device_secrets`), `devices` is no longer
+writable by API clients, and Cael assigns / moves devices through RPCs. Why a move
+is refused while a device has transactions (§1). Dine-in (§5): Cael's floor is
+read-only, rounds refuse sold-out dishes, terminals refresh the open check too.
 
 ---
 
@@ -21,7 +27,8 @@ erDiagram
     organizations ||--o{ staff : "terminal staff (PIN)"
     organizations ||--o{ products : "sells"
     locations ||--o{ devices : "houses"
-    devices ||--o| device_auth_map : "device login -> store"
+    devices ||--o{ device_auth_map : "device logins -> store"
+    devices ||--o| device_secrets : "identity secret (hash)"
     devices ||--o| device_shadows : "desired / reported"
     devices ||--o{ heartbeats : "reports"
     devices ||--o{ transactions : "takes"
@@ -35,13 +42,20 @@ erDiagram
 - **locations**: a site of the merchant; devices sit at a location.
 - **devices**: a physical terminal, keyed by serial number `sn`; `vertical_type`
   (RETAIL / WASH / EV / VENDING / TIMER ...), `status`, `last_seen`, `remote_locked`.
-- **device_auth_map**: the device's anonymous Supabase login -> its `sn` and `org_id`.
+- **device_auth_map**: the device's anonymous Supabase logins -> its `sn` and `org_id`
+  (one row per login; a terminal signs in again after a reinstall or an expired session).
   Every device-side policy and RPC takes the store from here, never from a parameter.
+  A row is only written by `sync_device_identity`, which needs the device's secret (§6.1).
+- **device_secrets**: SHA-256 of each device's identity secret; no API role can read it.
 - **products**: one generic catalog with `vertical_type`; industry details ride in
   `attributes` JSONB (category, tax_rate_bps, stock_qty, duration_sec, modifier_groups).
 - **transactions**: one payment attempt / sale (amount, subtotal / tax / tip cents,
   payment_status, method, card AID / BIN / brand, staff, refund approval,
   quick-service `order_number / order_type / order_note`, dine-in `check_id`).
+  **A transaction has no `org_id` of its own**: reports and RLS find its store through
+  `devices.org_id`. So moving a device to another store would carry its whole sales
+  history with it -- `cmp_assign_device` refuses to move a device that has transactions
+  (§6.1). Stamping `org_id` on each transaction is the real fix, planned with `sales.*` (§4).
 
 ---
 
@@ -52,7 +66,7 @@ erDiagram
 | Domain | Tables | Written by |
 |---|---|---|
 | Tenancy & access | organizations, locations, org_members, invited_emails, profiles, permissions, capability_permissions, platform_settings | CMP |
-| Devices & ops → `ops` | devices, device_auth_map, device_shadows, device_commands, heartbeats, app_error_logs, system_health_logs, maintenance_records, audit_logs, app_configurations | apps (heartbeat, logs), CMP (commands, config) |
+| Devices & ops → `ops` | devices, device_auth_map, device_secrets, device_shadows, device_commands, heartbeats, app_error_logs, system_health_logs, maintenance_records, audit_logs, app_configurations | apps (self-reported device columns, heartbeat, logs), CMP (assignment, commands, config -- through RPCs, §6.1) |
 | Staff | staff (PIN hash, role MANAGER / CASHIER / DRIVER) | CMP |
 | Catalog | products | CMP |
 | Sales & payment → `sales` | transactions, transaction_items, qr_payment_sessions, acquirer_settlement_records, merchant_acquirer_accounts, hardware_acquirer_map | apps (sales), back office (settlement) |
@@ -150,10 +164,20 @@ as the next round, returns the kitchen ticket's content), `dine_reject_scan`
 (reason shown to the customer), `dine_rotate_table_qr` (old printed codes stop working).
 
 Cael (CMP, signed-in users; read = org member, write = `dine.manage`): `cmp_dine_tables`,
-`cmp_dine_save_table`, `cmp_dine_rotate_qr` (tables and table cards), `cmp_dine_floor` (live floor),
-`cmp_dine_approve_scan`, `cmp_dine_reject_scan`. A browser can't print in the kitchen, so approving only
-sets `scan_orders.approved_at/approved_by`; the next Ourea / Iris on its floor screen accepts it through
-`dine_accept_scan` and prints the ticket. Until then the order stays PENDING for the customer.
+`cmp_dine_save_table`, `cmp_dine_rotate_qr` (tables and table cards), `cmp_dine_floor` (live floor,
+**read-only** in Cael since 2026-10-14). QR orders are accepted or turned down on the Ourea (or Iris)
+in the store, which prints the kitchen ticket -- not in Cael: approving from a browser only flagged the
+order for a terminal to pick up, which duplicated the terminal's own Accept and did nothing for a store
+without one. `cmp_dine_approve_scan` / `cmp_dine_reject_scan` and the terminals' pick-up of
+`scan_orders.approved_at` still exist but nothing in Cael calls them. A third-party POS integration
+(push orders to another vendor's register / kitchen printing) is a separate design, for when a real
+store needs it.
+
+Two terminals on one floor (Iris as the waiter's handheld, Ourea at the counter) share everything
+through these RPCs; each refreshes the floor **and the check it has open** every 4 s (an open check
+that didn't refresh once let a terminal bill an old total). Races are settled in the database: a QR
+order is accepted once (`dine_accept_scan` locks it), a table gets one live check (seating it twice
+joins the same check).
 
 AI menu guide (`supabase/functions/scan-assistant`, no login, the QR secret is the credential): answers in
 the customer's own language from the dish facts in `products.attributes` -- `description`, `ingredients`,
@@ -165,11 +189,14 @@ against the menu and only reach the cart when the customer taps Add. Every quest
 `scan_chat_allowed` / `scan_chat_record`). Migration `docs/migrations/2026-10-13_scan_assistant.sql`.
 
 RPCs (all `public`): reads `dine_list_tables`, `dine_floor` (also returns pending QR orders), `dine_get_check`;
-writes `dine_save_table`, `dine_open_check`, `dine_send_items`, `dine_void_item`,
+writes `dine_save_table`, `dine_open_check`, `dine_send_items` (refuses a dish whose
+`stock_qty` is 0: `sold_out`, as `scan_submit_order` does), `dine_void_item`,
 `dine_update_check`, `dine_record_payment`; helpers `dine_device_org`,
 `dine_check_total` (tax once per rate, half up, as `SalesTax.kt`).
 `transactions.check_id` links each payment's transaction to its check.
-Migrations: `docs/migrations/2026-10-13_dine_in.sql`, `_dine_in_payment_tax.sql`, `_dine_schema.sql`, `_dine_scan_orders.sql`.
+Migrations: `docs/migrations/2026-10-13_dine_in.sql`, `_dine_in_payment_tax.sql`, `_dine_schema.sql`, `_dine_scan_orders.sql`,
+`_cmp_dine.sql`, `_cmp_dine_console.sql`, `2026-10-14_dine_send_sold_out.sql`.
+End-to-end test kit (test store, server checks, fake kitchen printer): `tools/scan-e2e/`.
 
 ---
 
@@ -184,6 +211,43 @@ Business data is isolated per **organization**.
 - **System admin**: `is_sys_admin()` bypasses the org filter for maintenance.
 - Known gap: anonymous device sessions may read every org's active `products`
   (pre-launch policy); apps filter by their own `org_id`.
+
+### 6.1 Devices: identity, assignment, what a terminal may write (2026-10-13 / 14)
+
+**Identity.** A terminal signs in anonymously and links that login to its serial number
+with `sync_device_identity(p_sn, p_secret_key)`. The first link of a device is handed a
+random secret (trust on first use) that the app keeps (`DeviceRepository`, every shell);
+later links must present it, or get `invalid_secret` and the refusal is counted on the
+device (`devices.identity_rejected_at / identity_rejections`). Until 2026-10-14 the serial
+number alone was enough, so anyone who knew one could act as that terminal. The session
+that claimed the secret may link again without it (a terminal syncs from several places
+at start-up). A reinstall or data wipe loses the secret: a sys admin resets the identity
+in Cael (`cmp_reset_device_identity`: forgets the secret, unlinks every session of the
+device, audit-logged), and the next terminal to link claims it.
+Remaining gap: anyone can register a serial number not yet in `devices` and claim it
+first; closing it means devices pre-registered by an admin.
+
+**What API clients may write.** `devices` was updatable by anyone holding the public key
+(policies `USING (true)`, columns `org_id`, `acquirer_account_id`, `is_active`,
+`payment_test_enabled` granted). Now:
+
+| Who | May |
+|---|---|
+| `anon` | nothing |
+| a terminal (authenticated, its `sn` in `device_auth_map`) | read its own row; update `app_version, status, last_seen, service_units, remote_locked, remote_lock_changed_at` (and `sn` for the upsert, kept its own by `WITH CHECK`); insert a new device with no store |
+| Cael member | read its stores' devices |
+| sys admin (Cael), through RPCs | `cmp_assign_device(sn, org, loc)`, `cmp_set_device_acquirer(sn, account)`, `cmp_reset_device_identity(sn)`; alias through `update_device_alias` |
+
+**Assigning / moving a device** (`cmp_assign_device`): the location must belong to the
+store; a move to another store is refused while the device has transactions (§1); a move
+re-points `device_auth_map` at once (store-scoped reads switch immediately), clears the old
+store's acquirer link, queues `SYNC_CONFIG`, and writes `audit_logs` (`device.move` /
+`device.assign`). Ourea and Iris check their identity every minute and, when the store
+changed, drop the cached staff list and ask staff to reload (new catalog, carts cleared,
+back to PIN sign-in) -- never an automatic restart, a payment may be under way.
+
+Migrations: `docs/migrations/2026-10-13_cmp_assign_device.sql`,
+`2026-10-13_devices_rls_lockdown.sql`, `2026-10-14_device_identity_secret.sql`.
 
 ---
 
