@@ -41,10 +41,10 @@ data class SyncDeviceIdentityResult(
  */
 object DeviceRepository {
     private const val TAG = "DeviceRepository"
-    private const val PREFS_NAME = "device_repo_prefs"
+    internal const val PREFS_NAME = "device_repo_prefs"
     private const val KEY_TOKEN = "auth_token"
-    private const val KEY_DEVICE_SN = "device_sn"
-    private const val KEY_DEVICE_SECRET = "device_secret"
+    internal const val KEY_DEVICE_SN = "device_sn"
+    internal const val KEY_DEVICE_SECRET = "device_secret"
     private const val KEY_ORG_ID = "org_id"
     private const val KEY_HARDWARE_VENDOR = "hardware_vendor"
     private const val KEY_RETAIL_MODE = "retail_mode"
@@ -106,6 +106,28 @@ object DeviceRepository {
     }
 
     fun getPersistedDeviceSecret(): String? = prefs()?.getString(KEY_DEVICE_SECRET, null)
+
+    /**
+     * The identity secret another of our apps on this terminal holds for [sn], other than
+     * [notThis] (DeviceSecretProvider; only apps signed like this one answer). Null when
+     * none has one.
+     */
+    private fun siblingSecret(sn: String, notThis: String?): String? {
+        val ctx = appContext ?: return null
+        for (pkg in DeviceSecretProvider.APPS) {
+            if (pkg == ctx.packageName) continue
+            val secret = runCatching {
+                ctx.contentResolver.query(DeviceSecretProvider.uri(pkg), null, null, null, null)?.use { c ->
+                    if (c.moveToFirst() && c.getString(0) == sn) c.getString(1) else null
+                }
+            }.getOrNull()
+            if (secret != null && secret != notThis) {
+                Log.i(TAG, "Using the device secret held by $pkg")
+                return secret
+            }
+        }
+        return null
+    }
 
     fun persistHardwareVendor(vendor: String) {
         prefs()?.edit()?.putString(KEY_HARDWARE_VENDOR, vendor)?.apply()
@@ -366,12 +388,18 @@ object DeviceRepository {
     suspend fun syncDeviceIdentity(sn: String): SyncDeviceIdentityResult? = withContext(Dispatchers.IO) {
         try {
             authenticateDevice()
-            val storedSecret = getPersistedDeviceSecret()
-            val response = SupabaseClientProvider.client.postgrest.rpc(
-                "sync_device_identity",
-                SyncDeviceIdentityParams(p_sn = sn, p_secret_key = storedSecret)
-            )
-            val result: SyncDeviceIdentityResult = response.decodeAs()
+            // None of our own yet: another of our apps on this terminal may already hold it.
+            val storedSecret = getPersistedDeviceSecret() ?: siblingSecret(sn, null)
+            suspend fun link(secret: String?): SyncDeviceIdentityResult =
+                SupabaseClientProvider.client.postgrest.rpc(
+                    "sync_device_identity",
+                    SyncDeviceIdentityParams(p_sn = sn, p_secret_key = secret)
+                ).decodeAs()
+            var result = link(storedSecret)
+            if (!result.success && result.message == "invalid_secret") {
+                // Ours is stale (the other app claimed first, or Cael reset it and it re-claimed).
+                siblingSecret(sn, storedSecret)?.let { result = link(it); if (result.success) persistDeviceSecret(it) }
+            }
             if (!result.success) {
                 Log.w(TAG, "sync_device_identity rejected: ${result.message}")
                 return@withContext null

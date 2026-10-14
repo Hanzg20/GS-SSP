@@ -1,4 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.goldsky.ssp.core.data">
+
+    <!-- Our other apps on the same terminal, for DeviceSecretProvider (Android 11+ package visibility). -->
+    <queries>
+        <package android:name="com.goldsky.ssp.aegis.wash" />
+        <package android:name="com.goldsky.ssp.aegis.timer" />
+        <package android:name="com.goldsky.ssp.aegis.vend" />
+        <package android:name="com.goldsky.ssp.aegis.ev" />
+        <package android:name="com.goldsky.ssp.iris" />
+        <package android:name="com.goldsky.ssp.ourea" />
+        <package android:name="com.goldsky.ssp.ourea.eye" />
+    </queries>
+
+    <application>
+        <!-- Answers only apps signed with the same key (checked in the provider). -->
+        <provider
+            android:name="com.goldsky.ssp.payment.DeviceSecretProvider"
+            android:authorities="${applicationId}.devicesecret"
+            android:exported="true" />
+    </application>
 </manifest>
