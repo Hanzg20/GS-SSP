@@ -1098,6 +1098,112 @@ GS-SSP 通过本地 Socket (`127.0.0.1:6666`) 调用预装的 **PAYWizard** 安�
 |---|---|---|
 | 顾客手机 | `web/ourea-scan`（Vite + React 网页，站点默认 `scan-order.si-sky.com`，Ourea 设置 > 桌台 / Cael 可配置） | 无需登录：桌台二维码里的 `qr_token`（128 位随机）就是凭证，只能看这家店的菜单、下这张桌的单、查自己下的单 |
 | 店内终端 | Ourea（桌面收银）、Iris（手持），业务类型为 DINE_IN | 设备身份（§2.1.1），门店由服务端从 `device_auth_map` 取 |
+| 云端 | Supabase：`dine` schema（不对外暴露，只能经 `public.scan_*` / `dine_*` 函数访问） | — |
+| AI 点餐向导 | Edge Function `scan-assistant` | 同样以 `qr_token` 为凭证 |
+| Cael | 管理桌台、打印台卡、换码；现场页**只读** | 门店成员 / `dine.manage` |
+
+### 17.2 流程
+
+```mermaid
+sequenceDiagram
+    participant P as 顾客手机 (Ourea Scan)
+    participant DB as Supabase (dine)
+    participant T as Ourea / Iris (桌台图)
+    participant K as 厨房打印机
+
+    P->>DB: scan_menu(token) → 店名、桌号、菜单（价格/加料/税率/售罄）
+    P->>P: 选菜、选加料（必选/上限在页面上先校验）
+    P->>DB: scan_submit_order(token, 菜品, 备注, client_ref)
+    Note over DB: 服务端重新定价与校验：菜品属于本店且在售、未售罄、加料合法、数量 1–20；<br/>同一 client_ref 只算一单；每桌待处理 ≤ 3、10 分钟内 ≤ 8
+    DB-->>P: 订单号 + 服务端算的小计/税 → 页面显示「等待店员确认」
+    loop 每 4 秒
+        T->>DB: dine_floor() 含待处理扫码单
+    end
+    DB-->>T: 新扫码单 → 横幅 + 提示音，桌台显示「QR n」
+    alt 店员接单
+        T->>DB: dine_accept_scan(id)（锁行，只能成功一次）
+        DB-->>T: 开台（若没开）→ 订单成为该桌下一轮，返回小票内容
+        T->>K: 厨房单（网络厨打 9100 / 不通则本机打印），标「扫码 QR」
+    else 店员拒单
+        T->>DB: dine_reject_scan(id, 原因)
+    end
+    loop 每 5 秒
+        P->>DB: scan_orders(token, 本机记录的订单号)
+    end
+    DB-->>P: 「已送厨房」或「未被接受 · 原因」
+```
+
+### 17.3 关键规则与原因
+
+*   **先确认、后进厨房**：扫码单不会自动进厨房。桌号可能扫错、顾客可能误点，菜也可能刚卖完，由店员把关。页面在店员接单前只显示「等待店员确认」，**绝不显示服务端没确认的成功**。
+*   **价格以服务端为准**：手机只提交菜品 ID、数量、加料 ID 和备注；单价、加料价、税（按税率汇总、四舍五入一次，与 `SalesTax.kt` 同规则）都由 `scan_submit_order` 从 `products` 重新计算。手机页面上的税额只是预估。
+*   **防刷与防重复**：每次提交带随机 `client_ref`，网络重试或连点只会生成一单；每桌待处理最多 3 单、10 分钟内最多 8 单，超出返回 `too_many_orders`。
+*   **并发**：同一店多台终端会同时看到同一张扫码单。`dine_accept_scan` 锁行，只有一台能接单成功，另一台提示「已被其他终端接单」，不会重复出票。
+*   **售罄**：三处都拦——手机菜单置灰、`scan_submit_order` 拒绝 `sold_out`；店员手动点菜时终端列表置灰、`dine_send_items` 也拒绝（2026-10-14）。
+*   **顾客只看得到自己的单**：下单后订单 ID 存在手机浏览器的 localStorage（按桌台 token 分开），`scan_orders` 只返回「这张桌 + 这些 ID」的订单；换手机或清浏览器数据就看不到之前的单，但订单本身不受影响。
+*   **二维码失效**：桌台停用或在 Ourea/Cael 里换码后，旧台卡立即失效，页面提示「二维码已失效，请找服务员」。
+*   **AI 点餐向导**：只依据菜品资料（描述、成分、过敏原、饮食标签、辣度）回答，资料里没记录的过敏原明确说「未记录」，不编造；按顾客的语言回答；推荐的菜要顾客自己点「加入」才进购物车。每桌 10 分钟、每店每天有次数上限，问答全部记在 `dine.scan_chats`。
+*   **付款**：扫码点餐不在手机上付款，吃完由店员在 Ourea / Iris 上按桌结账（可分单），付款记在 `dine.payments` 与 `transactions`。
+
+### 17.4 失败与降级
+
+| 情况 | 顾客看到 | 店内 |
+|---|---|---|
+| 二维码无效 / 桌台停用 | 「二维码已失效，请找服务员」 | — |
+| 菜刚售罄 / 下架 / 加料不合法 | 具体提示（哪道菜），菜单自动刷新，购物车保留，可改后重提 | — |
+| 提交太频繁 | 「请等店员处理后再点」 | 待处理单堆积，横幅提示 |
+| 手机断网 | 提交失败提示，不会显示成功；恢复后用同一 `client_ref` 重试不会重复下单 | — |
+| 终端断网 | 订单一直「等待店员确认」 | 离线横幅，恢复后自动补上待处理单 |
+| 厨房网络打印机不通 | — | 自动改在终端本机打印 |
+| 店里没有开着桌台图的终端 | 一直「等待店员确认」 | 没人接单；Cael 现场页能看到待处理单，但不能在 Cael 里接单（只读，见 v2.51） |
+
+---
+
+## 18. Aegis Nexus 中央多工位洗衣中控终端与 EdgeNexus 边缘网关 (Aegis Nexus Central Laundromat Kiosk & EdgeNexus Integration, 2026-10-14)
+
+针对商业自助洗衣房（Laundromat）或多机共享洗衣场景，系统引入了 **`app:aegis-nexus` (Aegis Nexus)** 中央多工位收费中控终端与 **`gs-EdgeNexus` (EdgeNexus™)** 边缘硬件网关协同架构。实现**一台收费终端（如 WizarPOS Q3mini / 触控平板）通过边缘网关统一纳管 10 台洗衣机/烘干机**。
+
+### 18.1 架构拓扑与分工
+*   **Aegis Nexus (`app:aegis-nexus`)**: 
+    *   作为中央收费终端（Central Kiosk App），提供全屏触控 UI。
+    *   顾客在屏幕上选择工位（如 `Bay #3`）、洗涤程序，并通过 Nuvei / PAYWizard / Interac 完成无现金支付。
+    *   支付成功后，向 Supabase 云端下发控制指令，或直接与本地 EdgeNexus 网关进行通信。
+*   **EdgeNexus (gs-EdgeNexus)**:
+    *   部署在边缘的硬件网关（基于 ESP32 固件），通过串口、Modbus 或 USB 直连多路物理继电器板（Relay 1 ~ 10）。
+    *   轮询云端 `device_commands` 表或接收网关信令，物理闭合对应工位的继电器，输出 12V 脉冲驱动洗衣机启动。
+*   **云端协同 (Supabase / CMP)**:
+    *   通过 `devices`、`transactions`、`device_commands` 和 `products` 表实现全链路状态同步、设备心跳（Heartbeat）与混合营收对账。
+
+### 18.2 Aegis Nexus 功能矩阵与 UI/UX 界面设计规范
+遵循自助服务终端（Kiosk）的行业最佳实践（如 ESD / CSC 现代洗衣中控标准），Aegis Nexus 的界面与功能设计规范如下：
+
+#### A. 核心功能矩阵 (Core Features)
+1.  **多工位实时矩阵看板 (Multi-Bay Floor Plan & Status Grid)**:
+    *   全屏展示所有 10 台机器的实时物理状态（`Available / 空闲`、`Running / 洗涤中` 带剩余倒计时、`Done / 已完成`、`Out of Order / 故障`）。
+2.  **极简触控交互流 (Frictionless Touch Workflow)**:
+    *   `点击工位` ──► `选择洗涤档位 (Normal / Heavy / Delicate)` ──► `选择支付方式 (Interac Flash / Apple Pay / Card)` ──► `刷卡成功` ──► `自动触发硬件脉冲启动`。
+3.  **高级管理员/运维模式 (Technician Mode)**:
+    *   密码保护的后台管理面板，支持手动对单个工位（Relay 1 ~ 10）进行脉冲点动测试（Pulse Test）、查看本地交易流水及重连 EdgeNexus。
+
+#### B. UI/UX 视觉与交互规范 (UI/UX Best Practices)
+1.  **高对比度工业级触控 UI**:
+    *   针对洗衣房环境光线复杂设计，采用大号触控按钮（最小尺寸 64dp），确保老年人或视力不佳者也能轻松点击。
+2.  **状态语义色彩 (Semantic Color Coding)**:
+    *   🟢 **翡翠绿 (Emerald)**：空闲可用 (Ready)。
+    *   🔵 **靛蓝色 (Indigo)**：运行中 (Running, 带动态进度环)。
+    *   🟠 **琥珀色 (Amber)**：洗涤完成，请取衣 (Finished / Please Unload)。
+    *   🔴 **玫瑰红 (Rose)**：故障报修/维护中 (Out of Order)。
+3.  **无感支付引导 (Contactless Payment Guide)**:
+    *   支付等待状态下展示动态 NFC 感应动画，提示 `Please tap, insert or swipe card on terminal`，降低顾客操作焦虑。
+
+顾客扫桌上的二维码，在手机网页上点菜；订单**先等店员确认**，店员在店内 Ourea（或 Iris）上接单后才进厨房、成为这桌的新一轮。表结构与 RPC 清单见 `docs/database_design.md` §5；测试方法见 `tools/scan-e2e/README.md`。
+
+### 17.1 参与方
+
+| 参与方 | 是什么 | 身份 |
+|---|---|---|
+| 顾客手机 | `web/ourea-scan`（Vite + React 网页，站点默认 `scan-order.si-sky.com`，Ourea 设置 > 桌台 / Cael 可配置） | 无需登录：桌台二维码里的 `qr_token`（128 位随机）就是凭证，只能看这家店的菜单、下这张桌的单、查自己下的单 |
+| 店内终端 | Ourea（桌面收银）、Iris（手持），业务类型为 DINE_IN | 设备身份（§2.1.1），门店由服务端从 `device_auth_map` 取 |
 
 ---
 
