@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
         // Config and hardware/payment providers: OureaApplication.
         DeviceRepository.init(this)
         StaffRepository.init(this)
+        DiscountPresetRepository.init(this)
         RetailRepository.init(this)
 
         val deviceSn = try {

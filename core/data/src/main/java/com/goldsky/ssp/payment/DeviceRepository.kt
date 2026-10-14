@@ -385,6 +385,7 @@ object DeviceRepository {
             if (previousOrg != null && result.org_id != null && result.org_id != previousOrg) {
                 Log.w(TAG, "Device moved to another store: $previousOrg -> ${result.org_id}")
                 StaffRepository.forgetStore()
+                DiscountPresetRepository.forgetStore()
                 _storeChanges.value++
             }
             // The heartbeats RLS needs the device_auth_map row this RPC just

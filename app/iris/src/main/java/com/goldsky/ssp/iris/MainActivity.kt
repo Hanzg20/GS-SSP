@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
         // started in a cold process without this Activity still find them.
         DeviceRepository.init(this)
         StaffRepository.init(this)
+        DiscountPresetRepository.init(this)
         DeliveryOrderRepository.init(this)
         onBackPressedDispatcher.addCallback(this, stopScanOnBack)
 

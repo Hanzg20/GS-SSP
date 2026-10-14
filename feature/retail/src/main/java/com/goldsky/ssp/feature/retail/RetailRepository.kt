@@ -53,6 +53,8 @@ object RetailRepository {
                 return@withContext
             }
             Log.i(TAG, "Starting cloud product sync from Supabase...")
+            // The store's discount presets travel with its catalog.
+            com.goldsky.ssp.payment.DiscountPresetRepository.sync()
 
             val response = SupabaseClientProvider.client.postgrest["products"]
                 .select {
