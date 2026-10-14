@@ -84,7 +84,7 @@ fun LaundryTechPanel(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Technician", color = TText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("Aegis Laundry $version · ${if (s.demoMode) "demo machines" else "${s.machines.size} machines"}", color = TSoft, fontSize = 12.sp)
+                    Text("Aegis Laundry $version · ${if (s.demoMode) "DEMO MODE (sample machines, nothing charged)" else "${s.machines.size} machines"}", color = TSoft, fontSize = 12.sp)
                 }
                 Pill("Exit", TTeal, onExit)
             }

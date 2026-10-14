@@ -112,9 +112,11 @@ fun LaundryApp(
                 )
             }
         }
-        if (s.demoMode || s.testArmedCents != null) {
+        // Demo mode carries no badge (customer demos look like the real thing; the technician
+        // panel says it). A technician's armed card test does: real money on the next sale.
+        if (s.testArmedCents != null) {
             Text(
-                if (s.testArmedCents != null) "CARD TEST ARMED" else "DEMO", color = Bg2, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp,
+                "CARD TEST ARMED", color = Bg2, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 2.dp).clip(RoundedCornerShape(6.dp)).background(Amber.copy(alpha = 0.85f)).padding(horizontal = 6.dp, vertical = 1.dp)
             )
         }
