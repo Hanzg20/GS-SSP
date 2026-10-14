@@ -143,7 +143,7 @@ Nobody registers these automatically — it's each app shell's `MainActivity.onC
 
 ### Cloud sync & telemetry (`core/data`, package `com.goldsky.ssp.payment`)
 - `SupabaseClientProvider` / `SupabaseConfig` — Supabase client setup.
-- `DeviceRepository` — device identity and auth token retrieval.
+- `DeviceRepository` — device identity and auth token retrieval. A terminal links its anonymous session to its SN through `sync_device_identity`, which since 2026-10-14 needs the per-device secret the first link was given (`docs/migrations/2026-10-14_device_identity_secret.sql`); a reinstall / data wipe loses it, and a sys admin resets the device's identity in Cael (Organizations → store → devices, key icon). Store, location and acquirer of a device change only through `cmp_assign_device` / `cmp_set_device_acquirer` — API clients can't write those columns.
 - `TransactionRepository` — writes transaction audit records to Supabase.
 - `ShadowManager` — device shadow (desired/reported state) sync, versioned.
 - `HeartbeatWorker` — periodic WorkManager heartbeat/telemetry reporting.
