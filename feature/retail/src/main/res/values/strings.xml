@@ -189,6 +189,12 @@
     <string name="dine_err_not_empty">The check has items or payments: it can\'t be cancelled</string>
     <string name="dine_err_item_paid">That item is already paid</string>
     <string name="dine_err_table_gone">That table no longer exists</string>
+    <string name="dine_err_order_accepted">Another terminal already accepted this QR order</string>
+    <string name="dine_err_order_rejected">Another terminal already turned this QR order down</string>
+    <string name="dine_err_order_gone">That QR order no longer exists</string>
+    <string name="dine_err_table_in_use">Another terminal just seated this table: open it from the floor</string>
+    <string name="dine_err_check_gone">That check no longer exists</string>
+    <string name="dine_err_sold_out">A dish in this round is sold out: take it off and send again</string>
     <string name="dine_no_tables">No tables yet. A manager adds them in Ourea: Settings > Tables.</string>
     <string name="dine_floor_summary">%1$d of %2$d tables seated</string>
     <string name="dine_free_seats">Free · %1$d seats</string>
@@ -259,4 +265,5 @@
     <string name="store_changed_title">Moved to another store</string>
     <string name="store_changed_body">This terminal was moved to another store in Cael. Reload to use that store\'s staff, products and tables. The cart in progress is cleared.</string>
     <string name="store_changed_reload">Reload</string>
+    <string name="retail_sold_out">Sold out</string>
 </resources>

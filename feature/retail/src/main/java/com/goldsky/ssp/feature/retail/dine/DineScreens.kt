@@ -60,6 +60,13 @@ fun dineMessage(code: String): String = when (code) {
     "check_not_empty" -> stringResource(R.string.dine_err_not_empty)
     "item_paid" -> stringResource(R.string.dine_err_item_paid)
     "table_not_found" -> stringResource(R.string.dine_err_table_gone)
+    // Another terminal got there first (two terminals on one floor).
+    "order_accepted" -> stringResource(R.string.dine_err_order_accepted)
+    "order_rejected" -> stringResource(R.string.dine_err_order_rejected)
+    "order_not_found" -> stringResource(R.string.dine_err_order_gone)
+    "table_in_use" -> stringResource(R.string.dine_err_table_in_use)
+    "check_not_found" -> stringResource(R.string.dine_err_check_gone)
+    "sold_out" -> stringResource(R.string.dine_err_sold_out)
     else -> code
 }
 

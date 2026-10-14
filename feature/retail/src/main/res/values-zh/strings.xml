@@ -189,6 +189,12 @@
     <string name="dine_err_not_empty">这张单已有菜品或付款，不能取消</string>
     <string name="dine_err_item_paid">这道菜已经付过钱</string>
     <string name="dine_err_table_gone">这张桌已不存在</string>
+    <string name="dine_err_order_accepted">这张扫码单已被其他终端接单</string>
+    <string name="dine_err_order_rejected">这张扫码单已被其他终端拒绝</string>
+    <string name="dine_err_order_gone">这张扫码单已不存在</string>
+    <string name="dine_err_table_in_use">其他终端刚给这张桌开了台，请从桌台图打开</string>
+    <string name="dine_err_check_gone">这张桌单已不存在</string>
+    <string name="dine_err_sold_out">这一轮里有菜已售罄：请去掉后再送厨</string>
     <string name="dine_no_tables">还没有餐桌。经理在 Ourea：设置 > 餐桌 里添加。</string>
     <string name="dine_floor_summary">%2$d 张桌，%1$d 张有客</string>
     <string name="dine_free_seats">空闲 · %1$d 座</string>
@@ -259,4 +265,5 @@
     <string name="store_changed_title">已移到其他门店</string>
     <string name="store_changed_body">这台终端已在 Cael 中移到其他门店。重新载入后将使用新门店的员工、商品和桌台，当前购物车会清空。</string>
     <string name="store_changed_reload">重新载入</string>
+    <string name="retail_sold_out">已售罄</string>
 </resources>

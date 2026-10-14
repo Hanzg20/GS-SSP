@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -86,8 +87,10 @@ fun RetailStoreScreen(
             items(shown) { product ->
                 // Summed across modifier variants of the same product.
                 val qty = cart.filter { it.product.id == product.id }.sumOf { it.quantity }
+                // Same rule as Ourea's grid and the server (scan orders, rounds): no stock left = can't be added.
+                val soldOut = (product.stockQty ?: 1) <= 0
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().alpha(if (soldOut && qty == 0) 0.5f else 1f),
                     shape = RoundedCornerShape(12.dp),
                     color = scheme.surfaceVariant,
                     border = BorderStroke(if (qty > 0) 1.dp else 0.5.dp, if (qty > 0) scheme.primary else scheme.outline)
@@ -100,6 +103,8 @@ fun RetailStoreScreen(
                             Text(product.name, fontWeight = FontWeight.Bold, color = scheme.onSurface)
                             Text(money(product.price_cents), color = gs.emphasis, fontWeight = FontWeight.SemiBold,
                                 style = MaterialTheme.typography.bodyMedium)
+                            if (soldOut) Text(stringResource(R.string.retail_sold_out), color = scheme.error,
+                                fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
                             // What's been ordered of this dish, option by option.
                             cart.filter { it.product.id == product.id && it.selectedModifiers.isNotEmpty() }.forEach { line ->
                                 Text("+ " + line.selectedModifiers.joinToString(", ") { it.name } + "  ×${line.quantity}",
@@ -114,8 +119,9 @@ fun RetailStoreScreen(
                             }
                             Text("×$qty", fontWeight = FontWeight.Bold, color = scheme.primary)
                         }
-                        IconButton(onClick = { if (product.modifierGroups.isNotEmpty()) optionsFor = product else viewModel.addItem(product) }) {
-                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.retail_add_one), tint = scheme.primary)
+                        IconButton(enabled = !soldOut, onClick = { if (product.modifierGroups.isNotEmpty()) optionsFor = product else viewModel.addItem(product) }) {
+                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.retail_add_one),
+                                tint = if (soldOut) scheme.onSurfaceVariant else scheme.primary)
                         }
                     }
                 }
