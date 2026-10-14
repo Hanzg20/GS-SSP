@@ -71,8 +71,8 @@
     <string name="retail_print">Print</string>
     <string name="retail_close_2">Close</string>
     <string name="retail_manager_approval">Manager approval</string>
-    <string name="retail_add_a_tip">ADD A TIP?</string>
-    <string name="retail_authorize">AUTHORIZE</string>
+    <string name="retail_tip_hand_over">Please hand the device to the customer</string>
+    <string name="retail_tip_cancel">Cancel</string>
     <string name="retail_dine_in_management">DINE-IN MANAGEMENT</string>
     <string name="retail_select_table">SELECT TABLE</string>
     <string name="retail_pay_now">PAY NOW</string>

@@ -11,10 +11,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.goldsky.ssp.payment.hardware.IPaymentProvider
-import com.goldsky.ssp.ui.tip.CustomerTipPanel
-import com.goldsky.ssp.ui.tip.TipPalette
 
 private fun money(cents: Int) = "$" + "%.2f".format(cents / 100.0)
 
@@ -46,33 +43,16 @@ fun OureaTipStep(
     }
 
     if (askHere) {
-        Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
-            Surface(shape = RoundedCornerShape(24.dp), color = OureaSurface, modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth(0.9f).fillMaxHeight(0.88f)) {
-                Column(Modifier.padding(24.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.ourea_tip_turn_screen), color = OureaTextSecondary, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                        TextButton(onClick = onCancel) { Text(stringResource(R.string.ourea_tip_cancel), color = OureaTextSecondary) }
-                    }
-                    CustomerTipPanel(
-                        basisCents = basisCents,
-                        totalCents = totalCents,
-                        palette = TipPalette(
-                            tile = OureaBackground,
-                            tileBorder = OureaSurfaceVariant,
-                            text = OureaTextPrimary,
-                            subtext = OureaTextSecondary,
-                            accent = OureaGold,
-                            onAccent = MaterialTheme.colorScheme.onPrimary,
-                        ),
-                        onChosen = onTip,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
-        }
+        com.goldsky.ssp.feature.retail.ui.CustomerTipDialog(
+            basisCents = basisCents,
+            totalCents = totalCents,
+            onTip = onTip,
+            onCancel = onCancel,
+            staffNote = stringResource(R.string.ourea_tip_turn_screen)
+        )
     } else {
         // Staff side while the customer chooses on the Eye: progress only.
-        Dialog(onDismissRequest = {}, properties = DialogProperties(dismissOnClickOutside = false)) {
+        Dialog(onDismissRequest = {}, properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false)) {
             Surface(shape = RoundedCornerShape(24.dp), color = OureaSurface) {
                 Column(Modifier.padding(28.dp).widthIn(min = 320.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     CircularProgressIndicator(color = OureaGold)

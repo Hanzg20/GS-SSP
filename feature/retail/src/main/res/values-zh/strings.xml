@@ -72,8 +72,8 @@
     <string name="retail_print">打印</string>
     <string name="retail_close_2">关闭</string>
     <string name="retail_manager_approval">经理批准</string>
-    <string name="retail_add_a_tip">要加小费吗？</string>
-    <string name="retail_authorize">授权</string>
+    <string name="retail_tip_hand_over">请把设备交给顾客</string>
+    <string name="retail_tip_cancel">取消</string>
     <string name="retail_dine_in_management">堂食管理</string>
     <string name="retail_select_table">选择桌号</string>
     <string name="retail_pay_now">立即付款</string>

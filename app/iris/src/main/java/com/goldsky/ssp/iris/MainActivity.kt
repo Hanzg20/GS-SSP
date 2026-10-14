@@ -34,7 +34,6 @@ import com.goldsky.ssp.payment.hardware.*
 import com.goldsky.ssp.feature.retail.screens.*
 import com.goldsky.ssp.feature.retail.RefundFlow
 import com.goldsky.ssp.feature.retail.RetailRepository
-import com.goldsky.ssp.feature.retail.ui.TipSelectionDialog
 import com.goldsky.ssp.feature.retail.ui.apexPulseGlow
 import com.goldsky.ssp.feature.retail.ui.GoldSkyCyan
 import com.goldsky.ssp.feature.retail.viewmodel.RetailViewModel
@@ -302,14 +301,16 @@ class MainActivity : ComponentActivity() {
 
                         // Detail overlays (drawn above the NavHost content, not routes of their own)
                         activeSaleData?.let { sale ->
-                            TipSelectionDialog(
-                                subtotalCents = sale.subtotalCents + sale.taxCents,
-                                onConfirm = { totalWithTip ->
-                                    val tip = totalWithTip - (sale.subtotalCents + sale.taxCents)
+                            // The customer chooses, on Iris handed over: 15/18/20% of the amount before tax.
+                            com.goldsky.ssp.feature.retail.ui.CustomerTipDialog(
+                                basisCents = sale.subtotalCents,
+                                totalCents = sale.subtotalCents + sale.taxCents,
+                                onTip = { tip ->
                                     activeSaleData = null
                                     pay(sale, tip)
                                 },
-                                onDismiss = { activeSaleData = null }
+                                // A table's payment backed out of: the next sale must not pay that check.
+                                onCancel = { activeSaleData = null; checkPay = null }
                             )
                         }
 
