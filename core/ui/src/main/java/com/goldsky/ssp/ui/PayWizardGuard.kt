@@ -51,11 +51,15 @@ object PayWizardGuard {
         activity.lifecycleScope.launch {
             delay(FIRST_CHECK_MS)
             while (isActive) {
-                if (idle() && !portOpen()) recover(activity, idle)
+                // Only the app on screen acts: a kiosk left running in the background (two apps
+                // on a test terminal) must never open PAYWizard over the one the customer uses.
+                if (foreground(activity) && idle() && !portOpen()) recover(activity) { foreground(activity) && idle() }
                 delay(CHECK_MS)
             }
         }
     }
+
+    private fun foreground(owner: LifecycleOwner) = owner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
 
     private fun installed(ctx: Context) = runCatching { ctx.packageManager.getPackageInfo(OPC, 0); true }.getOrDefault(false)
 

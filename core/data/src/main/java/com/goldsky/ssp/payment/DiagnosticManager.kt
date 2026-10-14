@@ -28,6 +28,8 @@ data class MaintenanceRecord(
  */
 object DiagnosticManager {
     private const val TAG = "DiagnosticManager"
+    private const val REPORT_TRIES = 4
+    private const val REPORT_RETRY_MS = 15_000L
 
     /**
      * Reports a critical application error to the cloud. Returns the
@@ -37,13 +39,23 @@ object DiagnosticManager {
      */
     fun reportError(sn: String, code: String, severity: String = "ERROR", trace: String? = null): Job {
         return CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val log = ErrorLog(sn, severity, code, trace)
-                SupabaseClientProvider.client.postgrest["app_error_logs"].insert(log)
-                Log.i(TAG, "Error reported: $code")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to report error: ${e.message}")
+            val log = ErrorLog(sn, severity, code, trace)
+            // Signed in and linked first, and tried again: an alert raised in the first seconds
+            // after start-up (before the session is linked to the device) was refused by RLS and
+            // lost (PAYWIZARD_RESTARTED on 255, 2026-10-14).
+            for (attempt in 1..REPORT_TRIES) {
+                try {
+                    SupabaseClientProvider.ensureAuthenticated()
+                    SupabaseClientProvider.client.postgrest["app_error_logs"].insert(log)
+                    Log.i(TAG, "Error reported: $code")
+                    return@launch
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    Log.w(TAG, "Report of $code failed (try $attempt/$REPORT_TRIES): ${e.message?.lineSequence()?.firstOrNull()}")
+                    if (attempt < REPORT_TRIES) kotlinx.coroutines.delay(REPORT_RETRY_MS * attempt)
+                }
             }
+            Log.e(TAG, "Failed to report error: $code")
         }
     }
 
