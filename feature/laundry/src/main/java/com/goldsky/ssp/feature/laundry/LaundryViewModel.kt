@@ -91,6 +91,8 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         /** The machine didn't (fully) start. [paid]: the card was charged. */
         data class StartFailed(val machine: LaundryMachineConfig, val paid: Boolean) : Screen
         data class Unavailable(val machine: LaundryMachineConfig) : Screen
+        /** "Tap your VIP card or scan its QR" -- the reader waits for a VIP card tap. */
+        data class VipPay(val order: LaundryMachineConfig.Order, val message: String = "Tap your VIP card on the reader") : Screen
         /** Paying from a VIP balance / applying a coupon. */
         data class Working(val machine: LaundryMachineConfig, val message: String) : Screen
         /** Demo-mode VIP page: sample load plans, nothing charged. */
@@ -101,7 +103,10 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
 
     /** A scanned VIP member code or coupon, used on the next machine the customer confirms. */
     sealed interface Pending {
-        data class Vip(val cardUid: String, val memberCode: String, val balanceCents: Int) : Pending
+        data class Vip(val cardUid: String, val memberCode: String, val balanceCents: Int, val tier: String? = null) : Pending {
+            /** Wash's member discount: GOLD 10%, PLATINUM 15% (docs/system_architecture.md v2.49). */
+            val discountPct: Int get() = when (tier) { "PLATINUM" -> 15; "GOLD" -> 10; else -> 0 }
+        }
         data class Coupon(val code: String, val type: String, val value: Int, val applicableProductId: String?) : Pending
     }
 
@@ -130,10 +135,14 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         val notice: String? = null,
     ) {
         /** What [m] costs after a pending coupon (a VIP balance pays the full price). */
+        /** Card price: after a scanned coupon. */
         fun priceFor(o: LaundryMachineConfig.Order): Int = when (val p = pending) {
             is Pending.Coupon -> couponPrice(o.totalCents, p)
             else -> o.totalCents
         }
+
+        /** VIP price: the member's tier discount. */
+        fun vipPrice(o: LaundryMachineConfig.Order, vip: Pending.Vip): Int = o.totalCents - o.totalCents * vip.discountPct / 100
         fun busy(m: LaundryMachineConfig) =
             (m.input != null && m.input in running) || (demoMode && (endsAt[m.machineNo] ?: 0L) > System.currentTimeMillis())
     }
@@ -170,10 +179,11 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
     fun onScanned(raw: String) {
         val code = raw.trim()
         val screen = _state.value.screen
-        if (code.isEmpty() || (screen != Screen.Home && screen !is Screen.Confirm)) return
+        if (code.isEmpty() || (screen != Screen.Home && screen !is Screen.Confirm && screen !is Screen.VipPay)) return
         val vipCode = Regex("^[A-Za-z0-9]{6}$").matches(code)
         if (_state.value.demoMode) {
             setPending(if (vipCode) Pending.Vip("demo", code.uppercase(), DEMO_VIP_BALANCE) else Pending.Coupon(code, "FIXED_OFF", 100, null))
+            if (vipCode) vipFound()
             return
         }
         viewModelScope.launch {
@@ -186,7 +196,7 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
                     !card.is_active -> notice("This VIP card is deactivated. Please contact the attendant.")
                     lowest != null && card.balance_cents < lowest ->
                         notice("Not enough VIP balance (${money(card.balance_cents)}). Top up with VIP or pay by card.")
-                    else -> setPending(Pending.Vip(uid, code.uppercase(), card.balance_cents))
+                    else -> { setPending(Pending.Vip(uid, code.uppercase(), card.balance_cents, card.tier)); vipFound() }
                 }
                 return@launch
             }
@@ -305,7 +315,86 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         if (_state.value.screen is Screen.Confirm) _state.update { it.copy(screen = Screen.Home) }
     }
 
-    fun confirm() {
+    /** The Card button (a scanned VIP card is left out of this payment; a coupon still applies). */
+    fun payCard() = confirm(useVip = false)
+
+    /** The VIP card button: pay with the scanned card, or wait for one to be tapped / scanned. */
+    fun payVip() {
+        val c = _state.value.screen as? Screen.Confirm ?: return
+        if (_state.value.pending is Pending.Vip) { confirm(useVip = true); return }
+        _state.update { it.copy(screen = Screen.VipPay(c.order)) }
+        TtsManager.speak("Please tap your VIP card, or scan your member code.")
+        listenForVipTap()
+    }
+
+    /** Leaves the VIP pay screen back to the options. */
+    fun vipBack() {
+        val v = _state.value.screen as? Screen.VipPay ?: return
+        stopVipTap()
+        _state.update { it.copy(screen = Screen.Confirm(v.order)) }
+    }
+
+    private var vipTapJob: Job? = null
+
+    /**
+     * Waits for a VIP (Mifare) card on the reader, as Wash does: startCardDetection(0)
+     * waits ~30 s per round, so it is re-armed while the screen stays up. Demo mode also
+     * "finds" a sample card after a few seconds, so the flow can be shown without one.
+     */
+    private fun listenForVipTap() {
+        stopVipTap()
+        val demo = _state.value.demoMode
+        vipTapJob = viewModelScope.launch {
+            if (demo) {
+                delay(DEMO_VIP_TAP_MS)
+                if (_state.value.screen is Screen.VipPay) { setPending(Pending.Vip("demo", "DEMO42", DEMO_VIP_BALANCE, "GOLD")); vipFound() }
+                return@launch
+            }
+            val pay = payment ?: return@launch
+            while (isActive && _state.value.screen is Screen.VipPay) {
+                val uid = kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                    pay.startCardDetection(0, object : IPaymentProvider.PaymentCallback {
+                        override fun onCardDetected(type: String, uid: String) { if (cont.isActive) cont.resumeWith(Result.success(uid)) }
+                        override fun onSuccess(authCode: String, refNum: String, entryMode: String) { if (cont.isActive) cont.resumeWith(Result.success(refNum.ifBlank { null })) }
+                        override fun onFailure(errorMsg: String, isHardwareFault: Boolean) { if (cont.isActive) cont.resumeWith(Result.success(null)) }
+                        override fun onProgress(message: String) {}
+                    })
+                    cont.invokeOnCancellation { runCatching { pay.stopCardDetection() } }
+                }
+                if (uid.isNullOrBlank() || _state.value.screen !is Screen.VipPay) { delay(500); continue }
+                val card = VipRepository.getVipCard(uid)
+                when {
+                    card == null -> setVipMessage("This card isn't a VIP card here. Try again or pay by card.")
+                    !card.is_active -> setVipMessage("This VIP card is deactivated. Please see the attendant.")
+                    else -> { setPending(Pending.Vip(uid, card.qr_code ?: card.display_card_number ?: uid.takeLast(6), card.balance_cents, card.tier)); vipFound(); return@launch }
+                }
+                delay(1_500)
+            }
+        }
+    }
+
+    private fun setVipMessage(m: String) {
+        val v = _state.value.screen as? Screen.VipPay ?: return
+        _state.update { it.copy(screen = v.copy(message = m)) }
+    }
+
+    private fun stopVipTap() {
+        vipTapJob?.cancel()
+        vipTapJob = null
+        runCatching { payment?.stopCardDetection() }
+    }
+
+    /** A VIP card was recognised on the VIP pay screen: pay with it. */
+    private fun vipFound() {
+        val v = _state.value.screen as? Screen.VipPay ?: return
+        stopVipTap()
+        _state.update { it.copy(screen = Screen.Confirm(v.order)) }
+        confirm(useVip = true)
+    }
+
+    fun confirm() = confirm(useVip = _state.value.pending is Pending.Vip)
+
+    private fun confirm(useVip: Boolean) {
         val order = (_state.value.screen as? Screen.Confirm)?.order ?: return
         val m = order.machine
         // A demo machine can still take a technician's real card test; its start is simulated.
@@ -318,7 +407,7 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
                 showThenHome(Screen.Unavailable(m), 6000)
                 return@launch
             }
-            val pending = _state.value.pending
+            val pending = _state.value.pending.let { if (it is Pending.Vip && !useVip) null else it }
             clearPending()
             val price = _state.value.copy(pending = pending).priceFor(order)
             when {
@@ -459,13 +548,14 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
                 startPrepaid(order, "DEMO_VIP_" + System.currentTimeMillis(), demo = true, simulate = true, paidWith = "VIP", spoken = "Paid from your VIP balance.")
                 return@launch
             }
-            when (val r = VipRepository.deductBalance(vip.cardUid, order.totalCents)) {
+            val vipCents = _state.value.vipPrice(order, vip)
+            when (val r = VipRepository.deductBalance(vip.cardUid, vipCents)) {
                 is VipDeductResult.Success -> {
                     val ref = "VIP_${vip.cardUid}_${System.currentTimeMillis()}"
                     TransactionRepository.recordTransaction(
                         getApplication(),
                         TransactionRecord(
-                            device_sn = deviceSn, amount = order.totalCents, payment_status = "PAID", ecr_ref_num = ref,
+                            device_sn = deviceSn, amount = vipCents, payment_status = "PAID", ecr_ref_num = ref,
                             payment_method = "VIP_CARD", product_id = m.productId.takeUnless { simulate },
                             vip_card_uid = vip.cardUid, entry_mode = "QR_SCAN", order_note = order.summary.ifBlank { null },
                         ),
@@ -584,6 +674,7 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         private const val TAG = "LaundryVM"
         private const val INPUT_POLL_MS = 5_000L
         private const val DEMO_CARD_MS = 3_000L
+        private const val DEMO_VIP_TAP_MS = 4_000L
         private const val PENDING_MS = 90_000L
         private const val NOTICE_MS = 6_000L
         const val DEMO_VIP_BALANCE = 4_500

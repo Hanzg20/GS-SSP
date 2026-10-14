@@ -82,6 +82,9 @@ fun LaundryApp(
     onTemp: (LaundryMachineConfig.Option) -> Unit = {},
     onAddon: (LaundryMachineConfig.Option) -> Unit = {},
     onDry: (LaundryMachineConfig.DryTime) -> Unit = {},
+    onPayCard: () -> Unit = onPay,
+    onPayVip: () -> Unit = {},
+    onVipBack: () -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Bg1, Bg2)))) {
         // Soft glow behind the content, as on the renders.
@@ -92,7 +95,8 @@ fun LaundryApp(
         AnimatedContent(targetState = s.screen, contentKey = { it::class }, transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) }, label = "laundry") { screen ->
             when (screen) {
                 Screen.Home -> HomeScreen(s, onSelect, onTechTrigger, onScan, onVip, onClearPending)
-                is Screen.Confirm -> ConfirmScreen(screen.order, s.pending, s.priceFor(screen.order), onBack, onPay, onScan, onClearPending, onTemp, onAddon, onDry)
+                is Screen.Confirm -> ConfirmScreen(screen.order, s, onBack, onPayCard, onPayVip, onScan, onClearPending, onTemp, onAddon, onDry)
+                is Screen.VipPay -> VipPayScreen(screen, onScan, onVipBack)
                 is Screen.Working -> StartingScreen(screen.machine, title = "One moment", line = screen.message)
                 Screen.VipDemo -> VipDemoScreen(onBuyVipDemo, onCloseVip)
                 is Screen.VipDemoPaying -> VipDemoPayingScreen(screen.plan)
@@ -111,7 +115,7 @@ fun LaundryApp(
         if (s.demoMode || s.testArmedCents != null) {
             Text(
                 if (s.testArmedCents != null) "CARD TEST ARMED" else "DEMO", color = Bg2, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).clip(RoundedCornerShape(6.dp)).background(Amber).padding(horizontal = 6.dp, vertical = 2.dp)
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 2.dp).clip(RoundedCornerShape(6.dp)).background(Amber.copy(alpha = 0.85f)).padding(horizontal = 6.dp, vertical = 1.dp)
             )
         }
     }
@@ -379,10 +383,10 @@ private fun ContactlessIcon(color: Color, modifier: Modifier) {
 @Composable
 private fun ConfirmScreen(
     order: LaundryMachineConfig.Order,
-    pending: LaundryViewModel.Pending?,
-    price: Int,
+    s: LaundryViewModel.UiState,
     onBack: () -> Unit,
-    onPay: () -> Unit,
+    onPayCard: () -> Unit,
+    onPayVip: () -> Unit,
     onScan: () -> Unit,
     onClearPending: () -> Unit,
     onTemp: (LaundryMachineConfig.Option) -> Unit,
@@ -390,6 +394,9 @@ private fun ConfirmScreen(
     onDry: (LaundryMachineConfig.DryTime) -> Unit,
 ) {
     val m = order.machine
+    val pending = s.pending
+    val vip = pending as? LaundryViewModel.Pending.Vip
+    val price = s.priceFor(order)
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(Modifier.weight(1f)) {
             // Left: the machine, its number and price
@@ -441,42 +448,110 @@ private fun ConfirmScreen(
                     m.durationMin?.let { Text("About $it minutes", color = OnDarkSoft, fontSize = 13.sp) }
                 }
                 Spacer(Modifier.weight(1f))
-                if (pending is LaundryViewModel.Pending.Vip) {
-                    Text("Paid from VIP ••${pending.memberCode.takeLast(4)} (${money(pending.balanceCents)})", color = Teal, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                }
             }
         }
         Spacer(Modifier.height(8.dp))
+        // How to pay: two equal choices.
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(
-                Modifier.weight(1f).height(56.dp).clip(RoundedCornerShape(28.dp)).border(1.5.dp, OnDarkSoft.copy(alpha = 0.5f), RoundedCornerShape(28.dp)).clickable(onClick = onBack),
-                contentAlignment = Alignment.Center
-            ) { Text("Back", color = OnDark, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) }
-            Box(
-                Modifier.weight(2f).height(56.dp).shadow(8.dp, RoundedCornerShape(28.dp)).clip(RoundedCornerShape(28.dp))
-                    .background(Brush.horizontalGradient(listOf(Teal, TealDeep))).clickable(onClick = onPay),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    when {
-                        pending is LaundryViewModel.Pending.Vip -> "Pay ${money(order.totalCents)} with VIP"
-                        price <= 0 -> "Use coupon"
-                        else -> "Pay ${money(price)}"
-                    },
-                    color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Black
+            PayButton(
+                Modifier.weight(1f), Brush.horizontalGradient(listOf(Teal, TealDeep)), onPayCard,
+                icon = { CardIcon(Color.White, Modifier.size(width = 22.dp, height = 16.dp)) },
+                title = if (price <= 0) "Use coupon" else "Card ${money(price)}",
+                sub = if (price <= 0) "Covered by your coupon" else "Tap · Insert · Swipe",
+            )
+            PayButton(
+                Modifier.weight(1f), Brush.horizontalGradient(listOf(Color(0xFFF7C35C), Color(0xFFD9962B))), onPayVip,
+                icon = { CrownIcon(Ink, Modifier.size(18.dp)) },
+                title = if (vip != null) "VIP ${money(s.vipPrice(order, vip))}" else "VIP card",
+                sub = when {
+                    vip != null && vip.discountPct > 0 -> "••${vip.memberCode.takeLast(4)} · ${vip.discountPct}% member off"
+                    vip != null -> "••${vip.memberCode.takeLast(4)} · ${money(vip.balanceCents)}"
+                    else -> "Tap or scan your card"
+                },
+                dark = true,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("‹ Back", color = OnDarkSoft, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onBack).padding(horizontal = 10.dp, vertical = 4.dp))
+            Spacer(Modifier.weight(1f))
+            when (pending) {
+                null -> Row(Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onScan).padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ScanIcon(Teal, Modifier.size(14.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Have a coupon? Scan", color = Teal, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+                else -> Text(
+                    (if (pending is LaundryViewModel.Pending.Coupon) "Coupon ${couponLabel(pending)}" else "VIP ••${vip?.memberCode?.takeLast(4)}") + " · Remove",
+                    color = OnDarkSoft, fontSize = 13.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClearPending).padding(horizontal = 10.dp, vertical = 4.dp)
                 )
             }
         }
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            if (pending == null) {
-                Row(Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onScan).padding(horizontal = 10.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ScanIcon(Teal, Modifier.size(14.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Have a VIP card or coupon? Scan", color = Teal, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun PayButton(modifier: Modifier, brush: Brush, onClick: () -> Unit, icon: @Composable () -> Unit, title: String, sub: String, dark: Boolean = false) {
+    Row(
+        modifier.height(62.dp).shadow(8.dp, RoundedCornerShape(18.dp)).clip(RoundedCornerShape(18.dp)).background(brush)
+            .clickable(onClick = onClick).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        icon()
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(title, color = if (dark) Ink else Color.White, fontSize = 17.sp, fontWeight = FontWeight.Black, maxLines = 1)
+            Text(sub, color = if (dark) Ink.copy(alpha = 0.75f) else Color.White.copy(alpha = 0.85f), fontSize = 11.sp, maxLines = 1)
+        }
+    }
+}
+
+/** A bank card outline with a chip. */
+@Composable
+private fun CardIcon(color: Color, modifier: Modifier) {
+    Canvas(modifier) {
+        drawRoundRect(color, cornerRadius = CornerRadius(size.height * 0.18f), style = Stroke(size.height * 0.11f))
+        drawRoundRect(color, topLeft = Offset(size.width * 0.14f, size.height * 0.32f), size = Size(size.width * 0.22f, size.height * 0.3f), cornerRadius = CornerRadius(size.height * 0.05f))
+    }
+}
+
+@Composable
+private fun VipPayScreen(v: Screen.VipPay, onScan: () -> Unit, onBack: () -> Unit) {
+    val t = rememberInfiniteTransition(label = "viptap")
+    val ring by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1600, easing = LinearEasing)), label = "ring")
+    Column(Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CrownIcon(Amber, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
+            Text("VIP CARD  ·  ${v.order.machine.name.uppercase()}", color = OnDarkSoft, fontSize = 12.sp, letterSpacing = 1.5.sp)
+        }
+        Text(money(v.order.totalCents), color = OnDark, fontSize = 44.sp, fontWeight = FontWeight.Black)
+        Text("Members save up to 15%", color = Amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Box(Modifier.weight(1f).aspectRatio(1f), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize(0.9f)) {
+                for (k in 0..2) {
+                    val p = (ring + k / 3f) % 1f
+                    drawCircle(Amber.copy(alpha = (1f - p) * 0.55f), radius = size.minDimension / 2 * (0.35f + 0.65f * p), style = Stroke(3.dp.toPx()))
                 }
-            } else {
-                Text("Not yours? Remove", color = OnDarkSoft, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClearPending).padding(horizontal = 10.dp, vertical = 3.dp))
+                drawCircle(Brush.radialGradient(listOf(Amber.copy(alpha = 0.6f), Amber.copy(alpha = 0.15f))), radius = size.minDimension * 0.2f)
+            }
+            ContactlessIcon(Color.White, Modifier.size(42.dp))
+        }
+        Text(v.message, color = OnDark, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(24.dp)).border(1.5.dp, OnDarkSoft.copy(alpha = 0.5f), RoundedCornerShape(24.dp)).clickable(onClick = onBack),
+                contentAlignment = Alignment.Center
+            ) { Text("Back", color = OnDark, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
+            Row(
+                Modifier.weight(1.6f).height(48.dp).clip(RoundedCornerShape(24.dp)).background(Amber.copy(alpha = 0.16f))
+                    .border(1.5.dp, Amber, RoundedCornerShape(24.dp)).clickable(onClick = onScan),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically
+            ) {
+                ScanIcon(Amber, Modifier.size(16.dp)); Spacer(Modifier.width(8.dp))
+                Text("Scan member QR", color = OnDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

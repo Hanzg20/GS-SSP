@@ -80,7 +80,7 @@ class LaundryPaymentActivity : ComponentActivity() {
             val s by vm.state.collectAsState()
             var showPin by remember { mutableStateOf(false) }
             var tech by remember { mutableStateOf(false) }
-            BackHandler(enabled = true) { if (tech) tech = false else vm.back() } // kiosk: back never leaves the app
+            BackHandler(enabled = true) { if (tech) tech = false else { vm.vipBack(); vm.back() } } // kiosk: back never leaves the app
             LaundryApp(
                 s = s,
                 onSelect = vm::select,
@@ -101,6 +101,9 @@ class LaundryPaymentActivity : ComponentActivity() {
                 onTemp = vm::chooseTemp,
                 onAddon = vm::toggleAddon,
                 onDry = vm::chooseDry,
+                onPayCard = vm::payCard,
+                onPayVip = vm::payVip,
+                onVipBack = vm::vipBack,
             )
             if (showPin) {
                 LaundryPinPad(
