@@ -219,6 +219,7 @@ class MainActivity : ComponentActivity() {
                                             onCheckout = { subtotal ->
                                                 val sale = retailViewModel.checkoutSale()
                                                 saleLines = sale.lines
+                                                discountSale = sale
                                                 val tax = sale.taxCents
                                                 orderTicket = if (DeviceRepository.getBusinessType() == DeviceRepository.BusinessType.QUICK_SERVICE)
                                                     retailViewModel.kitchenTicket(this@MainActivity, signedIn.name) else null
@@ -385,6 +386,15 @@ class MainActivity : ComponentActivity() {
      * payment dialogs aren't factored into a shared module in this codebase
      * yet (same as app/iris, which doesn't share them with anyone either).
      */
+    /**
+     * The counter sale being paid, for its discounts on the transaction row. Only used when
+     * a payment carries exactly its lines: a table's check (other lines) never picks up a
+     * counter sale's discounts.
+     */
+    private var discountSale: com.goldsky.ssp.model.CheckoutSale? = null
+
+    private fun discountSaleFor(lines: List<com.goldsky.ssp.model.SaleLine>) = discountSale?.takeIf { it.lines === lines }
+
     private fun triggerPaymentFlow(subtotal: Int, tax: Int, tip: Int, lines: List<com.goldsky.ssp.model.SaleLine>, ticket: com.goldsky.ssp.model.KitchenTicket?, onStateChange: (OureaPaymentUiState) -> Unit, extras: PayExtras? = null) {
         val total = subtotal + tax + tip
         val ref = "OUR-" + System.currentTimeMillis()
@@ -401,7 +411,7 @@ class MainActivity : ComponentActivity() {
             payment_method = "CREDIT_CARD",
             staff_id = StaffRepository.current?.id,
             staff_name = StaffRepository.current?.name
-        ).withOrder(ticket)
+        ).withOrder(ticket).withDiscounts(discountSaleFor(lines))
 
         CoroutineScope(Dispatchers.IO).launch {
             TransactionRepository.recordTransaction(this@MainActivity, record)
@@ -493,7 +503,7 @@ class MainActivity : ComponentActivity() {
                     entry_mode = "CASH",
                     staff_id = StaffRepository.current?.id,
                     staff_name = StaffRepository.current?.name
-                ).withOrder(ticket)
+                ).withOrder(ticket).withDiscounts(discountSaleFor(lines))
             )
             TransactionRepository.recordItems(this@MainActivity, ref, sn, lines)
             extras?.onPaid?.invoke(ref, "CASH", tip)
@@ -548,7 +558,7 @@ class MainActivity : ComponentActivity() {
                     payment_method = "QR_CODE",
                     staff_id = StaffRepository.current?.id,
                     staff_name = StaffRepository.current?.name
-                ).withOrder(ticket)
+                ).withOrder(ticket).withDiscounts(discountSaleFor(lines))
             )
             TransactionRepository.recordItems(this@MainActivity, txId, sn, lines)
 

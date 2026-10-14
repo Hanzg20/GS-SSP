@@ -448,7 +448,7 @@ class MainActivity : ComponentActivity() {
                     device_sn = sn, amount = total, subtotal_cents = sale.subtotalCents, tax_cents = sale.taxCents,
                     tip_cents = 0, payment_status = "PAID", ecr_ref_num = ref, payment_method = "CASH",
                     staff_id = StaffRepository.current?.id, staff_name = StaffRepository.current?.name
-                )
+                ).withDiscounts(sale)
             )
             TransactionRepository.recordItems(this@MainActivity, ref, sn, sale.lines)
             sale.deliveryOrderId?.let { DeliveryOrderRepository.markPaid(this@MainActivity, it, ref, "CASH") }
@@ -482,7 +482,7 @@ class MainActivity : ComponentActivity() {
             payment_method = "CREDIT_CARD",
             staff_id = StaffRepository.current?.id,
             staff_name = StaffRepository.current?.name
-        ).withOrder(ticket)
+        ).withOrder(ticket).withDiscounts(sale)
 
         CoroutineScope(Dispatchers.IO).launch {
             TransactionRepository.recordTransaction(this@MainActivity, record)

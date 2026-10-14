@@ -33,7 +33,12 @@ import kotlinx.serialization.json.Json
  * old Map<String, Int> shape had no room for them.
  */
 @Serializable
-private data class ParkedCartLine(val productId: String, val quantity: Int, val modifierIds: List<String> = emptyList())
+private data class ParkedCartLine(
+    val productId: String,
+    val quantity: Int,
+    val modifierIds: List<String> = emptyList(),
+    val discount: com.goldsky.ssp.payment.Discount? = null
+)
 
 /**
  * Centrally manages the Shopping Cart and Scanner events for Retail Pro.
@@ -132,6 +137,10 @@ class RetailViewModel : ViewModel() {
                 val allOptions = product.modifierGroups.flatMap { it.options }
                 val modifiers = line.modifierIds.mapNotNull { id -> allOptions.find { it.id == id } }
                 repeat(line.quantity) { addItem(product, modifiers) }
+                line.discount?.let { d ->
+                    _cart.lastOrNull { it.product.id == product.id && it.selectedModifiers == modifiers }
+                        ?.let { applyLineDiscount(it.id, d) }
+                }
             } else {
                 Log.w(TAG, "Cart line referenced unknown product ${line.productId} (catalog changed since?)")
             }
@@ -160,6 +169,9 @@ class RetailViewModel : ViewModel() {
             if (_cart.isNotEmpty()) return@launch // already ringing up something new
             restoring = true
             addLines(lines)
+            orderDiscount = prefs.getString("order_discount", null)?.let {
+                runCatching { Json.decodeFromString<com.goldsky.ssp.payment.Discount>(it) }.getOrNull()
+            }
             restoring = false
             saveCart()
         }
@@ -169,15 +181,17 @@ class RetailViewModel : ViewModel() {
         if (restoring) return
         val prefs = cartPrefs ?: return
         val json = Json.encodeToString(
-            _cart.map { ParkedCartLine(it.product.id, it.quantity, it.selectedModifiers.map { m -> m.id }) }
+            _cart.map { ParkedCartLine(it.product.id, it.quantity, it.selectedModifiers.map { m -> m.id }, it.discount) }
         )
-        prefs.edit().putString("lines", json).apply()
+        prefs.edit().putString("lines", json)
+            .putString("order_discount", orderDiscount?.let { Json.encodeToString(it) })
+            .apply()
     }
 
     private fun currentCartAsParked(tableName: String?) = ParkedOrderEntity(
         tableName = tableName ?: "Quick Order",
         cartJson = Json.encodeToString(
-            _cart.map { ParkedCartLine(it.product.id, it.quantity, it.selectedModifiers.map { m -> m.id }) }
+            _cart.map { ParkedCartLine(it.product.id, it.quantity, it.selectedModifiers.map { m -> m.id }, it.discount) }
         ),
         subtotalCents = _totalCents.value,
         orderNote = orderNote.ifBlank { null },
@@ -256,9 +270,37 @@ class RetailViewModel : ViewModel() {
         )
     }
 
+    // ---- Discounts (Pricing: line first, then the order's, tax on what is left) ----
+
+    /** The whole order's discount; a line's own is on its CartItem. */
+    var orderDiscount by androidx.compose.runtime.mutableStateOf<com.goldsky.ssp.payment.Discount?>(null)
+        private set
+
+    fun applyOrderDiscount(discount: com.goldsky.ssp.payment.Discount?) {
+        orderDiscount = discount
+        updateTotals()
+    }
+
+    fun applyLineDiscount(cartItemId: String, discount: com.goldsky.ssp.payment.Discount?) {
+        val i = _cart.indexOfFirst { it.id == cartItemId }
+        if (i < 0) return
+        _cart[i] = _cart[i].copy(discount = discount)
+        updateTotals()
+    }
+
+    /** The cart priced: what each line costs after discounts, the discount, tax and total. */
+    fun pricing(): com.goldsky.ssp.payment.Pricing.Result {
+        val fallback = com.goldsky.ssp.payment.SalesTax.deviceRateBps()
+        return com.goldsky.ssp.payment.Pricing.price(
+            _cart.map { com.goldsky.ssp.payment.Pricing.Line(it.totalPriceCents, it.product.taxRateBps ?: fallback, it.discount) },
+            orderDiscount
+        )
+    }
+
     fun clearCart() {
         orderNote = ""
         takeout = false
+        orderDiscount = null
         reservedNumber = null
         _cart.clear()
         updateTotals()
@@ -275,7 +317,8 @@ class RetailViewModel : ViewModel() {
     /** The cart as a sale: lines (for transaction_items / receipt) plus totals. */
     fun checkoutSale(): com.goldsky.ssp.model.CheckoutSale {
         val fallback = com.goldsky.ssp.payment.SalesTax.deviceRateBps()
-        val lines = _cart.map { item ->
+        val priced = pricing()
+        val lines = _cart.mapIndexed { i, item ->
             com.goldsky.ssp.model.SaleLine(
                 name = if (item.selectedModifiers.isEmpty()) item.product.name
                        else item.product.name + " (" + item.selectedModifiers.joinToString { it.name } + ")",
@@ -283,18 +326,26 @@ class RetailViewModel : ViewModel() {
                 unitPriceCents = item.unitPriceCents,
                 taxRateBps = item.product.taxRateBps ?: fallback,
                 productId = item.product.id,
-                barcode = item.product.barcode
+                barcode = item.product.barcode,
+                discountCents = priced.lines[i].discountCents,
+                discountLabel = item.discount?.label
             )
         }
+        val applied = _cart.mapIndexedNotNull { i, item ->
+            item.discount?.let { com.goldsky.ssp.payment.AppliedDiscount.of(it, "LINE", priced.lines[i].lineDiscountCents, lineNo = i + 1) }
+        } + listOfNotNull(orderDiscount?.let { com.goldsky.ssp.payment.AppliedDiscount.of(it, "ORDER", priced.orderDiscountCents) })
         return com.goldsky.ssp.model.CheckoutSale(
             subtotalCents = lines.sumOf { it.lineTotalCents },
             taxCents = com.goldsky.ssp.payment.SalesTax.cents(lines.map { it.lineTotalCents to it.taxRateBps }),
-            lines = lines
+            lines = lines,
+            discountCents = priced.discountCents,
+            discounts = applied.filter { it.amount_cents > 0 }
         )
     }
 
     private fun updateTotals() {
-        _totalCents.value = _cart.sumOf { it.totalPriceCents }
+        // After discounts, before tax.
+        _totalCents.value = pricing().netCents
         _itemCount.value = _cart.sumOf { it.quantity }
         saveCart()
     }

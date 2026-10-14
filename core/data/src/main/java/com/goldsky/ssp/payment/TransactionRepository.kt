@@ -50,8 +50,17 @@ data class TransactionRecord(
     // the call number, DINE_IN / TAKEOUT, and the order note. Null = left out.
     val order_number: Int? = null,
     val order_type: String? = null,
-    val order_note: String? = null
+    val order_note: String? = null,
+    // Counter-sale discounts (docs/migrations/2026-10-14_discounts.sql): total off before
+    // tax, and what was applied. Null = none, left out of the insert.
+    val discount_cents: Int? = null,
+    val discounts: List<AppliedDiscount>? = null
 )
+
+/** A sale's discounts on the transaction row; nothing when it has none. */
+fun TransactionRecord.withDiscounts(sale: com.goldsky.ssp.model.CheckoutSale?): TransactionRecord =
+    if (sale == null || sale.discountCents == 0) this
+    else copy(discount_cents = sale.discountCents, discounts = sale.discounts.ifEmpty { null })
 
 /** A quick-service order's call number, type and note on the transaction row. */
 fun TransactionRecord.withOrder(t: com.goldsky.ssp.model.KitchenTicket?): TransactionRecord =
@@ -69,7 +78,9 @@ data class TransactionItem(
     val quantity: Int,
     val unit_price_cents: Int,
     val line_total_cents: Int,
-    val tax_rate_bps: Int
+    val tax_rate_bps: Int,
+    // Left out when 0 (encodeDefaults off), so a database without the column still takes the row.
+    val discount_cents: Int = 0
 )
 
 /**
@@ -132,7 +143,8 @@ object TransactionRepository {
                 // products.id is a UUID FK; anything else (bundled ids) is dropped, as for transactions.product_id.
                 product_id = l.productId?.takeIf { isUuid(it) },
                 name = l.name, barcode = l.barcode, quantity = l.quantity,
-                unit_price_cents = l.unitPriceCents, line_total_cents = l.lineTotalCents, tax_rate_bps = l.taxRateBps
+                unit_price_cents = l.unitPriceCents, line_total_cents = l.lineTotalCents, tax_rate_bps = l.taxRateBps,
+                discount_cents = l.discountCents
             )
         }
 
