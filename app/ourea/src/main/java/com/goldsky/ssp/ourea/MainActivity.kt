@@ -198,6 +198,7 @@ class MainActivity : ComponentActivity() {
                                     } else if (destination == OureaDestination.TABLES && openCheck == null) {
                                         com.goldsky.ssp.feature.retail.dine.DineFloor(dine, signedIn.id, signedIn.name, minCell = 150.dp)
                                     } else if (destination == OureaDestination.TABLES && openCheck != null) {
+                                        com.goldsky.ssp.feature.retail.dine.DineRefresh(dine)
                                         OureaCheckoutScreen(
                                             viewModel = roundViewModel,
                                             onCheckout = {},

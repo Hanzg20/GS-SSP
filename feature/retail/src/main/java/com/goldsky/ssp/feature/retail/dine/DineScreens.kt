@@ -64,6 +64,17 @@ fun dineMessage(code: String): String = when (code) {
 }
 
 /**
+ * Keeps the floor and the open check fresh (every 4 s) while it is on screen. Every dine
+ * screen needs it -- the floor AND an open check: a round another terminal sends, or a
+ * payment taken there, must show here before this terminal bills or takes money.
+ */
+@Composable
+fun DineRefresh(dine: DineViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    DisposableEffect(dine) { dine.startRefreshing(context); onDispose { dine.stopRefreshing() } }
+}
+
+/**
  * The floor: every table of the store, free or with its check (guests, total,
  * how long they've been seated). Tap a free table to seat it, a busy one to
  * open its check. Refreshes every few seconds -- other terminals seat and
@@ -72,8 +83,8 @@ fun dineMessage(code: String): String = when (code) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifier: Modifier = Modifier, minCell: Dp = 130.dp) {
+    DineRefresh(dine)
     val context = androidx.compose.ui.platform.LocalContext.current
-    DisposableEffect(Unit) { dine.startRefreshing(context); onDispose { dine.stopRefreshing() } }
     val floor = dine.floor
     var area by remember { mutableStateOf<String?>(null) }
     var seating by remember { mutableStateOf<DineRepository.DiningTable?>(null) }

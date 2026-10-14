@@ -42,6 +42,7 @@ fun HandheldCheck(
     onScan: (() -> Unit)? = null,
     isScanning: Boolean = false
 ) {
+    DineRefresh(dine)
     val detail = dine.check ?: return
     val context = LocalContext.current
     var tab by remember { mutableStateOf(if (detail.items.isEmpty()) 1 else 0) }
