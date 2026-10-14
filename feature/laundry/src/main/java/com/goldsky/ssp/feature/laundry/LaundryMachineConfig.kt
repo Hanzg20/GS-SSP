@@ -17,13 +17,14 @@ const val LAUNDRY_VERTICAL = "LAUNDRY"
  *   relay        relay module channel wired to its coin-drop input, 1..8 (required)
  *   kind         "WASHER" | "DRYER" (default WASHER)
  *   coin_cents   what one coin pulse is worth to the machine (default 25)
+ *   pulse_count  pulses to send, when not simply price / coin_cents (e.g. a token machine)
  *   pulse_ms     how long each pulse closes the contact (default 100)
  *   gap_ms       pause between pulses (default 150)
  *   duration_min cycle length, for the "in use" estimate (optional)
  *   input        module input wired to the machine's "running" output (optional)
  *
- * The product's price is what the customer pays; the machine is sent
- * price_cents / coin_cents pulses, so a price that isn't a whole number of coins
+ * The product's price is what the customer pays; the machine is sent pulse_count pulses,
+ * or else price_cents / coin_cents -- then a price that isn't a whole number of coins
  * can't be sold (the machine would be under- or over-credited).
  */
 data class LaundryMachineConfig(
@@ -38,16 +39,29 @@ data class LaundryMachineConfig(
     val gapMs: Long,
     val durationMin: Int?,
     val input: Int?,
+    val pulses: Int,
 ) {
     enum class Kind { WASHER, DRYER }
-
-    val pulses: Int get() = priceCents / coinCents
 
     companion object {
         const val MAX_RELAY = 8
         const val DEFAULT_COIN_CENTS = 25
         const val DEFAULT_PULSE_MS = 100L
         const val DEFAULT_GAP_MS = 150L
+
+        /**
+         * Demo-mode machines (a terminal with no LAUNDRY products yet): what a typical
+         * small laundromat looks like. Never charged or recorded.
+         */
+        val DEMO: List<LaundryMachineConfig> = (1..8).map { n ->
+            val washer = n <= 5
+            LaundryMachineConfig(
+                productId = "demo-$n", name = if (washer) "Washer $n" else "Dryer ${n - 5}", machineNo = n,
+                kind = if (washer) Kind.WASHER else Kind.DRYER, priceCents = if (washer) 375 else 250,
+                relay = n, coinCents = DEFAULT_COIN_CENTS, pulseMs = 60, gapMs = 60,
+                durationMin = if (washer) 32 else 40, input = null, pulses = if (washer) 15 else 10,
+            )
+        }
 
         /** The machine [p] describes, or why it can't be sold. */
         fun from(p: Product): Result<LaundryMachineConfig> {
@@ -57,8 +71,12 @@ data class LaundryMachineConfig(
             if (relay !in 1..MAX_RELAY) return fail(p, "relay $relay is not 1..$MAX_RELAY")
             val coin = int("coin_cents") ?: DEFAULT_COIN_CENTS
             if (coin <= 0) return fail(p, "coin_cents must be positive")
-            if (p.price_cents <= 0 || p.price_cents % coin != 0)
+            val explicit = int("pulse_count")
+            if (p.price_cents <= 0) return fail(p, "no price")
+            if (explicit != null && explicit !in 1..200) return fail(p, "pulse_count must be 1..200")
+            if (explicit == null && p.price_cents % coin != 0)
                 return fail(p, "price ${p.price_cents} is not a whole number of ${coin}-cent pulses")
+            val pulses = explicit ?: (p.price_cents / coin)
             val kind = when (p.attributes?.get("kind")?.jsonPrimitive?.contentOrNull?.uppercase()) {
                 null, "WASHER" -> Kind.WASHER
                 "DRYER" -> Kind.DRYER
@@ -72,6 +90,7 @@ data class LaundryMachineConfig(
                     productId = p.id, name = p.name, machineNo = no, kind = kind, priceCents = p.price_cents,
                     relay = relay, coinCents = coin, pulseMs = pulseMs, gapMs = gapMs,
                     durationMin = int("duration_min"), input = int("input")?.takeIf { it in 1..MAX_RELAY },
+                    pulses = pulses,
                 )
             )
         }

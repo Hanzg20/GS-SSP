@@ -30,6 +30,9 @@ class LaundryMachineConfigTest {
         assertTrue(LaundryMachineConfig.from(product("1", 300, """{"machine_no":1,"relay":1,"kind":"IRON"}""")).isFailure)
         // A $1 coin machine: $3.80 is still refused, $4 is 4 pulses.
         assertEquals(4, LaundryMachineConfig.from(product("1", 400, """{"machine_no":1,"relay":1,"coin_cents":100}""")).getOrThrow().pulses)
+        // An explicit pulse_count wins (the July "Standard Wash" demo product: $3.50 = 14).
+        assertEquals(14, LaundryMachineConfig.from(product("1", 350, """{"machine_no":1,"relay":1,"pulse_count":14}""")).getOrThrow().pulses)
+        assertEquals(3, LaundryMachineConfig.from(product("1", 380, """{"machine_no":1,"relay":1,"pulse_count":3}""")).getOrThrow().pulses)
     }
 
     @Test

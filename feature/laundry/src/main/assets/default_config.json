@@ -1,0 +1,10 @@
+{
+  "version": "laundry-0.1.0",
+  "vertical_type": "LAUNDRY",
+  "products": [],
+  "settings": {
+    "maintenance_pin": "1234",
+    "locale_tag": "en-US",
+    "payment_method_mode": 1
+  }
+}
