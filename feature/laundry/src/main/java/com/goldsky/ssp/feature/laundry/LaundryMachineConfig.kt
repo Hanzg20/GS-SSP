@@ -18,8 +18,8 @@ const val LAUNDRY_VERTICAL = "LAUNDRY"
  *   kind         "WASHER" | "DRYER" (default WASHER)
  *   coin_cents   what one coin pulse is worth to the machine (default 25)
  *   pulse_count  pulses to send, when not simply price / coin_cents (e.g. a token machine)
- *   pulse_ms     how long each pulse closes the contact (default 100)
- *   gap_ms       pause between pulses (default 150)
+ *   pulse_ms     how long each pulse closes the contact (default 50)
+ *   gap_ms       pause between pulses (default 100)
  *   duration_min cycle length, for the "in use" estimate (optional)
  *   input        module input wired to the machine's "running" output (optional)
  *
@@ -46,8 +46,11 @@ data class LaundryMachineConfig(
     companion object {
         const val MAX_RELAY = 8
         const val DEFAULT_COIN_CENTS = 25
-        const val DEFAULT_PULSE_MS = 100L
-        const val DEFAULT_GAP_MS = 150L
+        // Coin acceptors send 20-100 ms pulses (25/45/65 or 20/50/100 ms switch settings);
+        // 50 ms is the common middle, and a pulse that is too long can raise a machine's
+        // "coin error". docs/laundry_machines.md.
+        const val DEFAULT_PULSE_MS = 50L
+        const val DEFAULT_GAP_MS = 100L
 
         /**
          * Demo-mode machines (a terminal with no LAUNDRY products yet): what a typical

@@ -19,7 +19,7 @@ class LaundryMachineConfigTest {
         assertEquals(3, m.machineNo)
         assertEquals(LaundryMachineConfig.Kind.WASHER, m.kind)
         assertEquals(15, m.pulses) // $3.75 in quarters
-        assertEquals(100L, m.pulseMs)
+        assertEquals(50L, m.pulseMs)
     }
 
     @Test
