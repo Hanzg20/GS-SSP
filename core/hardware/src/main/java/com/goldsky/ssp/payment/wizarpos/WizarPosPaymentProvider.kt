@@ -26,6 +26,10 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         private const val TAG = "WizarPosPayment"
         /** PAYWizard RespCode for "cancelled by user" (cancel key or payment-screen timeout). */
         const val RESP_CANCELLED = "-139"
+        /** "system is busy, processing transaction": an earlier sale is still open in PAYWizard. */
+        const val RESP_BUSY = "-11"
+        private const val SILENT_SALE_QUERIES = 6
+        private const val SILENT_SALE_QUERY_GAP_MS = 10_000L
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -273,10 +277,19 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                     // transaction PAYWizard couldn't find.
                     callback.onSuccess(authNo, originalRef, entryMode)
                 } else {
+                    // The reason only reached the screen before: a decline left nothing to look
+                    // at afterwards (2026-10-14, Ourea declines answered in 0.5 s with no card read).
+                    Log.w(TAG, "${request.TransType} not approved: RespCode=$resultCode RespDesc=$resultMsg cardRead=$cardRead")
                     if (cardRead) callback.onCardInfo(info)
                     // -139 "cancelled by user": cancel key or payment-screen timeout.
                     if (resultCode == RESP_CANCELLED) callback.onCancelled()
-                    if (!cardRead && resultMsg.contains("payment package", ignoreCase = true)) {
+                    if (resultCode == RESP_BUSY) {
+                        // PAYWizard still holds an earlier sale it never finished (seen 2026-10-14:
+                        // its payment app hung after an approval and refused every sale for
+                        // ~10 min). Nothing was sent to the bank for this one.
+                        callback.onFailure("Card terminal is still busy with an earlier payment. " +
+                            "Wait for it to finish or restart PAYWizard, then try again.", isHardwareFault = true)
+                    } else if (!cardRead && resultMsg.contains("payment package", ignoreCase = true)) {
                         // OPC has no payment app set (seen right after leaving debug mode,
                         // 2026-10-13): no card screen, nothing charged; retrying won't help.
                         callback.onFailure("Card terminal not set up: OPC has no payment app selected ($resultMsg)", isHardwareFault = true)
@@ -284,6 +297,8 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                         callback.onFailure("Payment Error: $resultMsg ($resultCode)")
                     }
                 }
+            } else if (request.TransType == "Purchase") {
+                resolveSilentSale(originalRef, callback)
             } else {
                 callback.onFailure("Communication Timeout (P3)", true)
             }
@@ -291,6 +306,38 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
             Log.e(TAG, "Execute error: ${e.message}")
             callback.onFailure("Internal Error: ${e.message}", true)
         }
+    }
+
+    /**
+     * The sale was sent but PAYWizard never answered. That is NOT a decline: on
+     * 2026-10-14 the card was read and the bank approved, then PAYWizard's payment
+     * app hung and our read timed out -- the sale was recorded DECLINED while the
+     * customer had been charged. Ask PAYWizard what became of it for a minute;
+     * only a "no such sale" is a failure, and if it still can't say, the outcome
+     * stays unknown (PENDING) instead of being guessed.
+     */
+    private suspend fun resolveSilentSale(ref: String, callback: IPaymentProvider.PaymentCallback) {
+        Log.w(TAG, "No answer to sale $ref; asking PAYWizard for its result")
+        callback.onProgress("Checking the card terminal for the result...")
+        repeat(SILENT_SALE_QUERIES) { attempt ->
+            val r = kotlinx.coroutines.CompletableDeferred<IPaymentProvider.QueryResult>()
+            queryTransaction(ref) { r.complete(it) }
+            when (val result = r.await()) {
+                is IPaymentProvider.QueryResult.Approved -> {
+                    Log.i(TAG, "Silent sale $ref was approved (query attempt ${attempt + 1})")
+                    callback.onSuccess("OK", ref, "UNKNOWN")
+                    return
+                }
+                IPaymentProvider.QueryResult.NotFound -> {
+                    callback.onFailure("Payment not completed: the card terminal has no record of it", isHardwareFault = true)
+                    return
+                }
+                is IPaymentProvider.QueryResult.Error -> Log.w(TAG, "Silent sale $ref still unknown: ${result.message}")
+            }
+            if (attempt < SILENT_SALE_QUERIES - 1) kotlinx.coroutines.delay(SILENT_SALE_QUERY_GAP_MS)
+        }
+        callback.onResultUnknown("The card terminal didn't give a result -- the card MAY have been charged. " +
+            "Don't charge again: check the card terminal's screen or its transaction list first.")
     }
 
     /**

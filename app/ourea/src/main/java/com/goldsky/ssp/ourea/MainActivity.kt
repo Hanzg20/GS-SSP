@@ -448,6 +448,12 @@ class MainActivity : ComponentActivity() {
                 }
                 onStateChange(OureaPaymentUiState.Error(errorMsg))
             }
+            // No result from the card terminal: the card may have been charged. The row
+            // stays PENDING (not DECLINED) so PendingResolver settles it from the
+            // terminal's own record, and staff are told not to charge again.
+            override fun onResultUnknown(message: String) {
+                onStateChange(OureaPaymentUiState.Error(message))
+            }
             override fun onProgress(message: String) {
                 onStateChange(OureaPaymentUiState.Processing(message))
             }

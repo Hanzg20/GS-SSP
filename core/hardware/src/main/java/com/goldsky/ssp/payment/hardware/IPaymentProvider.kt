@@ -49,6 +49,16 @@ interface IPaymentProvider {
          * doesn't.
          */
         fun onFailure(errorMsg: String, isHardwareFault: Boolean = false)
+
+        /**
+         * The sale went to the payment app but no answer came back, and asking it
+         * afterwards didn't settle it either: the card MAY have been charged. Not a
+         * decline -- the caller should leave the transaction PENDING (PendingResolver
+         * settles it later: reverses it if it was approved) and tell staff not to
+         * charge again. Callers that don't handle it get a hardware-fault failure,
+         * as before this existed.
+         */
+        fun onResultUnknown(message: String) = onFailure(message, true)
         fun onProgress(message: String)
 
         /**
