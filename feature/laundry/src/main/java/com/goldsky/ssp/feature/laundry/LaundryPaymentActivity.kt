@@ -89,6 +89,15 @@ class LaundryPaymentActivity : ComponentActivity() {
                 onCancelPayment = vm::cancelPayment,
                 // The logo opens the technician PIN, only while idle (never mid-sale).
                 onTechTrigger = { if (vm.idle) showPin = true },
+                onScan = { startScan(vendor) },
+                onVip = {
+                    // Demo: sample plans, nothing charged. Real: the shared VIP page (purchase / top-up).
+                    if (s.demoMode) vm.openVipDemo()
+                    else if (vm.idle) startActivity(android.content.Intent(this@LaundryPaymentActivity, com.goldsky.ssp.ui.VipActivity::class.java))
+                },
+                onClearPending = vm::clearPending,
+                onBuyVipDemo = vm::buyVipDemo,
+                onCloseVip = vm::closeVip,
             )
             if (showPin) {
                 LaundryPinPad(
@@ -110,6 +119,35 @@ class LaundryPaymentActivity : ComponentActivity() {
         }
     }
 
+    // ---- VIP member code / coupon scan (WizarPOS camera scanner, as in Timer) ----
+
+    private var scanner: com.goldsky.ssp.payment.hardware.IScannerProvider? = null
+    private val scanHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val scanTimeout = Runnable { stopScan() }
+
+    private fun startScan(vendor: String) {
+        stopScan()
+        val sc = runCatching { HardwareFactory.getScannerProvider(this, vendor) }.getOrNull()
+        if (sc == null) { vm.showNotice("Scanner not available"); return }
+        scanner = sc
+        scanHandler.postDelayed(scanTimeout, SCAN_TIMEOUT_MS)
+        sc.startScan(object : com.goldsky.ssp.payment.hardware.IScannerProvider.ScanCallback {
+            override fun onScanSuccess(result: String) { runOnUiThread { stopScan(); vm.onScanned(result) } }
+            override fun onScanFailure(errorMsg: String) { Log.d(TAG, "Scan: $errorMsg") }
+        })
+    }
+
+    private fun stopScan() {
+        scanHandler.removeCallbacks(scanTimeout)
+        scanner?.let { runCatching { it.stopScan() } }
+        scanner = null
+    }
+
+    override fun onDestroy() {
+        stopScan()
+        super.onDestroy()
+    }
+
     @Suppress("DEPRECATION")
     private fun hideSystemBars() {
         window.decorView.systemUiVisibility = (
@@ -127,5 +165,8 @@ class LaundryPaymentActivity : ComponentActivity() {
         if (hasFocus) hideSystemBars()
     }
 
-    companion object { private const val TAG = "AegisLaundry" }
+    companion object {
+        private const val TAG = "AegisLaundry"
+        private const val SCAN_TIMEOUT_MS = 30_000L
+    }
 }

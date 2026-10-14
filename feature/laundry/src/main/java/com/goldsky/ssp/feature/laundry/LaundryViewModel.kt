@@ -10,6 +10,11 @@ import com.goldsky.ssp.payment.CardTypeClassifier
 import com.goldsky.ssp.payment.DiagnosticManager
 import com.goldsky.ssp.payment.RefundPolicy
 import com.goldsky.ssp.payment.TestSale
+import com.goldsky.ssp.payment.CouponPeekResult
+import com.goldsky.ssp.payment.CouponRedeemResult
+import com.goldsky.ssp.payment.CouponRepository
+import com.goldsky.ssp.payment.VipDeductResult
+import com.goldsky.ssp.payment.VipRepository
 import com.goldsky.ssp.payment.TransactionRecord
 import com.goldsky.ssp.payment.TransactionRepository
 import com.goldsky.ssp.payment.hardware.IPaymentProvider
@@ -84,7 +89,21 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         /** The machine didn't (fully) start. [paid]: the card was charged. */
         data class StartFailed(val machine: LaundryMachineConfig, val paid: Boolean) : Screen
         data class Unavailable(val machine: LaundryMachineConfig) : Screen
+        /** Paying from a VIP balance / applying a coupon. */
+        data class Working(val machine: LaundryMachineConfig, val message: String) : Screen
+        /** Demo-mode VIP page: sample load plans, nothing charged. */
+        object VipDemo : Screen
+        data class VipDemoPaying(val plan: DemoPlan) : Screen
+        data class VipDemoDone(val plan: DemoPlan) : Screen
     }
+
+    /** A scanned VIP member code or coupon, used on the next machine the customer confirms. */
+    sealed interface Pending {
+        data class Vip(val cardUid: String, val memberCode: String, val balanceCents: Int) : Pending
+        data class Coupon(val code: String, val type: String, val value: Int, val applicableProductId: String?) : Pending
+    }
+
+    data class DemoPlan(val payCents: Int, val getCents: Int)
 
     data class UiState(
         val machines: List<LaundryMachineConfig> = emptyList(),
@@ -103,7 +122,16 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         /** Technician: relay module answered the last check (null = not checked). */
         val moduleOk: Boolean? = null,
         val techMessage: String? = null,
+        /** Scanned VIP card / coupon waiting for a machine. */
+        val pending: Pending? = null,
+        /** Short message on the home screen (code not recognized, ...). */
+        val notice: String? = null,
     ) {
+        /** What [m] costs after a pending coupon (a VIP balance pays the full price). */
+        fun priceFor(m: LaundryMachineConfig): Int = when (val p = pending) {
+            is Pending.Coupon -> couponPrice(m.priceCents, p)
+            else -> m.priceCents
+        }
         fun busy(m: LaundryMachineConfig) =
             (m.input != null && m.input in running) || (demoMode && m.machineNo in startedAt)
     }
@@ -124,6 +152,95 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         this.deviceSn = deviceSn
         startInputPolling()
         viewModelScope.launch { TestSale.armed.collect { a -> _state.update { it.copy(testArmedCents = a?.cents) } } }
+    }
+
+    // ---- scanned VIP member code / coupon -----------------------------------------
+
+    private var pendingJob: Job? = null
+    private var noticeJob: Job? = null
+
+    /**
+     * A code from the scanner (home or confirm screen). 6 letters / digits = VIP member
+     * code, anything else = coupon -- the routing Wash and Timer use. Nothing is spent
+     * here: the balance / coupon is only used once a machine is confirmed. Demo mode
+     * makes up a card or coupon and never asks the server (no real member data on show).
+     */
+    fun onScanned(raw: String) {
+        val code = raw.trim()
+        val screen = _state.value.screen
+        if (code.isEmpty() || (screen != Screen.Home && screen !is Screen.Confirm)) return
+        val vipCode = Regex("^[A-Za-z0-9]{6}$").matches(code)
+        if (_state.value.demoMode) {
+            setPending(if (vipCode) Pending.Vip("demo", code.uppercase(), DEMO_VIP_BALANCE) else Pending.Coupon(code, "FIXED_OFF", 100, null))
+            return
+        }
+        viewModelScope.launch {
+            if (vipCode) {
+                val uid = VipRepository.resolveCardUidByQrCode(code)
+                val card = uid?.let { VipRepository.getVipCard(it) }
+                val lowest = _state.value.machines.minOfOrNull { it.priceCents }
+                when {
+                    uid == null || card == null -> notice("Member code not recognized")
+                    !card.is_active -> notice("This VIP card is deactivated. Please contact the attendant.")
+                    lowest != null && card.balance_cents < lowest ->
+                        notice("Not enough VIP balance (${money(card.balance_cents)}). Top up with VIP or pay by card.")
+                    else -> setPending(Pending.Vip(uid, code.uppercase(), card.balance_cents))
+                }
+                return@launch
+            }
+            when (val peek = CouponRepository.peekCoupon(code, deviceSn)) {
+                is CouponPeekResult.Success -> {
+                    val forHere = peek.applicableProductId == null || _state.value.machines.any { it.productId == peek.applicableProductId }
+                    if (forHere) setPending(Pending.Coupon(code, peek.type, peek.value, peek.applicableProductId))
+                    else notice("This coupon can't be used here")
+                }
+                else -> notice("This code can't be used. Please see the attendant.")
+            }
+        }
+    }
+
+    fun clearPending() {
+        pendingJob?.cancel()
+        _state.update { it.copy(pending = null) }
+    }
+
+    fun showNotice(text: String) = notice(text)
+
+    private fun setPending(p: Pending) {
+        pendingJob?.cancel()
+        _state.update { it.copy(pending = p, notice = null) }
+        TtsManager.speak(if (p is Pending.Vip) "VIP card recognized. Please choose your machine." else "Coupon recognized. Please choose your machine.")
+        pendingJob = viewModelScope.launch {
+            delay(PENDING_MS)
+            // Never drop it from under the customer mid-purchase.
+            while (_state.value.screen != Screen.Home) delay(1_000)
+            _state.update { if (it.pending == p) it.copy(pending = null) else it }
+        }
+    }
+
+    private fun notice(text: String) {
+        noticeJob?.cancel()
+        _state.update { it.copy(notice = text) }
+        noticeJob = viewModelScope.launch {
+            delay(NOTICE_MS)
+            _state.update { if (it.notice == text) it.copy(notice = null) else it }
+        }
+    }
+
+    // ---- demo VIP page --------------------------------------------------------
+
+    fun openVipDemo() { if (idle) _state.update { it.copy(screen = Screen.VipDemo) } }
+
+    fun buyVipDemo(plan: DemoPlan) {
+        _state.update { it.copy(screen = Screen.VipDemoPaying(plan)) }
+        viewModelScope.launch {
+            delay(DEMO_CARD_MS)
+            if (_state.value.screen is Screen.VipDemoPaying) showThenHome(Screen.VipDemoDone(plan), 6000)
+        }
+    }
+
+    fun closeVip() {
+        if (_state.value.screen is Screen.VipDemo || _state.value.screen is Screen.VipDemoDone) _state.update { it.copy(screen = Screen.Home) }
     }
 
     // ---- technician ------------------------------------------------------------
@@ -189,13 +306,28 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
                 showThenHome(Screen.Unavailable(m), 6000)
                 return@launch
             }
-            if (demo) {
-                // Shows the card step as a customer would see it, then "approves": no card, nothing charged.
-                _state.update { it.copy(screen = Screen.Paying(m, "Tap, insert or swipe your card")) }
-                delay(DEMO_CARD_MS)
-                if (_state.value.screen !is Screen.Paying) return@launch
-                onPaid(m, ref = "DEMO_" + System.currentTimeMillis(), bankRef = "", entryMode = "DEMO", authCode = null, demo = true)
-            } else cardSale(m, simulate)
+            val pending = _state.value.pending
+            clearPending()
+            val price = _state.value.copy(pending = pending).priceFor(m)
+            when {
+                pending is Pending.Vip -> payWithVip(m, pending, demo, simulate)
+                pending is Pending.Coupon && price <= 0 -> redeemFree(m, pending, demo, simulate)
+                demo -> {
+                    // Shows the card step as a customer would see it, then "approves": no card, nothing charged.
+                    _state.update { it.copy(screen = Screen.Paying(m, "Tap, insert or swipe your card", price)) }
+                    delay(DEMO_CARD_MS)
+                    if (_state.value.screen !is Screen.Paying) return@launch
+                    onPaid(m, ref = "DEMO_" + System.currentTimeMillis(), bankRef = "", entryMode = "DEMO", authCode = null, demo = true)
+                }
+                pending is Pending.Coupon -> cardSale(m, simulate, price) {
+                    // Paid by card already: use the coupon up now. A lost race (used elsewhere
+                    // meanwhile) still starts the machine -- they paid.
+                    if (CouponRepository.redeemCoupon(pending.code, deviceSn) !is CouponRedeemResult.Success) {
+                        DiagnosticManager.reportError(deviceSn, "COUPON_REDEEM_AFTER_PAY_FAILED", severity = "WARNING", trace = "code=${pending.code}")
+                    }
+                }
+                else -> cardSale(m, simulate, price)
+            }
         }
     }
 
@@ -207,10 +339,10 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun starter(demo: Boolean) = if (demo) DemoStarter else starter
 
-    private fun cardSale(m: LaundryMachineConfig, simulate: Boolean) {
+    private fun cardSale(m: LaundryMachineConfig, simulate: Boolean, amountCents: Int, afterApproved: (suspend () -> Unit)? = null) {
         val pay = payment ?: run { showThenHome(Screen.Declined("Card payment is not available"), 5000); return }
         val testCents = TestSale.consume()
-        val charge = testCents ?: m.priceCents
+        val charge = testCents ?: amountCents
         val ref = (if (testCents != null) TestSale.REF_PREFIX + "LAUNDRY_" else "LAUNDRY_") + System.currentTimeMillis()
         _state.update { it.copy(screen = Screen.Paying(m, "Tap, insert or swipe your card", charge, test = testCents != null)) }
         TtsManager.speak("Please present your card")
@@ -231,7 +363,10 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
                 override fun onCardInfo(info: IPaymentProvider.CardInfo) { cardInfo = info }
                 override fun onCancelled() { cancelled = true }
                 override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                    viewModelScope.launch { onPaid(m, ref, refNum, entryMode, authCode, demo = false, simulate = simulate, chargeCents = charge) }
+                    viewModelScope.launch {
+                        afterApproved?.invoke()
+                        onPaid(m, ref, refNum, entryMode, authCode, demo = false, simulate = simulate, chargeCents = charge)
+                    }
                 }
                 override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                     viewModelScope.launch {
@@ -300,6 +435,92 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun payWithVip(m: LaundryMachineConfig, vip: Pending.Vip, demo: Boolean, simulate: Boolean) {
+        _state.update { it.copy(screen = Screen.Working(m, "Paying from your VIP balance…")) }
+        viewModelScope.launch {
+            if (demo) {
+                delay(1_200)
+                startPrepaid(m, "DEMO_VIP_" + System.currentTimeMillis(), demo = true, simulate = true, paidWith = "VIP", spoken = "Paid from your VIP balance.")
+                return@launch
+            }
+            when (val r = VipRepository.deductBalance(vip.cardUid, m.priceCents)) {
+                is VipDeductResult.Success -> {
+                    val ref = "VIP_${vip.cardUid}_${System.currentTimeMillis()}"
+                    TransactionRepository.recordTransaction(
+                        getApplication(),
+                        TransactionRecord(
+                            device_sn = deviceSn, amount = m.priceCents, payment_status = "PAID", ecr_ref_num = ref,
+                            payment_method = "VIP_CARD", product_id = m.productId.takeUnless { simulate },
+                            vip_card_uid = vip.cardUid, entry_mode = "QR_SCAN",
+                        ),
+                    )
+                    startPrepaid(m, ref, demo = false, simulate = simulate, paidWith = "VIP balance", spoken = "Paid from your VIP balance.")
+                }
+                is VipDeductResult.Rejected -> {
+                    _state.update { it.copy(screen = Screen.Home) }
+                    notice(
+                        when (r.reason) {
+                            "insufficient_balance" -> "Not enough VIP balance (${money(vip.balanceCents)}). Please pay by card or top up."
+                            "daily_limit_exceeded" -> "This card's daily limit is reached."
+                            else -> "This VIP card can't be used. Please see the attendant."
+                        }
+                    )
+                }
+                else -> { _state.update { it.copy(screen = Screen.Home) }; notice("Network problem. Please try again.") }
+            }
+        }
+    }
+
+    private fun redeemFree(m: LaundryMachineConfig, coupon: Pending.Coupon, demo: Boolean, simulate: Boolean) {
+        _state.update { it.copy(screen = Screen.Working(m, "Applying your coupon…")) }
+        viewModelScope.launch {
+            if (demo) {
+                delay(1_200)
+                startPrepaid(m, "DEMO_COUPON_" + System.currentTimeMillis(), demo = true, simulate = true, paidWith = "coupon", spoken = "Your coupon covers it.")
+                return@launch
+            }
+            when (CouponRepository.redeemCoupon(coupon.code, deviceSn)) {
+                is CouponRedeemResult.Success -> {
+                    val ref = "COUPON_${System.currentTimeMillis()}"
+                    TransactionRepository.recordTransaction(
+                        getApplication(),
+                        TransactionRecord(
+                            device_sn = deviceSn, amount = 0, payment_status = "PAID", ecr_ref_num = ref,
+                            payment_method = "COUPON", product_id = m.productId.takeUnless { simulate }, entry_mode = "QR_SCAN",
+                        ),
+                    )
+                    startPrepaid(m, ref, demo = false, simulate = simulate, paidWith = "coupon ${coupon.code}", spoken = "Your coupon covers it.")
+                }
+                else -> { _state.update { it.copy(screen = Screen.Home) }; notice("This coupon can't be used. Please see the attendant.") }
+            }
+        }
+    }
+
+    /**
+     * Starts [m] after a VIP balance / free coupon payment (already recorded PAID). Neither
+     * can be reversed from the terminal, so a machine that won't start raises a CRITICAL
+     * alert for staff to compensate in Cael.
+     */
+    private suspend fun startPrepaid(m: LaundryMachineConfig, ref: String, demo: Boolean, simulate: Boolean, paidWith: String, spoken: String) {
+        _state.update { it.copy(screen = Screen.Starting(m)) }
+        val result = starter(demo || simulate).start(m)
+        if (result.ok) {
+            if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ref, if (simulate) "SIMULATED" else "ACK_RECEIVED")
+            _state.update { it.copy(startedAt = it.startedAt + (m.machineNo to System.currentTimeMillis())) }
+            TtsManager.speak("$spoken Please press start on machine ${m.machineNo}.")
+            showThenHome(Screen.Started(m), 12000)
+            return
+        }
+        TtsManager.speak("Sorry, the machine could not start. Please contact the attendant.")
+        showThenHome(Screen.StartFailed(m, paid = true), 12000)
+        if (demo) return
+        TransactionRepository.updateHardwareStatus(getApplication(), ref, if (result.delivered > 0 || result.uncertain) "PARTIAL_DISPENSE" else "HARDWARE_ERROR")
+        DiagnosticManager.reportError(
+            deviceSn, "LAUNDRY_PREPAID_NOT_STARTED", severity = "CRITICAL",
+            trace = "$ref paid with $paidWith (${m.priceCents}c), machine ${m.machineNo} got ${result.delivered}/${result.requested} pulses -- compensate in Cael",
+        )
+    }
+
     private fun showThenHome(screen: Screen, afterMs: Long) {
         homeJob?.cancel()
         _state.update { it.copy(screen = screen) }
@@ -330,8 +551,23 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         private const val TAG = "LaundryVM"
         private const val INPUT_POLL_MS = 5_000L
         private const val DEMO_CARD_MS = 3_000L
+        private const val PENDING_MS = 90_000L
+        private const val NOTICE_MS = 6_000L
+        const val DEMO_VIP_BALANCE = 4_500
+        val DEMO_PLANS = listOf(DemoPlan(2_000, 2_200), DemoPlan(5_000, 6_000), DemoPlan(10_000, 12_500))
         const val DEMO_PREFIX = "demo-"
         /** Demo machines shown running. */
         val DEMO_RUNNING = setOf(2, 7)
     }
+}
+
+
+private fun money(cents: Int) = "$" + String.format(java.util.Locale.US, "%.2f", cents / 100.0)
+
+/** Same formula as Wash / Timer (docs/coupon_redemption_integration.md §3.2): never below 0. */
+internal fun couponPrice(priceCents: Int, c: LaundryViewModel.Pending.Coupon): Int = when (c.type) {
+    "PERCENT_OFF" -> priceCents - (priceCents * c.value / 100)
+    "FIXED_OFF" -> maxOf(0, priceCents - c.value)
+    "FREE_WASH" -> 0
+    else -> priceCents
 }

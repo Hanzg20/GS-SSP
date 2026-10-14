@@ -3,11 +3,50 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- PAX (same set as aegis-wash) -->
+    <uses-permission android:name="com.pax.permission.ICC" />
+    <uses-permission android:name="com.pax.permission.PICC" />
+    <uses-permission android:name="com.pax.permission.MAGCARD" />
+    <uses-permission android:name="com.pax.permission.PED" />
+    <uses-permission android:name="com.pax.permission.REBOOT" />
+    <uses-permission android:name="com.pax.permission.IO_CONTROL" />
+    <!-- WizarPOS: card payment + ext-board (Digit IO) + MCU (same set as aegis-wash) -->
+    <uses-permission android:name="android.permission.CLOUDPOS_MSR" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SMARTCARD" />
+    <uses-permission android:name="android.permission.CLOUDPOS_CONTACTLESS_CARD" />
+    <uses-permission android:name="android.permission.CLOUDPOS_LED" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PIN_GET_PIN_BLOCK" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PIN_MAC" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PIN_ENCRYPT_DATA" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SAFE_MODULE" />
+    <uses-permission android:name="android.permission.CLOUDPOS_INNER_GPIO" />
+    <uses-permission android:name="android.permission.CLOUDPOS_MCUCTL" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SERIAL" />
+    <uses-permission android:name="android.permission.CLOUDPOS_VIRTUAL_SERIAL_PORT" />
+    <!-- WizarPOS system extension (WizarViewAgentAssistant): its
+         checkPermission requires the caller to declare these AND be signed
+         with a WizarPOS-issued certificate. Without the declaration reboot()
+         was refused even with the WizarPOS cert (2026-09-28). -->
+    <uses-permission android:name="android.permission.CLOUDPOS_REBOOT" />
+    <uses-permission android:name="android.permission.CLOUDPOS_DEFAULT_LAUNCHER" />
+    <!-- WizarViewAgentAssistant.setDefaultLauncher checks for this name (its
+         error: "NO PERMISSION: ...CLOUDPOS_SET_DEFAULT_LAUNCHER") although the
+         system defines CLOUDPOS_DEFAULT_LAUNCHER; declare both. -->
+    <uses-permission android:name="android.permission.CLOUDPOS_SET_DEFAULT_LAUNCHER" />
+
+    <!-- Scanner page and payment apps the providers talk to (same as aegis-timer). -->
+    <queries>
+        <intent>
+            <action android:name="com.pax.us.std.poslink.aidl" />
+        </intent>
+        <package android:name="com.cloudpos.scanserver" />
+    </queries>
+
 
     <!-- Prototype (0.x): an ordinary launcher app. Deliberately NOT a HOME app and no
          BootReceiver yet, so on a test terminal that also runs Aegis Wash / Timer it never
-         takes the screen over from them. Add HOME, boot start and the payment / ext-board
-         permissions (copy app/aegis-timer's set) when it gets a real sale flow. -->
+         takes the screen over from them. Add HOME and boot start (app/aegis-timer) for sites. -->
     <application
         android:name=".AegisLaundryApplication"
         android:allowBackup="true"
@@ -29,6 +68,30 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- VIP purchase / top-up page shared with Wash (core/ui), and the idle ad screen it
+             opens after 3 minutes (BaseAdActivity) with the provider AdActivity plays through. -->
+        <activity
+            android:name="com.goldsky.ssp.ui.VipActivity"
+            android:exported="false"
+            android:screenOrientation="nosensor"
+            android:theme="@style/Theme.SSP.Fullscreen"
+            android:configChanges="orientation|keyboardHidden|screenSize" />
+        <activity
+            android:name="com.goldsky.ssp.ui.AdActivity"
+            android:exported="false"
+            android:screenOrientation="nosensor"
+            android:theme="@style/Theme.SSP.Fullscreen"
+            android:configChanges="orientation|keyboardHidden|screenSize" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 </manifest>
