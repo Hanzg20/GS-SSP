@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -585,22 +586,10 @@ fun CheckoutContainer(
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary
         ) {
-            if (dineIn) Tab(
-                selected = selectedTab == 3, onClick = { selectedTab = 3 },
-                text = { Text(stringResource(com.goldsky.ssp.feature.retail.R.string.dine_tables), fontWeight = FontWeight.Bold, color = if (selectedTab == 3) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
-            )
-            Tab(
-                selected = selectedTab == 0, onClick = { selectedTab = 0 },
-                text = { Text(stringResource(R.string.iris_keypad), fontWeight = FontWeight.Bold, color = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
-            )
-            Tab(
-                selected = selectedTab == 1, onClick = { selectedTab = 1 },
-                text = { Text(stringResource(R.string.iris_library), fontWeight = FontWeight.Bold, color = if (selectedTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
-            )
-            Tab(
-                selected = selectedTab == 2, onClick = { selectedTab = 2 },
-                text = { Text(stringResource(R.string.iris_delivery), fontWeight = FontWeight.Bold, color = if (selectedTab == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
-            )
+            if (dineIn) IrisTab(selectedTab == 3, stringResource(com.goldsky.ssp.feature.retail.R.string.dine_tables)) { selectedTab = 3 }
+            IrisTab(selectedTab == 0, stringResource(R.string.iris_keypad)) { selectedTab = 0 }
+            IrisTab(selectedTab == 1, stringResource(R.string.iris_library)) { selectedTab = 1 }
+            IrisTab(selectedTab == 2, stringResource(R.string.iris_delivery)) { selectedTab = 2 }
         }
 
         Box(modifier = Modifier.weight(1f)) {
@@ -773,6 +762,25 @@ private fun RefundFlow.RefundState.toUi(): PaymentUiState = when (this) {
 class PayExtras(val banner: String?, val onPaid: suspend (ref: String, method: String, tip: Int) -> Unit)
 
 private fun signedInName(): String? = StaffRepository.current?.name
+
+/**
+ * One tab of the top row. A 360 dp handheld (Q2) with the dine-in Tables tab has four
+ * ~90 dp tabs: Tab's own 16 dp side padding left "DELIVERY" too little room and it
+ * wrapped onto two lines. Narrow padding and one line, shrinking the text only if a
+ * label still doesn't fit.
+ */
+@Composable
+private fun IrisTab(selected: Boolean, label: String, onClick: () -> Unit) {
+    val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Tab(selected = selected, onClick = onClick, modifier = Modifier.height(52.dp)) {
+        var size by remember(label) { mutableStateOf(15.sp) }
+        Text(
+            label, fontWeight = FontWeight.Bold, color = color, fontSize = size, maxLines = 1, softWrap = false,
+            modifier = Modifier.padding(horizontal = 4.dp),
+            onTextLayout = { if (it.didOverflowWidth && size > 11.sp) size = (size.value - 1).sp }
+        )
+    }
+}
 
 sealed class PaymentUiState {
     object Idle : PaymentUiState()

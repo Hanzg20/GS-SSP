@@ -1,10 +1,7 @@
 package com.goldsky.ssp.feature.retail.dine
 
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
@@ -13,11 +10,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.goldsky.ssp.feature.retail.R
 import com.goldsky.ssp.feature.retail.screens.RetailStoreScreen
@@ -104,19 +99,15 @@ fun HandheldCheck(
                     onScan = onScan,
                     isScanning = isScanning,
                     checkoutLabel = stringResource(R.string.dine_send_kitchen, pending),
-                    bottomBar = {
-                        Row(
-                            Modifier.fillMaxWidth().height(42.dp).clip(RoundedCornerShape(10.dp))
-                                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
-                                .clickable { editingNote = true }.padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.width(6.dp))
-                            Text(round.orderNote.ifBlank { stringResource(R.string.dine_round_note) }, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                color = if (round.orderNote.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                    // The round's note: a button in the checkout row, the note itself under the
+                    // total -- it had its own full-width row, leaving room for two dishes on a Q2.
+                    totalStart = {
+                        IconButton(onClick = { editingNote = true }) {
+                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.dine_round_note),
+                                tint = if (round.orderNote.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
                         }
-                    }
+                    },
+                    totalCaption = round.orderNote.ifBlank { null }
                 )
             }
         }

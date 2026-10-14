@@ -41,7 +41,12 @@ fun RetailStoreScreen(
     // Dine-in round: "Send to kitchen (n)" instead of Checkout, and its own bar
     // (the round's note) instead of the counter's dine-in / take-out bar.
     checkoutLabel: String? = null,
-    bottomBar: (@Composable () -> Unit)? = null
+    bottomBar: (@Composable () -> Unit)? = null,
+    // In the checkout row itself, before the total (a dine-in round's note button) --
+    // no extra row, which a 360 dp handheld can't spare above its dish list.
+    totalStart: (@Composable () -> Unit)? = null,
+    // One small line under the total (the round's note, when there is one).
+    totalCaption: String? = null
 ) {
     val catalog by RetailRepository.catalog.collectAsState()
     val cart = viewModel.cart
@@ -152,7 +157,8 @@ fun RetailStoreScreen(
 
         if (bottomBar != null) {
             if (cart.isNotEmpty()) Surface(color = scheme.surface) { Box(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) { bottomBar() } }
-        } else if (quickService && cart.isNotEmpty()) {
+        } else if (quickService && cart.isNotEmpty() && checkoutLabel == null) {
+            // Counter sales only: a dine-in round (checkoutLabel set) has no dine-in / take-out choice.
             Surface(color = scheme.surface) {
                 com.goldsky.ssp.feature.retail.ui.QuickServiceOrderBar(viewModel, Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
             }
@@ -169,9 +175,15 @@ fun RetailStoreScreen(
                         else Icon(Icons.Default.QrCodeScanner, contentDescription = stringResource(R.string.retail_scan), tint = scheme.primary)
                     }
                 }
-                Text(stringResource(R.string.retail_total) + ": " + money(total), color = scheme.onSurface, fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
-                Spacer(modifier = Modifier.weight(1f))
+                totalStart?.invoke()
+                Column(Modifier.weight(1f).padding(start = 8.dp, end = 8.dp)) {
+                    // With a button before it (dine-in round) there's only room for the amount on a 360 dp handheld.
+                    Text(if (totalStart != null) money(total) else stringResource(R.string.retail_total) + ": " + money(total),
+                        color = scheme.onSurface, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    if (!totalCaption.isNullOrBlank()) Text(totalCaption, color = scheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
                 Button(onClick = { if (total > 0) onCheckout(total) }, enabled = total > 0, shape = RoundedCornerShape(12.dp)) {
                     Text(checkoutLabel ?: stringResource(R.string.retail_checkout), fontWeight = FontWeight.Black)
                 }

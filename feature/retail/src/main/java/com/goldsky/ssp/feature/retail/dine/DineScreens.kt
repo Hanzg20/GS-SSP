@@ -127,7 +127,8 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
                     Icon(androidx.compose.material.icons.Icons.Default.Notifications, null)
                     Spacer(Modifier.width(10.dp))
                     Text(stringResource(R.string.scan_pending_banner, dine.scanPending.size), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Text(stringResource(R.string.scan_review), fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(12.dp))
+                    Text(stringResource(R.string.scan_review), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                 }
             }
         }

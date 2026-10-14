@@ -61,9 +61,12 @@ fun ModifierSelectionSheet(
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(group.name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                val max = group.max_select
                                 val hint = when {
+                                    group.required && max != null && max > 1 -> stringResource(R.string.retail_mod_required_up_to, max)
                                     group.required -> stringResource(R.string.retail_mod_required)
-                                    group.max_select == 1 -> stringResource(R.string.retail_mod_pick_one)
+                                    max == 1 -> stringResource(R.string.retail_mod_pick_one)
+                                    max != null && max > 1 -> stringResource(R.string.retail_mod_up_to, max)
                                     else -> stringResource(R.string.retail_mod_optional)
                                 }
                                 Text(hint, fontSize = 12.sp,
@@ -96,15 +99,19 @@ fun ModifierSelectionSheet(
                 }
                 Spacer(Modifier.height(20.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).height(52.dp)) {
-                        Text(stringResource(R.string.retail_mod_cancel))
+                    // Narrow padding and one line each: on a 360 dp handheld (Q2) the default 24 dp
+                    // padding wrapped "Cancel" into "Canc / el" and the Add label onto two lines.
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).height(52.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        OneLineText(stringResource(R.string.retail_mod_cancel))
                     }
                     Button(
                         onClick = { onConfirm(groups.flatMap { g -> picked[g.id].orEmpty() }) },
                         enabled = missing.isEmpty(),
-                        modifier = Modifier.weight(2f).height(52.dp)
+                        modifier = Modifier.weight(2f).height(52.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp)
                     ) {
-                        Text(stringResource(R.string.retail_mod_add, money(product.price_cents + extra)), fontWeight = FontWeight.Bold)
+                        OneLineText(stringResource(R.string.retail_mod_add, money(product.price_cents + extra)), FontWeight.Bold)
                     }
                 }
             }
@@ -113,3 +120,11 @@ fun ModifierSelectionSheet(
 }
 
 private fun money(cents: Int) = "$" + "%.2f".format(cents / 100.0)
+
+/** A button label on one line, shrinking a little (down to 11 sp) when it doesn't fit. */
+@Composable
+private fun OneLineText(text: String, weight: FontWeight? = null) {
+    var size by remember(text) { mutableStateOf(14.sp) }
+    Text(text, fontWeight = weight, fontSize = size, maxLines = 1, softWrap = false,
+        onTextLayout = { if (it.didOverflowWidth && size > 11.sp) size = (size.value - 1).sp })
+}

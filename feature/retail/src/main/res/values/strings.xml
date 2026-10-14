@@ -244,7 +244,7 @@
     <string name="dine_round_send">Send to kitchen</string>
     <string name="dine_round_discard">Discard</string>
     <string name="dine_round_stay">Stay</string>
-    <string name="scan_pending_banner">%1$d QR orders from tables waiting</string>
+    <string name="scan_pending_banner">QR orders waiting: %1$d</string>
     <string name="scan_review">Review</string>
     <string name="scan_dialog_title">QR orders (%1$d)</string>
     <string name="scan_table">Table %1$s</string>
@@ -266,4 +266,6 @@
     <string name="store_changed_body">This terminal was moved to another store in Cael. Reload to use that store\'s staff, products and tables. The cart in progress is cleared.</string>
     <string name="store_changed_reload">Reload</string>
     <string name="retail_sold_out">Sold out</string>
+    <string name="retail_mod_up_to">Up to %1$d</string>
+    <string name="retail_mod_required_up_to">Required · up to %1$d</string>
 </resources>
