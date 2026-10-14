@@ -1098,6 +1098,23 @@ GS-SSP 通过本地 Socket (`127.0.0.1:6666`) 调用预装的 **PAYWizard** 安�
 |---|---|---|
 | 顾客手机 | `web/ourea-scan`（Vite + React 网页，站点默认 `scan-order.si-sky.com`，Ourea 设置 > 桌台 / Cael 可配置） | 无需登录：桌台二维码里的 `qr_token`（128 位随机）就是凭证，只能看这家店的菜单、下这张桌的单、查自己下的单 |
 | 店内终端 | Ourea（桌面收银）、Iris（手持），业务类型为 DINE_IN | 设备身份（§2.1.1），门店由服务端从 `device_auth_map` 取 |
+
+---
+
+## 18. Aegis Nexus 中央多工位洗衣中控终端与 EdgeNexus 边缘网关 (Aegis Nexus Central Laundromat Kiosk & EdgeNexus Integration, 2026-10-14)
+
+针对商业自助洗衣房（Laundromat）或多机共享洗衣场景，系统引入了 **`app:aegis-nexus` (Aegis Nexus)** 中央多工位收费中控终端与 **`gs-EdgeNexus` (EdgeNexus™)** 边缘硬件网关协同架构。实现**一台收费终端（如 WizarPOS Q3mini / 触控平板）通过边缘网关统一纳管 10 台洗衣机/烘干机**。
+
+### 18.1 架构拓扑与分工
+*   **Aegis Nexus (`app:aegis-nexus`)**: 
+    *   作为中央收费终端（Central Kiosk App），提供全屏触控 UI。
+    *   顾客在屏幕上选择工位（如 `Bay #3`）、洗涤程序，并通过 Nuvei / PAYWizard / Interac 完成无现金支付。
+    *   支付成功后，向 Supabase 云端下发控制指令，或直接与本地 EdgeNexus 网关进行通信。
+*   **EdgeNexus (gs-EdgeNexus)**:
+    *   部署在边缘的硬件网关（基于 ESP32 固件），通过串口、Modbus 或 USB 直连多路物理继电器板（Relay 1 ~ 10）。
+    *   轮询云端 `device_commands` 表或接收网关信令，物理闭合对应工位的继电器，输出 12V 脉冲驱动洗衣机启动。
+*   **云端协同 (Supabase / CMP)**:
+    *   通过 `devices`、`transactions`、`device_commands` 和 `products` 表实现全链路状态同步、设备心跳（Heartbeat）与混合营收对账。
 | 云端 | Supabase：`dine` schema（不对外暴露，只能经 `public.scan_*` / `dine_*` 函数访问） | — |
 | AI 点餐向导 | Edge Function `scan-assistant` | 同样以 `qr_token` 为凭证 |
 | Cael | 管理桌台、打印台卡、换码；现场页**只读** | 门店成员 / `dine.manage` |
