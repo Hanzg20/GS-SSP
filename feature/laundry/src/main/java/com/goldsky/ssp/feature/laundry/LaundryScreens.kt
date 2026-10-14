@@ -85,7 +85,7 @@ fun LaundryApp(
             when (screen) {
                 Screen.Home -> HomeScreen(s, onSelect, onTechTrigger)
                 is Screen.Confirm -> ConfirmScreen(screen.machine, onBack, onPay)
-                is Screen.Paying -> PayingScreen(screen.machine, screen.message, onCancelPayment)
+                is Screen.Paying -> PayingScreen(screen, onCancelPayment)
                 is Screen.Starting -> StartingScreen(screen.machine)
                 is Screen.Started -> StartedScreen(screen.machine)
                 is Screen.Declined -> MessageScreen(Rose, "Payment not completed", screen.message)
@@ -96,9 +96,9 @@ fun LaundryApp(
                 )
             }
         }
-        if (s.demoMode) {
+        if (s.demoMode || s.testArmedCents != null) {
             Text(
-                "DEMO", color = Bg2, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp,
+                if (s.testArmedCents != null) "CARD TEST ARMED" else "DEMO", color = Bg2, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).clip(RoundedCornerShape(6.dp)).background(Amber).padding(horizontal = 6.dp, vertical = 2.dp)
             )
         }
@@ -341,12 +341,20 @@ private fun Step(n: Int, text: String) {
 // ---------------------------------------------------------------- paying / starting / done
 
 @Composable
-private fun PayingScreen(m: LaundryMachineConfig, message: String, onCancel: () -> Unit) {
+private fun PayingScreen(p: Screen.Paying, onCancel: () -> Unit) {
+    val m = p.machine
     val t = rememberInfiniteTransition(label = "pay")
     val ring by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1600, easing = LinearEasing)), label = "ring")
     Column(Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (p.test) {
+            Text(
+                "CARD TEST · real card", color = Bg2, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Amber).padding(horizontal = 8.dp, vertical = 2.dp)
+            )
+            Spacer(Modifier.height(4.dp))
+        }
         Text("${m.name.uppercase()}  ·  AMOUNT DUE", color = OnDarkSoft, fontSize = 12.sp, letterSpacing = 1.5.sp)
-        Text(money(m.priceCents), color = OnDark, fontSize = 52.sp, fontWeight = FontWeight.Black)
+        Text(money(p.chargeCents), color = OnDark, fontSize = 52.sp, fontWeight = FontWeight.Black)
         Box(Modifier.weight(1f).aspectRatio(1f), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize(0.9f)) {
                 for (k in 0..2) {
@@ -357,7 +365,7 @@ private fun PayingScreen(m: LaundryMachineConfig, message: String, onCancel: () 
             }
             ContactlessIcon(Color.White, Modifier.size(46.dp))
         }
-        Text(message, color = OnDark, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Text(p.message, color = OnDark, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Text("Contactless, chip or swipe", color = OnDarkSoft, fontSize = 12.sp)
         Spacer(Modifier.height(10.dp))
         Text("Cancel", color = OnDarkSoft, fontSize = 15.sp, modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onCancel).padding(horizontal = 18.dp, vertical = 8.dp))

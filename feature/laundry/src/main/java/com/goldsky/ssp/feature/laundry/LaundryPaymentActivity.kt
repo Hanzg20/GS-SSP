@@ -10,6 +10,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.goldsky.ssp.DeviceAdapter
 import com.goldsky.ssp.common.TtsManager
@@ -72,17 +75,38 @@ class LaundryPaymentActivity : ComponentActivity() {
             }
         }
 
+        val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
         setContent {
             val s by vm.state.collectAsState()
-            BackHandler(enabled = true) { vm.back() } // kiosk: back never leaves the app
+            var showPin by remember { mutableStateOf(false) }
+            var tech by remember { mutableStateOf(false) }
+            BackHandler(enabled = true) { if (tech) tech = false else vm.back() } // kiosk: back never leaves the app
             LaundryApp(
                 s = s,
                 onSelect = vm::select,
                 onBack = vm::back,
                 onPay = vm::confirm,
                 onCancelPayment = vm::cancelPayment,
-                onTechTrigger = {},
+                // The logo opens the technician PIN, only while idle (never mid-sale).
+                onTechTrigger = { if (vm.idle) showPin = true },
             )
+            if (showPin) {
+                LaundryPinPad(
+                    onSubmit = { pin ->
+                        val expected = ConfigManager.getConfig()?.settings?.maintenance_pin?.takeIf { it.isNotBlank() } ?: "1234"
+                        (pin == expected).also { if (it) { showPin = false; tech = true } }
+                    },
+                    onDismiss = { showPin = false }
+                )
+            }
+            if (tech) {
+                LaundryTechPanel(
+                    s = s, version = version,
+                    onArm = vm::armTest, onDisarm = vm::disarmTest,
+                    onCheckModule = vm::checkModule, onTestPulse = vm::testPulse,
+                    onExit = { tech = false },
+                )
+            }
         }
     }
 

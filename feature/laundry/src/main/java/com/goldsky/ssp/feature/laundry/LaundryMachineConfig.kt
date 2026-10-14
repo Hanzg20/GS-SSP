@@ -59,7 +59,7 @@ data class LaundryMachineConfig(
         val DEMO: List<LaundryMachineConfig> = (1..8).map { n ->
             val washer = n <= 5
             LaundryMachineConfig(
-                productId = "demo-$n", name = if (washer) "Washer $n" else "Dryer ${n - 5}", machineNo = n,
+                productId = LaundryViewModel.DEMO_PREFIX + n, name = if (washer) "Washer $n" else "Dryer ${n - 5}", machineNo = n,
                 kind = if (washer) Kind.WASHER else Kind.DRYER, priceCents = if (washer) 375 else 250,
                 relay = n, coinCents = DEFAULT_COIN_CENTS, pulseMs = 60, gapMs = 60,
                 durationMin = if (washer) 32 else 40, input = null, pulses = if (washer) 15 else 10,
