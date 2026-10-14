@@ -66,7 +66,8 @@ fun WashStatusScene(state: WashStatusState) {
     val t = rememberInfiniteTransition(label = "washstatus")
     val clock by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "clock")
     val slow by t.animateFloat(0f, 1f, infiniteRepeatable(tween(3200, easing = LinearEasing)), label = "slow")
-    val progress by animateFloatAsState(state.progress, tween(400), label = "progress")
+    // Pulses come about once a second: glide over that second instead of jumping.
+    val progress by animateFloatAsState(state.progress, tween(1000, easing = LinearEasing), label = "progress")
     val intro = remember(state.phase) { Animatable(0f) }
     LaunchedEffect(state.phase) {
         intro.animateTo(1f, if (state.phase == WashPhase.DONE) spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessLow) else tween(700))

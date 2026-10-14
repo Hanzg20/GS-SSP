@@ -124,14 +124,19 @@ class WizarPosGpioProvider(private val terminal: POSTerminal?) : IGpioProvider {
      */
     override suspend fun triggerLogicPulse(port: Int, voltage: Int, onMs: Long, offMs: Long): Boolean {
         if (!ensureOpened()) return false
-        return try {
-            extBoardDevice?.setPulseVoltage(voltage)
-            extBoardDevice?.triggerPulse(port, voltage, onMs.toInt(), offMs.toInt(), 1)
-            Log.i(TAG, "Native logic pulse on port $port (voltage=$voltage, ${onMs}ms/${offMs}ms)")
-            true
-        } catch (e: Throwable) {
-            Log.e(TAG, "triggerPulse error: ${e.message}")
-            false
+        // triggerPulse blocks for the whole ON+OFF window (~1 s per pulse). Off the main
+        // thread: Wash called this from Main, so the screen froze for the whole pulse
+        // train -- no animation, no progress (255, 2026-10-14).
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                extBoardDevice?.setPulseVoltage(voltage)
+                extBoardDevice?.triggerPulse(port, voltage, onMs.toInt(), offMs.toInt(), 1)
+                Log.i(TAG, "Native logic pulse on port $port (voltage=$voltage, ${onMs}ms/${offMs}ms)")
+                true
+            } catch (e: Throwable) {
+                Log.e(TAG, "triggerPulse error: ${e.message}")
+                false
+            }
         }
     }
 
