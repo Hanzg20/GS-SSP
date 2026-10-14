@@ -353,13 +353,18 @@ private fun BayRing(running: Boolean, remaining: Long, totalMs: Long, color: Col
                 drawArc(SurfaceHi, 0f, 360f, false, style = Stroke(stroke))
                 if (running) drawArc(color, -90f, 360f * animated, false, style = Stroke(stroke, cap = StrokeCap.Round))
             }
+            // The vacuum station inside the ring: still when free, air streaming in while it runs.
             if (running) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(formatClock(remaining), color = TextHi, fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                    Text("IN USE", color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                    VacuumDrawing(true, color, Modifier.size(size * 0.42f))
+                    Text(formatClock(remaining), color = TextHi, fontSize = 26.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Text("IN USE", color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 }
             } else {
-                Text("Available", color = TextLo, fontSize = 15.sp)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    VacuumDrawing(false, color, Modifier.size(size * 0.62f))
+                    Text("Available", color = TextLo, fontSize = 13.sp)
+                }
             }
         }
     }
