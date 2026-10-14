@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Prototype (0.x): an ordinary launcher app. Deliberately NOT a HOME app and no
+         BootReceiver yet, so on a test terminal that also runs Aegis Wash / Timer it never
+         takes the screen over from them. Add HOME, boot start and the payment / ext-board
+         permissions (copy app/aegis-timer's set) when it gets a real sale flow. -->
+    <application
+        android:name=".AegisLaundryApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Aegis Laundry"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SSP">
+
+        <activity
+            android:name="com.goldsky.ssp.feature.laundry.LaundryPaymentActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="nosensor"
+            android:theme="@style/Theme.SSP.Fullscreen"
+            android:configChanges="orientation|keyboardHidden|screenSize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>

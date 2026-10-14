@@ -8,6 +8,7 @@
         <package android:name="com.goldsky.ssp.aegis.timer" />
         <package android:name="com.goldsky.ssp.aegis.vend" />
         <package android:name="com.goldsky.ssp.aegis.ev" />
+        <package android:name="com.goldsky.ssp.aegis.laundry" />
         <package android:name="com.goldsky.ssp.iris" />
         <package android:name="com.goldsky.ssp.ourea" />
         <package android:name="com.goldsky.ssp.ourea.eye" />

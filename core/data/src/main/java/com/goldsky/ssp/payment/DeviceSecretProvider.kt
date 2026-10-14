@@ -56,6 +56,7 @@ class DeviceSecretProvider : ContentProvider() {
             "com.goldsky.ssp.aegis.timer",
             "com.goldsky.ssp.aegis.vend",
             "com.goldsky.ssp.aegis.ev",
+            "com.goldsky.ssp.aegis.laundry",
             "com.goldsky.ssp.iris",
             "com.goldsky.ssp.ourea",
             "com.goldsky.ssp.ourea.eye",

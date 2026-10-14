@@ -1,0 +1,68 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+// Aegis Laundry (feature:laundry). Same local.properties -> BuildConfig pattern as app/aegis-timer.
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
+
+// 0.x: prototype, not for sites (no HOME, no boot start, no payment / relay yet).
+ext.appVersion = "0.1.0"
+
+android {
+    namespace 'com.goldsky.ssp.aegis.laundry'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.goldsky.ssp.aegis.laundry"
+        minSdk 25
+        targetSdk 34
+        // versionCode/versionName come from ext.appVersion, see gradle/release-signing.gradle
+
+        buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
+        buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
+        // false from day one -- see app/aegis-wash/build.gradle: IS_MOCK=true
+        // on a real-hardware shell silently skipped every Supabase
+        // transaction write at a live site (2026-09-19).
+        buildConfigField "boolean", "IS_MOCK", "false"
+    }
+
+    buildFeatures {
+        compose true
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    // No debug jniLibs exclusion (unlike app/aegis-ev): the ext-board GPIO
+    // path needs libjni_cloudpos_ext_board.so on real WizarPOS hardware --
+    // see app/aegis-wash/build.gradle. Real-hardware-only as a result.
+}
+
+apply from: rootProject.file('gradle/release-signing.gradle')
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.9.0'
+    implementation project(':core:common')
+    implementation project(':core:data')
+    implementation project(':core:hardware')
+    implementation project(':core:ui')
+    implementation project(':core:payment')
+    implementation project(':feature:laundry')
+    implementation project(':libs:pax')
+    implementation project(':libs:wizarpos')
+
+    implementation 'androidx.activity:activity-compose:1.7.0'
+}

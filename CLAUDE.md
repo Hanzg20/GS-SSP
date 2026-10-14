@@ -76,6 +76,13 @@ app/aegis-timer -- Aegis Timer (`com.goldsky.ssp.aegis.timer`, feature:timer), a
                   self-service vacuum beside the wash ($2/4min, $3/5min, card-only, alarm-only on fault). Deliberately NOT a
                   wash config mode: wash is a pulse-count vertical. So far only an on-site output test screen
                   (HoldTestScreen, `IGpioProvider.holdRelayOutput`/`releaseHold`); no payment/customer flow yet.
+app/aegis-laundry -- Aegis Laundry (`com.goldsky.ssp.aegis.laundry`, feature:laundry), added 2026-10-14: self-service laundromat,
+                  its OWN app -- not a mode of Aegis Wash (a laundry change must never mean redeploying the car washes, and
+                  `DispenseEngine` routes Q3mini + WASH to the built-in 2-relay board, which can't drive 8 machines). 0.x
+                  prototype: only `LaundryPaymentScreen`, a static demo (hard-coded machines, START CYCLE shows a toast), as a
+                  plain launcher app -- deliberately not HOME and no boot start, so it never takes a test terminal over from
+                  Wash/Timer. Planned (2026-10-14 assessment): one Q3mini for 8 machines through an RS485 Modbus 8-relay
+                  module on the serial port (local, works offline), reusing Wash's payment / void-on-failure / records.
 Vendor SDK stub types not backed by any real AAR (`com.pax.dal.*`, `com.pax.neptunelite.api.*` -- the NeptuneLite DAL API,
 distinct from the POSLink AAR in libs/pax) live in `core/hardware/src/main/java/com/pax/**`, shared by every app shell.
 
