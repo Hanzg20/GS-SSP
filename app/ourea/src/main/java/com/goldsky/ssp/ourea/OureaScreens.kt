@@ -184,6 +184,8 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
     var showHeldOrders by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf<String?>(null) } // null = "All"
     var optionsFor by remember { mutableStateOf<Product?>(null) }
+    // The discount panel: a cart line (its id), or the whole order ("").
+    var discountFor by remember { mutableStateOf<String?>(null) }
     val quickService = com.goldsky.ssp.feature.retail.ui.isQuickService() && checkMode == null
     val categories = remember(catalog) { catalog.mapNotNull { it.category }.distinct().sorted() }
     val filtered = remember(catalog, query, selectedCategory) {
@@ -232,13 +234,31 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
+            val priced = viewModel.pricing()
             LazyColumn(modifier = Modifier.weight(1f)) {
                 itemsIndexed(cart, key = { _, item -> item.id }) { index, item ->
                     CartRow(
                         index + 1, item,
+                        lineDiscountCents = priced.lines.getOrNull(index)?.lineDiscountCents ?: 0,
                         onIncrement = { viewModel.addItem(item.product, item.selectedModifiers) },
-                        onDecrement = { viewModel.removeItem(item.id) }
+                        onDecrement = { viewModel.removeItem(item.id) },
+                        onDiscount = { discountFor = item.id }
                     )
+                }
+            }
+            // The order discount stays in sight under the lines (a long cart would scroll it away).
+            viewModel.orderDiscount?.let { d ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { discountFor = "" }.padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.LocalOffer, null, tint = OureaGreen, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.ourea_order_discount) + " · " + d.label, color = OureaGreen, fontWeight = FontWeight.SemiBold)
+                        d.approvedBy?.let { Text(stringResource(R.string.ourea_disc_approved_by, it), color = OureaTextSecondary, fontSize = 12.sp) }
+                    }
+                    Text("−$${"%.2f".format(priced.orderDiscountCents / 100.0)}", color = OureaGreen, fontWeight = FontWeight.Bold)
                 }
             }
             if (quickService && cart.isNotEmpty()) OureaOrderOptions(viewModel)
@@ -248,7 +268,13 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
             val sale = viewModel.checkoutSale()
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(R.string.ourea_subtotal), color = OureaTextSecondary, fontSize = 13.sp)
-                Text("$${"%.2f".format(sale.subtotalCents / 100.0)}", color = OureaTextSecondary, fontSize = 13.sp)
+                Text("$${"%.2f".format((sale.subtotalCents + sale.discountCents) / 100.0)}", color = OureaTextSecondary, fontSize = 13.sp)
+            }
+            if (sale.discountCents > 0) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(stringResource(R.string.ourea_discounts), color = OureaGreen, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("−$${"%.2f".format(sale.discountCents / 100.0)}", color = OureaGreen, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(R.string.ourea_tax), color = OureaTextSecondary, fontSize = 13.sp)
@@ -261,13 +287,25 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
             }
             Spacer(modifier = Modifier.height(12.dp))
             if (cart.isNotEmpty()) {
-                OutlinedButton(
-                    onClick = { viewModel.parkCurrentOrder(context) },
-                    modifier = Modifier.fillMaxWidth().height(44.dp)
-                ) {
-                    Icon(Icons.Default.Schedule, null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.ourea_hold_order))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { viewModel.parkCurrentOrder(context) },
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Schedule, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.ourea_hold_order), maxLines = 1)
+                    }
+                    OutlinedButton(
+                        onClick = { discountFor = "" },
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Default.LocalOffer, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.ourea_order_discount), maxLines = 1)
+                    }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -286,6 +324,25 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
                 onConfirm = { mods -> viewModel.addItem(product, mods); optionsFor = null },
                 onDismiss = { optionsFor = null }
             )
+        }
+
+        discountFor?.let { id ->
+            val item = cart.find { it.id == id }
+            if (id == "" || item != null) {
+                // An order discount works on what's left after the line discounts.
+                val priced = viewModel.pricing()
+                OureaDiscountDialog(
+                    target = item?.product?.name ?: stringResource(R.string.ourea_whole_order),
+                    baseCents = item?.totalPriceCents ?: (priced.grossCents - priced.lineDiscountCents),
+                    forOrder = item == null,
+                    current = item?.discount ?: viewModel.orderDiscount.takeIf { item == null },
+                    onApply = { d ->
+                        if (item != null) viewModel.applyLineDiscount(item.id, d) else viewModel.applyOrderDiscount(d)
+                        discountFor = null
+                    },
+                    onDismiss = { discountFor = null }
+                )
+            } else discountFor = null
         }
 
         if (showHeldOrders) {
@@ -496,7 +553,9 @@ private fun OureaCategoryRailItem(label: String, isSelected: Boolean, onClick: (
  * the old single X button did, just also exposed as an explicit "+" now.
  */
 @Composable
-private fun CartRow(number: Int, item: CartItem, onIncrement: () -> Unit, onDecrement: () -> Unit) {
+private fun CartRow(number: Int, item: CartItem, lineDiscountCents: Int = 0, onIncrement: () -> Unit, onDecrement: () -> Unit,
+                    // Null: no discounts here (a dine-in round goes to the kitchen without prices off).
+                    onDiscount: (() -> Unit)? = null) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -511,8 +570,21 @@ private fun CartRow(number: Int, item: CartItem, onIncrement: () -> Unit, onDecr
                 Text("+ " + item.selectedModifiers.joinToString(", ") { it.name }, color = OureaSkyBlue, fontSize = 12.sp)
             }
             Text("$${"%.2f".format(item.unitPriceCents / 100.0)} × ${item.quantity}", color = OureaTextSecondary, fontSize = 12.sp)
+            val d = item.discount
+            if (onDiscount != null) Text(
+                if (d != null) d.label + (d.percentBps?.let { " ${it / 100}%" } ?: "") + " · −$${"%.2f".format(lineDiscountCents / 100.0)}"
+                else stringResource(R.string.ourea_disc_add),
+                color = if (d != null) OureaGreen else OureaSkyBlue,
+                fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onDiscount).padding(vertical = 4.dp, horizontal = 2.dp)
+            )
         }
-        Text("$${"%.2f".format(item.totalPriceCents / 100.0)}", color = OureaTextPrimary)
+        Column(horizontalAlignment = Alignment.End) {
+            if (lineDiscountCents > 0) {
+                Text("$${"%.2f".format(item.totalPriceCents / 100.0)}", color = OureaTextSecondary, fontSize = 12.sp, textDecoration = TextDecoration.LineThrough)
+            }
+            Text("$${"%.2f".format((item.totalPriceCents - lineDiscountCents) / 100.0)}", color = OureaTextPrimary)
+        }
         Spacer(modifier = Modifier.width(10.dp))
         Row(
             modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(OureaSurfaceVariant),

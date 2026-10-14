@@ -88,4 +88,26 @@
     <string name="ourea_round_send">Send to kitchen</string>
     <string name="ourea_round_discard">Discard</string>
     <string name="ourea_round_stay">Stay</string>
+    <string name="ourea_disc_title">Discount</string>
+    <string name="ourea_disc_applies_to">Applies to %1$s · %2$s</string>
+    <string name="ourea_disc_presets">STORE PRESETS</string>
+    <string name="ourea_disc_no_presets">No presets yet. Add them in Cael › Discounts.</string>
+    <string name="ourea_disc_custom">Custom</string>
+    <string name="ourea_disc_delete">Delete</string>
+    <string name="ourea_disc_reason">Reason</string>
+    <string name="ourea_disc_reason_service">Service recovery</string>
+    <string name="ourea_disc_reason_price_match">Price match</string>
+    <string name="ourea_disc_reason_damaged">Damaged</string>
+    <string name="ourea_disc_reason_other">Other</string>
+    <string name="ourea_disc_manager">Needs a manager</string>
+    <string name="ourea_disc_limit_hint">Custom discounts over 10% or $10 need a manager PIN</string>
+    <string name="ourea_disc_remove">Remove discount</string>
+    <string name="ourea_disc_apply">Apply −%1$s</string>
+    <string name="ourea_disc_pick_reason">Pick a reason</string>
+    <string name="ourea_disc_approve_action">%1$s −%2$s on %3$s</string>
+    <string name="ourea_disc_approved_by">Approved by %1$s</string>
+    <string name="ourea_disc_add">Discount</string>
+    <string name="ourea_order_discount">Order discount</string>
+    <string name="ourea_discounts">Discounts</string>
+    <string name="ourea_whole_order">Whole order</string>
 </resources>
