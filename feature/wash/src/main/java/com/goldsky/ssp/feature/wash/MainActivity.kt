@@ -146,6 +146,10 @@ class MainActivity : BaseAdActivity() {
         setupCrashHandler()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        // Animated scene (a car being sprayed) behind each package card's price.
+        listOf(R.id.card_4, R.id.card_5, R.id.card_6, R.id.card_7, R.id.card_8).forEachIndexed { i, id ->
+            findViewById<androidx.constraintlayout.widget.ConstraintLayout>(id)?.addWashScene(i)
+        }
 
         TtsManager.registerLifecycle(this, this) // Register dynamic voice engine
 
