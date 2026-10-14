@@ -43,7 +43,7 @@ Q3mini UPT 背部接口从左至右定义如下：
 GS-SSP 采用 **Local Semi-Integrated** 模式，通过内部 Socket 调用 WizarPOS 官方支付应用。
 
 ### 2.1 通讯规范
-*   **地址**: `127.0.0.1:6666` (本地回环)
+*   **地址**: `127.0.0.1:6031`（OPC 设置里的 Port；代码依次试 6031、6666，见 `WizarPosSocketClient`）
 *   **帧封装**: `[4-byte Length (Big-Endian)] + [JSON Payload]`
 *   **超时**: 60s (支付生命周期)
 
@@ -94,6 +94,38 @@ GS-SSP 采用 **Local Semi-Integrated** 模式，通过内部 Socket 调用 Wiza
     *   将模拟器替换为正式版 **Nuvei Payment App**。
     *   在 **WizarView (TMS)** 后台配置商户 MID/TID。
     *   GS-SSP 逻辑 100% 保持不变，实现零代码切换生产。
+
+### 4.1 PAYWizard (OPC) 设置与故障排查（2026-10-14，255 实测）
+
+PAYWizard 即 `com.wizarpos.opc`。它只是中转：收到我们的 SALE 后，再去调用「支付应用」真正刷卡。
+
+**OPC 设置页（关键三项）**
+| 项 | 值 |
+|---|---|
+| Protocol type | SOCKET SERVER |
+| Port | 6031 |
+| **PaymentApp PkgName** | 实际收单的支付应用包名。Nuvei 终端填 **`com.smartpos.nuvei.smartpay`** |
+
+- OPC **只接受它能绑定的支付应用**：在 255 上填 `com.wizarpos.paywizard.demo` 会被拒（对话框清空重开，提示不能设置），填 `com.smartpos.nuvei.smartpay` 立即生效、无需重启。
+- 这一项与我们 App 的签名无关：OPC 接受任何本机 127.0.0.1 的连接，不校验调用方包名或签名。
+
+**症状 → 原因**
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| 顾客看到「Card payment is temporarily unavailable」；Wash 日志 `OPC has no payment app selected`；OPC 回 `RespDesc=payment package name is empty`；OPC 日志 `bind payment app :`（空） | **PaymentApp PkgName 为空** | 在 OPC 设置里填支付应用包名（见上） |
+| 日志 `No PAYWizard service on 127.0.0.1:6031 … ECONNREFUSED`、`P3 Handshake got no reply; not sending the sale` | **OPC 没在运行**。255 重启后 OPC 没有自动启动 | 启动 OPC（见下） |
+| OPC 日志反复 `System is in offline mode, cannot send network requests` | 设置里开着 Allow offline mode | 不影响刷卡（255 在此状态下交易已批准），无需处理 |
+
+**无人值守终端上怎么打开 OPC**：Aegis Wash / Timer 是 HOME（kiosk），没有应用列表，现场点不到 OPC。连 adb 时：
+```
+adb shell monkey -p com.wizarpos.opc -c android.intent.category.LAUNCHER 1
+adb shell am start -n com.wizarpos.opc/.ui.MainActivity   # 已在后台时调到前台
+```
+设置入口在 OPC 主界面（需管理员密码）。
+
+**255 的记录**：10-08 前刷卡正常；10-14 发现 PaymentApp PkgName 为空（期间 10-12 起终端一直未能开机，丢失原因不明）。10-14 15:37 改为 Nuvei 后，Aegis Laundry 技术员 $0.10 卡测试批准（Mastercard 非接，`TEST_LAUNDRY_1792006673108`，授权码 04046Z）。同一 OPC 也服务 Aegis Wash / Timer，三者一起恢复。
+
+**仍待做**：终端开机后由 kiosk App 检查 OPC 是否在运行、不在则启动它，避免重启后刷卡「暂不可用」。
 
 ---
 
