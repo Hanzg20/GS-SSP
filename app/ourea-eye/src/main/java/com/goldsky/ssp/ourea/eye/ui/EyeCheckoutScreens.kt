@@ -47,6 +47,8 @@ import com.goldsky.ssp.ui.theme.ScanFrameGold
 import com.goldsky.ssp.ui.theme.Slate100
 import com.goldsky.ssp.ui.theme.Slate400
 import com.goldsky.ssp.ui.theme.SuccessOnDark
+import com.goldsky.ssp.ui.tip.CustomerTipPanel
+import com.goldsky.ssp.ui.tip.TipPalette
 import kotlinx.coroutines.isActive
 import kotlin.math.sin
 import kotlin.random.Random
@@ -134,7 +136,13 @@ fun CartScreen(state: CfdDisplayState.Cart) {
             ) {
                 Column {
                     Row(Modifier.fillMaxWidth()) {
-                        SmallFigure("Subtotal", state.subtotalCents, Modifier.weight(1f))
+                        // With a discount: the items' own sum, then what came off (the items list shows full prices).
+                        if (state.discountCents > 0) {
+                            SmallFigure("Subtotal", state.subtotalCents + state.discountCents, Modifier.weight(1f))
+                            SmallFigure("Discount", -state.discountCents, Modifier.weight(1f), SuccessOnDark)
+                        } else {
+                            SmallFigure("Subtotal", state.subtotalCents, Modifier.weight(1f))
+                        }
                         SmallFigure("Tax", state.taxCents, Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(8.dp))
@@ -184,10 +192,10 @@ private fun CartLine(number: Int, name: String, qty: Int, priceCents: Int, newes
 }
 
 @Composable
-private fun SmallFigure(label: String, cents: Int, modifier: Modifier) {
+private fun SmallFigure(label: String, cents: Int, modifier: Modifier, color: Color = Slate100) {
     Column(modifier) {
         Text(label, color = Slate400, fontSize = 11.sp)
-        Text(money(cents), color = Slate100, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text(if (cents < 0) "−" + money(-cents) else money(cents), color = color, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -203,6 +211,11 @@ fun PaymentScreen(state: CfdDisplayState.Payment) {
         Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Text("AMOUNT DUE", color = Slate400, fontSize = 12.sp, letterSpacing = 2.sp)
             Text(money(state.amountCents), style = TextStyle(brush = goldText, fontSize = 52.sp, fontWeight = FontWeight.Black), maxLines = 1, softWrap = false)
+            if (!state.cardPrompt) {
+                // Tip chosen; staff take it from here (card, cash...). Same words whatever the tip.
+                Spacer(Modifier.height(18.dp))
+                Text("Thank you", color = Slate100, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            } else {
             Spacer(Modifier.height(18.dp))
             Box(Modifier.size(150.dp), contentAlignment = Alignment.Center) {
                 Canvas(Modifier.fillMaxSize()) {
@@ -217,7 +230,34 @@ fun PaymentScreen(state: CfdDisplayState.Payment) {
             Spacer(Modifier.height(14.dp))
             Text("Tap, insert or swipe your card", color = Slate100, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Text("Tap, insert or use your phone", color = Slate400, fontSize = 13.sp)
+            }
         }
+    }
+}
+
+// --------------------------------------------------------------------------
+// Tip: the shared customer panel on the Eye's navy and gold
+// --------------------------------------------------------------------------
+
+private val eyeTipPalette = TipPalette(
+    tile = Navy800.copy(alpha = 0.9f),
+    tileBorder = Navy600,
+    text = Slate100,
+    subtext = Slate400,
+    accent = Gold,
+    onAccent = Navy950,
+)
+
+@Composable
+fun TipScreen(state: CfdDisplayState.Tip, onChosen: (Int) -> Unit) {
+    EyeBackdrop {
+        CustomerTipPanel(
+            basisCents = state.basisCents,
+            totalCents = state.totalCents,
+            palette = eyeTipPalette,
+            onChosen = onChosen,
+            modifier = Modifier.fillMaxSize().padding(18.dp)
+        )
     }
 }
 

@@ -3,6 +3,7 @@ package com.goldsky.ssp.ourea.eye
 import android.util.Log
 import com.goldsky.ssp.payment.wizarpos.WizarPosP3Protocol
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.*
 import java.io.InputStream
 import java.net.ServerSocket
@@ -14,8 +15,12 @@ data class CfdItemData(val name: String, val qty: Int, val priceCents: Int)
 
 sealed class CfdDisplayState {
     object Idle : CfdDisplayState()
-    data class Cart(val items: List<CfdItemData>, val subtotalCents: Int, val taxCents: Int, val totalCents: Int) : CfdDisplayState()
-    data class Payment(val amountCents: Int) : CfdDisplayState()
+    /** [subtotalCents]: after [discountCents], before tax. */
+    data class Cart(val items: List<CfdItemData>, val subtotalCents: Int, val taxCents: Int, val totalCents: Int, val discountCents: Int = 0) : CfdDisplayState()
+    /** [cardPrompt] false: the amount only (tip chosen, staff may still take cash). */
+    data class Payment(val amountCents: Int, val cardPrompt: Boolean = true) : CfdDisplayState()
+    /** The customer chooses a tip ([basisCents]: before tax); [tipId] is Ourea's request. */
+    data class Tip(val tipId: String, val basisCents: Int, val totalCents: Int) : CfdDisplayState()
     /** [orderNumber]: a quick-service counter's call number, shown big. */
     data class ThankYou(val orderNumber: Int? = null) : CfdDisplayState()
 }
@@ -35,6 +40,21 @@ object SocketServerManager {
     @Volatile var lastCommandAt = 0L; private set
     const val LISTEN_PORT = PORT
     var onRotationChanged: ((Int) -> Unit)? = null
+
+    // The tip request on screen and, once tapped, the customer's choice. Ourea's
+    // TipStatus waits on [tipChoice] (up to TIP_HOLD_MS), so the answer goes back
+    // the moment a tile is tapped.
+    @Volatile private var tipId: String? = null
+    private val tipChoice = kotlinx.coroutines.flow.MutableStateFlow<Pair<String, Int>?>(null)
+    private const val TIP_HOLD_MS = 9_000L
+    /** The last cart shown, to go back to when Ourea cancels the tip. */
+    @Volatile private var lastCart: CfdDisplayState.Cart? = null
+
+    /** The customer tapped a tip on the screen (main thread). */
+    fun onTipChosen(id: String, tipCents: Int) {
+        if (tipId != id) return
+        tipChoice.value = id to tipCents
+    }
 
     fun start() {
         if (serverJob?.isActive == true) return
@@ -70,8 +90,43 @@ object SocketServerManager {
             lastCommand = transType
             lastCommandAt = System.currentTimeMillis()
 
+            var response = "{\"ResultCode\":\"0\"}"
             when (transType) {
+                "DisplayTip" -> {
+                    val id = root["TipId"]?.jsonPrimitive?.content ?: ""
+                    val basis = root["BasisCents"]?.jsonPrimitive?.int ?: 0
+                    val total = root["TotalCents"]?.jsonPrimitive?.int ?: 0
+                    tipId = id
+                    tipChoice.value = null
+                    withContext(Dispatchers.Main) {
+                        onStateChanged?.invoke(CfdDisplayState.Tip(id, basis, total))
+                    }
+                    response = "{\"ResultCode\":\"0\",\"Tip\":\"READY\"}"
+                }
+                "TipStatus" -> {
+                    val id = root["TipId"]?.jsonPrimitive?.content
+                    val chosen = if (id != null && id == tipId) {
+                        withTimeoutOrNull(TIP_HOLD_MS) { tipChoice.first { it?.first == id } }
+                    } else null
+                    response = when {
+                        chosen != null -> {
+                            tipId = null
+                            "{\"ResultCode\":\"0\",\"Status\":\"CHOSEN\",\"TipCents\":${chosen.second}}"
+                        }
+                        id != null && id == tipId -> "{\"ResultCode\":\"0\",\"Status\":\"WAITING\"}"
+                        else -> "{\"ResultCode\":\"0\",\"Status\":\"GONE\"}"
+                    }
+                }
+                "CancelTip" -> {
+                    val id = root["TipId"]?.jsonPrimitive?.content
+                    if (id == null || id == tipId) {
+                        tipId = null
+                        val back = lastCart ?: CfdDisplayState.Idle
+                        withContext(Dispatchers.Main) { onStateChanged?.invoke(back) }
+                    }
+                }
                 "DisplayIdle" -> {
+                    lastCart = null
                     withContext(Dispatchers.Main) {
                         onStateChanged?.invoke(CfdDisplayState.Idle)
                     }
@@ -106,14 +161,16 @@ object SocketServerManager {
                             priceCents = obj["priceCents"]?.jsonPrimitive?.int ?: 0
                         )
                     }
+                    val cart = CfdDisplayState.Cart(items, sub, tax, total, root["DiscountCents"]?.jsonPrimitive?.intOrNull ?: 0)
+                    lastCart = cart
                     withContext(Dispatchers.Main) {
-                        onStateChanged?.invoke(CfdDisplayState.Cart(items, sub, tax, total))
+                        onStateChanged?.invoke(cart)
                     }
                 }
             }
 
             val out = socket.getOutputStream()
-            val respBytes = WizarPosP3Protocol.pack(WizarPosP3Protocol.CTRL_FROM_POS, 1, "{\"ResultCode\":\"0\"}")
+            val respBytes = WizarPosP3Protocol.pack(WizarPosP3Protocol.CTRL_FROM_POS, 1, response)
             out.write(respBytes)
             out.flush()
         } catch (e: Exception) {

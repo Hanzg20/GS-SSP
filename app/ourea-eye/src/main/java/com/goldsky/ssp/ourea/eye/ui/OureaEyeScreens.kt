@@ -35,7 +35,7 @@ import kotlinx.coroutines.delay
 import java.io.File
 
 @Composable
-fun OureaEyeScreen(state: CfdDisplayState, rotationDegrees: Int = 0, paidCents: Int? = null) {
+fun OureaEyeScreen(state: CfdDisplayState, rotationDegrees: Int = 0, paidCents: Int? = null, onTipChosen: (CfdDisplayState.Tip, Int) -> Unit = { _, _ -> }) {
     Surface(
         modifier = Modifier
             .fillMaxSize()
@@ -50,6 +50,7 @@ fun OureaEyeScreen(state: CfdDisplayState, rotationDegrees: Int = 0, paidCents: 
                 is CfdDisplayState.Idle -> IdleScreen()
                 is CfdDisplayState.Cart -> CartScreen(targetState)
                 is CfdDisplayState.Payment -> PaymentScreen(targetState)
+                is CfdDisplayState.Tip -> TipScreen(targetState) { onTipChosen(targetState, it) }
                 is CfdDisplayState.ThankYou -> ThankYouScreen(paidCents, targetState.orderNumber)
             }
         }

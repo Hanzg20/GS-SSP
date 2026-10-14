@@ -165,8 +165,11 @@ interface IPaymentProvider {
     /** Customer Facing Display item summary. */
     data class CfdItem(val name: String, val qty: Int, val priceCents: Int)
 
-    /** Updates customer facing display (CFD) with live cart summary. */
-    fun updateLiveCart(items: List<CfdItem>, subtotalCents: Int, taxCents: Int) {}
+    /**
+     * Updates customer facing display (CFD) with live cart summary. [items] at
+     * their own prices; [subtotalCents] after [discountCents] (all discounts), before tax.
+     */
+    fun updateLiveCart(items: List<CfdItem>, subtotalCents: Int, taxCents: Int, discountCents: Int = 0) {}
 
     /** Shows idle/welcome/ad screen on customer facing display. */
     fun showIdleScreen() {}
@@ -176,4 +179,25 @@ interface IPaymentProvider {
 
     /** Shows screen rotation on customer facing display (e.g. 0, 90, 180, 270). */
     fun showEyeRotation(degrees: Int) {}
+
+    /** What the customer display said to [requestTip]. */
+    sealed class TipAnswer {
+        data class Chosen(val tipCents: Int) : TipAnswer()
+        /** No customer display, an older one, or it stopped answering: ask on this terminal instead. */
+        object Unavailable : TipAnswer()
+    }
+
+    /**
+     * Asks the customer to choose a tip on the customer facing display
+     * (com.goldsky.ssp.common.Tipping options of [basisCents], the amount before
+     * tax; [totalCents] is due before the tip). [onAnswer] runs once, on the main
+     * thread, unless [cancelTip] comes first. Providers without a display answer
+     * Unavailable at once.
+     */
+    fun requestTip(basisCents: Int, totalCents: Int, onAnswer: (TipAnswer) -> Unit) {
+        onAnswer(TipAnswer.Unavailable)
+    }
+
+    /** Staff backed out: the display goes back to the cart and [requestTip]'s answer never comes. */
+    fun cancelTip() {}
 }

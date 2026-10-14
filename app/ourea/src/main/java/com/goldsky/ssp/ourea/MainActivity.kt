@@ -25,7 +25,6 @@ import com.goldsky.ssp.feature.retail.RetailRepository
 import com.goldsky.ssp.feature.retail.screens.SettingsScreen
 import com.goldsky.ssp.feature.retail.screens.StaffPinLockScreen
 import com.goldsky.ssp.feature.retail.screens.TransactionHistoryScreen
-import com.goldsky.ssp.feature.retail.ui.TipSelectionDialog
 import com.goldsky.ssp.feature.retail.viewmodel.RetailViewModel
 import kotlinx.coroutines.*
 
@@ -138,7 +137,11 @@ class MainActivity : ComponentActivity() {
                     // Sync Customer Facing Display (CFD) on Q3mini as cart items change
                     val cartList = retailViewModel.cart
                     // Keyed on every line and quantity: size + total qty missed changes that kept both.
-                    LaunchedEffect(cartList.map { Triple(it.id, it.quantity, it.unitPriceCents) }) {
+                    // And on the total after discounts, so a discount shows on the Eye too.
+                    val cartNet by retailViewModel.totalCents.collectAsState()
+                    // Bumped when a payment is backed out of: the Eye left the cart for the tip / amount due.
+                    var eyeCartAgain by remember { mutableStateOf(0) }
+                    LaunchedEffect(cartList.map { Triple(it.id, it.quantity, it.unitPriceCents) }, cartNet, eyeCartAgain) {
                         if (cartList.isEmpty()) {
                             paymentProvider.showIdleScreen()
                         } else {
@@ -146,7 +149,7 @@ class MainActivity : ComponentActivity() {
                             val cfdItems = sale.lines.map { line ->
                                 IPaymentProvider.CfdItem(line.name, line.quantity, line.unitPriceCents)
                             }
-                            paymentProvider.updateLiveCart(cfdItems, sale.subtotalCents, sale.taxCents)
+                            paymentProvider.updateLiveCart(cfdItems, sale.subtotalCents, sale.taxCents, sale.discountCents)
                         }
                     }
 
@@ -194,7 +197,7 @@ class MainActivity : ComponentActivity() {
                                                 if (checkPay != null) paymentStatus = OureaPaymentUiState.Error(getString(R.string.ourea_member_not_for_checks))
                                                 else showMemberDialog = true
                                             },
-                                            onBack = { confirmingPayment = null; checkPay = null }
+                                            onBack = { confirmingPayment = null; checkPay = null; eyeCartAgain++ }
                                         )
                                     } else if (destination == OureaDestination.TABLES && openCheck == null) {
                                         com.goldsky.ssp.feature.retail.dine.DineFloor(dine, signedIn.id, signedIn.name, minCell = 150.dp)
@@ -217,8 +220,10 @@ class MainActivity : ComponentActivity() {
                                     } else {
                                         OureaCheckoutScreen(
                                             viewModel = retailViewModel,
-                                            onCheckout = { subtotal ->
+                                            onCheckout = {
+                                                // Priced here, not the cart's running total: the sale is what gets charged.
                                                 val sale = retailViewModel.checkoutSale()
+                                                val subtotal = sale.subtotalCents
                                                 saleLines = sale.lines
                                                 discountSale = sale
                                                 val tax = sale.taxCents
@@ -250,15 +255,19 @@ class MainActivity : ComponentActivity() {
                     }
 
                     activeSaleData?.let { (subtotal, tax) ->
-                        TipSelectionDialog(
-                            subtotalCents = subtotal + tax,
-                            onConfirm = { totalWithTip ->
-                                val tip = totalWithTip - (subtotal + tax)
-                                activeSaleData = null
-                                confirmingPayment = Triple(subtotal, tax, tip)
-                            },
-                            onDismiss = { activeSaleData = null }
-                        )
+                        // Keyed per sale: a new checkout starts a fresh request to the Eye.
+                        key(activeSaleData) {
+                            OureaTipStep(
+                                provider = paymentProvider,
+                                basisCents = subtotal,
+                                totalCents = subtotal + tax,
+                                onTip = { tip ->
+                                    activeSaleData = null
+                                    confirmingPayment = Triple(subtotal, tax, tip)
+                                },
+                                onCancel = { activeSaleData = null; checkPay = null }
+                            )
+                        }
                     }
 
                     refundNeedsCard?.let { need ->
@@ -394,7 +403,10 @@ class MainActivity : ComponentActivity() {
      */
     private var discountSale: com.goldsky.ssp.model.CheckoutSale? = null
 
-    private fun discountSaleFor(lines: List<com.goldsky.ssp.model.SaleLine>) = discountSale?.takeIf { it.lines === lines }
+    // Equal, not identical: Compose state keeps the old list when an equal one is set (the same
+    // cart checked out again after "Back to Order"), and that lost the discounts. Lines carry
+    // their discount share, so lines equal to the sale's are that sale.
+    private fun discountSaleFor(lines: List<com.goldsky.ssp.model.SaleLine>) = discountSale?.takeIf { it.lines == lines }
 
     private fun triggerPaymentFlow(subtotal: Int, tax: Int, tip: Int, lines: List<com.goldsky.ssp.model.SaleLine>, ticket: com.goldsky.ssp.model.KitchenTicket?, onStateChange: (OureaPaymentUiState) -> Unit, extras: PayExtras? = null) {
         val total = subtotal + tax + tip

@@ -455,7 +455,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         toEye { WizarPosSocketClient.sendDisplayIdle() }
     }
 
-    override fun updateLiveCart(items: List<IPaymentProvider.CfdItem>, subtotalCents: Int, taxCents: Int) {
+    override fun updateLiveCart(items: List<IPaymentProvider.CfdItem>, subtotalCents: Int, taxCents: Int, discountCents: Int) {
         val version = cartVersion.incrementAndGet()
         toEye {
             if (version != cartVersion.get()) return@toEye // a newer cart is queued
@@ -475,6 +475,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                     "CallerName" to kotlinx.serialization.json.JsonPrimitive("GS-SSP"),
                     "SubtotalCents" to kotlinx.serialization.json.JsonPrimitive(subtotalCents),
                     "TaxCents" to kotlinx.serialization.json.JsonPrimitive(taxCents),
+                    "DiscountCents" to kotlinx.serialization.json.JsonPrimitive(discountCents),
                     "TotalCents" to kotlinx.serialization.json.JsonPrimitive(totalCents),
                     "Items" to kotlinx.serialization.json.JsonArray(itemsJsonList)
                 )
@@ -493,6 +494,62 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         toEye {
             val payload = """{"TransType":"DisplayRotate","Rotation":$degrees,"CallerName":"GS-SSP"}"""
             WizarPosSocketClient.sendEyeRequest(payload)
+        }
+    }
+
+    /** The tip request the Eye is showing; null once answered or cancelled. */
+    @Volatile private var tipId: String? = null
+
+    private fun eyeField(resp: ByteArray?, key: String): String? = resp?.let {
+        runCatching { Json.parseToJsonElement(String(it, Charsets.UTF_8)).jsonObject[key]?.jsonPrimitive?.content }.getOrNull()
+    }
+
+    /**
+     * DisplayTip puts the tip screen up (in order with the cart updates); then
+     * TipStatus asks until the customer chose. The Eye holds each TipStatus up to
+     * ~10 s and answers the moment a tile is tapped, so this costs one connection
+     * per 10 s, not a poll per second. An Eye from before tips answers DisplayTip
+     * without "Tip":"READY": Unavailable, and Ourea asks on its own screen.
+     */
+    override fun requestTip(basisCents: Int, totalCents: Int, onAnswer: (IPaymentProvider.TipAnswer) -> Unit) {
+        val id = "TIP-" + System.currentTimeMillis()
+        tipId = id
+        fun answer(a: IPaymentProvider.TipAnswer) {
+            if (tipId != id) return
+            tipId = null
+            CoroutineScope(Dispatchers.Main).launch { onAnswer(a) }
+        }
+        toEye {
+            if (tipId != id) return@toEye
+            val payload = """{"TransType":"DisplayTip","CallerName":"GS-SSP","TipId":"$id","BasisCents":$basisCents,"TotalCents":$totalCents}"""
+            if (eyeField(WizarPosSocketClient.sendEyeRequest(payload), "Tip") != "READY") {
+                answer(IPaymentProvider.TipAnswer.Unavailable)
+                return@toEye
+            }
+            CoroutineScope(Dispatchers.IO).launch {
+                var misses = 0
+                while (tipId == id) {
+                    val resp = WizarPosSocketClient.sendEyeRequest("""{"TransType":"TipStatus","CallerName":"GS-SSP","TipId":"$id"}""")
+                    when (eyeField(resp, "Status")) {
+                        "CHOSEN" -> {
+                            val cents = eyeField(resp, "TipCents")?.toIntOrNull()
+                            answer(if (cents != null && cents >= 0) IPaymentProvider.TipAnswer.Chosen(cents) else IPaymentProvider.TipAnswer.Unavailable)
+                        }
+                        "WAITING" -> misses = 0
+                        // The Eye restarted (or someone else took it over): it no longer shows our tip.
+                        "GONE" -> answer(IPaymentProvider.TipAnswer.Unavailable)
+                        else -> if (++misses >= 3) answer(IPaymentProvider.TipAnswer.Unavailable) else delay(1_000)
+                    }
+                }
+            }
+        }
+    }
+
+    override fun cancelTip() {
+        val id = tipId ?: return
+        tipId = null
+        CoroutineScope(Dispatchers.IO).launch {
+            WizarPosSocketClient.sendEyeRequest("""{"TransType":"CancelTip","CallerName":"GS-SSP","TipId":"$id"}""")
         }
     }
 }

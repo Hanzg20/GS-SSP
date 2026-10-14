@@ -105,6 +105,11 @@
     <string name="ourea_disc_apply">Apply −%1$s</string>
     <string name="ourea_disc_pick_reason">Pick a reason</string>
     <string name="ourea_disc_approve_action">%1$s −%2$s on %3$s</string>
+    <string name="ourea_tip_waiting_title">Customer is choosing a tip</string>
+    <string name="ourea_tip_waiting_desc">On the customer display. Total before tip %1$s.</string>
+    <string name="ourea_tip_ask_here">Ask on this screen</string>
+    <string name="ourea_tip_cancel">Cancel</string>
+    <string name="ourea_tip_turn_screen">Please turn this screen to the customer</string>
     <string name="ourea_disc_approved_by">Approved by %1$s</string>
     <string name="ourea_disc_add">Discount</string>
     <string name="ourea_order_discount">Order discount</string>

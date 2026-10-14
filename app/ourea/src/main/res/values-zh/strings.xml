@@ -106,6 +106,11 @@
     <string name="ourea_disc_apply">应用 −%1$s</string>
     <string name="ourea_disc_pick_reason">请选择原因</string>
     <string name="ourea_disc_approve_action">%1$s −%2$s（%3$s）</string>
+    <string name="ourea_tip_waiting_title">顾客正在选择小费</string>
+    <string name="ourea_tip_waiting_desc">在顾客屏上选择。小费前合计 %1$s。</string>
+    <string name="ourea_tip_ask_here">改在本机选择</string>
+    <string name="ourea_tip_cancel">取消</string>
+    <string name="ourea_tip_turn_screen">请把屏幕转向顾客</string>
     <string name="ourea_disc_approved_by">%1$s 审批</string>
     <string name="ourea_disc_add">优惠</string>
     <string name="ourea_order_discount">整单优惠</string>

@@ -203,4 +203,17 @@
     <string name="tech_watchdog">WATCHDOG HEARTBEAT</string>
     <string name="tech_sim_mode">HARDWARE SIMULATION MODE</string>
     <string name="tech_version_footer">Industrial Core GS-SSP v2.2.0 • PCI-7 Compliant</string>
+
+    <!-- Customer tip screen (CustomerTipPanel): customer-facing, neutral wording -->
+    <string name="tip_title">Tip (optional)</string>
+    <string name="tip_total">Total %1$s</string>
+    <string name="tip_no_tip">No tip</string>
+    <string name="tip_custom">Custom</string>
+    <string name="tip_custom_title">Custom tip</string>
+    <string name="tip_of_amount">%1$s tip</string>
+    <string name="tip_back">Back</string>
+    <string name="tip_add">Add %1$s tip</string>
+    <string name="tip_enter">Enter an amount</string>
+    <string name="tip_max">Up to %1$s</string>
+    <string name="tip_delete">Delete</string>
 </resources>

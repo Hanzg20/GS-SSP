@@ -173,7 +173,7 @@ class RetailViewModel : ViewModel() {
                 runCatching { Json.decodeFromString<com.goldsky.ssp.payment.Discount>(it) }.getOrNull()
             }
             restoring = false
-            saveCart()
+            updateTotals() // the order discount came back after the lines were priced
         }
     }
 

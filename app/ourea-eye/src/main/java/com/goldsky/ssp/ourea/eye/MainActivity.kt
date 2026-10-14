@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity() {
                                 when (newState) {
                                     is CfdDisplayState.Cart -> lastTotal = newState.totalCents
                                     is CfdDisplayState.Payment -> lastTotal = newState.amountCents
+                                    is CfdDisplayState.Tip -> lastTotal = newState.totalCents
                                     else -> {}
                                 }
                                 cfdState = newState
@@ -83,7 +84,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                OureaEyeScreen(state = cfdState, rotationDegrees = rotationAngle, paidCents = lastTotal)
+                OureaEyeScreen(
+                    state = cfdState, rotationDegrees = rotationAngle, paidCents = lastTotal,
+                    onTipChosen = { tip, cents ->
+                        SocketServerManager.onTipChosen(tip.tipId, cents)
+                        lastTotal = tip.totalCents + cents
+                        cfdState = CfdDisplayState.Payment(tip.totalCents + cents, cardPrompt = false)
+                    }
+                )
 
                 Box(Modifier.fillMaxSize().graphicsLayer(rotationZ = rotationAngle.toFloat())) {
                     when (techScreen) {
