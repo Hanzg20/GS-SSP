@@ -191,6 +191,8 @@ class MainActivity : BaseAdActivity() {
 
         LauncherClaim.ensureDefault(this, hardwareVendor)
         com.goldsky.ssp.ui.BootFrontGuard.install(this)
+        // PAYWizard stopped (after a reboot, or by itself): restart it while idle.
+        com.goldsky.ssp.ui.PayWizardGuard.start(this) { !isCarWashSessionActive() }
         com.goldsky.ssp.payment.AppSwitcher.claimHomeIfSwitched(this)
         RemoteCommandManager.startListening(this, deviceSn, hardwareVendor, object : RemoteCommandManager.CommandListener {
             override fun onSyncRequested() {

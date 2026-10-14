@@ -125,7 +125,7 @@ adb shell am start -n com.wizarpos.opc/.ui.MainActivity   # 已在后台时调�
 
 **255 的记录**：10-08 前刷卡正常；10-14 发现 PaymentApp PkgName 为空。**OPC 设置重启后是保留的**（253/254 经常重启，设置一直在），所以 255 这项不是重启丢的，更可能是被手动改掉，或在 10-08 支付测试用例期间被改。10-14 15:37 改为 Nuvei 后，Aegis Laundry 技术员 $0.10 卡测试批准（Mastercard 非接，`TEST_LAUNDRY_1792006673108`，授权码 04046Z）。同一 OPC 也服务 Aegis Wash / Timer，三者一起恢复。
 
-**仍待做**：终端开机后由 kiosk App 检查 OPC 是否在运行、不在则启动它，避免重启后刷卡「暂不可用」。
+**自动拉起（2026-10-14 起，Wash 1.1.4 / Timer 1.2.3 / Laundry）**：`core/ui` 的 `PayWizardGuard` 在空闲时（从不在交易中）每分钟试连 127.0.0.1:6031；连不上就先绑定 OPC 的支付服务 `com.wizarpos.payment.aidl.pay`（前台 App 允许，画面不变），255 实测 6 秒端口恢复、解绑后 OPC 继续运行；仍不行才短暂打开 OPC、等端口起来再切回 kiosk。每次都上报 `PAYWIZARD_RESTARTED`（WARNING），打开 OPC 后仍不通则 `PAYWIZARD_DOWN`（CRITICAL，多半是 PaymentApp PkgName 没设）。后台 `am startservice` 在 Android 14 会被拒（"app is in background"），所以必须由前台 kiosk 来做。
 
 ### 4.2 Eagleson 现场终端「经常重启」（2026-10-14 分析）
 

@@ -61,6 +61,8 @@ class LaundryPaymentActivity : ComponentActivity() {
             else Log.w(TAG, "Relay module serial port not available")
         }
         vm.attach(payment, starter, deviceSn)
+        // PAYWizard stopped (after a reboot, or by itself): restart it while idle.
+        com.goldsky.ssp.ui.PayWizardGuard.start(this) { vm.idle }
 
         lifecycleScope.launch { vm.applyConfig(ConfigManager.loadLocalConfig(this@LaundryPaymentActivity)) }
         lifecycleScope.launch {
