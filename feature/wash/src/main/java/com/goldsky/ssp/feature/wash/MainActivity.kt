@@ -1470,6 +1470,18 @@ class MainActivity : BaseAdActivity() {
 
         CoroutineScope(Dispatchers.Main).launch {
             layoutStatus?.visibility = View.VISIBLE
+            // Animated picture for the three screens after payment (approved -> washing ->
+            // done) in place of the water drop; the texts and the stage bar stay as they are.
+            // Decoration only: if it can't be shown, keep the plain icon -- never let it stop
+            // the wash a customer has just paid for.
+            val scene = runCatching {
+                layoutStatus?.washStatusScene(ivStatusIcon, this@MainActivity)?.apply {
+                    phase = WashPhase.APPROVED; progress = 0f; view?.visibility = View.VISIBLE
+                }
+            }.onFailure {
+                Log.e("SSP_WASH", "Wash status scene unavailable, plain icon instead", it)
+                ivStatusIcon?.visibility = View.VISIBLE
+            }.getOrNull()
             // Card payments (pendingEcrRefNum != null) go through PAYWizard,
             // which already shows and speaks its own "transaction successful"
             // confirmation before control returns here -- our own "Transaction
@@ -1538,6 +1550,7 @@ class MainActivity : BaseAdActivity() {
             }
 
             tvStatus?.text = getString(R.string.status_sending_command)
+            scene?.phase = WashPhase.WASHING
             layoutWashStepper?.visibility = View.VISIBLE
             pbWashStages?.progress = 0
             tvStageLabel?.text = stageLabels.firstOrNull()
@@ -1551,6 +1564,7 @@ class MainActivity : BaseAdActivity() {
             ) { unitsSent, totalUnits ->
                 val fraction = if (totalUnits <= 0) 1f else unitsSent.toFloat() / totalUnits
                 pbWashStages?.progress = (fraction * 100).toInt()
+                scene?.progress = fraction
                 val stageIdx = (fraction * stageLabels.size).toInt().coerceIn(0, stageLabels.size - 1)
                 tvStageLabel?.text = stageLabels[stageIdx]
             }
@@ -1560,8 +1574,13 @@ class MainActivity : BaseAdActivity() {
             layoutWashStepper?.visibility = View.GONE
 
             if (outcome !is DispenseOutcome.Failed) {
-                ivStatusIcon?.setImageResource(R.drawable.ic_check_circle)
-                popIcon(ivStatusIcon)
+                if (scene != null) {
+                    scene.progress = 1f
+                    scene.phase = WashPhase.DONE
+                } else {
+                    ivStatusIcon?.setImageResource(R.drawable.ic_check_circle)
+                    popIcon(ivStatusIcon)
+                }
                 // 3. Update cloud record with hardware success
                 // (older boards with no ACK) gets its own status rather than being
                 // folded into ACK_RECEIVED, so an audit query can tell "we know it
@@ -1611,6 +1630,9 @@ class MainActivity : BaseAdActivity() {
                 onPaymentSuccess()
             } else {
                 layoutStatus?.setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.alert_red_bg))
+                // A failure keeps the plain red error icon (no animated car).
+                scene?.view?.visibility = View.GONE
+                ivStatusIcon?.visibility = View.VISIBLE
                 ivStatusIcon?.setImageResource(R.drawable.ic_error_circle)
                 popIcon(ivStatusIcon)
                 // Say what is actually happening: the reversal hasn't run yet
@@ -1674,6 +1696,45 @@ class MainActivity : BaseAdActivity() {
     }
 
     /** Scale-up-from-zero reveal with overshoot, used for the terminal check/error icon. */
+    /**
+     * Technician: plays the three after-payment screens in the real payment window --
+     * approved, washing (the stage bar filling as pulses would), done. Nothing is charged,
+     * recorded or sent to the hardware.
+     */
+    private fun previewSuccessScreens() {
+        val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
+        dialog.setContentView(R.layout.dialog_payment)
+        dialog.setOnShowListener { applyKioskWindowFlags() }
+        dialog.show()
+        val layoutStatus = dialog.findViewById<ConstraintLayout>(R.id.layout_status_overlay)
+        val tvStatus = dialog.findViewById<TextView>(R.id.tv_status_msg)
+        val stepper = dialog.findViewById<ConstraintLayout>(R.id.layout_wash_stepper)
+        val bar = dialog.findViewById<ProgressBar>(R.id.pb_wash_stages)
+        val stage = dialog.findViewById<TextView>(R.id.tv_stage_label)
+        val labels = resources.getStringArray(R.array.wash_stage_labels)
+        val scene = layoutStatus?.washStatusScene(dialog.findViewById(R.id.iv_status_icon), this) ?: return
+        CoroutineScope(Dispatchers.Main).launch {
+            layoutStatus.visibility = View.VISIBLE
+            tvStatus?.text = getString(R.string.status_approved)
+            delay(2200)
+            tvStatus?.text = getString(R.string.status_sending_command)
+            scene.phase = WashPhase.WASHING
+            stepper?.visibility = View.VISIBLE
+            for (i in 0..40) {
+                val f = i / 40f
+                scene.progress = f
+                bar?.progress = (f * 100).toInt()
+                stage?.text = labels[(f * labels.size).toInt().coerceIn(0, labels.size - 1)]
+                delay(120)
+            }
+            stepper?.visibility = View.GONE
+            scene.phase = WashPhase.DONE
+            tvStatus?.text = getString(R.string.status_enjoy_wash)
+            delay(6000)
+            dialog.dismiss()
+        }
+    }
+
     private fun popIcon(view: ImageView?) {
         view ?: return
         view.scaleX = 0f
@@ -1977,6 +2038,14 @@ class MainActivity : BaseAdActivity() {
 
         // Small real test: arm the next card sale at a small amount (full
         // customer flow, full wash). Tap cycles OFF -> $0.10 -> $0.50 -> $1.00 -> OFF.
+        dialog.findViewById<Button>(R.id.btn_op_preview_success)?.apply {
+            visibility = View.VISIBLE
+            setOnClickListener {
+                applyClickFeedback(it)
+                dialog.dismiss()
+                previewSuccessScreens()
+            }
+        }
         dialog.findViewById<Button>(R.id.btn_op_payment_test)?.setOnClickListener {
             applyClickFeedback(it)
             dialog.dismiss()

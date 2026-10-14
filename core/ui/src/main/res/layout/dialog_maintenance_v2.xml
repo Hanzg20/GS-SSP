@@ -429,6 +429,20 @@
             android:backgroundTint="@color/tech_pill_bg"
             android:textColor="@color/tech_cyan"
             android:textStyle="bold" />
+
+        <!-- Plays the after-payment screens (approved / washing / done): no payment,
+             no record, no hardware. For checking the animation and showing customers. -->
+        <Button
+            android:id="@+id/btn_op_preview_success"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="PREVIEW SUCCESS"
+            android:backgroundTint="@color/tech_pill_bg"
+            android:textColor="@color/tech_cyan"
+            android:textStyle="bold"
+            android:visibility="gone" />
     </GridLayout>
 
     <!-- Detailed Hardware Info Card -->
