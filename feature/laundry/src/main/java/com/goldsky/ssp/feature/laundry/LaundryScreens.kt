@@ -466,7 +466,7 @@ private fun ConfirmScreen(
                 sub = when {
                     vip != null && vip.discountPct > 0 -> "••${vip.memberCode.takeLast(4)} · ${vip.discountPct}% member off"
                     vip != null -> "••${vip.memberCode.takeLast(4)} · ${money(vip.balanceCents)}"
-                    else -> "Tap or scan your card"
+                    else -> "Scan your member QR"
                 },
                 dark = true,
             )
@@ -519,26 +519,39 @@ private fun CardIcon(color: Color, modifier: Modifier) {
 
 @Composable
 private fun VipPayScreen(v: Screen.VipPay, onScan: () -> Unit, onBack: () -> Unit) {
-    val t = rememberInfiniteTransition(label = "viptap")
-    val ring by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1600, easing = LinearEasing)), label = "ring")
+    val t = rememberInfiniteTransition(label = "vipqr")
+    val sweep by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1800, easing = LinearEasing)), label = "sweep")
     Column(Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             CrownIcon(Amber, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
-            Text("VIP CARD  ·  ${v.order.machine.name.uppercase()}", color = OnDarkSoft, fontSize = 12.sp, letterSpacing = 1.5.sp)
+            Text("VIP  ·  ${v.order.machine.name.uppercase()}", color = OnDarkSoft, fontSize = 12.sp, letterSpacing = 1.5.sp)
         }
         Text(money(v.order.totalCents), color = OnDark, fontSize = 44.sp, fontWeight = FontWeight.Black)
         Text("Members save up to 15%", color = Amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        Box(Modifier.weight(1f).aspectRatio(1f), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.fillMaxSize(0.9f)) {
-                for (k in 0..2) {
-                    val p = (ring + k / 3f) % 1f
-                    drawCircle(Amber.copy(alpha = (1f - p) * 0.55f), radius = size.minDimension / 2 * (0.35f + 0.65f * p), style = Stroke(3.dp.toPx()))
+        // The member's phone pass, with a scan line moving over its QR.
+        Box(Modifier.weight(1f).aspectRatio(0.75f).padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.fillMaxHeight().aspectRatio(0.56f).clip(RoundedCornerShape(18.dp)).background(Color(0xFF0B1220))
+                    .border(2.dp, Amber.copy(alpha = 0.8f), RoundedCornerShape(18.dp)).padding(10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CrownIcon(Amber, Modifier.size(12.dp)); Spacer(Modifier.width(4.dp))
+                        Text("VIP", color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp)).background(Color.White), contentAlignment = Alignment.Center) {
+                        ScanIcon(Ink, Modifier.fillMaxSize(0.8f))
+                        Canvas(Modifier.fillMaxSize()) {
+                            val y = size.height * sweep
+                            drawLine(Teal, Offset(0f, y), Offset(size.width, y), strokeWidth = 3.dp.toPx())
+                        }
+                    }
                 }
-                drawCircle(Brush.radialGradient(listOf(Amber.copy(alpha = 0.6f), Amber.copy(alpha = 0.15f))), radius = size.minDimension * 0.2f)
             }
-            ContactlessIcon(Color.White, Modifier.size(42.dp))
         }
-        Text(v.message, color = OnDark, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Text(v.message, color = OnDark, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(

@@ -102,7 +102,7 @@ class LaundryPaymentActivity : ComponentActivity() {
                 onAddon = vm::toggleAddon,
                 onDry = vm::chooseDry,
                 onPayCard = vm::payCard,
-                onPayVip = vm::payVip,
+                onPayVip = { if (vm.payVip()) startScan(vendor) },
                 onVipBack = vm::vipBack,
             )
             if (showPin) {
@@ -129,7 +129,7 @@ class LaundryPaymentActivity : ComponentActivity() {
 
     private var scanner: com.goldsky.ssp.payment.hardware.IScannerProvider? = null
     private val scanHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val scanTimeout = Runnable { stopScan() }
+    private val scanTimeout = Runnable { stopScan(); vm.vipScanEnded() }
 
     private fun startScan(vendor: String) {
         stopScan()
@@ -139,7 +139,11 @@ class LaundryPaymentActivity : ComponentActivity() {
         scanHandler.postDelayed(scanTimeout, SCAN_TIMEOUT_MS)
         sc.startScan(object : com.goldsky.ssp.payment.hardware.IScannerProvider.ScanCallback {
             override fun onScanSuccess(result: String) { runOnUiThread { stopScan(); vm.onScanned(result) } }
-            override fun onScanFailure(errorMsg: String) { Log.d(TAG, "Scan: $errorMsg") }
+            override fun onScanFailure(errorMsg: String) {
+                Log.d(TAG, "Scan: $errorMsg")
+                // The scanner page was closed / timed out: the VIP pay screen offers to scan again.
+                runOnUiThread { vm.vipScanEnded() }
+            }
         })
     }
 
