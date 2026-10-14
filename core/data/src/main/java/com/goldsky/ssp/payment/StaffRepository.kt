@@ -93,6 +93,12 @@ object StaffRepository {
         Log.i(TAG, "Signed in: ${staff.name} (${staff.role})")
     }
 
+    /** The device moved to another store: its staff list and sign-in no longer apply. */
+    fun forgetStore() {
+        prefs()?.edit()?.remove(KEY_LIST)?.apply()
+        current = null
+    }
+
     fun signOut() {
         current?.let { Log.i(TAG, "Signed out: ${it.name}") }
         current = null

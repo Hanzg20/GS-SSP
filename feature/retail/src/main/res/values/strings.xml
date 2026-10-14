@@ -256,4 +256,7 @@
     <string name="scan_qr_desc">Print and place on the table. Customers scan it to order; orders wait for staff to accept.</string>
     <string name="scan_qr_rotate">New code (old prints stop working)</string>
     <string name="scan_qr_show">QR code</string>
+    <string name="store_changed_title">Moved to another store</string>
+    <string name="store_changed_body">This terminal was moved to another store in Cael. Reload to use that store\'s staff, products and tables. The cart in progress is cleared.</string>
+    <string name="store_changed_reload">Reload</string>
 </resources>

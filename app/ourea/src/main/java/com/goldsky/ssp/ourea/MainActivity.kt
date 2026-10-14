@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
             val themeVersion by DeviceRepository.themeVersion.collectAsState()
             val darkTheme = remember(themeVersion) { DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER }
             OureaTheme(dark = darkTheme) { key(themeVersion) {
+                com.goldsky.ssp.feature.retail.screens.StoreChangeWatcher(deviceSn)
                 var staff by remember { mutableStateOf(StaffRepository.current) }
 
                 val signedIn = staff

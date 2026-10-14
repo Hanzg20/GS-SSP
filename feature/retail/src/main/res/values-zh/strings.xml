@@ -256,4 +256,7 @@
     <string name="scan_qr_desc">打印后放在桌上。顾客扫码点餐，订单要店员接单后才送厨房。</string>
     <string name="scan_qr_rotate">换新二维码（旧的立即失效）</string>
     <string name="scan_qr_show">二维码</string>
+    <string name="store_changed_title">已移到其他门店</string>
+    <string name="store_changed_body">这台终端已在 Cael 中移到其他门店。重新载入后将使用新门店的员工、商品和桌台，当前购物车会清空。</string>
+    <string name="store_changed_reload">重新载入</string>
 </resources>

@@ -117,6 +117,7 @@ class MainActivity : ComponentActivity() {
             val themeVersion by DeviceRepository.themeVersion.collectAsState()
             val darkTheme = remember(themeVersion) { DeviceRepository.getThemeStyle() == DeviceRepository.UiThemeStyle.CYBER }
             com.goldsky.ssp.ui.theme.GoldSkyTheme(dark = darkTheme) {
+                com.goldsky.ssp.feature.retail.screens.StoreChangeWatcher(deviceSn)
                 val navController = rememberNavController()
                 val retailViewModel: RetailViewModel = viewModel()
                 // The cart in progress comes back after a restart.

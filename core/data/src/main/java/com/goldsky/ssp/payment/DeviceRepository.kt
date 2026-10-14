@@ -233,6 +233,13 @@ object DeviceRepository {
     private val _identityVersion = kotlinx.coroutines.flow.MutableStateFlow(0)
     val identityVersion: kotlinx.coroutines.flow.StateFlow<Int> = _identityVersion
 
+    // Bumped when an identity sync finds this device in a different store than
+    // before (moved in Cael, cmp_assign_device): what the terminal has cached
+    // -- staff, catalog, a cart in progress -- belongs to the old store, so
+    // the shell asks staff to reload. The staff list is dropped right away.
+    private val _storeChanges = kotlinx.coroutines.flow.MutableStateFlow(0)
+    val storeChanges: kotlinx.coroutines.flow.StateFlow<Int> = _storeChanges
+
     // Bumped on every theme change; the UI keys its tree on it so a switch in
     // Settings repaints every screen at once (they read getThemeStyle() directly).
     private val _themeVersion = kotlinx.coroutines.flow.MutableStateFlow(0)
@@ -370,7 +377,13 @@ object DeviceRepository {
             // If the server returned a secret (always does on success), store it
             result.secret_key?.let { persistDeviceSecret(it) }
             
+            val previousOrg = getPersistedOrgId()
             persistOrgId(result.org_id)
+            if (previousOrg != null && result.org_id != null && result.org_id != previousOrg) {
+                Log.w(TAG, "Device moved to another store: $previousOrg -> ${result.org_id}")
+                StaffRepository.forgetStore()
+                _storeChanges.value++
+            }
             // The heartbeats RLS needs the device_auth_map row this RPC just
             // made, so a first-launch heartbeat sent before now was rejected:
             // send one now that it will pass (every shell runs this at start).
