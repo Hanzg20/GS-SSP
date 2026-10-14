@@ -54,6 +54,13 @@ object SettlementManager {
         val done = CompletableDeferred<Outcome>()
         var raw: String? = null
         Log.i(TAG, "Settle requested ($trigger)")
+        // Settle PENDING sales first: once the batch is closed PAYWizard no longer finds
+        // them, and the resolver would mark an approved one DECLINED (255, 2026-10-14: a
+        // $0.10 sale cut off by a crash, then a manual close, then DECLINED on restart).
+        // A manual close comes from the technician screen, so no sale of this app is in
+        // flight and even a minute-old PENDING can be resolved.
+        runCatching { PendingResolver.resolve(context, minAgeMs = if (trigger == "MANUAL") 0L else 5 * 60_000L) }
+            .onFailure { Log.e(TAG, "Pending resolve before settle failed: ${it.message}") }
         provider.closeBatch(object : IPaymentProvider.PaymentCallback {
             override fun onRawResponse(json: String) {
                 raw = json

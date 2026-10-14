@@ -36,10 +36,11 @@ object PendingResolver {
 
     private val mutex = Mutex()
 
-    suspend fun resolve(context: Context, now: Long = System.currentTimeMillis()): Summary = mutex.withLock {
+    /** [minAgeMs]: 0 only where no sale of this app can be in flight (technician closing the batch). */
+    suspend fun resolve(context: Context, now: Long = System.currentTimeMillis(), minAgeMs: Long = MIN_AGE_MS): Summary = mutex.withLock {
         val db = LocalDatabase.getInstance(context)
         val stale = withContext(Dispatchers.IO) { db.orderDao().getAll() }
-            .filter { it.status == "PENDING" && it.paymentMethod in CARD_METHODS && now - it.createdAt >= MIN_AGE_MS }
+            .filter { it.status == "PENDING" && it.paymentMethod in CARD_METHODS && now - it.createdAt >= minAgeMs }
         if (stale.isEmpty()) return@withLock Summary(0, 0, 0, 0)
 
         val sn = DeviceRepository.getPersistedDeviceSn() ?: "UNKNOWN"
