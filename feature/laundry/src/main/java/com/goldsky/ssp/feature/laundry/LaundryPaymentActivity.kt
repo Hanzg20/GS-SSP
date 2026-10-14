@@ -98,6 +98,9 @@ class LaundryPaymentActivity : ComponentActivity() {
                 onClearPending = vm::clearPending,
                 onBuyVipDemo = vm::buyVipDemo,
                 onCloseVip = vm::closeVip,
+                onTemp = vm::chooseTemp,
+                onAddon = vm::toggleAddon,
+                onDry = vm::chooseDry,
             )
             if (showPin) {
                 LaundryPinPad(

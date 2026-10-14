@@ -79,6 +79,9 @@ fun LaundryApp(
     onClearPending: () -> Unit = {},
     onBuyVipDemo: (LaundryViewModel.DemoPlan) -> Unit = {},
     onCloseVip: () -> Unit = {},
+    onTemp: (LaundryMachineConfig.Option) -> Unit = {},
+    onAddon: (LaundryMachineConfig.Option) -> Unit = {},
+    onDry: (LaundryMachineConfig.DryTime) -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Bg1, Bg2)))) {
         // Soft glow behind the content, as on the renders.
@@ -89,14 +92,14 @@ fun LaundryApp(
         AnimatedContent(targetState = s.screen, contentKey = { it::class }, transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) }, label = "laundry") { screen ->
             when (screen) {
                 Screen.Home -> HomeScreen(s, onSelect, onTechTrigger, onScan, onVip, onClearPending)
-                is Screen.Confirm -> ConfirmScreen(screen.machine, s.pending, s.priceFor(screen.machine), onBack, onPay, onScan, onClearPending)
+                is Screen.Confirm -> ConfirmScreen(screen.order, s.pending, s.priceFor(screen.order), onBack, onPay, onScan, onClearPending, onTemp, onAddon, onDry)
                 is Screen.Working -> StartingScreen(screen.machine, title = "One moment", line = screen.message)
                 Screen.VipDemo -> VipDemoScreen(onBuyVipDemo, onCloseVip)
                 is Screen.VipDemoPaying -> VipDemoPayingScreen(screen.plan)
                 is Screen.VipDemoDone -> VipDemoDoneScreen(screen.plan, onCloseVip)
                 is Screen.Paying -> PayingScreen(screen, onCancelPayment)
                 is Screen.Starting -> StartingScreen(screen.machine)
-                is Screen.Started -> StartedScreen(screen.machine)
+                is Screen.Started -> StartedScreen(screen.machine, screen.summary)
                 is Screen.Declined -> MessageScreen(Rose, "Payment not completed", screen.message)
                 is Screen.Unavailable -> MessageScreen(Amber, "${screen.machine.name} is unavailable", "Nothing was charged. Please choose another machine or ask the attendant.")
                 is Screen.StartFailed -> MessageScreen(
@@ -156,9 +159,7 @@ private fun HomeScreen(
                 s.machines.chunked(cols).forEach { row ->
                     Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { m ->
-                            val started = s.startedAt[m.machineNo]
-                            val minsLeft = if (started != null && m.durationMin != null)
-                                (m.durationMin - ((now - started) / 60_000).toInt()).takeIf { it > 0 } else null
+                            val minsLeft = s.endsAt[m.machineNo]?.let { ((it - now + 59_999) / 60_000).toInt() }?.takeIf { it > 0 }
                             MachineTile(
                                 m, busy = s.busy(m), minsLeft = minsLeft, locked = s.locked,
                                 modifier = Modifier.weight(1f).fillMaxHeight(), onClick = { onSelect(m) }
@@ -275,14 +276,19 @@ private fun MachineTile(m: LaundryMachineConfig, busy: Boolean, minsLeft: Int?, 
             if (busy) Text("IN USE", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
         }
         MachineDrawing(m.kind, running = busy, modifier = Modifier.weight(1f).aspectRatio(0.82f).padding(vertical = 4.dp))
-        Text(kindLabel(m), color = if (busy) Color.White.copy(alpha = 0.85f) else InkSoft, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            kindLabel(m) + (m.sizeLb?.let { " · $it lb" } ?: ""),
+            color = if (busy) Color.White.copy(alpha = 0.85f) else InkSoft, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1
+        )
+        val dry = m.dryTimes.firstOrNull()
         Text(
             when {
                 busy && minsLeft != null -> "~$minsLeft min"
                 busy -> "Running"
-                else -> money(m.priceCents)
+                dry != null -> money(dry.priceCents).removeSuffix(".00") + "/${dry.minutes}m"
+                else -> money(m.fromCents)
             },
-            color = if (busy) Color.White else Ink, fontSize = 17.sp, fontWeight = FontWeight.Black
+            color = if (busy) Color.White else Ink, fontSize = 17.sp, fontWeight = FontWeight.Black, maxLines = 1
         )
     }
 }
@@ -372,78 +378,127 @@ private fun ContactlessIcon(color: Color, modifier: Modifier) {
 
 @Composable
 private fun ConfirmScreen(
-    m: LaundryMachineConfig,
+    order: LaundryMachineConfig.Order,
     pending: LaundryViewModel.Pending?,
     price: Int,
     onBack: () -> Unit,
     onPay: () -> Unit,
     onScan: () -> Unit,
     onClearPending: () -> Unit,
+    onTemp: (LaundryMachineConfig.Option) -> Unit,
+    onAddon: (LaundryMachineConfig.Option) -> Unit,
+    onDry: (LaundryMachineConfig.DryTime) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().padding(18.dp)) {
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(170.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                Box(Modifier.size(170.dp).clip(CircleShape).background(Brush.radialGradient(listOf(Blue.copy(alpha = 0.25f), Color.Transparent))))
-                MachineDrawing(m.kind, running = false, modifier = Modifier.width(128.dp).aspectRatio(0.82f))
-                Box(Modifier.align(Alignment.TopStart).padding(8.dp).size(44.dp).clip(CircleShape).background(Blue), contentAlignment = Alignment.Center) {
-                    Text("${m.machineNo}", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black)
-                }
-            }
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(kindLabel(m).uppercase(), color = Teal, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                Text(m.name, color = OnDark, fontSize = 28.sp, fontWeight = FontWeight.Black)
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(money(price), color = OnDark, fontSize = 40.sp, fontWeight = FontWeight.Black)
-                    if (price != m.priceCents) {
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            money(m.priceCents), color = OnDarkSoft, fontSize = 18.sp,
-                            style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough),
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        )
+    val m = order.machine
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(Modifier.weight(1f)) {
+            // Left: the machine, its number and price
+            Column(Modifier.width(132.dp).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(contentAlignment = Alignment.TopStart) {
+                    MachineDrawing(m.kind, running = false, modifier = Modifier.padding(top = 10.dp, start = 10.dp).width(108.dp).aspectRatio(0.82f))
+                    Box(Modifier.size(36.dp).clip(CircleShape).background(Blue), contentAlignment = Alignment.Center) {
+                        Text("${m.machineNo}", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black)
                     }
                 }
-                m.durationMin?.let { Text("About $it minutes", color = OnDarkSoft, fontSize = 13.sp) }
-                Spacer(Modifier.height(14.dp))
-                Step(1, if (pending is LaundryViewModel.Pending.Vip) "Paid from VIP ••${pending.memberCode.takeLast(4)} (${money(pending.balanceCents)})" else "Pay by card on this terminal")
                 Spacer(Modifier.height(8.dp))
-                Step(2, "Choose your cycle and press START on machine ${m.machineNo}")
+                Text(kindLabel(m).uppercase() + (m.sizeLb?.let { " · $it LB" } ?: ""), color = Teal, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                Spacer(Modifier.weight(1f))
+                Text("TOTAL", color = OnDarkSoft, fontSize = 11.sp, letterSpacing = 1.5.sp)
+                Text(money(price), color = OnDark, fontSize = 34.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                if (price != order.totalCents) {
+                    Text(
+                        money(order.totalCents), color = OnDarkSoft, fontSize = 14.sp,
+                        style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough)
+                    )
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            // Right: what the customer chooses
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(m.name, color = OnDark, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                if (m.temps.isNotEmpty()) {
+                    Label("Water temperature")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        m.temps.forEach { t -> OptionChip(t.label, addLabel(t.addCents), order.temp == t, Modifier.weight(1f)) { onTemp(t) } }
+                    }
+                }
+                if (m.addons.isNotEmpty()) {
+                    Label("Extras")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        m.addons.forEach { a -> OptionChip(a.label, addLabel(a.addCents), a in order.addons, Modifier.weight(1f), toggle = true) { onAddon(a) } }
+                    }
+                }
+                if (m.dryTimes.isNotEmpty()) {
+                    Label("Drying time")
+                    m.dryTimes.chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { d -> OptionChip("${d.minutes} min", money(d.priceCents), order.dry == d, Modifier.weight(1f)) { onDry(d) } }
+                            repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
+                if (m.temps.isEmpty() && m.addons.isEmpty() && m.dryTimes.isEmpty()) {
+                    m.durationMin?.let { Text("About $it minutes", color = OnDarkSoft, fontSize = 13.sp) }
+                }
+                Spacer(Modifier.weight(1f))
+                if (pending is LaundryViewModel.Pending.Vip) {
+                    Text("Paid from VIP ••${pending.memberCode.takeLast(4)} (${money(pending.balanceCents)})", color = Teal, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
+        Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(
-                Modifier.weight(1f).height(60.dp).clip(RoundedCornerShape(30.dp)).border(1.5.dp, OnDarkSoft.copy(alpha = 0.5f), RoundedCornerShape(30.dp)).clickable(onClick = onBack),
+                Modifier.weight(1f).height(56.dp).clip(RoundedCornerShape(28.dp)).border(1.5.dp, OnDarkSoft.copy(alpha = 0.5f), RoundedCornerShape(28.dp)).clickable(onClick = onBack),
                 contentAlignment = Alignment.Center
             ) { Text("Back", color = OnDark, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) }
             Box(
-                Modifier.weight(2f).height(60.dp).shadow(8.dp, RoundedCornerShape(30.dp)).clip(RoundedCornerShape(30.dp))
+                Modifier.weight(2f).height(56.dp).shadow(8.dp, RoundedCornerShape(28.dp)).clip(RoundedCornerShape(28.dp))
                     .background(Brush.horizontalGradient(listOf(Teal, TealDeep))).clickable(onClick = onPay),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     when {
-                        pending is LaundryViewModel.Pending.Vip -> "Pay with VIP"
+                        pending is LaundryViewModel.Pending.Vip -> "Pay ${money(order.totalCents)} with VIP"
                         price <= 0 -> "Use coupon"
                         else -> "Pay ${money(price)}"
                     },
-                    color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black
+                    color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Black
                 )
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             if (pending == null) {
-                Row(Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onScan).padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onScan).padding(horizontal = 10.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                     ScanIcon(Teal, Modifier.size(14.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Have a VIP card or coupon? Scan", color = Teal, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             } else {
-                Text("Not yours? Remove", color = OnDarkSoft, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClearPending).padding(horizontal = 10.dp, vertical = 4.dp))
+                Text("Not yours? Remove", color = OnDarkSoft, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClearPending).padding(horizontal = 10.dp, vertical = 3.dp))
             }
         }
+    }
+}
+
+private fun addLabel(cents: Int) = if (cents == 0) "Included" else "+" + money(cents)
+
+@Composable
+private fun Label(text: String) = Text(text.uppercase(), color = OnDarkSoft, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+
+/** One choice: [selected] filled teal; a toggle shows a check. */
+@Composable
+private fun OptionChip(title: String, sub: String, selected: Boolean, modifier: Modifier, toggle: Boolean = false, onClick: () -> Unit) {
+    Column(
+        modifier.height(52.dp).clip(RoundedCornerShape(14.dp))
+            .background(if (selected) Teal.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f))
+            .border(if (selected) 2.dp else 1.dp, if (selected) Teal else Color.White.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick).padding(horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+    ) {
+        Text((if (toggle && selected) "✓ " else "") + title, color = OnDark, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(sub, color = if (selected) Teal else OnDarkSoft, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
@@ -511,7 +566,7 @@ private fun StartingScreen(m: LaundryMachineConfig, title: String = "Payment app
 }
 
 @Composable
-private fun StartedScreen(m: LaundryMachineConfig) {
+private fun StartedScreen(m: LaundryMachineConfig, summary: String) {
     var t by remember { mutableStateOf(0f) }
     LaunchedEffect(Unit) { val s0 = withFrameMillis { it }; while (true) { t = (withFrameMillis { it } - s0) / 1000f } }
     val draw = (t / 0.6f).coerceIn(0f, 1f)
@@ -537,7 +592,10 @@ private fun StartedScreen(m: LaundryMachineConfig) {
             Text("${m.machineNo}", color = Color.White, fontSize = 46.sp, fontWeight = FontWeight.Black)
         }
         Spacer(Modifier.height(10.dp))
-        Text("Thank you", color = OnDarkSoft, fontSize = 13.sp)
+        if (summary.isNotBlank()) {
+            Text("Select on the machine:", color = OnDarkSoft, fontSize = 13.sp)
+            Text(summary, color = Teal, fontSize = 18.sp, fontWeight = FontWeight.Black)
+        } else Text("Thank you", color = OnDarkSoft, fontSize = 13.sp)
     }
 }
 

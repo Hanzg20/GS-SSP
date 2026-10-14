@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 interface MachineStarter {
     /** True when the module answers (checked before a card is charged). */
     suspend fun ready(m: LaundryMachineConfig): Boolean
-    suspend fun start(m: LaundryMachineConfig): ModbusRelayBoard.PulseResult
+    suspend fun start(m: LaundryMachineConfig, pulses: Int): ModbusRelayBoard.PulseResult
     /** The module's inputs, for machines wired with a "running" signal; null = unknown. */
     suspend fun inputs(): BooleanArray?
     /** Technician: is the module there (switches channel 1 off, which changes nothing). */
@@ -43,7 +43,7 @@ interface MachineStarter {
 class ModbusStarter(private val board: ModbusRelayBoard) : MachineStarter {
     // Switching a relay off that is already off changes nothing: a safe "are you there".
     override suspend fun ready(m: LaundryMachineConfig) = board.setRelay(m.relay, false)
-    override suspend fun start(m: LaundryMachineConfig) = board.pulse(m.relay, m.pulses, m.pulseMs, m.gapMs)
+    override suspend fun start(m: LaundryMachineConfig, pulses: Int) = board.pulse(m.relay, pulses, m.pulseMs, m.gapMs)
     override suspend fun inputs() = board.readInputs(LaundryMachineConfig.MAX_RELAY)
     override suspend fun ping() = board.setRelay(1, false)
     override suspend fun testPulse(relay: Int) = board.pulse(relay, 1, LaundryMachineConfig.DEFAULT_PULSE_MS, 0)
@@ -52,9 +52,9 @@ class ModbusStarter(private val board: ModbusRelayBoard) : MachineStarter {
 /** Demo mode: no relay module, no card, nothing recorded. */
 object DemoStarter : MachineStarter {
     override suspend fun ready(m: LaundryMachineConfig) = true
-    override suspend fun start(m: LaundryMachineConfig): ModbusRelayBoard.PulseResult {
-        delay(m.pulses * (m.pulseMs + m.gapMs))
-        return ModbusRelayBoard.PulseResult(m.pulses, m.pulses)
+    override suspend fun start(m: LaundryMachineConfig, pulses: Int): ModbusRelayBoard.PulseResult {
+        delay(minOf(2_500L, pulses * (m.pulseMs + m.gapMs)))
+        return ModbusRelayBoard.PulseResult(pulses, pulses)
     }
     override suspend fun inputs(): BooleanArray? = null
     override suspend fun ping() = true
@@ -81,10 +81,12 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
 
     sealed interface Screen {
         object Home : Screen
-        data class Confirm(val machine: LaundryMachineConfig) : Screen
+        /** The machine and what the customer chose for it (temperature / add-ons / dryer time). */
+        data class Confirm(val order: LaundryMachineConfig.Order) : Screen { val machine get() = order.machine }
         data class Paying(val machine: LaundryMachineConfig, val message: String, val chargeCents: Int = machine.priceCents, val test: Boolean = false) : Screen
         data class Starting(val machine: LaundryMachineConfig) : Screen
-        data class Started(val machine: LaundryMachineConfig) : Screen
+        /** [summary]: what to pick on the machine ("Hot · Heavy soil"), empty for a dryer / single-pulse machine. */
+        data class Started(val machine: LaundryMachineConfig, val summary: String = "") : Screen
         data class Declined(val message: String) : Screen
         /** The machine didn't (fully) start. [paid]: the card was charged. */
         data class StartFailed(val machine: LaundryMachineConfig, val paid: Boolean) : Screen
@@ -112,8 +114,8 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         val screen: Screen = Screen.Home,
         /** Relay channels whose machine reports "running" (module inputs). */
         val running: Set<Int> = emptySet(),
-        /** Machine number -> when this terminal last started it (for the "in use" estimate). */
-        val startedAt: Map<Int, Long> = emptyMap(),
+        /** Machine number -> when the cycle this terminal paid for should end (the "in use" estimate). */
+        val endsAt: Map<Int, Long> = emptyMap(),
         val locked: Boolean = false,
         val demoMode: Boolean = false,
         val configLoaded: Boolean = false,
@@ -128,12 +130,12 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         val notice: String? = null,
     ) {
         /** What [m] costs after a pending coupon (a VIP balance pays the full price). */
-        fun priceFor(m: LaundryMachineConfig): Int = when (val p = pending) {
-            is Pending.Coupon -> couponPrice(m.priceCents, p)
-            else -> m.priceCents
+        fun priceFor(o: LaundryMachineConfig.Order): Int = when (val p = pending) {
+            is Pending.Coupon -> couponPrice(o.totalCents, p)
+            else -> o.totalCents
         }
         fun busy(m: LaundryMachineConfig) =
-            (m.input != null && m.input in running) || (demoMode && m.machineNo in startedAt)
+            (m.input != null && m.input in running) || (demoMode && (endsAt[m.machineNo] ?: 0L) > System.currentTimeMillis())
     }
 
     private val _state = MutableStateFlow(UiState())
@@ -274,7 +276,7 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(machines = if (demo) LaundryMachineConfig.DEMO else machines, problems = problems,
                 configLoaded = true, demoMode = demo,
                 // Demo: a couple of machines mid-cycle, so the "in use" look shows too.
-                startedAt = if (demo) DEMO_RUNNING.associateWith { n -> System.currentTimeMillis() - n * 5 * 60_000L } else it.startedAt)
+                endsAt = if (demo) DEMO_RUNNING.mapValues { (_, min) -> System.currentTimeMillis() + min * 60_000L } else it.endsAt)
         }
     }
 
@@ -287,15 +289,25 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
     fun select(m: LaundryMachineConfig) {
         val s = _state.value
         if (s.screen != Screen.Home || s.locked || s.busy(m)) return
-        _state.update { it.copy(screen = Screen.Confirm(m)) }
+        _state.update { it.copy(screen = Screen.Confirm(LaundryMachineConfig.Order(m))) }
     }
+
+    private fun updateOrder(change: (LaundryMachineConfig.Order) -> LaundryMachineConfig.Order) {
+        val c = _state.value.screen as? Screen.Confirm ?: return
+        _state.update { it.copy(screen = Screen.Confirm(change(c.order))) }
+    }
+
+    fun chooseTemp(t: LaundryMachineConfig.Option) = updateOrder { it.copy(temp = t) }
+    fun toggleAddon(a: LaundryMachineConfig.Option) = updateOrder { if (a in it.addons) it.copy(addons = it.addons - a) else it.copy(addons = it.addons + a) }
+    fun chooseDry(d: LaundryMachineConfig.DryTime) = updateOrder { it.copy(dry = d) }
 
     fun back() {
         if (_state.value.screen is Screen.Confirm) _state.update { it.copy(screen = Screen.Home) }
     }
 
     fun confirm() {
-        val m = (_state.value.screen as? Screen.Confirm)?.machine ?: return
+        val order = (_state.value.screen as? Screen.Confirm)?.order ?: return
+        val m = order.machine
         // A demo machine can still take a technician's real card test; its start is simulated.
         val simulate = m.productId.startsWith(DEMO_PREFIX)
         val demo = _state.value.demoMode && TestSale.peek() == null
@@ -308,25 +320,25 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
             }
             val pending = _state.value.pending
             clearPending()
-            val price = _state.value.copy(pending = pending).priceFor(m)
+            val price = _state.value.copy(pending = pending).priceFor(order)
             when {
-                pending is Pending.Vip -> payWithVip(m, pending, demo, simulate)
-                pending is Pending.Coupon && price <= 0 -> redeemFree(m, pending, demo, simulate)
+                pending is Pending.Vip -> payWithVip(order, pending, demo, simulate)
+                pending is Pending.Coupon && price <= 0 -> redeemFree(order, pending, demo, simulate)
                 demo -> {
                     // Shows the card step as a customer would see it, then "approves": no card, nothing charged.
                     _state.update { it.copy(screen = Screen.Paying(m, "Tap, insert or swipe your card", price)) }
                     delay(DEMO_CARD_MS)
                     if (_state.value.screen !is Screen.Paying) return@launch
-                    onPaid(m, ref = "DEMO_" + System.currentTimeMillis(), bankRef = "", entryMode = "DEMO", authCode = null, demo = true)
+                    onPaid(order, ref = "DEMO_" + System.currentTimeMillis(), bankRef = "", entryMode = "DEMO", authCode = null, demo = true)
                 }
-                pending is Pending.Coupon -> cardSale(m, simulate, price) {
+                pending is Pending.Coupon -> cardSale(order, simulate, price) {
                     // Paid by card already: use the coupon up now. A lost race (used elsewhere
                     // meanwhile) still starts the machine -- they paid.
                     if (CouponRepository.redeemCoupon(pending.code, deviceSn) !is CouponRedeemResult.Success) {
                         DiagnosticManager.reportError(deviceSn, "COUPON_REDEEM_AFTER_PAY_FAILED", severity = "WARNING", trace = "code=${pending.code}")
                     }
                 }
-                else -> cardSale(m, simulate, price)
+                else -> cardSale(order, simulate, price)
             }
         }
     }
@@ -339,7 +351,8 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun starter(demo: Boolean) = if (demo) DemoStarter else starter
 
-    private fun cardSale(m: LaundryMachineConfig, simulate: Boolean, amountCents: Int, afterApproved: (suspend () -> Unit)? = null) {
+    private fun cardSale(order: LaundryMachineConfig.Order, simulate: Boolean, amountCents: Int, afterApproved: (suspend () -> Unit)? = null) {
+        val m = order.machine
         val pay = payment ?: run { showThenHome(Screen.Declined("Card payment is not available"), 5000); return }
         val testCents = TestSale.consume()
         val charge = testCents ?: amountCents
@@ -356,6 +369,7 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
                     ecr_ref_num = ref,
                     payment_method = "CREDIT_CARD",
                     product_id = m.productId.takeUnless { simulate },
+                    order_note = order.summary.ifBlank { null },
                 )
             )
             var cancelled = false
@@ -365,7 +379,7 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
                 override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                     viewModelScope.launch {
                         afterApproved?.invoke()
-                        onPaid(m, ref, refNum, entryMode, authCode, demo = false, simulate = simulate, chargeCents = charge)
+                        onPaid(order, ref, refNum, entryMode, authCode, demo = false, simulate = simulate, chargeCents = charge)
                     }
                 }
                 override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
@@ -390,9 +404,10 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun onPaid(
-        m: LaundryMachineConfig, ref: String, bankRef: String, entryMode: String, authCode: String?, demo: Boolean,
-        simulate: Boolean = false, chargeCents: Int = m.priceCents,
+        order: LaundryMachineConfig.Order, ref: String, bankRef: String, entryMode: String, authCode: String?, demo: Boolean,
+        simulate: Boolean = false, chargeCents: Int = order.totalCents,
     ) {
+        val m = order.machine
         if (!demo) {
             val card = cardInfo.also { cardInfo = null }
             TransactionRepository.updatePaymentStatus(
@@ -402,12 +417,12 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
         _state.update { it.copy(screen = Screen.Starting(m)) }
-        val result = starter(demo || simulate).start(m)
+        val result = starter(demo || simulate).start(m, order.pulses)
         if (result.ok) {
             if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ref, if (simulate) "SIMULATED" else "ACK_RECEIVED")
-            _state.update { it.copy(startedAt = it.startedAt + (m.machineNo to System.currentTimeMillis())) }
-            TtsManager.speak("Payment approved. Please press start on machine ${m.machineNo}.")
-            showThenHome(Screen.Started(m), 12000)
+            markRunning(order)
+            TtsManager.speak("Payment approved. ${startPhrase(order)}")
+            showThenHome(Screen.Started(m, startSummary(order)), 12000)
             return
         }
         // Didn't (fully) start. Some pulses may have reached the machine: never send more.
@@ -435,26 +450,27 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun payWithVip(m: LaundryMachineConfig, vip: Pending.Vip, demo: Boolean, simulate: Boolean) {
+    private fun payWithVip(order: LaundryMachineConfig.Order, vip: Pending.Vip, demo: Boolean, simulate: Boolean) {
+        val m = order.machine
         _state.update { it.copy(screen = Screen.Working(m, "Paying from your VIP balance…")) }
         viewModelScope.launch {
             if (demo) {
                 delay(1_200)
-                startPrepaid(m, "DEMO_VIP_" + System.currentTimeMillis(), demo = true, simulate = true, paidWith = "VIP", spoken = "Paid from your VIP balance.")
+                startPrepaid(order, "DEMO_VIP_" + System.currentTimeMillis(), demo = true, simulate = true, paidWith = "VIP", spoken = "Paid from your VIP balance.")
                 return@launch
             }
-            when (val r = VipRepository.deductBalance(vip.cardUid, m.priceCents)) {
+            when (val r = VipRepository.deductBalance(vip.cardUid, order.totalCents)) {
                 is VipDeductResult.Success -> {
                     val ref = "VIP_${vip.cardUid}_${System.currentTimeMillis()}"
                     TransactionRepository.recordTransaction(
                         getApplication(),
                         TransactionRecord(
-                            device_sn = deviceSn, amount = m.priceCents, payment_status = "PAID", ecr_ref_num = ref,
+                            device_sn = deviceSn, amount = order.totalCents, payment_status = "PAID", ecr_ref_num = ref,
                             payment_method = "VIP_CARD", product_id = m.productId.takeUnless { simulate },
-                            vip_card_uid = vip.cardUid, entry_mode = "QR_SCAN",
+                            vip_card_uid = vip.cardUid, entry_mode = "QR_SCAN", order_note = order.summary.ifBlank { null },
                         ),
                     )
-                    startPrepaid(m, ref, demo = false, simulate = simulate, paidWith = "VIP balance", spoken = "Paid from your VIP balance.")
+                    startPrepaid(order, ref, demo = false, simulate = simulate, paidWith = "VIP balance", spoken = "Paid from your VIP balance.")
                 }
                 is VipDeductResult.Rejected -> {
                     _state.update { it.copy(screen = Screen.Home) }
@@ -471,12 +487,13 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun redeemFree(m: LaundryMachineConfig, coupon: Pending.Coupon, demo: Boolean, simulate: Boolean) {
+    private fun redeemFree(order: LaundryMachineConfig.Order, coupon: Pending.Coupon, demo: Boolean, simulate: Boolean) {
+        val m = order.machine
         _state.update { it.copy(screen = Screen.Working(m, "Applying your coupon…")) }
         viewModelScope.launch {
             if (demo) {
                 delay(1_200)
-                startPrepaid(m, "DEMO_COUPON_" + System.currentTimeMillis(), demo = true, simulate = true, paidWith = "coupon", spoken = "Your coupon covers it.")
+                startPrepaid(order, "DEMO_COUPON_" + System.currentTimeMillis(), demo = true, simulate = true, paidWith = "coupon", spoken = "Your coupon covers it.")
                 return@launch
             }
             when (CouponRepository.redeemCoupon(coupon.code, deviceSn)) {
@@ -487,9 +504,10 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
                         TransactionRecord(
                             device_sn = deviceSn, amount = 0, payment_status = "PAID", ecr_ref_num = ref,
                             payment_method = "COUPON", product_id = m.productId.takeUnless { simulate }, entry_mode = "QR_SCAN",
+                            order_note = order.summary.ifBlank { null },
                         ),
                     )
-                    startPrepaid(m, ref, demo = false, simulate = simulate, paidWith = "coupon ${coupon.code}", spoken = "Your coupon covers it.")
+                    startPrepaid(order, ref, demo = false, simulate = simulate, paidWith = "coupon ${coupon.code}", spoken = "Your coupon covers it.")
                 }
                 else -> { _state.update { it.copy(screen = Screen.Home) }; notice("This coupon can't be used. Please see the attendant.") }
             }
@@ -501,14 +519,15 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
      * can be reversed from the terminal, so a machine that won't start raises a CRITICAL
      * alert for staff to compensate in Cael.
      */
-    private suspend fun startPrepaid(m: LaundryMachineConfig, ref: String, demo: Boolean, simulate: Boolean, paidWith: String, spoken: String) {
+    private suspend fun startPrepaid(order: LaundryMachineConfig.Order, ref: String, demo: Boolean, simulate: Boolean, paidWith: String, spoken: String) {
+        val m = order.machine
         _state.update { it.copy(screen = Screen.Starting(m)) }
-        val result = starter(demo || simulate).start(m)
+        val result = starter(demo || simulate).start(m, order.pulses)
         if (result.ok) {
             if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ref, if (simulate) "SIMULATED" else "ACK_RECEIVED")
-            _state.update { it.copy(startedAt = it.startedAt + (m.machineNo to System.currentTimeMillis())) }
-            TtsManager.speak("$spoken Please press start on machine ${m.machineNo}.")
-            showThenHome(Screen.Started(m), 12000)
+            markRunning(order)
+            TtsManager.speak("$spoken ${startPhrase(order)}")
+            showThenHome(Screen.Started(m, startSummary(order)), 12000)
             return
         }
         TtsManager.speak("Sorry, the machine could not start. Please contact the attendant.")
@@ -517,8 +536,22 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         TransactionRepository.updateHardwareStatus(getApplication(), ref, if (result.delivered > 0 || result.uncertain) "PARTIAL_DISPENSE" else "HARDWARE_ERROR")
         DiagnosticManager.reportError(
             deviceSn, "LAUNDRY_PREPAID_NOT_STARTED", severity = "CRITICAL",
-            trace = "$ref paid with $paidWith (${m.priceCents}c), machine ${m.machineNo} got ${result.delivered}/${result.requested} pulses -- compensate in Cael",
+            trace = "$ref paid with $paidWith (${order.totalCents}c ${order.summary}), machine ${m.machineNo} got ${result.delivered}/${result.requested} pulses -- compensate in Cael",
         )
+    }
+
+    /** What to pick on the machine: the washer's temperature / add-ons (the credit covers them). */
+    private fun startSummary(o: LaundryMachineConfig.Order) = if (o.machine.isWasher) o.summary else ""
+
+    private fun startPhrase(o: LaundryMachineConfig.Order): String {
+        val pick = startSummary(o)
+        return if (pick.isBlank()) "Please press start on machine ${o.machine.machineNo}."
+        else "On machine ${o.machine.machineNo}, choose ${pick.replace(" · ", " and ")}, then press start."
+    }
+
+    private fun markRunning(o: LaundryMachineConfig.Order) {
+        val min = o.minutes ?: return
+        _state.update { it.copy(endsAt = it.endsAt + (o.machine.machineNo to System.currentTimeMillis() + min * 60_000L)) }
     }
 
     private fun showThenHome(screen: Screen, afterMs: Long) {
@@ -557,7 +590,7 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         val DEMO_PLANS = listOf(DemoPlan(2_000, 2_200), DemoPlan(5_000, 6_000), DemoPlan(10_000, 12_500))
         const val DEMO_PREFIX = "demo-"
         /** Demo machines shown running. */
-        val DEMO_RUNNING = setOf(2, 7)
+        val DEMO_RUNNING = mapOf(2 to 23, 7 to 18)
     }
 }
 
