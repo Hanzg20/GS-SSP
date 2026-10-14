@@ -240,6 +240,9 @@ object DeviceRepository {
     private val _storeChanges = kotlinx.coroutines.flow.MutableStateFlow(0)
     val storeChanges: kotlinx.coroutines.flow.StateFlow<Int> = _storeChanges
 
+    /** The shell reloaded for the new store: stop asking (the process lives on across the reload). */
+    fun storeChangeHandled() { _storeChanges.value = 0 }
+
     // Bumped on every theme change; the UI keys its tree on it so a switch in
     // Settings repaints every screen at once (they read getThemeStyle() directly).
     private val _themeVersion = kotlinx.coroutines.flow.MutableStateFlow(0)

@@ -63,6 +63,7 @@ fun StoreChangeWatcher(deviceSn: String) {
 private suspend fun reloadForNewStore(context: Context) {
     context.applicationContext.getSharedPreferences("retail_cart", Context.MODE_PRIVATE).edit().clear().apply()
     RetailRepository.syncWithCloud(context)
+    DeviceRepository.storeChangeHandled()
     val activity = context as? Activity ?: return
     // A new task, not recreate(): recreate() keeps the ViewModels, and with them the old store's cart.
     activity.packageManager.getLaunchIntentForPackage(activity.packageName)?.let {
