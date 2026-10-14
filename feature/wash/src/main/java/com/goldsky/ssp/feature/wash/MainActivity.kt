@@ -1701,6 +1701,23 @@ class MainActivity : BaseAdActivity() {
      * approved, washing (the stage bar filling as pulses would), done. Nothing is charged,
      * recorded or sent to the hardware.
      */
+    /** Technician CLOSE BATCH, after the confirmation. */
+    private fun closeBatchNow(btn: Button) {
+        btn.isEnabled = false
+        btn.text = "SETTLING..."
+        // Same SettlementManager path as the 03:30 daily job and Timer's
+        // "settle now": shared lock (no double settle), batch totals in the
+        // BATCH_CLOSE record, alert on failure. This button used to call
+        // closeBatch directly and record an empty MANUAL_BATCH_CLOSE.
+        CoroutineScope(Dispatchers.Main).launch {
+            val o = SettlementManager.settle(this@MainActivity, "MANUAL")
+            btn.isEnabled = true
+            btn.text = "CLOSE BATCH"
+            val msg = if (o.ok) "Batch closed" + (o.totals?.let { ": ${it.summary()}" } ?: "") else "Batch failed: ${o.message}"
+            Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun previewSuccessScreens() {
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         dialog.setContentView(R.layout.dialog_payment)
@@ -2079,23 +2096,17 @@ class MainActivity : BaseAdActivity() {
             }
         }
 
-        dialog.findViewById<Button>(R.id.btn_op_batch).setOnClickListener {
-            applyClickFeedback(it)
-            val btn = it as Button
-            btn.isEnabled = false
-            btn.text = "SETTLING..."
-            
-            // Same SettlementManager path as the 03:30 daily job and Timer's
-            // "settle now": shared lock (no double settle), batch totals in the
-            // BATCH_CLOSE record, alert on failure. This button used to call
-            // closeBatch directly and record an empty MANUAL_BATCH_CLOSE.
-            CoroutineScope(Dispatchers.Main).launch {
-                val o = SettlementManager.settle(this@MainActivity, "MANUAL")
-                btn.isEnabled = true
-                btn.text = "CLOSE BATCH"
-                val msg = if (o.ok) "Batch closed" + (o.totals?.let { ": ${it.summary()}" } ?: "") else "Batch failed: ${o.message}"
-                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
-            }
+        dialog.findViewById<Button>(R.id.btn_op_batch).setOnClickListener { v ->
+            applyClickFeedback(v)
+            // Closing the batch sends the day's sales to the bank at once and can't be
+            // undone; the button sits beside PREVIEW SUCCESS in a panel that can scroll
+            // under a finger (closed by mistake twice on 255, 2026-10-14). Ask first.
+            android.app.AlertDialog.Builder(this@MainActivity)
+                .setTitle("Close batch now?")
+                .setMessage("Sends all card sales since the last close to the bank for settlement. This can't be undone. (It also runs automatically every night at 03:30.)")
+                .setNegativeButton("CANCEL", null)
+                .setPositiveButton("CLOSE BATCH") { _, _ -> closeBatchNow(v as Button) }
+                .show()
         }
 
         dialog.findViewById<Button>(R.id.btn_op_check).setOnClickListener {

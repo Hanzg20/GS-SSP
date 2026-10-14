@@ -724,8 +724,20 @@ private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () ->
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
             ) { Text(if (s.running) "进行中…" else "开始", fontSize = 13.sp) }
             Spacer(Modifier.width(6.dp))
+            // Closing the batch can't be undone: ask first (Wash's CLOSE BATCH was hit by
+            // mistake twice on 255, 2026-10-14).
+            var confirmSettle by remember { mutableStateOf(false) }
+            if (confirmSettle) {
+                AlertDialog(
+                    onDismissRequest = { confirmSettle = false },
+                    title = { Text("立即结算？") },
+                    text = { Text("把上次结算以来的所有刷卡交易送银行结算，不能撤销。（每天 03:30 也会自动结算。）") },
+                    confirmButton = { TextButton(onClick = { confirmSettle = false; onSettle() }) { Text("结算") } },
+                    dismissButton = { TextButton(onClick = { confirmSettle = false }) { Text("取消") } },
+                )
+            }
             OutlinedButton(
-                onClick = onSettle, enabled = !s.running,
+                onClick = { confirmSettle = true }, enabled = !s.running,
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
             ) { Text("立即结算", fontSize = 13.sp, color = TextHi) }
         }
