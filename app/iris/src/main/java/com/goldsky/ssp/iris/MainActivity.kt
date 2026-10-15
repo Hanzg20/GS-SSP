@@ -301,8 +301,13 @@ class MainActivity : ComponentActivity() {
 
                         // Detail overlays (drawn above the NavHost content, not routes of their own)
                         activeSaleData?.let { sale ->
-                            // The customer chooses, on Iris handed over: 15/18/20% of the amount before tax.
+                            // The customer chooses, on Iris handed over (10/12/15% of the amount before
+                            // tax). Paying a table: the customer checks the bill first -- they never
+                            // saw the check being taken.
                             com.goldsky.ssp.feature.retail.ui.CustomerTipDialog(
+                                review = checkPay?.let { cp ->
+                                    cp.billReview(dine.check, getString(com.goldsky.ssp.feature.retail.R.string.dine_review_title, cp.tableName, cp.checkNo))
+                                },
                                 basisCents = sale.subtotalCents,
                                 totalCents = sale.subtotalCents + sale.taxCents,
                                 onTip = { tip ->

@@ -312,4 +312,26 @@ data class CheckPay(
 
     /** Kept for callers: the tax part decided when the payment was chosen. */
     fun taxPart(@Suppress("UNUSED_PARAMETER") detail: DineRepository.CheckDetail): Int = taxCents
+
+    /**
+     * The bill the customer checks before the tip (Ourea's Eye, Iris handed over): at a
+     * table the order was taken earlier, so this is the first time they see it. Paying
+     * chosen dishes: those dishes. The balance or an even share: the whole bill, what was
+     * paid already, then this payment -- so every figure adds up. [title]: "Table T1 · #6".
+     */
+    fun billReview(detail: DineRepository.CheckDetail?, title: String): com.goldsky.ssp.common.Tipping.Review {
+        val due = amountCents
+        val sub = amountCents - taxCents
+        return if (itemIds != null || detail == null) com.goldsky.ssp.common.Tipping.Review(
+            title = listOf(title, label).filter { it.isNotBlank() }.joinToString(" · "),
+            lines = lines.map { com.goldsky.ssp.common.Tipping.ReviewLine(it.name, it.quantity, it.lineTotalCents) },
+            subtotalCents = sub, taxCents = taxCents, totalCents = due
+        ) else com.goldsky.ssp.common.Tipping.Review(
+            title = title,
+            lines = detail.liveItems.map { com.goldsky.ssp.common.Tipping.ReviewLine(it.displayName, it.quantity, it.lineTotalCents) },
+            subtotalCents = detail.subtotalCents, taxCents = detail.taxCents, totalCents = detail.totalCents,
+            paidCents = detail.paidCents, dueCents = due,
+            dueLabel = if (due == detail.balanceCents) null else label.ifBlank { null }
+        )
+    }
 }

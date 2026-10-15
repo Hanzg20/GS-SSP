@@ -277,27 +277,7 @@ class MainActivity : ComponentActivity() {
                                 // Dine-in: the customer never saw the check being taken -- the bill
                                 // comes first. A counter sale was watched on the display already.
                                 review = checkPay?.let { cp ->
-                                    val title = getString(R.string.ourea_review_table, cp.tableName, cp.checkNo)
-                                    val d = dine.check
-                                    if (cp.itemIds != null || d == null) {
-                                        // Paying for chosen dishes: those dishes are the bill.
-                                        com.goldsky.ssp.common.Tipping.Review(
-                                            title = listOf(title, cp.label).filter { it.isNotBlank() }.joinToString(" · "),
-                                            lines = cp.lines.map { com.goldsky.ssp.common.Tipping.ReviewLine(it.name, it.quantity, it.lineTotalCents) },
-                                            subtotalCents = subtotal, taxCents = tax, totalCents = subtotal + tax
-                                        )
-                                    } else {
-                                        // The balance or an even share: the whole bill, what was paid
-                                        // already, then this payment -- every figure adds up.
-                                        val due = subtotal + tax
-                                        com.goldsky.ssp.common.Tipping.Review(
-                                            title = title,
-                                            lines = d.liveItems.map { com.goldsky.ssp.common.Tipping.ReviewLine(it.name, it.quantity, it.lineTotalCents) },
-                                            subtotalCents = d.subtotalCents, taxCents = d.taxCents, totalCents = d.totalCents,
-                                            paidCents = d.paidCents, dueCents = due,
-                                            dueLabel = if (due == d.balanceCents) null else cp.label.ifBlank { null }
-                                        )
-                                    }
+                                    cp.billReview(dine.check, getString(com.goldsky.ssp.feature.retail.R.string.dine_review_title, cp.tableName, cp.checkNo))
                                 },
                                 onTip = { tip ->
                                     val method = tipFor

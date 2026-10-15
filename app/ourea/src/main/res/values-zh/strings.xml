@@ -5,7 +5,6 @@
     <string name="ourea_cart_empty">购物车是空的</string>
     <string name="ourea_tip_next_on_eye">接下来由顾客选择</string>
     <string name="ourea_review_waiting_title">顾客正在核对账单</string>
-    <string name="ourea_review_table">Table %1$s · #%2$d</string>
     <string name="ourea_cart_empty_hint">点商品加入购物车</string>
     <string name="ourea_no_matching_products">没有符合的商品</string>
     <string name="ourea_total">合计</string>
