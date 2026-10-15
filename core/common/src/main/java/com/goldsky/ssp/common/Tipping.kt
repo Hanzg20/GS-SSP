@@ -18,7 +18,15 @@ object Tipping {
      * the payment is the first time they see it. (A counter sale doesn't need one: the
      * customer watched the cart being built on the display.) [title]: "Table T4 · #12".
      */
-    data class Review(val title: String, val lines: List<ReviewLine>, val subtotalCents: Int, val taxCents: Int, val totalCents: Int)
+    data class Review(
+        val title: String, val lines: List<ReviewLine>, val subtotalCents: Int, val taxCents: Int, val totalCents: Int,
+        /** Already paid on this bill (an earlier split payment). */
+        val paidCents: Int = 0,
+        /** What THIS payment is: the balance, or a share of it. */
+        val dueCents: Int = totalCents - paidCents,
+        /** "Balance due", "Share 1/3"...; null: the total is what's due. */
+        val dueLabel: String? = null,
+    )
     data class ReviewLine(val name: String, val quantity: Int, val amountCents: Int)
 
     /** [percent] null: a flat amount (none offered now; kept for the screens that draw both). */

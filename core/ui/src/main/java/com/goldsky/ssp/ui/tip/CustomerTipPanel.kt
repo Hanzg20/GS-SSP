@@ -147,9 +147,23 @@ private fun ReviewBill(review: Tipping.Review, palette: TipPalette, compact: Boo
                 Text(stringResource(R.string.tip_review_tax), color = palette.subtext, fontSize = small, modifier = Modifier.weight(1f))
                 Text(money(review.taxCents), color = palette.subtext, fontSize = small)
             }
+            // The lines add up to the total; what this payment is comes after it
+            // (paid earlier, the balance or a share), so every figure checks out.
+            val partial = review.paidCents > 0 || review.dueCents != review.totalCents
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.tip_review_total), color = palette.text, fontSize = if (compact) 18.sp else 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text(money(review.totalCents), color = palette.text, fontSize = if (compact) 22.sp else 28.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.tip_review_total), color = palette.text, fontSize = if (partial) small else if (compact) 18.sp else 22.sp,
+                    fontWeight = if (partial) FontWeight.Normal else FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(money(review.totalCents), color = palette.text, fontSize = if (partial) small else if (compact) 22.sp else 28.sp,
+                    fontWeight = if (partial) FontWeight.Normal else FontWeight.Bold)
+            }
+            if (review.paidCents > 0) Row(Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.tip_review_paid), color = palette.subtext, fontSize = small, modifier = Modifier.weight(1f))
+                Text("−" + money(review.paidCents), color = palette.subtext, fontSize = small)
+            }
+            if (partial) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(review.dueLabel ?: stringResource(R.string.tip_review_balance), color = palette.text, fontSize = if (compact) 18.sp else 22.sp,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(money(review.dueCents), color = palette.text, fontSize = if (compact) 22.sp else 28.sp, fontWeight = FontWeight.Bold)
             }
         }
         Box(
@@ -157,7 +171,7 @@ private fun ReviewBill(review: Tipping.Review, palette: TipPalette, compact: Boo
                 .background(palette.accent).clickable(onClick = onConfirm),
             contentAlignment = Alignment.Center
         ) {
-            Text(stringResource(R.string.tip_review_confirm, money(review.totalCents)), color = palette.onAccent, fontSize = if (compact) 17.sp else 20.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.tip_review_confirm, money(review.dueCents)), color = palette.onAccent, fontSize = if (compact) 17.sp else 20.sp, fontWeight = FontWeight.Bold)
         }
         Text(stringResource(R.string.tip_review_help), color = palette.subtext, fontSize = if (compact) 12.sp else 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
     }

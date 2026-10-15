@@ -211,6 +211,8 @@
     <string name="tip_review_subtotal">Subtotal</string>
     <string name="tip_review_tax">Tax</string>
     <string name="tip_review_total">Total</string>
+    <string name="tip_review_paid">Paid</string>
+    <string name="tip_review_balance">Balance due</string>
     <string name="tip_review_confirm">Confirm %1$s</string>
     <string name="tip_review_help">Something wrong? Please tell your server.</string>
     <string name="tip_total">Total %1$s</string>

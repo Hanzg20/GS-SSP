@@ -528,6 +528,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                 review?.let { r ->
                     put("Review", org.json.JSONObject().apply {
                         put("Title", r.title); put("SubtotalCents", r.subtotalCents); put("TaxCents", r.taxCents); put("TotalCents", r.totalCents)
+                        put("PaidCents", r.paidCents); put("DueCents", r.dueCents); r.dueLabel?.let { put("DueLabel", it) }
                         put("Items", org.json.JSONArray().apply {
                             r.lines.forEach { l -> put(org.json.JSONObject().put("name", l.name).put("qty", l.quantity).put("cents", l.amountCents)) }
                         })

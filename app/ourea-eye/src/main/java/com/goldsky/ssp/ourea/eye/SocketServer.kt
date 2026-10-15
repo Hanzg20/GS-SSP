@@ -112,7 +112,10 @@ object SocketServerManager {
                                 },
                                 subtotalCents = r["SubtotalCents"]?.jsonPrimitive?.intOrNull ?: 0,
                                 taxCents = r["TaxCents"]?.jsonPrimitive?.intOrNull ?: 0,
-                                totalCents = r["TotalCents"]?.jsonPrimitive?.intOrNull ?: total
+                                totalCents = r["TotalCents"]?.jsonPrimitive?.intOrNull ?: total,
+                                paidCents = r["PaidCents"]?.jsonPrimitive?.intOrNull ?: 0,
+                                dueCents = r["DueCents"]?.jsonPrimitive?.intOrNull ?: total,
+                                dueLabel = r["DueLabel"]?.jsonPrimitive?.content
                             )
                         }
                         onStateChanged?.invoke(CfdDisplayState.Tip(id, basis, total, root["CardNext"]?.jsonPrimitive?.booleanOrNull ?: false, review))
