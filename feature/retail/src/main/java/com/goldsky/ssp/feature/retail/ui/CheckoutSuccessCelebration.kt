@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -130,7 +131,9 @@ fun CheckoutSuccessCelebration(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .offset(y = slideUpAnim.value.dp),
+                        .offset(y = slideUpAnim.value.dp)
+                        // Fade in while it rises: at full offset it hangs below the card.
+                        .alpha(1f - slideUpAnim.value / 100f),
                     shape = RoundedCornerShape(12.dp),
                     color = GoldSkyCardSurface
                 ) {
