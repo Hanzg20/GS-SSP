@@ -4,9 +4,8 @@ package com.goldsky.ssp.common
  * Tip options the customer sees (design: https://claude.ai/artifact/B4cXVxmX1HRKfHdRcxo34q,
  * "Tip"), shared by Ourea Eye, Ourea and Iris so every screen offers the same thing.
  *
- * The layout the owner chose (2026-10-14, "the version Canadians like best"):
- * 10% / 12% / 15% / Custom in one row, "No tip" under them, a thank-you line for
- * local staff. Percentages of the amount BEFORE tax (after discounts), the dollar
+ * 10% / 12% / 15% (owner's choice, 2026-10-14; within the 15% cap Quebec's consumer
+ * groups ask for), then Custom and No Tip, all alike (CustomerTipPanel). Percentages of the amount BEFORE tax (after discounts), the dollar
  * amount shown under each, whatever the order size (the flat $1/$2/$3 for small
  * orders is gone with it). Nothing is preselected.
  */

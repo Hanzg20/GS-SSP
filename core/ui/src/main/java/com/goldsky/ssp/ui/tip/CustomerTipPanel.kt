@@ -62,37 +62,50 @@ fun CustomerTipPanel(
     }
 }
 
+/**
+ * Calm, not pushy (owner's call 2026-10-14, after the research on tip screens: Angus
+ * Reid 2026 -- 93% annoyed by tip prompts at the counter; Quebec Bill 72 -- options
+ * shown uniformly, neutral words): the total is the big figure, the tip is a small
+ * optional add-on under it. Five buttons of one size and style -- 10% 12% 15%, then
+ * Custom and No Tip -- moderate in size with room around them, nothing preselected.
+ * The owner keeps one quiet thank-you line for local staff under the buttons.
+ */
 @Composable
 private fun TipOptions(basisCents: Int, totalCents: Int, palette: TipPalette, compact: Boolean, onCustom: () -> Unit, onChosen: (Int) -> Unit) {
     val gap = if (compact) 10.dp else 14.dp
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(stringResource(R.string.tip_title), color = palette.text, fontSize = if (compact) 24.sp else 30.sp, fontWeight = FontWeight.Bold)
-            Text(stringResource(R.string.tip_total, money(totalCents)), color = palette.subtext, fontSize = if (compact) 15.sp else 17.sp)
-        }
-        // 10% 12% 15% Custom in one row; "No tip" under them, as wide as the row.
-        Row(Modifier.fillMaxWidth().weight(1.5f), horizontalArrangement = Arrangement.spacedBy(gap)) {
-            Tipping.options(basisCents).forEach { o ->
-                Tile(palette, Modifier.weight(1f).fillMaxHeight(), onClick = { onChosen(o.tipCents) }) {
-                    if (o.percent != null) {
-                        Text("${o.percent}%", color = palette.text, fontSize = if (compact) 26.sp else 36.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                        Text(money(o.tipCents), color = palette.subtext, fontSize = if (compact) 13.sp else 17.sp, maxLines = 1)
-                    } else {
-                        Text(money(o.tipCents).removeSuffix(".00"), color = palette.text, fontSize = if (compact) 26.sp else 36.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        // Every button one column of a 3-column grid, whatever the screen.
+        val cell = ((maxWidth - gap * 2) / 3).coerceAtMost(if (compact) 120.dp else 150.dp)
+        val height = if (compact) 64.dp else 84.dp
+        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Text(stringResource(R.string.tip_total, money(totalCents)), color = palette.text, fontSize = if (compact) 26.sp else 32.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(if (compact) 4.dp else 6.dp))
+            Text(stringResource(R.string.tip_title), color = palette.subtext, fontSize = if (compact) 15.sp else 18.sp)
+            Spacer(Modifier.height(if (compact) 16.dp else 24.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                Tipping.options(basisCents).forEach { o ->
+                    Tile(palette, Modifier.width(cell).height(height), onClick = { onChosen(o.tipCents) }) {
+                        if (o.percent != null) {
+                            Text("${o.percent}%", color = palette.text, fontSize = if (compact) 20.sp else 24.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text(money(o.tipCents), color = palette.subtext, fontSize = if (compact) 12.sp else 14.sp, maxLines = 1)
+                        } else {
+                            Text(money(o.tipCents).removeSuffix(".00"), color = palette.text, fontSize = if (compact) 20.sp else 24.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
                     }
                 }
             }
-            Tile(palette, Modifier.weight(1f).fillMaxHeight(), onClick = onCustom) {
-                Text(stringResource(R.string.tip_custom), color = palette.text, fontSize = if (compact) 17.sp else 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Spacer(Modifier.height(gap))
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                Tile(palette, Modifier.width(cell).height(height), onClick = onCustom) {
+                    Text(stringResource(R.string.tip_custom), color = palette.text, fontSize = if (compact) 16.sp else 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+                Tile(palette, Modifier.width(cell).height(height), onClick = { onChosen(0) }) {
+                    Text(stringResource(R.string.tip_no_tip), color = palette.text, fontSize = if (compact) 16.sp else 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
             }
+            Spacer(Modifier.height(if (compact) 14.dp else 20.dp))
+            Text(stringResource(R.string.tip_thanks), color = palette.subtext, fontSize = if (compact) 13.sp else 15.sp, textAlign = TextAlign.Center)
         }
-        Tile(palette, Modifier.fillMaxWidth().weight(0.8f), onClick = { onChosen(0) }) {
-            Text(stringResource(R.string.tip_no_tip), color = palette.text, fontSize = if (compact) 20.sp else 24.sp, fontWeight = FontWeight.SemiBold)
-        }
-        Text(
-            stringResource(R.string.tip_thanks), color = palette.subtext, fontSize = if (compact) 14.sp else 16.sp,
-            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
-        )
     }
 }
 

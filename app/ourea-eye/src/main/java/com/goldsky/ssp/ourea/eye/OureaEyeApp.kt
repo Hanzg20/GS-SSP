@@ -32,6 +32,8 @@ class OureaEyeApp : Application() {
         CoreConfig.supabaseKey = BuildConfig.SUPABASE_KEY
 
         DeviceRepository.init(this)
+        // Ourea's link: listen for the life of the process, not of one activity.
+        SocketServerManager.start()
 
         // Only for the serial number; payments go through Ourea, not this app.
         val wizarPos = WizarPosHardwareProvider()

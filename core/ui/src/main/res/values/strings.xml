@@ -205,7 +205,7 @@
     <string name="tech_version_footer">Industrial Core GS-SSP v2.2.0 • PCI-7 Compliant</string>
 
     <!-- Customer tip screen (CustomerTipPanel): customer-facing, neutral wording -->
-    <string name="tip_title">Choose a tip (optional)</string>
+    <string name="tip_title">Add a tip? (optional)</string>
     <string name="tip_thanks">Thanks for supporting local staff!</string>
     <string name="tip_total">Total %1$s</string>
     <string name="tip_no_tip">No Tip</string>

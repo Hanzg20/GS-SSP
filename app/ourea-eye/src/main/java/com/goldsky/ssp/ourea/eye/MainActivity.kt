@@ -19,6 +19,7 @@ import com.goldsky.ssp.ui.theme.GoldSkyTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Started by OureaEyeApp for the whole process; again here in case it died.
         SocketServerManager.start()
         // The customer display is this terminal's HOME, so it comes back by itself after a reboot.
         com.goldsky.ssp.payment.LauncherClaim.ensureDefault(this, "WIZARPOS")
@@ -26,6 +27,8 @@ class MainActivity : ComponentActivity() {
         com.goldsky.ssp.ui.BootFrontGuard.install(this)
 
         setContent {
+            // A customer display: the back key never leaves it (it used to drop to the HOME app).
+            androidx.activity.compose.BackHandler(enabled = true) {}
             GoldSkyTheme(dark = true) {
                 var cfdState by remember { mutableStateOf<CfdDisplayState>(CfdDisplayState.Idle) }
                 // Remembered here, so the display comes back the right way up after a restart
@@ -146,9 +149,13 @@ class MainActivity : ComponentActivity() {
         if (hasFocus) hideSystemBars()
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        SocketServerManager.stop()
+    // No stop() in onDestroy: a recreated activity (back key, rotation) runs the old one's
+    // onDestroy AFTER the new one's onCreate, which closed the port Ourea talks to and
+    // left the Eye deaf -- Ourea then asked for the tip on its own screen (094, 2026-10-14).
+
+    override fun onResume() {
+        super.onResume()
+        SocketServerManager.start() // no-op while it runs
     }
 
     /**
