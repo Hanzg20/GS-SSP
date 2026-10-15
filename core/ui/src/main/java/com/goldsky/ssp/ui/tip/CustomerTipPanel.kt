@@ -70,26 +70,29 @@ private fun TipOptions(basisCents: Int, totalCents: Int, palette: TipPalette, co
             Text(stringResource(R.string.tip_title), color = palette.text, fontSize = if (compact) 24.sp else 30.sp, fontWeight = FontWeight.Bold)
             Text(stringResource(R.string.tip_total, money(totalCents)), color = palette.subtext, fontSize = if (compact) 15.sp else 17.sp)
         }
-        Row(Modifier.fillMaxWidth().weight(1.3f), horizontalArrangement = Arrangement.spacedBy(gap)) {
+        // 10% 12% 15% Custom in one row; "No tip" under them, as wide as the row.
+        Row(Modifier.fillMaxWidth().weight(1.5f), horizontalArrangement = Arrangement.spacedBy(gap)) {
             Tipping.options(basisCents).forEach { o ->
                 Tile(palette, Modifier.weight(1f).fillMaxHeight(), onClick = { onChosen(o.tipCents) }) {
                     if (o.percent != null) {
-                        Text("${o.percent}%", color = palette.text, fontSize = if (compact) 30.sp else 38.sp, fontWeight = FontWeight.Bold)
-                        Text(money(o.tipCents), color = palette.subtext, fontSize = if (compact) 15.sp else 18.sp)
+                        Text("${o.percent}%", color = palette.text, fontSize = if (compact) 26.sp else 36.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(money(o.tipCents), color = palette.subtext, fontSize = if (compact) 13.sp else 17.sp, maxLines = 1)
                     } else {
-                        Text(money(o.tipCents).removeSuffix(".00"), color = palette.text, fontSize = if (compact) 30.sp else 38.sp, fontWeight = FontWeight.Bold)
+                        Text(money(o.tipCents).removeSuffix(".00"), color = palette.text, fontSize = if (compact) 26.sp else 36.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
                 }
             }
-        }
-        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(gap)) {
             Tile(palette, Modifier.weight(1f).fillMaxHeight(), onClick = onCustom) {
-                Text(stringResource(R.string.tip_custom), color = palette.text, fontSize = if (compact) 20.sp else 24.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Tile(palette, Modifier.weight(1f).fillMaxHeight(), onClick = { onChosen(0) }) {
-                Text(stringResource(R.string.tip_no_tip), color = palette.text, fontSize = if (compact) 20.sp else 24.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.tip_custom), color = palette.text, fontSize = if (compact) 17.sp else 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             }
         }
+        Tile(palette, Modifier.fillMaxWidth().weight(0.8f), onClick = { onChosen(0) }) {
+            Text(stringResource(R.string.tip_no_tip), color = palette.text, fontSize = if (compact) 20.sp else 24.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Text(
+            stringResource(R.string.tip_thanks), color = palette.subtext, fontSize = if (compact) 14.sp else 16.sp,
+            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

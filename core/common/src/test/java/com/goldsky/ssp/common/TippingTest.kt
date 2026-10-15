@@ -7,9 +7,9 @@ class TippingTest {
 
     @Test
     fun `percentages are of the amount before tax, rounded to the nearest cent`() {
-        // $42.37 before tax: 15% = 6.3555, 18% = 7.6266, 20% = 8.474
+        // $42.37 before tax: 10% = 4.237, 12% = 5.0844, 15% = 6.3555
         assertEquals(
-            listOf(Tipping.Option(636, 15), Tipping.Option(763, 18), Tipping.Option(847, 20)),
+            listOf(Tipping.Option(424, 10), Tipping.Option(508, 12), Tipping.Option(636, 15)),
             Tipping.options(4237)
         )
     }
@@ -21,9 +21,9 @@ class TippingTest {
     }
 
     @Test
-    fun `under ten dollars the options are one two and three dollars`() {
-        assertEquals(listOf(Tipping.Option(100, null), Tipping.Option(200, null), Tipping.Option(300, null)), Tipping.options(999))
-        assertEquals(15, Tipping.options(1000).first().percent)
+    fun `small orders get the same percentages`() {
+        // $2.50 before tax: 25, 30, 37.5 -> 38 cents
+        assertEquals(listOf(Tipping.Option(25, 10), Tipping.Option(30, 12), Tipping.Option(38, 15)), Tipping.options(250))
     }
 
     @Test

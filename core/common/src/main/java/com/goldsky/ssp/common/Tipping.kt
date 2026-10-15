@@ -4,23 +4,20 @@ package com.goldsky.ssp.common
  * Tip options the customer sees (design: https://claude.ai/artifact/B4cXVxmX1HRKfHdRcxo34q,
  * "Tip"), shared by Ourea Eye, Ourea and Iris so every screen offers the same thing.
  *
- * Canadian practice: percentages of the amount BEFORE tax (after discounts), the
- * dollar amount shown under each; small orders (under $10 before tax) get flat
- * $1 / $2 / $3 instead, where 15% would be a few cents. "No tip" and "Custom" are
- * as big as the rest and nothing is preselected.
+ * The layout the owner chose (2026-10-14, "the version Canadians like best"):
+ * 10% / 12% / 15% / Custom in one row, "No tip" under them, a thank-you line for
+ * local staff. Percentages of the amount BEFORE tax (after discounts), the dollar
+ * amount shown under each, whatever the order size (the flat $1/$2/$3 for small
+ * orders is gone with it). Nothing is preselected.
  */
 object Tipping {
-    val PERCENTS = listOf(15, 18, 20)
-    val SMALL_ORDER_AMOUNTS = listOf(100, 200, 300)
-    /** Below this (before tax) the options are flat dollars. */
-    const val SMALL_ORDER_CENTS = 1000
+    val PERCENTS = listOf(10, 12, 15)
 
-    /** [percent] null: a flat amount. */
+    /** [percent] null: a flat amount (none offered now; kept for the screens that draw both). */
     data class Option(val tipCents: Int, val percent: Int?)
 
     fun options(basisCents: Int): List<Option> =
-        if (basisCents < SMALL_ORDER_CENTS) SMALL_ORDER_AMOUNTS.map { Option(it, null) }
-        else PERCENTS.map { Option(percentOf(basisCents, it * 100), it) }
+        PERCENTS.map { Option(percentOf(basisCents, it * 100), it) }
 
     /** [bps] of [basisCents], half a cent rounding up. */
     fun percentOf(basisCents: Int, bps: Int): Int = ((basisCents.toLong() * bps + 5_000) / 10_000).toInt()
