@@ -52,12 +52,16 @@ fun CustomerTipPanel(
     palette: TipPalette,
     onChosen: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    // Set: the customer first checks the bill and confirms it, then picks the tip.
+    review: Tipping.Review? = null,
 ) {
     var custom by remember { mutableStateOf(false) }
+    var reviewed by remember(review) { mutableStateOf(review == null) }
     BoxWithConstraints(modifier) {
         // 480dp square on the Eye, a phone on Iris, a dialog on Ourea: the tiles take the room there is.
         val compact = maxWidth < 420.dp || maxHeight < 520.dp
-        if (custom) CustomTip(basisCents, palette, compact, onBack = { custom = false }, onChosen = onChosen)
+        if (!reviewed && review != null) ReviewBill(review, palette, compact) { reviewed = true }
+        else if (custom) CustomTip(basisCents, palette, compact, onBack = { custom = false }, onChosen = onChosen)
         else TipOptions(basisCents, totalCents, palette, compact, onCustom = { custom = true }, onChosen = onChosen)
     }
 }
@@ -106,6 +110,56 @@ private fun TipOptions(basisCents: Int, totalCents: Int, palette: TipPalette, co
             Spacer(Modifier.height(if (compact) 14.dp else 20.dp))
             Text(stringResource(R.string.tip_thanks), color = palette.subtext, fontSize = if (compact) 13.sp else 15.sp, textAlign = TextAlign.Center)
         }
+    }
+}
+
+/**
+ * "Please check your bill": what is being paid, line by line, and the total, with one
+ * plain Confirm. Wrong? The customer tells the staff, who cancel on their screen --
+ * nothing here changes the bill.
+ */
+@Composable
+private fun ReviewBill(review: Tipping.Review, palette: TipPalette, compact: Boolean, onConfirm: () -> Unit) {
+    val small = if (compact) 13.sp else 15.sp
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp)) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(stringResource(R.string.tip_review_title), color = palette.text, fontSize = if (compact) 20.sp else 26.sp, fontWeight = FontWeight.Bold)
+            if (review.title.isNotBlank()) Text(review.title, color = palette.subtext, fontSize = small)
+        }
+        androidx.compose.foundation.lazy.LazyColumn(
+            Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(14.dp)).background(palette.tile)
+                .border(1.dp, palette.tileBorder, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            items(review.lines.size) { i ->
+                val l = review.lines[i]
+                Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                    Text("${l.quantity} × ${l.name}", color = palette.text, fontSize = small, modifier = Modifier.weight(1f), maxLines = 2)
+                    Text(money(l.amountCents), color = palette.text, fontSize = small)
+                }
+            }
+        }
+        Column(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.tip_review_subtotal), color = palette.subtext, fontSize = small, modifier = Modifier.weight(1f))
+                Text(money(review.subtotalCents), color = palette.subtext, fontSize = small)
+            }
+            Row(Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.tip_review_tax), color = palette.subtext, fontSize = small, modifier = Modifier.weight(1f))
+                Text(money(review.taxCents), color = palette.subtext, fontSize = small)
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.tip_review_total), color = palette.text, fontSize = if (compact) 18.sp else 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(money(review.totalCents), color = palette.text, fontSize = if (compact) 22.sp else 28.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Box(
+            Modifier.fillMaxWidth().height(if (compact) 52.dp else 64.dp).clip(RoundedCornerShape(14.dp))
+                .background(palette.accent).clickable(onClick = onConfirm),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(stringResource(R.string.tip_review_confirm, money(review.totalCents)), color = palette.onAccent, fontSize = if (compact) 17.sp else 20.sp, fontWeight = FontWeight.Bold)
+        }
+        Text(stringResource(R.string.tip_review_help), color = palette.subtext, fontSize = if (compact) 12.sp else 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
     }
 }
 

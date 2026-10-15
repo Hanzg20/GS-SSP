@@ -30,6 +30,7 @@ fun CustomerTipDialog(
     onTip: (Int) -> Unit,
     onCancel: () -> Unit,
     staffNote: String = stringResource(R.string.retail_tip_hand_over),
+    review: com.goldsky.ssp.common.Tipping.Review? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
@@ -48,6 +49,7 @@ fun CustomerTipDialog(
                         TextButton(onClick = onCancel) { Text(stringResource(R.string.retail_tip_cancel), color = colors.onSurfaceVariant) }
                     }
                     CustomerTipPanel(
+                        review = review,
                         basisCents = basisCents,
                         totalCents = totalCents,
                         palette = TipPalette(

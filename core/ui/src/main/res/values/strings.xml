@@ -207,6 +207,12 @@
     <!-- Customer tip screen (CustomerTipPanel): customer-facing, neutral wording -->
     <string name="tip_title">Add a tip? (optional)</string>
     <string name="tip_thanks">Thanks for supporting local staff!</string>
+    <string name="tip_review_title">Please check your bill</string>
+    <string name="tip_review_subtotal">Subtotal</string>
+    <string name="tip_review_tax">Tax</string>
+    <string name="tip_review_total">Total</string>
+    <string name="tip_review_confirm">Confirm %1$s</string>
+    <string name="tip_review_help">Something wrong? Please tell your server.</string>
     <string name="tip_total">Total %1$s</string>
     <string name="tip_no_tip">No Tip</string>
     <string name="tip_custom">Custom</string>

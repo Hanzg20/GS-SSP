@@ -12,6 +12,15 @@ package com.goldsky.ssp.common
 object Tipping {
     val PERCENTS = listOf(10, 12, 15)
 
+    /**
+     * The bill the customer checks before the tip. Dine-in: ordering happened at the
+     * table, rounds went to the kitchen, the customer never watched it being rung up --
+     * the payment is the first time they see it. (A counter sale doesn't need one: the
+     * customer watched the cart being built on the display.) [title]: "Table T4 · #12".
+     */
+    data class Review(val title: String, val lines: List<ReviewLine>, val subtotalCents: Int, val taxCents: Int, val totalCents: Int)
+    data class ReviewLine(val name: String, val quantity: Int, val amountCents: Int)
+
     /** [percent] null: a flat amount (none offered now; kept for the screens that draw both). */
     data class Option(val tipCents: Int, val percent: Int?)
 

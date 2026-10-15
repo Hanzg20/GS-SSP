@@ -20,7 +20,7 @@ sealed class CfdDisplayState {
     /** [cardPrompt] false: the amount only (tip chosen, staff may still take cash). */
     data class Payment(val amountCents: Int, val cardPrompt: Boolean = true) : CfdDisplayState()
     /** The customer chooses a tip ([basisCents]: before tax); [tipId] is Ourea's request. */
-    data class Tip(val tipId: String, val basisCents: Int, val totalCents: Int, val cardNext: Boolean = false) : CfdDisplayState()
+    data class Tip(val tipId: String, val basisCents: Int, val totalCents: Int, val cardNext: Boolean = false, val review: com.goldsky.ssp.common.Tipping.Review? = null) : CfdDisplayState()
     /** [orderNumber]: a quick-service counter's call number, shown big. */
     data class ThankYou(val orderNumber: Int? = null) : CfdDisplayState()
 }
@@ -100,7 +100,22 @@ object SocketServerManager {
                     tipChoice.value = null
                     withContext(Dispatchers.Main) {
                         // CardNext: Ourea starts the card sale the moment the tip is in.
-                        onStateChanged?.invoke(CfdDisplayState.Tip(id, basis, total, root["CardNext"]?.jsonPrimitive?.booleanOrNull ?: false))
+                        // Review: a dine-in bill to check before the tip.
+                        val review = (root["Review"] as? JsonObject)?.let { r ->
+                            com.goldsky.ssp.common.Tipping.Review(
+                                title = r["Title"]?.jsonPrimitive?.content ?: "",
+                                lines = (r["Items"] as? JsonArray).orEmpty().map { el ->
+                                    val o = el.jsonObject
+                                    com.goldsky.ssp.common.Tipping.ReviewLine(
+                                        o["name"]?.jsonPrimitive?.content ?: "", o["qty"]?.jsonPrimitive?.intOrNull ?: 1, o["cents"]?.jsonPrimitive?.intOrNull ?: 0
+                                    )
+                                },
+                                subtotalCents = r["SubtotalCents"]?.jsonPrimitive?.intOrNull ?: 0,
+                                taxCents = r["TaxCents"]?.jsonPrimitive?.intOrNull ?: 0,
+                                totalCents = r["TotalCents"]?.jsonPrimitive?.intOrNull ?: total
+                            )
+                        }
+                        onStateChanged?.invoke(CfdDisplayState.Tip(id, basis, total, root["CardNext"]?.jsonPrimitive?.booleanOrNull ?: false, review))
                     }
                     response = "{\"ResultCode\":\"0\",\"Tip\":\"READY\"}"
                 }

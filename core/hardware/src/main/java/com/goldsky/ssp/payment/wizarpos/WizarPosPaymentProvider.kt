@@ -511,7 +511,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
      * per 10 s, not a poll per second. An Eye from before tips answers DisplayTip
      * without "Tip":"READY": Unavailable, and Ourea asks on its own screen.
      */
-    override fun requestTip(basisCents: Int, totalCents: Int, cardNext: Boolean, onAnswer: (IPaymentProvider.TipAnswer) -> Unit) {
+    override fun requestTip(basisCents: Int, totalCents: Int, cardNext: Boolean, review: com.goldsky.ssp.common.Tipping.Review?, onAnswer: (IPaymentProvider.TipAnswer) -> Unit) {
         val id = "TIP-" + System.currentTimeMillis()
         tipId = id
         fun answer(a: IPaymentProvider.TipAnswer) {
@@ -521,7 +521,19 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         }
         toEye {
             if (tipId != id) return@toEye
-            val payload = """{"TransType":"DisplayTip","CallerName":"GS-SSP","TipId":"$id","BasisCents":$basisCents,"TotalCents":$totalCents,"CardNext":$cardNext}"""
+            // Built, not templated: dish names may hold quotes.
+            val payload = org.json.JSONObject().apply {
+                put("TransType", "DisplayTip"); put("CallerName", "GS-SSP"); put("TipId", id)
+                put("BasisCents", basisCents); put("TotalCents", totalCents); put("CardNext", cardNext)
+                review?.let { r ->
+                    put("Review", org.json.JSONObject().apply {
+                        put("Title", r.title); put("SubtotalCents", r.subtotalCents); put("TaxCents", r.taxCents); put("TotalCents", r.totalCents)
+                        put("Items", org.json.JSONArray().apply {
+                            r.lines.forEach { l -> put(org.json.JSONObject().put("name", l.name).put("qty", l.quantity).put("cents", l.amountCents)) }
+                        })
+                    })
+                }
+            }.toString()
             if (eyeField(WizarPosSocketClient.sendEyeRequest(payload), "Tip") != "READY") {
                 answer(IPaymentProvider.TipAnswer.Unavailable)
                 return@toEye

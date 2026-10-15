@@ -274,6 +274,15 @@ class MainActivity : ComponentActivity() {
                                 basisCents = subtotal,
                                 totalCents = subtotal + tax,
                                 cardNext = tipFor == "CARD",
+                                // Dine-in: the customer never saw the check being taken -- the bill
+                                // comes first. A counter sale was watched on the display already.
+                                review = checkPay?.let { cp ->
+                                    com.goldsky.ssp.common.Tipping.Review(
+                                        title = listOf(getString(R.string.ourea_review_table, cp.tableName, cp.checkNo), cp.label).filter { it.isNotBlank() }.joinToString(" · "),
+                                        lines = cp.lines.map { com.goldsky.ssp.common.Tipping.ReviewLine(it.name, it.quantity, it.lineTotalCents) },
+                                        subtotalCents = subtotal, taxCents = tax, totalCents = subtotal + tax
+                                    )
+                                },
                                 onTip = { tip ->
                                     val method = tipFor
                                     activeSaleData = null
