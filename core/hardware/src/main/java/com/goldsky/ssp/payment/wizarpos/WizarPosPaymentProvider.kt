@@ -511,7 +511,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
      * per 10 s, not a poll per second. An Eye from before tips answers DisplayTip
      * without "Tip":"READY": Unavailable, and Ourea asks on its own screen.
      */
-    override fun requestTip(basisCents: Int, totalCents: Int, onAnswer: (IPaymentProvider.TipAnswer) -> Unit) {
+    override fun requestTip(basisCents: Int, totalCents: Int, cardNext: Boolean, onAnswer: (IPaymentProvider.TipAnswer) -> Unit) {
         val id = "TIP-" + System.currentTimeMillis()
         tipId = id
         fun answer(a: IPaymentProvider.TipAnswer) {
@@ -521,7 +521,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         }
         toEye {
             if (tipId != id) return@toEye
-            val payload = """{"TransType":"DisplayTip","CallerName":"GS-SSP","TipId":"$id","BasisCents":$basisCents,"TotalCents":$totalCents}"""
+            val payload = """{"TransType":"DisplayTip","CallerName":"GS-SSP","TipId":"$id","BasisCents":$basisCents,"TotalCents":$totalCents,"CardNext":$cardNext}"""
             if (eyeField(WizarPosSocketClient.sendEyeRequest(payload), "Tip") != "READY") {
                 answer(IPaymentProvider.TipAnswer.Unavailable)
                 return@toEye

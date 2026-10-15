@@ -212,9 +212,10 @@ fun PaymentScreen(state: CfdDisplayState.Payment) {
             Text("AMOUNT DUE", color = Slate400, fontSize = 12.sp, letterSpacing = 2.sp)
             Text(money(state.amountCents), style = TextStyle(brush = goldText, fontSize = 52.sp, fontWeight = FontWeight.Black), maxLines = 1, softWrap = false)
             if (!state.cardPrompt) {
-                // Tip chosen; staff take it from here (card, cash...). Same words whatever the tip.
+                // Tip chosen, paying cash / QR / member card at the counter. Not "Thank you":
+                // nothing is paid yet, and the real thank-you comes after the payment.
                 Spacer(Modifier.height(18.dp))
-                Text("Thank you", color = Slate100, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("Please pay the cashier", color = Slate100, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             } else {
             Spacer(Modifier.height(18.dp))
             Box(Modifier.size(150.dp), contentAlignment = Alignment.Center) {

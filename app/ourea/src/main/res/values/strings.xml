@@ -2,6 +2,7 @@
 <resources>
     <string name="ourea_cart">Cart</string>
     <string name="ourea_cart_empty">Cart is empty</string>
+    <string name="ourea_tip_next_on_eye">Customer chooses next</string>
     <string name="ourea_cart_empty_hint">Tap a product to add it</string>
     <string name="ourea_no_matching_products">No matching products</string>
     <string name="ourea_total">Total</string>

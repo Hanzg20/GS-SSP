@@ -20,7 +20,7 @@ sealed class CfdDisplayState {
     /** [cardPrompt] false: the amount only (tip chosen, staff may still take cash). */
     data class Payment(val amountCents: Int, val cardPrompt: Boolean = true) : CfdDisplayState()
     /** The customer chooses a tip ([basisCents]: before tax); [tipId] is Ourea's request. */
-    data class Tip(val tipId: String, val basisCents: Int, val totalCents: Int) : CfdDisplayState()
+    data class Tip(val tipId: String, val basisCents: Int, val totalCents: Int, val cardNext: Boolean = false) : CfdDisplayState()
     /** [orderNumber]: a quick-service counter's call number, shown big. */
     data class ThankYou(val orderNumber: Int? = null) : CfdDisplayState()
 }
@@ -99,7 +99,8 @@ object SocketServerManager {
                     tipId = id
                     tipChoice.value = null
                     withContext(Dispatchers.Main) {
-                        onStateChanged?.invoke(CfdDisplayState.Tip(id, basis, total))
+                        // CardNext: Ourea starts the card sale the moment the tip is in.
+                        onStateChanged?.invoke(CfdDisplayState.Tip(id, basis, total, root["CardNext"]?.jsonPrimitive?.booleanOrNull ?: false))
                     }
                     response = "{\"ResultCode\":\"0\",\"Tip\":\"READY\"}"
                 }

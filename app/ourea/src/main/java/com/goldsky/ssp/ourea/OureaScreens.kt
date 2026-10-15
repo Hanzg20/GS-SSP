@@ -811,6 +811,8 @@ fun OureaPaymentScreen(
     subtotalCents: Int,
     taxCents: Int,
     tipCents: Int,
+    // Tips on: the customer chooses it on the Eye after the method is picked here.
+    tipByCustomer: Boolean = false,
     onChargeCard: () -> Unit,
     onCash: () -> Unit,
     onQr: () -> Unit,
@@ -856,6 +858,10 @@ fun OureaPaymentScreen(
             BillLine(stringResource(R.string.ourea_subtotal), subtotalCents, OureaTextSecondary)
             BillLine(stringResource(R.string.ourea_tax), taxCents, OureaTextSecondary)
             if (tipCents > 0) BillLine(stringResource(R.string.ourea_tip), tipCents, OureaTextSecondary)
+            else if (tipByCustomer) Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(R.string.ourea_tip), color = OureaTextSecondary)
+                Text(stringResource(R.string.ourea_tip_next_on_eye), color = OureaTextSecondary, fontSize = 13.sp)
+            }
             Divider(color = OureaSurfaceVariant, modifier = Modifier.padding(vertical = 12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(R.string.ourea_total_due), color = OureaTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)

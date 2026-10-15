@@ -192,9 +192,10 @@ interface IPaymentProvider {
      * (com.goldsky.ssp.common.Tipping options of [basisCents], the amount before
      * tax; [totalCents] is due before the tip). [onAnswer] runs once, on the main
      * thread, unless [cancelTip] comes first. Providers without a display answer
-     * Unavailable at once.
+     * Unavailable at once. [cardNext]: the card sale starts right after the tip, so
+     * the display goes straight to "tap your card" (not a bare amount).
      */
-    fun requestTip(basisCents: Int, totalCents: Int, onAnswer: (TipAnswer) -> Unit) {
+    fun requestTip(basisCents: Int, totalCents: Int, cardNext: Boolean = false, onAnswer: (TipAnswer) -> Unit) {
         onAnswer(TipAnswer.Unavailable)
     }
 

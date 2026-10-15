@@ -27,12 +27,13 @@ fun OureaTipStep(
     provider: IPaymentProvider,
     basisCents: Int,
     totalCents: Int,
+    cardNext: Boolean = false,
     onTip: (Int) -> Unit,
     onCancel: () -> Unit,
 ) {
     var askHere by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
-        provider.requestTip(basisCents, totalCents) { answer ->
+        provider.requestTip(basisCents, totalCents, cardNext) { answer ->
             when (answer) {
                 is IPaymentProvider.TipAnswer.Chosen -> onTip(answer.tipCents)
                 IPaymentProvider.TipAnswer.Unavailable -> askHere = true

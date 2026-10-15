@@ -51,6 +51,9 @@ class MainActivity : ComponentActivity() {
                             // the hold just waits; a new sale (cart/payment) ends it at once.
                             is CfdDisplayState.ThankYou -> {
                                 cfdState = newState
+                                // The sale is done: PAYWizard's result page (or OPC's own
+                                // screen) may still cover us -- the thank-you is ours to show.
+                                backToFront()
                                 holdJob?.cancel()
                                 holdJob = scope.launch {
                                     kotlinx.coroutines.delay(com.goldsky.ssp.ourea.eye.ui.THANK_YOU_MS)
@@ -89,7 +92,8 @@ class MainActivity : ComponentActivity() {
                     onTipChosen = { tip, cents ->
                         SocketServerManager.onTipChosen(tip.tipId, cents)
                         lastTotal = tip.totalCents + cents
-                        cfdState = CfdDisplayState.Payment(tip.totalCents + cents, cardPrompt = false)
+                        // Card next: straight to "tap your card"; cash / QR / member: the amount.
+                        cfdState = CfdDisplayState.Payment(tip.totalCents + cents, cardPrompt = tip.cardNext)
                     }
                 )
 
@@ -145,5 +149,18 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         SocketServerManager.stop()
+    }
+
+    /**
+     * Back over PAYWizard once a payment is over (094, 2026-10-14: its result page
+     * stayed on screen and the customer never saw our thank-you). Allowed from the
+     * background while this app is HOME or may draw over other apps.
+     */
+    private fun backToFront() {
+        if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return
+        runCatching {
+            startActivity(android.content.Intent(this, MainActivity::class.java)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+        }.onFailure { android.util.Log.w("OureaEye", "Back to front refused: ${it.message}") }
     }
 }

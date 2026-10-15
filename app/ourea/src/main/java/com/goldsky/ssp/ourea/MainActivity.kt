@@ -116,6 +116,8 @@ class MainActivity : ComponentActivity() {
                     var paymentStatus by remember { mutableStateOf<OureaPaymentUiState>(OureaPaymentUiState.Idle) }
                     var activeSaleData by remember { mutableStateOf<Pair<Int, Int>?>(null) }
                     var confirmingPayment by remember { mutableStateOf<Triple<Int, Int, Int>?>(null) }
+                    // The payment method chosen, waiting for the customer's tip on the Eye.
+                    var tipFor by remember { mutableStateOf<String?>(null) }
                     var showCashDialog by remember { mutableStateOf(false) }
                     var showMemberDialog by remember { mutableStateOf(false) }
                     // Lines of the sale being paid (taken at checkout), for transaction_items and the receipt.
@@ -164,6 +166,15 @@ class MainActivity : ComponentActivity() {
                             FeedbackManager.success(this@MainActivity)
                         }
                     }
+                    fun payWith(method: String, subtotal: Int, tax: Int, tip: Int) {
+                        val extras = checkExtras(checkPay, dine, signedIn.name)
+                        when (method) {
+                            "CARD" -> { confirmingPayment = null; triggerPaymentFlow(subtotal, tax, tip, saleLines, orderTicket, ::onPaymentSettled, extras) }
+                            "QR" -> { confirmingPayment = null; startQrPayment(subtotal, tax, tip, saleLines, orderTicket, onQrStateChange = { qrState = it }, onSettled = ::onPaymentSettled, extras = extras) }
+                            "CASH" -> { confirmingPayment = Triple(subtotal, tax, tip); showCashDialog = true }
+                            "MEMBER" -> { confirmingPayment = Triple(subtotal, tax, tip); showMemberDialog = true }
+                        }
+                    }
 
                     Row(modifier = Modifier.fillMaxSize()) {
                         OureaSidebar(
@@ -179,24 +190,25 @@ class MainActivity : ComponentActivity() {
                                     val openCheck = dine.check
                                     if (confirming != null) {
                                         val (subtotal, tax, tip) = confirming
-                                        val extras = checkExtras(checkPay, dine, signedIn.name)
+                                        // Staff choose how the customer pays; with tips on, the customer
+                                        // then picks the tip on the Eye and that payment starts at once
+                                        // (card: straight to "tap your card"), not back to this screen.
+                                        fun choose(method: String) {
+                                            if (DeviceRepository.isTipsEnabled()) { tipFor = method; activeSaleData = subtotal to tax }
+                                            else payWith(method, subtotal, tax, tip)
+                                        }
                                         OureaPaymentScreen(
                                             subtotalCents = subtotal,
                                             taxCents = tax,
                                             tipCents = tip,
-                                            onChargeCard = {
-                                                confirmingPayment = null
-                                                triggerPaymentFlow(subtotal, tax, tip, saleLines, orderTicket, ::onPaymentSettled, extras)
-                                            },
-                                            onCash = { showCashDialog = true },
-                                            onQr = {
-                                                confirmingPayment = null
-                                                startQrPayment(subtotal, tax, tip, saleLines, orderTicket, onQrStateChange = { qrState = it }, onSettled = ::onPaymentSettled, extras = extras)
-                                            },
+                                            tipByCustomer = DeviceRepository.isTipsEnabled(),
+                                            onChargeCard = { choose("CARD") },
+                                            onCash = { choose("CASH") },
+                                            onQr = { choose("QR") },
                                             // Member-card tier discounts would leave a check part-paid: counter sales only.
                                             onMember = {
                                                 if (checkPay != null) paymentStatus = OureaPaymentUiState.Error(getString(R.string.ourea_member_not_for_checks))
-                                                else showMemberDialog = true
+                                                else choose("MEMBER")
                                             },
                                             onBack = { confirmingPayment = null; checkPay = null; eyeCartAgain++ }
                                         )
@@ -230,9 +242,8 @@ class MainActivity : ComponentActivity() {
                                                 val tax = sale.taxCents
                                                 orderTicket = if (DeviceRepository.getBusinessType() == DeviceRepository.BusinessType.QUICK_SERVICE)
                                                     retailViewModel.kitchenTicket(this@MainActivity, signedIn.name) else null
-                                                // No tip step unless the store asks for tips (off for retail).
-                                                if (DeviceRepository.isTipsEnabled()) activeSaleData = subtotal to tax
-                                                else confirmingPayment = Triple(subtotal, tax, 0)
+                                                // How to pay first; the tip (if the store asks for one) comes with it.
+                                                confirmingPayment = Triple(subtotal, tax, 0)
                                             }
                                         )
                                     }
@@ -262,11 +273,15 @@ class MainActivity : ComponentActivity() {
                                 provider = paymentProvider,
                                 basisCents = subtotal,
                                 totalCents = subtotal + tax,
+                                cardNext = tipFor == "CARD",
                                 onTip = { tip ->
+                                    val method = tipFor
                                     activeSaleData = null
-                                    confirmingPayment = Triple(subtotal, tax, tip)
+                                    tipFor = null
+                                    if (method != null) payWith(method, subtotal, tax, tip)
                                 },
-                                onCancel = { activeSaleData = null; checkPay = null }
+                                // Back to choosing how to pay.
+                                onCancel = { activeSaleData = null; tipFor = null; eyeCartAgain++ }
                             )
                         }
                     }
@@ -298,8 +313,7 @@ class MainActivity : ComponentActivity() {
                                 orderTicket = null
                                 val tax = pay.taxPart(payingCheck)
                                 val sub = pay.amountCents - tax
-                                if (DeviceRepository.isTipsEnabled()) activeSaleData = sub to tax
-                                else confirmingPayment = Triple(sub, tax, 0)
+                                confirmingPayment = Triple(sub, tax, 0)
                             },
                             onDismiss = { choosingCheckPay = false }
                         )
