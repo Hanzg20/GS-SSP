@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
@@ -54,18 +55,22 @@ class WashStatusState {
 private val Gold = Color(0xFFF5B23D)
 private val Cyan = Color(0xFF5BD6F5)
 private val Mint = Color(0xFF34D399)
+private val RelayActive = Color(0xFF00D2FF)
 
 /**
  * The picture above the status text after payment (replaces the breathing water drop):
  * approved -> a ring closing round a card and a check; washing -> a car under a wash arch
- * that travels across it with the real progress, water spraying, foam building; done ->
+ * that travels across it with the real pulse progress (a light on the beam blinks while
+ * pulses go out, the floor glow fills with it), water spraying, foam building; done ->
  * the car shining, sparkles, a check badge and falling drops. Drawn, not bitmaps.
+ * DONE means every pulse was sent -- not a machine ACK: the Q3mini's pulse output has none.
  */
 @Composable
 fun WashStatusScene(state: WashStatusState) {
     val t = rememberInfiniteTransition(label = "washstatus")
     val clock by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "clock")
     val slow by t.animateFloat(0f, 1f, infiniteRepeatable(tween(3200, easing = LinearEasing)), label = "slow")
+    val pulseBlink by t.animateFloat(0f, 1f, infiniteRepeatable(tween(600, easing = LinearEasing)), label = "pulseBlink")
     // Pulses come about once a second: glide over that second instead of jumping.
     val progress by animateFloatAsState(state.progress, tween(1000, easing = LinearEasing), label = "progress")
     val intro = remember(state.phase) { Animatable(0f) }
@@ -77,7 +82,7 @@ fun WashStatusScene(state: WashStatusState) {
     Canvas(Modifier.fillMaxSize()) {
         when (state.phase) {
             WashPhase.APPROVED -> approved(intro.value, clock)
-            WashPhase.WASHING -> washing(progress, clock, slow)
+            WashPhase.WASHING -> washing(progress, clock, slow, pulseBlink)
             WashPhase.DONE -> done(intro.value, clock, slow, flakes)
         }
     }
@@ -88,7 +93,12 @@ private fun DrawScope.approved(intro: Float, clock: Float) {
     val r = size.minDimension * 0.42f
     drawCircle(Gold.copy(alpha = 0.10f), r * 1.05f, c)
     drawArc(Gold, -90f, 360f * intro, false, topLeft = Offset(c.x - r, c.y - r), size = Size(r * 2, r * 2), style = Stroke(r * 0.07f, cap = StrokeCap.Round))
-    // A payment card, tilting in.
+    
+    // Hardware Handshake / Relay Controller link wave indicator
+    val waveAlpha = (sin(clock * 2 * PI.toFloat()) + 1f) / 2f
+    drawCircle(RelayActive.copy(alpha = 0.25f + 0.25f * waveAlpha), r * (0.6f + 0.15f * waveAlpha), c, style = Stroke(2.dp.toPx()))
+
+    // A payment card / secure module node
     val cw = r * 1.0f; val ch = r * 0.64f
     rotate(-14f * (1f - intro) + 3f * sin(clock * 2 * PI.toFloat()), c) {
         drawRoundRect(Brush.linearGradient(listOf(Color(0xFF2B3A55), Color(0xFF162032)), Offset(c.x - cw / 2, c.y - ch / 2), Offset(c.x + cw / 2, c.y + ch / 2)),
@@ -127,7 +137,6 @@ private fun DrawScope.car(cx: Float, base: Float, w: Float, body: Color, shine: 
     }
     drawPath(win, Color(0xFF0F1A2C).copy(alpha = 0.8f))
     if (shine > 0f) {
-        // A highlight sweeping along the body.
         val x = l + w * shine
         drawLine(Color.White.copy(alpha = 0.55f), Offset(x - w * 0.06f, base - h * 0.95f), Offset(x + w * 0.04f, base - h * 0.2f), strokeWidth = w * 0.035f, cap = StrokeCap.Round)
     }
@@ -137,11 +146,12 @@ private fun DrawScope.car(cx: Float, base: Float, w: Float, body: Color, shine: 
     }
 }
 
-private fun DrawScope.washing(progress: Float, clock: Float, slow: Float) {
+private fun DrawScope.washing(progress: Float, clock: Float, slow: Float, pulseBlink: Float) {
     val w = size.width; val h = size.height
     val base = h * 0.82f
     val carW = w * 0.78f
     car(w / 2, base, carW, Color(0xFF7F95B6))
+    
     // Foam left behind the arch, building with progress.
     val l = w / 2 - carW / 2
     val archX = l - w * 0.05f + (carW + w * 0.1f) * progress
@@ -151,10 +161,15 @@ private fun DrawScope.washing(progress: Float, clock: Float, slow: Float) {
         val fy = base - carW * 0.42f * (0.45f + 0.5f * ((k * 0.29f) % 1f)) - h * 0.02f * sin((slow + k * 0.1f) * 6.28f)
         drawCircle(Color.White.copy(alpha = 0.75f), w * (0.018f + 0.01f * (k % 3)), Offset(fx, fy))
     }
-    // The arch: two posts and a beam, travelling with the progress.
+    
+    // The arch with active relay pulse indicator lights
     val top = h * 0.12f
     drawLine(Color(0xFF3A4A66), Offset(archX, top), Offset(archX, base + h * 0.06f), strokeWidth = w * 0.035f, cap = StrokeCap.Round)
     drawLine(Gold, Offset(archX - w * 0.06f, top), Offset(archX + w * 0.06f, top), strokeWidth = w * 0.04f, cap = StrokeCap.Round)
+    
+    // Real-time Relay Pulse LED indicator flashing on the arch beam
+    drawCircle(RelayActive.copy(alpha = 0.5f + 0.5f * pulseBlink), w * 0.025f, Offset(archX, top))
+
     // Spray fanning down from the beam.
     for (k in 0 until 9) {
         val p = (clock + k / 9f) % 1f
@@ -164,13 +179,12 @@ private fun DrawScope.washing(progress: Float, clock: Float, slow: Float) {
         val y = top + cos(ang) * len
         drawLine(Cyan.copy(alpha = 0.85f * (1f - p * 0.5f)), Offset(x, y), Offset(x, y + h * 0.04f), strokeWidth = w * 0.014f, cap = StrokeCap.Round)
     }
-    // Wet floor.
-    drawRoundRect(Cyan.copy(alpha = 0.18f), topLeft = Offset(w * 0.04f, base + h * 0.02f), size = Size(w * 0.92f, h * 0.04f), cornerRadius = CornerRadius(h * 0.02f))
+    // Wet floor / Pulse progress floor glow
+    drawRoundRect(RelayActive.copy(alpha = 0.15f + 0.1f * progress), topLeft = Offset(w * 0.04f, base + h * 0.02f), size = Size(w * 0.92f * progress, h * 0.04f), cornerRadius = CornerRadius(h * 0.02f))
 }
 
 private fun DrawScope.done(intro: Float, clock: Float, slow: Float, flakes: List<Triple<Float, Float, Float>>) {
     val w = size.width; val h = size.height
-    // Falling drops all over.
     for ((x, speed, phase) in flakes) {
         val y = ((slow * speed * 2f + phase) % 1f) * h
         drawLine((if (phase > 0.5f) Cyan else Gold).copy(alpha = 0.6f), Offset(x * w, y), Offset(x * w, y + h * 0.03f), strokeWidth = w * 0.012f, cap = StrokeCap.Round)
@@ -178,7 +192,6 @@ private fun DrawScope.done(intro: Float, clock: Float, slow: Float, flakes: List
     val base = h * 0.8f
     val carW = w * 0.78f * (0.85f + 0.15f * intro)
     car(w / 2, base, carW, Color(0xFF9DB6DA), shine = clock)
-    // Sparkles on the clean car.
     for (k in 0 until 4) {
         val tw = (sin((clock + k * 0.25f) * 2 * PI.toFloat()) + 1f) / 2f
         val sx = w / 2 - carW * 0.35f + carW * 0.23f * k
@@ -191,7 +204,7 @@ private fun DrawScope.done(intro: Float, clock: Float, slow: Float, flakes: List
     drawCircle(Mint, r, bc)
     val p = Path().apply { moveTo(bc.x - r * 0.45f, bc.y); lineTo(bc.x - r * 0.1f, bc.y + r * 0.38f); lineTo(bc.x + r * 0.5f, bc.y - r * 0.32f) }
     drawPath(p, Color.White, style = Stroke(r * 0.2f, cap = StrokeCap.Round))
-    drawRoundRect(Cyan.copy(alpha = 0.18f), topLeft = Offset(w * 0.04f, base + h * 0.02f), size = Size(w * 0.92f, h * 0.04f), cornerRadius = CornerRadius(h * 0.02f))
+    drawRoundRect(Mint.copy(alpha = 0.22f), topLeft = Offset(w * 0.04f, base + h * 0.02f), size = Size(w * 0.92f, h * 0.04f), cornerRadius = CornerRadius(h * 0.02f))
 }
 
 private fun DrawScope.sparkle(c: Offset, r: Float) {
@@ -231,10 +244,10 @@ fun <O> ConstraintLayout.washStatusScene(icon: ImageView?, owner: O): WashStatus
         v.setViewTreeLifecycleOwner(owner)
         v.setViewTreeSavedStateRegistryOwner(owner)
     }
-    val px = (170 * resources.displayMetrics.density).toInt()
+    val px = (210 * resources.displayMetrics.density).toInt()
     icon?.let {
         (it.layoutParams as? ConstraintLayout.LayoutParams)?.let { ilp ->
-            ilp.width = px; ilp.height = px; ilp.verticalBias = 0.22f; it.layoutParams = ilp
+            ilp.width = px; ilp.height = px; ilp.verticalBias = 0.12f; it.layoutParams = ilp
         }
         it.visibility = View.INVISIBLE
     }

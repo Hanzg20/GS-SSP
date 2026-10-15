@@ -333,7 +333,23 @@ class MainActivity : ComponentActivity() {
 
                     when (val state = paymentStatus) {
                         is OureaPaymentUiState.Processing -> OureaPaymentProcessingDialog(state.message)
-                        is OureaPaymentUiState.Success -> OureaPaymentResultDialog(true, state.message, state.orderNumber) { paymentStatus = OureaPaymentUiState.Idle }
+                        // A sale: the celebration, with what this sale actually took (the cart is
+                        // already cleared by onPaymentSettled, and a dine-in check never was the
+                        // cart), the payment's own message (approval code, change due) and the
+                        // call number. A refund (no amount) keeps the plain result dialog.
+                        is OureaPaymentUiState.Success -> if (state.amountCents != null) {
+                            com.goldsky.ssp.feature.retail.ui.CheckoutSuccessCelebration(
+                                amountCents = state.amountCents,
+                                detail = state.message,
+                                orderNumber = state.orderNumber,
+                                title = stringResource(R.string.ourea_payment_success),
+                                orderNumberLabel = stringResource(R.string.ourea_order_number),
+                                dismissLabel = stringResource(R.string.ourea_ok),
+                                onDismiss = { paymentStatus = OureaPaymentUiState.Idle }
+                            )
+                        } else {
+                            OureaPaymentResultDialog(true, state.message, state.orderNumber) { paymentStatus = OureaPaymentUiState.Idle }
+                        }
                         is OureaPaymentUiState.Error -> OureaPaymentResultDialog(false, state.message) { paymentStatus = OureaPaymentUiState.Idle }
                         else -> {}
                     }
@@ -461,7 +477,7 @@ class MainActivity : ComponentActivity() {
                         banner = extras?.banner
                     ), DeviceRepository.getPersistedHardwareVendor())
                 }
-                onStateChange(OureaPaymentUiState.Success(getString(R.string.ourea_approved_code, authCode)))
+                onStateChange(OureaPaymentUiState.Success(getString(R.string.ourea_approved_code, authCode), amountCents = total))
             }
             override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                 CoroutineScope(Dispatchers.IO).launch {
@@ -499,7 +515,7 @@ class MainActivity : ComponentActivity() {
         // network is down) and printing follow in the background -- waiting on two
         // cloud writes kept the dialog away 6-9 s.
         val change = cashReceivedCents - total
-        onStateChange(OureaPaymentUiState.Success("Cash received. Change due: $${"%.2f".format(change / 100.0)}"))
+        onStateChange(OureaPaymentUiState.Success("Cash received. Change due: $${"%.2f".format(change / 100.0)}", amountCents = total))
 
         CoroutineScope(Dispatchers.IO).launch {
             TransactionRepository.recordTransaction(
@@ -600,7 +616,7 @@ class MainActivity : ComponentActivity() {
             if (paid) {
                 TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "PAID")
                 extras?.onPaid?.invoke(txId, "QR_CODE", tip)
-                withContext(Dispatchers.Main) { onSettled(OureaPaymentUiState.Success("QR payment received")) }
+                withContext(Dispatchers.Main) { onSettled(OureaPaymentUiState.Success("QR payment received", amountCents = total)) }
                 ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                     subtotalCents = subtotal,
                     taxCents = tax,
@@ -689,7 +705,7 @@ class MainActivity : ComponentActivity() {
                         ).withOrder(ticket)
                     )
                     val discountMsg = if (finalTotal < total) getString(R.string.ourea_discount_applied, card.tier) else ""
-                    withContext(Dispatchers.Main) { onStateChange(OureaPaymentUiState.Success("Member payment approved$discountMsg")) }
+                    withContext(Dispatchers.Main) { onStateChange(OureaPaymentUiState.Success("Member payment approved$discountMsg", amountCents = finalTotal)) }
                     ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                         subtotalCents = discSubtotal,
                         taxCents = discTax,
@@ -728,7 +744,8 @@ private fun MainActivity.checkExtras(pay: com.goldsky.ssp.feature.retail.dine.Ch
 
 sealed class OureaPaymentUiState {
     object Idle : OureaPaymentUiState()
-    data class Success(val message: String, val orderNumber: Int? = null) : OureaPaymentUiState()
+    /** [amountCents]: what this SALE took, set only by the payment flows -- a refund leaves it null. */
+    data class Success(val message: String, val orderNumber: Int? = null, val amountCents: Int? = null) : OureaPaymentUiState()
     data class Error(val message: String) : OureaPaymentUiState()
     data class Processing(val message: String) : OureaPaymentUiState()
 }
