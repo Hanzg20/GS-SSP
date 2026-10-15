@@ -1,5 +1,6 @@
 package com.goldsky.ssp.feature.retail.dine
 
+import com.goldsky.ssp.feature.retail.ui.breathingBorder
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -133,9 +134,13 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
             }
         }
         when {
-            floor == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            // First load: table-shaped placeholders, not a spinner on an empty page.
+            floor == null -> LazyVerticalGrid(
+                columns = GridCells.Adaptive(minCell), contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), userScrollEnabled = false
+            ) { items(8) { com.goldsky.ssp.feature.retail.ui.SkeletonCard(Modifier.fillMaxWidth().heightIn(min = 104.dp)) } }
             floor.isEmpty() -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.dine_no_tables), color = scheme.onSurfaceVariant)
+                com.goldsky.ssp.feature.retail.ui.EmptyState(com.goldsky.ssp.feature.retail.ui.EmptyArt.TABLE, stringResource(R.string.dine_no_tables))
             }
             else -> {
                 val areas = floor.mapNotNull { it.table.area }.distinct()
@@ -187,15 +192,30 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
 private fun TableCard(ft: DineRepository.FloorTable, scanPending: Int, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val c = ft.check
-    val (bg, fg) = when (c?.status) {
+    val (bgTarget, fgTarget) = when (c?.status) {
         null -> scheme.surface to scheme.onSurface
         "BILLED" -> scheme.tertiaryContainer to scheme.onTertiaryContainer
         else -> scheme.primaryContainer to scheme.onPrimaryContainer
     }
+    // A status change (free -> seated -> billed -> free) fades the card's colours
+    // over instead of switching them.
+    val bg by androidx.compose.animation.animateColorAsState(bgTarget, androidx.compose.animation.core.tween(450), label = "tableBg")
+    val fg by androidx.compose.animation.animateColorAsState(fgTarget, androidx.compose.animation.core.tween(450), label = "tableFg")
+    val shape = RoundedCornerShape(14.dp)
+    // Billed and waiting to pay: an amber border breathes so it's seen first; a table
+    // with a QR order waiting for staff does the same in the accent colour.
+    val billed = c?.status == "BILLED"
+    val glow = when {
+        billed -> com.goldsky.ssp.ui.theme.GsTheme.colors.warning
+        scanPending > 0 -> scheme.tertiary
+        else -> null
+    }
     Surface(
-        shape = RoundedCornerShape(14.dp), color = bg,
+        shape = shape, color = bg,
         border = BorderStroke(if (c == null) 1.dp else 0.dp, scheme.outline),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 104.dp).clickable(onClick = onClick)
+        modifier = Modifier.fillMaxWidth().heightIn(min = 104.dp)
+            .then(if (glow != null) Modifier.breathingBorder(glow, true, shape) else Modifier)
+            .clickable(onClick = onClick)
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

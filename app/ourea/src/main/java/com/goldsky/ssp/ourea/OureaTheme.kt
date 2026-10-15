@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import com.goldsky.ssp.ui.theme.GoldSkyTheme
 import com.goldsky.ssp.ui.theme.GsTheme
+import com.goldsky.ssp.feature.retail.ui.withTabularNumbers
 
 /**
  * Ourea runs on the shared GoldSkyTheme (dark "CYBER" / light "CLASSIC",
@@ -40,5 +41,14 @@ val OureaBrandGradient: Brush @Composable get() = Brush.horizontalGradient(listO
 
 @Composable
 fun OureaTheme(dark: Boolean = true, content: @Composable () -> Unit) {
-    GoldSkyTheme(dark = dark, content = content)
+    GoldSkyTheme(dark = dark) {
+        // Tabular (equal-width) digits in every text style: totals, change and the
+        // cart's prices keep their place while the numbers change.
+        MaterialTheme(
+            colorScheme = MaterialTheme.colorScheme,
+            shapes = MaterialTheme.shapes,
+            typography = MaterialTheme.typography.withTabularNumbers(),
+            content = content
+        )
+    }
 }

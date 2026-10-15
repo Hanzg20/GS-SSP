@@ -9,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Contactless
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -332,7 +333,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     when (val state = paymentStatus) {
-                        is OureaPaymentUiState.Processing -> OureaPaymentProcessingDialog(state.message)
+                        is OureaPaymentUiState.Processing -> OureaPaymentProcessingDialog(state.message, state.waitingForCard)
                         // A sale: the celebration, with what this sale actually took (the cart is
                         // already cleared by onPaymentSettled, and a dine-in check never was the
                         // cart), the payment's own message (approval code, change due) and the
@@ -448,7 +449,7 @@ class MainActivity : ComponentActivity() {
             TransactionRepository.recordItems(this@MainActivity, ref, sn, lines)
         }
 
-        onStateChange(OureaPaymentUiState.Processing("Processing $${"%.2f".format(total / 100.0)}..."))
+        onStateChange(OureaPaymentUiState.Processing("Processing $${"%.2f".format(total / 100.0)}...", waitingForCard = true))
 
         var card: IPaymentProvider.CardInfo? = null
         var cancelled = false
@@ -494,7 +495,7 @@ class MainActivity : ComponentActivity() {
                 onStateChange(OureaPaymentUiState.Error(message))
             }
             override fun onProgress(message: String) {
-                onStateChange(OureaPaymentUiState.Processing(message))
+                onStateChange(OureaPaymentUiState.Processing(message, waitingForCard = true))
             }
         })
     }
@@ -747,7 +748,8 @@ sealed class OureaPaymentUiState {
     /** [amountCents]: what this SALE took, set only by the payment flows -- a refund leaves it null. */
     data class Success(val message: String, val orderNumber: Int? = null, val amountCents: Int? = null) : OureaPaymentUiState()
     data class Error(val message: String) : OureaPaymentUiState()
-    data class Processing(val message: String) : OureaPaymentUiState()
+    /** [waitingForCard]: the card terminal is waiting for the customer (radar instead of a spinner). */
+    data class Processing(val message: String, val waitingForCard: Boolean = false) : OureaPaymentUiState()
 }
 
 /** Drives OureaQrPaymentDialog; totalCents is only needed for the on-screen amount label. */
@@ -758,14 +760,20 @@ sealed class OureaQrUiState {
 }
 
 @Composable
-fun OureaPaymentProcessingDialog(message: String) {
+fun OureaPaymentProcessingDialog(message: String, waitingForCard: Boolean = false) {
     Dialog(onDismissRequest = {}) {
-        Surface(shape = MaterialTheme.shapes.medium, color = OureaSurface, tonalElevation = 8.dp) {
+        Surface(shape = MaterialTheme.shapes.medium, color = OureaSurface, tonalElevation = 8.dp,
+            border = androidx.compose.foundation.BorderStroke(1.dp, com.goldsky.ssp.feature.retail.ui.hairlineColor())) {
             Column(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
             ) {
-                CircularProgressIndicator(color = OureaGold)
+                // Waiting on the customer's card: rings spreading out (tap here), not a spinner.
+                if (waitingForCard) {
+                    com.goldsky.ssp.feature.retail.ui.PaymentRadar(OureaGold, size = 112.dp) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Contactless, null, tint = OureaGold, modifier = Modifier.size(36.dp))
+                    }
+                } else CircularProgressIndicator(color = OureaGold)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(message, color = OureaTextPrimary, fontWeight = FontWeight.Bold)
             }

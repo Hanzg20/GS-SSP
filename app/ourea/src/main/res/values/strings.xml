@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ourea_cart">Cart</string>
+    <string name="ourea_cart_empty">Cart is empty</string>
+    <string name="ourea_cart_empty_hint">Tap a product to add it</string>
+    <string name="ourea_no_matching_products">No matching products</string>
     <string name="ourea_total">Total</string>
     <string name="ourea_hold_order">Hold Order</string>
     <string name="ourea_search_products">Search products</string>

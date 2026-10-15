@@ -26,15 +26,23 @@ object RetailRepository {
     private val _catalog = MutableStateFlow<List<Product>>(emptyList())
     val catalog: StateFlow<List<Product>> = _catalog.asStateFlow()
 
+    /** True until the first load (local copy, then the cloud) is over: an empty catalog is "loading", not "none". */
+    private val _syncing = MutableStateFlow(true)
+    val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
+
     fun init(context: Context) {
         val db = LocalDatabase.getInstance(context)
         CoroutineScope(Dispatchers.IO).launch {
-            val entities = db.productDao().getAll()
-            if (entities.isNotEmpty()) {
-                _catalog.value = entities.map { it.toModel() }
-                Log.d(TAG, "Loaded ${_catalog.value.size} products from local DB")
+            try {
+                val entities = db.productDao().getAll()
+                if (entities.isNotEmpty()) {
+                    _catalog.value = entities.map { it.toModel() }
+                    Log.d(TAG, "Loaded ${_catalog.value.size} products from local DB")
+                }
+                syncWithCloud(context)
+            } finally {
+                _syncing.value = false
             }
-            syncWithCloud(context)
         }
     }
 

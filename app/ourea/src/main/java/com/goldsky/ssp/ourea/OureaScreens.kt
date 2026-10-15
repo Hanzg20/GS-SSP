@@ -24,8 +24,31 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import com.goldsky.ssp.feature.retail.ui.EmptyArt
+import com.goldsky.ssp.feature.retail.ui.EmptyState
+import com.goldsky.ssp.feature.retail.ui.SkeletonCard
+import com.goldsky.ssp.feature.retail.ui.glassCard
+import com.goldsky.ssp.feature.retail.ui.shimmer
+import kotlin.math.PI
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -184,6 +207,15 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
     var showHeldOrders by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf<String?>(null) } // null = "All"
     var optionsFor by remember { mutableStateOf<Product?>(null) }
+    // Fly-to-cart: where the tapped card was (root coordinates), and where the cart is.
+    var optionsFrom by remember { mutableStateOf<Rect?>(null) }
+    val flights = remember { mutableStateListOf<CartFlight>() }
+    var cartTarget by remember { mutableStateOf<Offset?>(null) }
+    var rootOrigin by remember { mutableStateOf(Offset.Zero) }
+    fun fly(product: Product, from: Rect?) {
+        if (from != null && cartTarget != null) flights.add(CartFlight(System.nanoTime(), product.name, from))
+    }
+    val syncing by RetailRepository.syncing.collectAsState()
     // The discount panel: a cart line (its id), or the whole order ("").
     var discountFor by remember { mutableStateOf<String?>(null) }
     val quickService = com.goldsky.ssp.feature.retail.ui.isQuickService() && checkMode == null
@@ -201,7 +233,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
     // 260-340dp) and the categories are a chip row above the grid -- the fixed
     // 320dp cart plus a 130dp category column on the right left the product grid
     // squeezed between two dark side panels on narrower landscape screens.
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().onGloballyPositioned { rootOrigin = it.boundsInRoot().topLeft }) {
     val cartWidth = (maxWidth * 0.26f).coerceIn(260.dp, 340.dp)
     Row(modifier = Modifier.fillMaxSize()) {
         // Cart panel
@@ -210,6 +242,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
                 .width(cartWidth)
                 .fillMaxHeight()
                 .background(OureaSurface)
+                .onGloballyPositioned { val b = it.boundsInRoot(); cartTarget = Offset(b.center.x, b.top + b.height * 0.3f) }
                 .padding(12.dp)
         ) {
             if (checkMode != null) {
@@ -235,7 +268,11 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
             }
             Spacer(modifier = Modifier.height(12.dp))
             val priced = viewModel.pricing()
-            LazyColumn(modifier = Modifier.weight(1f)) {
+            if (cart.isEmpty()) {
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    EmptyState(EmptyArt.CART, stringResource(R.string.ourea_cart_empty), stringResource(R.string.ourea_cart_empty_hint))
+                }
+            } else LazyColumn(modifier = Modifier.weight(1f)) {
                 itemsIndexed(cart, key = { _, item -> item.id }) { index, item ->
                     CartRow(
                         index + 1, item,
@@ -321,7 +358,7 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
         optionsFor?.let { product ->
             com.goldsky.ssp.feature.retail.ui.ModifierSelectionSheet(
                 product = product,
-                onConfirm = { mods -> viewModel.addItem(product, mods); optionsFor = null },
+                onConfirm = { mods -> viewModel.addItem(product, mods); fly(product, optionsFrom); optionsFor = null },
                 onDismiss = { optionsFor = null }
             )
         }
@@ -380,22 +417,73 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
                 OureaCategoryChips(categories = categories, selected = selectedCategory, onSelect = { selectedCategory = it })
             }
             Spacer(modifier = Modifier.height(10.dp))
-            if (filtered.isEmpty()) {
+            if (catalog.isEmpty() && syncing) {
+                ProductGridSkeleton(140.dp)
+            } else if (filtered.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(stringResource(R.string.ourea_no_products_yet_add_some), color = OureaTextSecondary)
+                    if (catalog.isEmpty()) EmptyState(EmptyArt.BOX, stringResource(R.string.ourea_no_products_yet_add_some))
+                    else EmptyState(EmptyArt.BOX, stringResource(R.string.ourea_no_matching_products))
                 }
             } else {
                 LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 140.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(filtered) { product ->
-                        ProductCard(product) {
+                        ProductCard(product) { from ->
                             // A dish with options (spice, add-ons) asks for them first.
-                            if (product.modifierGroups.isNotEmpty()) optionsFor = product else viewModel.addItem(product)
+                            if (product.modifierGroups.isNotEmpty()) { optionsFor = product; optionsFrom = from }
+                            else { viewModel.addItem(product); fly(product, from) }
                         }
                     }
                 }
             }
         }
     }
+    // The flying chips, above everything; they never take a touch.
+    flights.forEach { f ->
+        key(f.id) {
+            val target = cartTarget
+            if (target != null) FlyingToCart(f, target - rootOrigin, rootOrigin) { flights.remove(f) }
+        }
+    }
+    }
+}
+
+/** One product on its way into the cart. */
+class CartFlight(val id: Long, val label: String, val from: Rect)
+
+/**
+ * The tapped product's name, as a small pill, arcing into the cart in 320 ms and
+ * shrinking as it lands. Purely visual: the item is already in the cart when this
+ * starts, so tapping fast is never slowed down.
+ */
+@Composable
+private fun FlyingToCart(flight: CartFlight, target: Offset, rootOrigin: Offset, onDone: () -> Unit) {
+    val p = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { p.animateTo(1f, tween(320, easing = FastOutSlowInEasing)); onDone() }
+    val density = LocalDensity.current
+    val start = flight.from.center - rootOrigin
+    val lift = with(density) { 70.dp.toPx() }
+    val t = p.value
+    val pos = Offset(start.x + (target.x - start.x) * t, start.y + (target.y - start.y) * t - lift * sin(PI.toFloat() * t))
+    var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    Box(
+        Modifier
+            .offset { IntOffset((pos.x - size.width / 2).roundToInt(), (pos.y - size.height / 2).roundToInt()) }
+            .onGloballyPositioned { size = it.size }
+            .graphicsLayer { val s = 1f - 0.55f * t; scaleX = s; scaleY = s; alpha = 1f - 0.6f * t * t }
+            .clip(RoundedCornerShape(20.dp))
+            .background(OureaGold)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(flight.label, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 160.dp))
+    }
+}
+
+/** Placeholder product cards while the catalogue is first loading. */
+@Composable
+private fun ProductGridSkeleton(minCell: androidx.compose.ui.unit.Dp) {
+    LazyVerticalGrid(columns = GridCells.Adaptive(minSize = minCell), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), userScrollEnabled = false) {
+        items(12) { SkeletonCard(Modifier.fillMaxWidth()) }
     }
 }
 
@@ -406,24 +494,69 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
  */
 @Composable
 private fun OureaCategoryChips(categories: List<String>, selected: String?, onSelect: (String?) -> Unit) {
-    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { OureaCategoryChip(stringResource(R.string.ourea_all), selected == null) { onSelect(null) } }
-        items(categories.size) { i -> OureaCategoryChip(categories[i], selected == categories[i]) { onSelect(categories[i]) } }
+    // Each chip's place in the row; the gold pill slides (with a little spring) to the
+    // selected one instead of the colour jumping.
+    val places = remember { mutableStateMapOf<String?, Rect>() }
+    val density = LocalDensity.current
+    Box(Modifier.horizontalScroll(rememberScrollState())) {
+        // Chip backgrounds sit below the pill (were on the chips: the pill slid under them).
+        places.values.forEach { r ->
+            Box(Modifier.offset { IntOffset(r.left.roundToInt(), r.top.roundToInt()) }
+                .size(with(density) { r.width.toDp() }, with(density) { r.height.toDp() })
+                .clip(RoundedCornerShape(20.dp)).background(OureaSurface))
+        }
+        SpringIndicator(places[selected], RoundedCornerShape(20.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            (listOf<String?>(null) + categories).forEach { c ->
+                // Selected look only once the pill is under it (first frame: no pill yet).
+                OureaCategoryChip(c ?: stringResource(R.string.ourea_all), selected == c && places[selected] != null,
+                    Modifier.onGloballyPositioned { places[c] = Rect(it.positionInParent(), androidx.compose.ui.geometry.Size(it.size.width.toFloat(), it.size.height.toFloat())) }
+                ) { onSelect(c) }
+            }
+        }
     }
 }
 
+/** The selection pill behind a row/column of choices, springing to [place] (parent coordinates). */
 @Composable
-private fun OureaCategoryChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
+private fun SpringIndicator(place: Rect?, shape: androidx.compose.ui.graphics.Shape, color: Color = OureaGold) {
+    if (place == null) return
+    val x = remember { Animatable(place.left) }
+    val y = remember { Animatable(place.top) }
+    val w = remember { Animatable(place.width) }
+    val h = remember { Animatable(place.height) }
+    LaunchedEffect(place) {
+        val spec = spring<Float>(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow)
+        kotlinx.coroutines.coroutineScope {
+            launch { x.animateTo(place.left, spec) }; launch { y.animateTo(place.top, spec) }
+            launch { w.animateTo(place.width, spec) }; launch { h.animateTo(place.height, spec) }
+        }
+    }
+    val density = LocalDensity.current
     Box(
-        modifier = Modifier
+        Modifier
+            .offset { IntOffset(x.value.roundToInt(), y.value.roundToInt()) }
+            .size(with(density) { w.value.toDp() }, with(density) { h.value.toDp() })
+            .clip(shape)
+            .background(color)
+    )
+}
+
+@Composable
+private fun OureaCategoryChip(label: String, isSelected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(if (isSelected) OureaGold else OureaSurface)
+            // See-through: the backgrounds and the sliding pill are drawn behind the row.
             .clickable(onClick = onClick)
             .padding(vertical = 8.dp, horizontal = 14.dp)
     ) {
+        // The label turns light as the pill arrives, not before (white on the light chip vanished).
+        val labelColor by androidx.compose.animation.animateColorAsState(
+            if (isSelected) MaterialTheme.colorScheme.onPrimary else OureaTextPrimary, tween(260, delayMillis = 60), label = "chipLabel")
         Text(
             label,
-            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else OureaTextPrimary,
+            color = labelColor,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
             fontSize = 14.sp,
             maxLines = 1
@@ -491,9 +624,13 @@ fun OureaProductsScreen() {
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(16.dp))
-            if (filtered.isEmpty()) {
+            val syncing by RetailRepository.syncing.collectAsState()
+            if (catalog.isEmpty() && syncing) {
+                ProductGridSkeleton(160.dp)
+            } else if (filtered.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(stringResource(R.string.ourea_no_products_yet_add_some), color = OureaTextSecondary)
+                    if (catalog.isEmpty()) EmptyState(EmptyArt.BOX, stringResource(R.string.ourea_no_products_yet_add_some))
+                    else EmptyState(EmptyArt.BOX, stringResource(R.string.ourea_no_matching_products))
                 }
             } else {
                 LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 160.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -517,22 +654,26 @@ private fun OureaCategoryRail(categories: List<String>, selected: String?, onSel
             .background(OureaSurface)
             .padding(vertical = 16.dp, horizontal = 8.dp)
     ) {
-        OureaCategoryRailItem(stringResource(R.string.ourea_all), selected == null) { onSelect(null) }
-        Spacer(modifier = Modifier.height(4.dp))
-        categories.forEach { category ->
-            OureaCategoryRailItem(category, selected == category) { onSelect(category) }
-            Spacer(modifier = Modifier.height(4.dp))
+        val places = remember { mutableStateMapOf<String?, Rect>() }
+        Box {
+            SpringIndicator(places[selected], RoundedCornerShape(10.dp), OureaSurfaceVariant)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                (listOf<String?>(null) + categories).forEach { c ->
+                    OureaCategoryRailItem(c ?: stringResource(R.string.ourea_all), selected == c,
+                        Modifier.onGloballyPositioned { places[c] = Rect(it.positionInParent(), androidx.compose.ui.geometry.Size(it.size.width.toFloat(), it.size.height.toFloat())) }
+                    ) { onSelect(c) }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun OureaCategoryRailItem(label: String, isSelected: Boolean, onClick: () -> Unit) {
+private fun OureaCategoryRailItem(label: String, isSelected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(if (isSelected) OureaSurfaceVariant else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp, horizontal = 12.dp)
     ) {
@@ -602,14 +743,16 @@ private fun CartRow(number: Int, item: CartItem, lineDiscountCents: Int = 0, onI
 }
 
 @Composable
-private fun ProductCard(product: Product, onAdd: (() -> Unit)? = null) {
+private fun ProductCard(product: Product, onAdd: ((from: Rect?) -> Unit)? = null) {
     val outOfStock = product.stockQty == 0
+    // Where this card is, for the fly-to-cart pill.
+    var bounds by remember { mutableStateOf<Rect?>(null) }
     Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(OureaSurface)
+            .onGloballyPositioned { bounds = it.boundsInRoot() }
+            .glassCard(RoundedCornerShape(16.dp), elevation = 2.dp)
             // The whole card adds to the cart, not just the "+".
-            .let { if (onAdd != null && !outOfStock) it.clickable { onAdd() } else it }
+            .let { if (onAdd != null && !outOfStock) it.clickable { onAdd(bounds) } else it }
             .padding(12.dp)
             .let { if (outOfStock) it.alpha(0.5f) else it }
     ) {
@@ -624,7 +767,7 @@ private fun ProductCard(product: Product, onAdd: (() -> Unit)? = null) {
             // onAdd == null: read-only context (Products/inventory screen) -- no add-to-cart affordance at all,
             // rather than a "+" button that does nothing.
             if (onAdd != null) {
-                IconButton(onClick = onAdd, enabled = !outOfStock, modifier = Modifier.size(28.dp)) {
+                IconButton(onClick = { onAdd(bounds) }, enabled = !outOfStock, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Default.AddCircle, null, tint = if (outOfStock) OureaTextSecondary else OureaSkyBlue)
                 }
             }
@@ -705,8 +848,7 @@ fun OureaPaymentScreen(
             modifier = Modifier
                 .width(340.dp)
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(16.dp))
-                .background(OureaSurface)
+                .glassCard(RoundedCornerShape(16.dp), elevation = 4.dp)
                 .padding(20.dp)
         ) {
             Text(stringResource(R.string.ourea_bill_details), color = OureaTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -746,8 +888,7 @@ private fun OureaPaymentMethodButton(text: String, icon: androidx.compose.ui.gra
     Box(
         modifier = modifier
             .height(52.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(OureaSurfaceVariant)
+            .glassCard(RoundedCornerShape(12.dp), elevation = 1.dp, color = OureaSurfaceVariant)
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center
@@ -901,10 +1042,17 @@ fun OureaQrPaymentDialog(state: OureaQrUiState, onCancel: () -> Unit) {
                             modifier = Modifier.size(240.dp).clip(RoundedCornerShape(8.dp)).background(Color.White).padding(8.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text(stringResource(R.string.ourea_waiting_for_customer_to_complete), color = OureaTextSecondary, fontSize = 13.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            com.goldsky.ssp.feature.retail.ui.PaymentRadar(OureaGold, size = 40.dp) {
+                                Icon(Icons.Default.QrCodeScanner, null, tint = OureaGold, modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.ourea_waiting_for_customer_to_complete), color = OureaTextSecondary, fontSize = 13.sp)
+                        }
                     }
                     else -> {
-                        CircularProgressIndicator(color = OureaGold)
+                        // Where the code will appear, shimmering until it does.
+                        Box(Modifier.size(240.dp).shimmer(RoundedCornerShape(8.dp)))
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(stringResource(R.string.ourea_creating_qr_code), color = OureaTextSecondary)
                     }
@@ -972,7 +1120,7 @@ fun OureaDashboardScreen() {
                 modifier = Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(16.dp)).background(OureaSurface),
                 contentAlignment = Alignment.Center
             ) {
-                Text(stringResource(R.string.ourea_no_orders_yet_today), color = OureaTextSecondary)
+                EmptyState(EmptyArt.CHART, stringResource(R.string.ourea_no_orders_yet_today))
             }
         } else {
             LazyColumn(

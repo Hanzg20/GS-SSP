@@ -1,5 +1,10 @@
 package com.goldsky.ssp.feature.retail.screens
 
+import com.goldsky.ssp.feature.retail.ui.EmptyArt
+import com.goldsky.ssp.feature.retail.ui.EmptyState
+import com.goldsky.ssp.feature.retail.ui.glassCard
+import com.goldsky.ssp.feature.retail.ui.shimmer
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import com.goldsky.ssp.feature.retail.R
 import androidx.compose.ui.res.stringResource
@@ -61,11 +66,14 @@ fun TransactionHistoryScreen(
     val context = LocalContext.current
     var transactions by remember { mutableStateOf(emptyList<OrderEntity>()) }
     var selected by remember { mutableStateOf<OrderEntity?>(null) }
+    // Null until the first read: an empty list then means "no sales", not "still loading".
+    var loaded by remember { mutableStateOf(false) }
 
     LaunchedEffect(reloadKey) {
         transactions = TransactionRepository.getAllLocal(context)
             .let { all -> if (onlyStaffId == null) all else all.filter { it.staffId == onlyStaffId } }
         selected = selected?.let { s -> transactions.find { it.ecrRefNum == s.ecrRefNum } }
+        loaded = true
     }
 
 
@@ -110,9 +118,27 @@ fun TransactionHistoryScreen(
             }
         }
 
-        if (transactions.isEmpty()) {
+        if (!loaded) {
+            Column(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 8.dp)) {
+                repeat(6) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp).glassCard(RoundedCornerShape(12.dp), elevation = 1.dp).padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.size(28.dp).shimmer(RoundedCornerShape(8.dp)))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Box(Modifier.size(width = 90.dp, height = 16.dp).shimmer())
+                            Spacer(Modifier.height(6.dp))
+                            Box(Modifier.size(width = 140.dp, height = 11.dp).shimmer())
+                        }
+                        Box(Modifier.size(width = 48.dp, height = 14.dp).shimmer())
+                    }
+                }
+            }
+        } else if (transactions.isEmpty()) {
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.retail_no_sales_yet), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                EmptyState(EmptyArt.RECEIPT, stringResource(R.string.retail_no_sales_yet))
             }
         } else {
             LazyColumn(Modifier.weight(1f).padding(horizontal = 8.dp)) {

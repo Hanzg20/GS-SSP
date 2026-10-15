@@ -2,6 +2,9 @@
 <!-- 中文界面（Settings > Language > 中文）。 -->
 <resources>
     <string name="ourea_cart">购物车</string>
+    <string name="ourea_cart_empty">购物车是空的</string>
+    <string name="ourea_cart_empty_hint">点商品加入购物车</string>
+    <string name="ourea_no_matching_products">没有符合的商品</string>
     <string name="ourea_total">合计</string>
     <string name="ourea_hold_order">挂单</string>
     <string name="ourea_search_products">搜索商品</string>
