@@ -39,6 +39,8 @@ fun DayReportScreen(
     var basis by remember { mutableStateOf(DayReport.Basis.REFUND_DATE) }
     var isLoading by remember { mutableStateOf(true) }
     var report by remember { mutableStateOf<DayReport?>(null) }
+    // The whole store's rough profit that day; null offline (the rest of the report still shows).
+    var profit by remember { mutableStateOf<com.goldsky.ssp.payment.DayProfit?>(null) }
     var isPrinting by remember { mutableStateOf(false) }
 
     val dateFmt = remember { SimpleDateFormat("yyyy-MM-dd (EEE)", Locale.US) }
@@ -55,6 +57,7 @@ fun DayReportScreen(
             val endIso = DayReportRepository.isoUtc(endMs)
             val deviceSn = DeviceRepository.getPersistedDeviceSn() ?: ""
 
+            profit = DayReportRepository.profit(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date(dayMillis)))
             val fetched = DayReportRepository.fetch(deviceSn, startIso, endIso)
             if (fetched != null) {
                 val (rows, items) = fetched
@@ -94,7 +97,7 @@ fun DayReportScreen(
                                 scope.launch {
                                     isPrinting = true
                                     val vendor = DeviceRepository.getPersistedHardwareVendor()
-                                    val formattedLines = formatReportForPrint(r, dateFmt.format(selectedCalendar.time), basis)
+                                    val formattedLines = formatReportForPrint(r, dateFmt.format(selectedCalendar.time), basis, profit)
                                     val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                         ReceiptPrinterManager.printLines(context, formattedLines, vendor)
                                     }
@@ -200,6 +203,9 @@ fun DayReportScreen(
                     }
                 }
 
+                // The whole store's rough profit: sales before tax and tips minus the day's expenses.
+                profit?.let { p -> ProfitCard(p) }
+
                 // Payment Method Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -277,6 +283,36 @@ fun DayReportScreen(
     }
 }
 
+/** "Store · rough profit": every terminal's sales kept, before tax and tips, minus the day's expenses by category. */
+@Composable
+private fun ProfitCard(p: com.goldsky.ssp.payment.DayProfit) {
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.report_profit_title), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            ReportRow(stringResource(R.string.report_profit_sales, p.sales), money(p.revenue_cents))
+            if (p.expenses_by_category.isEmpty()) {
+                ReportRow(stringResource(R.string.report_profit_expenses), "-" + money(0))
+            } else {
+                p.expenses_by_category.entries.sortedByDescending { it.value }.forEach { (cat, cents) ->
+                    ReportRow(stringResource(R.string.report_profit_expense_of, com.goldsky.ssp.payment.ExpenseRepository.label(context, cat)),
+                        "-" + money(cents), color = GsTheme.colors.danger)
+                }
+            }
+            Divider(color = MaterialTheme.colorScheme.outline)
+            ReportRow(stringResource(R.string.report_profit_rough), signedMoney(p.rough_profit_cents),
+                isBold = true, color = if (p.rough_profit_cents < 0) GsTheme.colors.danger else GsTheme.colors.success)
+            Text(stringResource(R.string.report_profit_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+private fun signedMoney(cents: Int) = (if (cents < 0) "-" else "") + money(kotlin.math.abs(cents))
+
 @Composable
 private fun ReportRow(
     label: String,
@@ -307,7 +343,7 @@ private fun localTime(iso: String): String =
 private fun line(left: String, right: String): String =
     left + " ".repeat((32 - left.length - right.length).coerceAtLeast(1)) + right
 
-private fun formatReportForPrint(r: DayReport, dateStr: String, basis: DayReport.Basis): List<String> {
+private fun formatReportForPrint(r: DayReport, dateStr: String, basis: DayReport.Basis, profit: com.goldsky.ssp.payment.DayProfit?): List<String> {
     val sep = "-".repeat(32)
     val out = mutableListOf<String>()
     out += "        DAY REPORT"
@@ -340,6 +376,14 @@ private fun formatReportForPrint(r: DayReport, dateStr: String, basis: DayReport
     out += line("Exempt sales", money(r.exemptCents))
     out += line("Tips", money(r.tipCents))
     out += sep
+    // The whole store (every terminal), not just this one; ASCII category codes keep the 32 columns.
+    if (profit != null) {
+        out += "STORE ROUGH PROFIT (all terminals)"
+        out += line("Sales ex tax/tips (${profit.sales})", money(profit.revenue_cents))
+        profit.expenses_by_category.entries.sortedByDescending { it.value }.forEach { (cat, c) -> out += line("  - ${cat.lowercase()}", "-" + money(c)) }
+        out += line("ROUGH PROFIT", signedMoney(profit.rough_profit_cents))
+        out += sep
+    }
     out += "REFUNDS & VOIDS"
     if (r.refunds.isEmpty()) out += "  none"
     r.refunds.forEach { f ->

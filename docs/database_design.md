@@ -217,6 +217,11 @@ RPCs (all `public`, store from the calling device): reads `office_checklists` (t
 `office_tick` (tick or untick a step for today). Editing is managers-only in the app;
 any signed-in staff member ticks. Migration `docs/migrations/2026-10-16_office_checklists.sql`.
 
+Day profit (functions only, no tables): `office_day_profit(p_day)` -- the whole store's rough profit for a
+business day: sales kept (PAID) before tax and tips minus that day's `expenses`, by category. The Day report
+(Iris / Ourea) shows it; `apex_store_stats.profit_today` is the same figure for 小海狸 (both through
+`office_day_profit_for(org, day)`, not callable from the API). Migration `docs/migrations/2026-10-16_office_day_profit.sql`.
+
 ---
 
 ## 6. Row Level Security & multi-tenancy

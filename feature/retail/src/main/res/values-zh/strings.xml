@@ -328,4 +328,10 @@
     <string name="checklist_err_incomplete">没保存：请检查名称、时间和检查项</string>
     <string name="checklist_do_it">点这里去做</string>
     <string name="checklist_close">关闭</string>
+    <string name="report_profit_title">全店 · 粗利</string>
+    <string name="report_profit_sales">不含税和小费的销售额（%1$d 笔）</string>
+    <string name="report_profit_expenses">费用</string>
+    <string name="report_profit_expense_of">费用：%1$s</string>
+    <string name="report_profit_rough">粗利</string>
+    <string name="report_profit_note">全店所有终端合计。已退款的销售不算；进货在付款当天算作费用；只算已记录的费用（手账 / 小海狸）。</string>
 </resources>

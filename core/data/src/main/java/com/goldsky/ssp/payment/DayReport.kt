@@ -3,6 +3,7 @@ package com.goldsky.ssp.payment
 import android.util.Log
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.postgrest.rpc
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -129,8 +130,39 @@ data class DayReport(
     }
 }
 
+/**
+ * The whole store's rough profit for a day (public.office_day_profit, the same
+ * figures 小海狸 reads as profit_today): sales kept (PAID) before tax and tips,
+ * minus that day's recorded expenses. Rough: stock is an expense the day it's paid.
+ */
+@Serializable
+data class DayProfit(
+    val sales: Int = 0,
+    val sales_total_cents: Int = 0,
+    val tax_cents: Int = 0,
+    val tip_cents: Int = 0,
+    val revenue_cents: Int = 0,
+    val expenses_count: Int = 0,
+    val expenses_cents: Int = 0,
+    val expenses_by_category: Map<String, Int> = emptyMap(),
+    val rough_profit_cents: Int = 0,
+    val success: Boolean = true
+)
+
 object DayReportRepository {
     private const val TAG = "DayReport"
+
+    @Serializable private data class ProfitParams(val p_day: String)
+
+    /** [day] "yyyy-MM-dd" (store-local); null offline or when the server refuses. */
+    suspend fun profit(day: String): DayProfit? = withContext(Dispatchers.IO) {
+        try {
+            SupabaseClientProvider.ensureAuthenticated()
+            SupabaseClientProvider.client.postgrest.rpc("office_day_profit", ProfitParams(day)).decodeAs<DayProfit>().takeIf { it.success }
+        } catch (e: Exception) {
+            Log.w(TAG, "Day profit failed: ${e.message}"); null
+        }
+    }
 
     /** [local midnight, next local midnight) of the day containing [dayMillis], as UTC ISO strings + millis. */
     fun dayBounds(dayMillis: Long): Pair<Long, Long> {

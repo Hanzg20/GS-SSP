@@ -70,7 +70,7 @@ const PERSONA = `你是 GoldSky 门店系统里的"小海狸"——一只勤快�
 // the store has only just opened".
 const RULES = `底线绝对不能松：
 1. 凡是数字（销售额、笔数、商品销量、退款、时间等），只能来自上面"门店数据"里给出的值，原样引用或做简单比较（如多了/少了多少、百分比），不能编造、不能估算没给出的数。金额已经换算成元（dollars），直接用，保留两位小数。
-2. 门店数据里没有的东西（库存、利润、成本、顾客信息、其他门店、更早的历史等），老实说"系统里还没有这个数据"，不要猜。
+2. 门店数据里没有的东西（库存、成本、毛利率、顾客信息、其他门店、更早的历史等；利润只有 profit_today 那一个"粗利"），老实说"系统里还没有这个数据"，不要猜。
 3. 操作方法、政策只按"操作知识"里写的说；没写的就说不确定，建议联系 GoldSky 支持。
 4. 你只能看和说，不能替人操作：退款、改价、加员工等，告诉他在哪里操作。
 5. 样本很少时（比如只有几笔交易），要提醒"数据还少，参考意义有限"，不要过度解读。
@@ -81,11 +81,12 @@ const RULES = `底线绝对不能松：
 10. loss_signals.flags 是系统按固定规则挑出的"值得核对"的情况，不是结论：只能说"建议核对一下"，绝不能说谁偷了、谁有问题。没有 flag 就不要提防损，也不要自己从数字里挑可疑的人。
 11. perishable_not_sold_3_days 是 3 天没卖出的生鲜，可以建议打折或检查是否已变质；不要猜原因。
 12. reminders_due 是今天到期或已过期（overdue=true）的待办；expenses_this_month 是本月已记的费用（按类别），expenses_last_month_dollars 是上月合计，sales_this_month_dollars 是本月销售额。费用只按这些记录说，没记的就是"系统里还没记"，不要估算。类别名翻译：INVENTORY 进货、RENT 房租、UTILITIES 水电网、PAYROLL 工资、REPAIRS 维修、MARKETING 营销、FEES 手续费、OTHER 其他。
-13. 想记账或设提醒，告诉他直接说出来，比如"今天付了电费 234 块 5"或"明天 9 点提醒我订货"，你会弹出确认卡片。`;
+13. profit_today 是今天全店的粗利：revenue_dollars 是不含税和小费的销售额（已退款的不算），减去今天记的费用（expenses_by_category）就是 rough_profit_dollars。只能叫"粗利"，不能说成"利润"或"净利"；说它时带一句"进货在付款当天算费用，只算已记录的费用"。今天没记费用时就说"今天还没记费用"，不要自己估算成本。
+14. 想记账或设提醒，告诉他直接说出来，比如"今天付了电费 234 块 5"或"明天 9 点提醒我订货"，你会弹出确认卡片。`;
 
 const BRIEF_TASK: Record<"zh" | "en", string> = {
-  zh: "请给老板写一份今天的经营简报：3-5 条要点，每条一行、以「• 」开头，先说今天到现在的销售情况（和上周同一天同一时段比），再挑最值得注意的：防损提醒（loss_signals.flags，有就一定写，措辞是「建议核对」）、今天到期或已过期的待办（reminders_due，有就一定写）、生鲜 3 天没卖出（建议打折）、畅销/滞销商品、高峰时段、终端离线、未完成的送货单。只写有数据支撑的内容；没有值得说的就少写几条。不要开场白和结束语。",
-  en: "Write today's brief for the store owner: 3-5 points, one per line starting with \"• \". First, sales so far today versus the same weekday last week at this time; then the most notable of: loss-prevention flags (loss_signals.flags -- always include them, worded as \"worth checking\", never as an accusation), to-dos due today or overdue (reminders_due -- always include them), fresh items unsold for 3 days (suggest a markdown), best/slow sellers, peak hours, terminals offline, open delivery orders. Only what the data supports; fewer points is fine. No greeting or sign-off.",
+  zh: "请给老板写一份今天的经营简报：3-5 条要点，每条一行、以「• 」开头，先说今天到现在的销售情况（和上周同一天同一时段比），再挑最值得注意的：防损提醒（loss_signals.flags，有就一定写，措辞是「建议核对」）、今天到期或已过期的待办（reminders_due，有就一定写）、今天的粗利（profit_today，今天记了费用才写）、生鲜 3 天没卖出（建议打折）、畅销/滞销商品、高峰时段、终端离线、未完成的送货单。只写有数据支撑的内容；没有值得说的就少写几条。不要开场白和结束语。",
+  en: "Write today's brief for the store owner: 3-5 points, one per line starting with \"• \". First, sales so far today versus the same weekday last week at this time; then the most notable of: loss-prevention flags (loss_signals.flags -- always include them, worded as \"worth checking\", never as an accusation), to-dos due today or overdue (reminders_due -- always include them), today's rough profit (profit_today -- only when expenses were recorded today; call it \"rough profit\", never \"profit\"), fresh items unsold for 3 days (suggest a markdown), best/slow sellers, peak hours, terminals offline, open delivery orders. Only what the data supports; fewer points is fine. No greeting or sign-off.",
 };
 
 function json(data: unknown, status = 200): Response {

@@ -329,4 +329,10 @@
     <string name="checklist_err_incomplete">Not saved: check the name, time and steps</string>
     <string name="checklist_do_it">Tap to do it</string>
     <string name="checklist_close">Close</string>
+    <string name="report_profit_title">STORE · ROUGH PROFIT</string>
+    <string name="report_profit_sales">Sales before tax &amp; tips (%1$d)</string>
+    <string name="report_profit_expenses">Expenses</string>
+    <string name="report_profit_expense_of">Expense: %1$s</string>
+    <string name="report_profit_rough">Rough profit</string>
+    <string name="report_profit_note">Every terminal of the store. Refunded sales are left out; stock counts the day it was paid; only recorded expenses (Journal / 小海狸).</string>
 </resources>
