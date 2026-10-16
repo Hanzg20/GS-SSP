@@ -46,7 +46,8 @@ import java.util.*
 
 /**
  * The store's Journal (手账), a manager's back-office notebook in one place: notes,
- * to-dos (reminders, with a notification on this terminal when due) and expenses --
+ * to-dos (reminders, with a notification on this terminal when due), checklists
+ * (opening / closing routines, ticked daily by any staff) and expenses --
  * the same cloud records 小海狸 keeps by voice. More store tools go here as tabs.
  * Laid out like Quick and Records: the tab row right under the staff bar, rows like
  * the sales list, a tap opens the detail.
@@ -57,18 +58,21 @@ fun JournalScreen(onScanReceipt: () -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TabRow(
-            selectedTabIndex = tab,
+            // Row order: Notes, To-dos, Checklists (3, added later), Expenses (2).
+            selectedTabIndex = when (tab) { 3 -> 2; 2 -> 3; else -> tab },
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary
         ) {
             PosTab(tab == 0, stringResource(R.string.journal_tab_notes)) { tab = 0 }
             PosTab(tab == 1, stringResource(R.string.journal_tab_todo)) { tab = 1 }
+            PosTab(tab == 3, stringResource(R.string.journal_tab_checklists)) { tab = 3 }
             PosTab(tab == 2, stringResource(R.string.journal_tab_expenses)) { tab = 2 }
         }
         Box(Modifier.weight(1f)) {
             when (tab) {
                 0 -> NotesPane()
                 1 -> TodoPane()
+                3 -> ChecklistsPane()
                 else -> ExpensesPane(onScanReceipt)
             }
         }

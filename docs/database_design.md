@@ -74,7 +74,7 @@ erDiagram
 | Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders, `dine`.scan_chats** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
 | Members → `member` | vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions | apps, CMP |
 | Ads → `media` | advertisements, playlists, ad_playback_logs | CMP (ads), apps (playback) |
-| Store back office | expenses, reminders, notes | Iris / Ourea / Apex |
+| Store back office → `office` | **`office`.checklists, `office`.checklist_items, `office`.checklist_ticks** (§5b); expenses, reminders, notes (still `public`) | Iris / Ourea / Apex; checklists via `office_*` RPCs |
 | AI assistant → `apex` | apex_messages, apex_knowledge | apex-assistant edge function |
 | **Pending (待处理)** | `gp_*` (appointments, order_items, orders, products, profiles, settings, vehicles), `jc_*` (advertisement_logs, advertisements, consumption_records, member_levels, members, membership_cards, points_transactions, system_config, transaction_history, vip_cards), `e_merchants`, `e_transactions` | not read or written by GS-SSP apps. Marked pending 2026-10-13 (`COMMENT ON TABLE ... 'PENDING: ...'`). Don't build on them; to be moved to `legacy` or dropped once their owners are known |
 
@@ -91,6 +91,7 @@ schema and its name does not repeat the domain: `dine.checks`, not
 |---|---|---|
 | `public` | platform core for now, and the RPC functions the apps call | existing |
 | `dine` | dine-in | **done 2026-10-13** |
+| `office` | store back office (the Journal / 手账): checklists; expenses, reminders, notes to move | **checklists 2026-10-16** |
 | `sales` | shared orders / lines / payments (§4) | with the next vertical |
 | `retail`, `wash`, `ev`, `parking`, `vending`, `timer` | each vertical's own extension tables | as each is built or migrated |
 | `member`, `media`, `apex`, `ops` | see §2 | to migrate |
@@ -198,6 +199,24 @@ Migrations: `docs/migrations/2026-10-13_dine_in.sql`, `_dine_in_payment_tax.sql`
 `_cmp_dine.sql`, `_cmp_dine_console.sql`, `2026-10-14_dine_send_sold_out.sql`.
 End-to-end test kit (test store, server checks, fake kitchen printer): `tools/scan-e2e/`.
 
+## 5b. Store back office (`office` schema)
+
+The Journal (手账) on Iris / Ourea: notes, to-dos, expenses and checklists.
+Checklists are the first tables in the schema; expenses, reminders and notes stay in
+`public` (read directly by the apps under RLS) until they are moved.
+
+| Table | Holds | Key rules |
+|---|---|---|
+| `office.checklists` | a store routine (opening, closing...): name, `due_time` (store-local), `days` (bit 0 = Monday ... bit 6 = Sunday, 127 = daily) | name unique per store among active ones; removing one deactivates it |
+| `office.checklist_items` | its steps, in order | a step taken out is deactivated, not deleted, so past ticks keep their text |
+| `office.checklist_ticks` | a step done on a business day (America/Toronto): staff, terminal, time | one tick per step per day (unique index): two terminals ticking at once is one tick |
+
+RPCs (all `public`, store from the calling device): reads `office_checklists` (the editor),
+`office_today` (today's checklists by weekday, each step with today's tick); writes
+`office_save_checklist` (create / edit / remove, steps sent in order with their ids),
+`office_tick` (tick or untick a step for today). Editing is managers-only in the app;
+any signed-in staff member ticks. Migration `docs/migrations/2026-10-16_office_checklists.sql`.
+
 ---
 
 ## 6. Row Level Security & multi-tenancy
@@ -207,7 +226,7 @@ Business data is isolated per **organization**.
   (`permissions` / `capability_permissions`).
 - **Devices**: `org_id = (SELECT org_id FROM device_auth_map WHERE auth_user_id = auth.uid())`;
   device writes that need checks go through SECURITY DEFINER RPCs
-  (`create_delivery_order`, `mark_delivery_order_paid`, `dine_*`).
+  (`create_delivery_order`, `mark_delivery_order_paid`, `dine_*`, `office_*`).
 - **System admin**: `is_sys_admin()` bypasses the org filter for maintenance.
 - Known gap: anonymous device sessions may read every org's active `products`
   (pre-launch policy); apps filter by their own `org_id`.

@@ -595,6 +595,8 @@ fun CheckoutContainer(
 
 
     Column(modifier = Modifier.fillMaxSize()) {
+        // Any staff member: an opening / closing checklist that's due and not done.
+        com.goldsky.ssp.feature.retail.screens.DueChecklistBanner()
         if (!deliveryOnly) TabRow(
             // Row positions: Tables (if any) comes first, ahead of keypad / library / delivery.
             selectedTabIndex = if (dineIn) (if (selectedTab == 3) 0 else selectedTab + 1) else selectedTab,
