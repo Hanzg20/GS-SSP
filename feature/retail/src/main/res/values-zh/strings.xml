@@ -334,4 +334,12 @@
     <string name="report_profit_expense_of">费用：%1$s</string>
     <string name="report_profit_rough">粗利</string>
     <string name="report_profit_note">全店所有终端合计。已退款的销售不算；进货在付款当天算作费用；只算已记录的费用（手账 / 小海狸）。</string>
+    <string name="journal_todo_for">→ %1$s</string>
+    <string name="journal_todo_from">来自 %1$s</string>
+    <string name="journal_todo_for_title">交给谁</string>
+    <string name="journal_todo_everyone">所有人</string>
+    <string name="journal_todo_now">现在（交班留言）</string>
+    <string name="journal_signin_title">%1$s，给你的待办</string>
+    <string name="journal_signin_desc">留给你、今天要做的待办和交班留言。做完的勾掉。</string>
+    <string name="journal_signin_ok">知道了</string>
 </resources>

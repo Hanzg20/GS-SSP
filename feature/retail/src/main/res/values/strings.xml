@@ -335,4 +335,12 @@
     <string name="report_profit_expense_of">Expense: %1$s</string>
     <string name="report_profit_rough">Rough profit</string>
     <string name="report_profit_note">Every terminal of the store. Refunded sales are left out; stock counts the day it was paid; only recorded expenses (Journal / 小海狸).</string>
+    <string name="journal_todo_for">→ %1$s</string>
+    <string name="journal_todo_from">from %1$s</string>
+    <string name="journal_todo_for_title">For</string>
+    <string name="journal_todo_everyone">Everyone</string>
+    <string name="journal_todo_now">Now (handover note)</string>
+    <string name="journal_signin_title">For you, %1$s</string>
+    <string name="journal_signin_desc">To-dos and handover notes left for you, due today. Tick what is done.</string>
+    <string name="journal_signin_ok">Got it</string>
 </resources>

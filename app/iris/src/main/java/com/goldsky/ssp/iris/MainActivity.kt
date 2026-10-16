@@ -217,6 +217,8 @@ class MainActivity : ComponentActivity() {
                 if (signedIn == null) {
                     StaffPinLockScreen(onSignedIn = { staff = it; lastInteractionAt = android.os.SystemClock.elapsedRealtime() })
                 } else {
+                    // Their to-dos and handover notes for today, first thing after signing in.
+                    com.goldsky.ssp.feature.retail.screens.SignInTodos(signedIn)
                     key(themeVersion) { Surface(modifier = Modifier.fillMaxSize(), color = surfaceBg) {
                         Scaffold(
                             topBar = { StaffBar(signedIn, onLock = { lock() }) },

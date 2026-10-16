@@ -21,7 +21,9 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
- * A manager's to-dos (cloud `reminders`, docs/migrations/2026-10-10_expenses_reminders.sql).
+ * The store's to-dos (cloud `reminders`, docs/migrations/2026-10-10_expenses_reminders.sql), for
+ * the whole store or for one staff member (assignee, 2026-10-16_reminders_assignee.sql) -- a
+ * handover note is a to-do for the next person, due now; it comes up when they sign in.
  * The terminal that set one shows a notification when it is due (a WorkManager
  * job, rescheduled on every app start so a reboot doesn't lose it); 小海狸's
  * brief lists what is due today or overdue on every terminal of the store.
@@ -39,14 +41,28 @@ object ReminderRepository {
         val staff_name: String? = null,
         val text: String,
         val due_at: String,
-        val done_at: String? = null
+        val done_at: String? = null,
+        val assignee_id: String? = null,
+        val assignee_name: String? = null,
+        val done_by_name: String? = null
     )
 
     @Serializable
-    private data class DonePatch(val done_at: String)
+    private data class DonePatch(val done_at: String, val done_by_name: String?)
 
-    /** One to-do as the Journal lists it. [doneAtMillis] null: still open. */
-    data class Reminder(val id: String, val text: String, val dueAtMillis: Long, val doneAtMillis: Long?, val staffName: String?)
+    /**
+     * One to-do as the Journal lists it. [doneAtMillis] null: still open. [staffName]: who set
+     * it; [assigneeName] null: for the whole store; [doneByName]: who finished it.
+     */
+    data class Reminder(
+        val id: String, val text: String, val dueAtMillis: Long, val doneAtMillis: Long?, val staffName: String?,
+        val assigneeId: String? = null, val assigneeName: String? = null, val doneByName: String? = null
+    )
+
+    private fun ReminderRow.toReminder(): Reminder? {
+        val due = DayReportRepository.parseIsoMillis(due_at) ?: return null
+        return Reminder(id, text, due, done_at?.let { DayReportRepository.parseIsoMillis(it) }, staff_name, assignee_id, assignee_name, done_by_name)
+    }
 
     /**
      * The store's to-dos for the Journal (every terminal's, like 小海狸's brief): all
@@ -68,18 +84,38 @@ object ReminderRepository {
                 order("done_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
                 limit(50)
             }.decodeList<ReminderRow>()
-            (open + done).mapNotNull { r ->
-                val due = DayReportRepository.parseIsoMillis(r.due_at) ?: return@mapNotNull null
-                Reminder(r.id, r.text, due, r.done_at?.let { DayReportRepository.parseIsoMillis(it) }, r.staff_name)
-            }
+            (open + done).mapNotNull { it.toReminder() }
         } catch (e: Exception) {
             Log.w(TAG, "Reminders not listed: ${e.message}")
             null
         }
     }
 
-    /** Saves the reminder and schedules its notification here. False if it couldn't be saved (offline). */
-    suspend fun create(context: Context, text: String, dueAtMillis: Long, staff: StaffMember?): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * What [staff] should see when they sign in: open to-dos for them, due by the end of
+     * today (overdue included), soonest first. Empty offline -- sign-in never waits on it.
+     */
+    suspend fun forSignIn(staff: StaffMember): List<Reminder> = withContext(Dispatchers.IO) {
+        val orgId = DeviceRepository.getPersistedOrgId() ?: return@withContext emptyList()
+        val endOfDay = DayReportRepository.dayBounds(System.currentTimeMillis()).second
+        try {
+            SupabaseClientProvider.ensureAuthenticated()
+            SupabaseClientProvider.client.postgrest["reminders"].select {
+                filter { eq("org_id", orgId); eq("assignee_id", staff.id); exact("done_at", null); lt("due_at", iso(endOfDay)) }
+                order("due_at", io.github.jan.supabase.postgrest.query.Order.ASCENDING)
+                limit(20)
+            }.decodeList<ReminderRow>().mapNotNull { it.toReminder() }
+        } catch (e: Exception) {
+            Log.w(TAG, "Sign-in to-dos not loaded: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Saves the reminder and schedules its notification here. [assignee] null: for the whole
+     * store. False if it couldn't be saved (offline).
+     */
+    suspend fun create(context: Context, text: String, dueAtMillis: Long, staff: StaffMember?, assignee: StaffMember? = null): Boolean = withContext(Dispatchers.IO) {
         val orgId = DeviceRepository.getPersistedOrgId() ?: return@withContext false
         val id = UUID.randomUUID().toString()
         try {
@@ -87,7 +123,8 @@ object ReminderRepository {
             SupabaseClientProvider.client.postgrest["reminders"].insert(
                 ReminderRow(
                     id = id, org_id = orgId, device_sn = DeviceRepository.getPersistedDeviceSn(),
-                    staff_id = staff?.id, staff_name = staff?.name, text = text.trim(), due_at = iso(dueAtMillis)
+                    staff_id = staff?.id, staff_name = staff?.name, text = text.trim(), due_at = iso(dueAtMillis),
+                    assignee_id = assignee?.id, assignee_name = assignee?.name
                 )
             )
             schedule(context, id, text.trim(), dueAtMillis)
@@ -98,11 +135,14 @@ object ReminderRepository {
         }
     }
 
-    /** [context]: also drops this terminal's pending notification -- done early, nothing to remind. */
-    suspend fun markDone(id: String, context: Context? = null): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * [context]: also drops this terminal's pending notification -- done early, nothing to remind.
+     * [by]: who finished it (the signed-in staff member by default).
+     */
+    suspend fun markDone(id: String, context: Context? = null, by: StaffMember? = StaffRepository.current): Boolean = withContext(Dispatchers.IO) {
         try {
             SupabaseClientProvider.ensureAuthenticated()
-            SupabaseClientProvider.client.postgrest["reminders"].update(DonePatch(iso(System.currentTimeMillis()))) {
+            SupabaseClientProvider.client.postgrest["reminders"].update(DonePatch(iso(System.currentTimeMillis()), by?.name)) {
                 filter { eq("id", id) }
             }
             context?.let { WorkManager.getInstance(it).cancelUniqueWork("reminder_$id") }

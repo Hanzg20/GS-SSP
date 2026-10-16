@@ -352,7 +352,7 @@ private fun TodoPane() {
                             iconLabel = stringResource(R.string.journal_mark_done),
                             onIcon = { scope.launch { if (ReminderRepository.markDone(t.id, context)) reload() } },
                             title = t.text,
-                            subtitle = dueLabel(t.dueAtMillis) + (t.staffName?.let { " · $it" } ?: ""),
+                            subtitle = dueLabel(t.dueAtMillis) + todoWho(t),
                             trailing = if (overdue) {
                                 { JournalChip(stringResource(R.string.journal_todo_overdue), GsTheme.colors.danger) }
                             } else null
@@ -369,7 +369,7 @@ private fun TodoPane() {
                                 iconTint = GsTheme.colors.success,
                                 title = t.text,
                                 titleDone = true,
-                                subtitle = dueLabel(t.dueAtMillis) + (t.staffName?.let { " · $it" } ?: ""),
+                                subtitle = dueLabel(t.dueAtMillis) + (t.doneByName ?: t.assigneeName)?.let { " · ✓ $it" }.orEmpty(),
                                 trailing = { JournalChip(stringResource(R.string.journal_done), GsTheme.colors.success) }
                             )
                         }
@@ -384,6 +384,11 @@ private fun TodoPane() {
     }
 }
 
+/** " · → Amy" for one person's to-do, " · by Bob" (who set it) for the whole store's. */
+@Composable
+private fun todoWho(t: ReminderRepository.Reminder): String =
+    t.assigneeName?.let { " · " + stringResource(R.string.journal_todo_for, it) } ?: t.staffName?.let { " · $it" }.orEmpty()
+
 /** "Today 15:00", "Tomorrow 09:00", else "Oct 20, 15:00" (this terminal's time zone). */
 @Composable
 private fun dueLabel(millis: Long): String {
@@ -397,6 +402,7 @@ private fun dueLabel(millis: Long): String {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TodoDialog(onDismiss: () -> Unit, onSaved: () -> Unit) {
     val context = LocalContext.current
@@ -406,6 +412,9 @@ private fun TodoDialog(onDismiss: () -> Unit, onSaved: () -> Unit) {
         Calendar.getInstance().apply { add(Calendar.HOUR_OF_DAY, 1); set(Calendar.MINUTE, 0) }.time
     }
     var text by remember { mutableStateOf("") }
+    // Who it's for: null = the whole store. Anyone who can sign in here (cached list, works offline).
+    val staffList = remember { StaffRepository.cached().orEmpty().sortedBy { it.name.lowercase() } }
+    var assignee by remember { mutableStateOf<com.goldsky.ssp.payment.StaffMember?>(null) }
     var date by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(start)) }
     var time by remember { mutableStateOf(SimpleDateFormat("HH:mm", Locale.US).format(start)) }
     var saving by remember { mutableStateOf(false) }
@@ -426,12 +435,25 @@ private fun TodoDialog(onDismiss: () -> Unit, onSaved: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurface)
                 OutlinedTextField(text, { text = it.take(300) }, Modifier.fillMaxWidth(),
                     label = { Text(stringResource(R.string.journal_todo_text)) })
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.journal_todo_for_title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item { FilterChip(selected = assignee == null, onClick = { assignee = null }, label = { Text(stringResource(R.string.journal_todo_everyone)) }) }
+                    items(staffList, key = { it.id }) { m ->
+                        FilterChip(selected = assignee?.id == m.id, onClick = { assignee = m }, label = { Text(m.name) })
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(date, { date = it.take(10) }, Modifier.weight(1.4f),
                         label = { Text(stringResource(R.string.journal_todo_date)) }, singleLine = true)
                     OutlinedTextField(time, { time = it.take(5) }, Modifier.weight(1f),
                         label = { Text(stringResource(R.string.journal_todo_time)) }, singleLine = true)
                 }
+                // A handover note: for the next person, right away.
+                AssistChip(onClick = {
+                    val now = Date()
+                    date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
+                    time = SimpleDateFormat("HH:mm", Locale.US).format(now)
+                }, label = { Text(stringResource(R.string.journal_todo_now)) })
                 error?.let { Text(it, color = GsTheme.colors.danger) }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(onClick = onDismiss, enabled = !saving, modifier = Modifier.weight(1f)) {
@@ -445,15 +467,77 @@ private fun TodoDialog(onDismiss: () -> Unit, onSaved: () -> Unit) {
                                 SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply { isLenient = false }.parse("$date $time")?.time
                             }.getOrNull()
                             if (at == null || !Regex("""\d{4}-\d{2}-\d{2}""").matches(date) || !Regex("""\d{1,2}:\d{2}""").matches(time)) { error = badTime; return@Button }
-                            if (at <= System.currentTimeMillis()) { error = pastTime; return@Button }
+                            if (at < System.currentTimeMillis() - 120_000) { error = pastTime; return@Button }
                             saving = true
                             scope.launch {
-                                val ok = ReminderRepository.create(context, text, at, StaffRepository.current)
+                                val ok = ReminderRepository.create(context, text, at, StaffRepository.current, assignee)
                                 saving = false
                                 if (ok) onSaved() else error = notSaved
                             }
                         }
                     ) { Text(stringResource(R.string.journal_save), fontWeight = FontWeight.Bold) }
+                }
+            }
+        }
+    }
+}
+
+// --------------------------------------------------------------------------
+// At sign-in: the to-dos and handover notes left for this person
+// --------------------------------------------------------------------------
+
+/**
+ * Right after [staff] signs in (Iris): their open to-dos due by the end of today --
+ * handover notes from the last shift included -- to tick off or acknowledge. Shows
+ * nothing when there are none or the cloud can't be reached; never blocks sign-in.
+ */
+@Composable
+fun SignInTodos(staff: com.goldsky.ssp.payment.StaffMember) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var todos by remember(staff.id) { mutableStateOf<List<ReminderRepository.Reminder>>(emptyList()) }
+    var closed by remember(staff.id) { mutableStateOf(false) }
+    var busy by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(staff.id) { todos = ReminderRepository.forSignIn(staff) }
+    if (closed || todos.isEmpty()) return
+
+    Dialog(onDismissRequest = {}) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
+            tonalElevation = 6.dp
+        ) {
+            Column(Modifier.padding(20.dp).fillMaxWidth()) {
+                Text(stringResource(R.string.journal_signin_title, staff.name), style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
+                Text(stringResource(R.string.journal_signin_desc), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(todos, key = { it.id }) { t ->
+                        val overdue = t.dueAtMillis < System.currentTimeMillis() - 60_000
+                        JournalRow(
+                            icon = Icons.Default.RadioButtonUnchecked,
+                            iconLabel = stringResource(R.string.journal_mark_done),
+                            onIcon = if (busy == null) {
+                                {
+                                    busy = t.id
+                                    scope.launch {
+                                        if (ReminderRepository.markDone(t.id, context, staff)) todos = todos.filterNot { it.id == t.id }
+                                        busy = null
+                                    }
+                                }
+                            } else null,
+                            title = t.text,
+                            subtitle = dueLabel(t.dueAtMillis) + (t.staffName?.let { " · " + stringResource(R.string.journal_todo_from, it) } ?: ""),
+                            trailing = if (overdue) {
+                                { JournalChip(stringResource(R.string.journal_todo_overdue), GsTheme.colors.danger) }
+                            } else null
+                        )
+                    }
+                }
+                Button(onClick = { closed = true }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    Text(stringResource(R.string.journal_signin_ok), fontWeight = FontWeight.Bold)
                 }
             }
         }

@@ -204,6 +204,9 @@ End-to-end test kit (test store, server checks, fake kitchen printer): `tools/sc
 The Journal (手账) on Iris / Ourea: notes, to-dos, expenses and checklists.
 Checklists are the first tables in the schema; expenses, reminders and notes stay in
 `public` (read directly by the apps under RLS) until they are moved.
+`public.reminders` (to-dos) can be for one staff member (`assignee_id` / `assignee_name`, NULL = the whole
+store) -- a handover note is one due now, shown to that person at sign-in on Iris; `done_by_name` records who
+finished it (`docs/migrations/2026-10-16_reminders_assignee.sql`).
 
 | Table | Holds | Key rules |
 |---|---|---|
