@@ -122,4 +122,6 @@
     <string name="ourea_order_discount">整单优惠</string>
     <string name="ourea_discounts">优惠</string>
     <string name="ourea_whole_order">整单</string>
+    <string name="ourea_refund_done">退款完成</string>
+    <string name="ourea_refund_failed">退款失败</string>
 </resources>

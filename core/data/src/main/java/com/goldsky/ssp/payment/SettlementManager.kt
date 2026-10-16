@@ -44,6 +44,23 @@ object SettlementManager {
         fun summary() = "batch $batchId: credit $creditCount / $creditAmount, debit $debitCount / $debitAmount (status $settleStatus)"
     }
 
+    private const val DEMO_PAYWIZARD = "com.wizarpos.paywizard.demo"
+    /** Acquirer payment apps PAYWizard can hand a card to (add one here with a new acquirer, and to the manifest's <queries>). */
+    private val ACQUIRER_APPS = listOf("com.smartpos.nuvei.smartpay")
+
+    /**
+     * A test terminal on WizarPOS's demo PAYWizard and no acquirer app (the Q2 at JiaJia,
+     * Ourea's Eye 094, 2026-10-16): its Settle always answers -191 "Original transaction
+     * not found", every day. Its settle failures are reported as WARNING, not a CRITICAL
+     * "merchant isn't getting paid" -- nothing is being paid out there. A terminal with an
+     * acquirer app (Eagleson's, Nuvei) is never treated so.
+     */
+    fun onDemoPayments(context: Context): Boolean {
+        val pm = context.packageManager
+        fun has(pkg: String) = runCatching { pm.getPackageInfo(pkg, 0); true }.getOrDefault(false)
+        return has(DEMO_PAYWIZARD) && ACQUIRER_APPS.none(::has)
+    }
+
     private val mutex = Mutex()
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -87,7 +104,9 @@ object SettlementManager {
         Log.i(TAG, "Settle ($trigger) ok=${outcome.ok}: ${outcome.message} ${outcome.totals?.summary() ?: ""}")
         DiagnosticManager.recordMaintenance(sn, "BATCH_CLOSE", details(trigger, outcome))
         if (!outcome.ok) {
-            DiagnosticManager.reportError(sn, "BATCH_CLOSE_FAILED", severity = "ERROR", trace = "$trigger: ${outcome.message}")
+            val demo = onDemoPayments(context)
+            DiagnosticManager.reportError(sn, "BATCH_CLOSE_FAILED", severity = if (demo) "WARNING" else "ERROR",
+                trace = "$trigger: ${outcome.message}" + if (demo) " (demo PAYWizard, no acquirer app)" else "")
         }
         outcome
     }

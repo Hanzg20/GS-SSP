@@ -131,7 +131,7 @@ class MainActivity : ComponentActivity() {
                         when (r) {
                             is com.goldsky.ssp.feature.retail.RefundFlow.RefundState.Processing -> paymentStatus = OureaPaymentUiState.Processing(r.message)
                             is com.goldsky.ssp.feature.retail.RefundFlow.RefundState.Done -> { paymentStatus = OureaPaymentUiState.Success(r.message); recordsReload++ }
-                            is com.goldsky.ssp.feature.retail.RefundFlow.RefundState.Failed -> { paymentStatus = OureaPaymentUiState.Error(r.message); recordsReload++ }
+                            is com.goldsky.ssp.feature.retail.RefundFlow.RefundState.Failed -> { paymentStatus = OureaPaymentUiState.Error(r.message, refund = true); recordsReload++ }
                             is com.goldsky.ssp.feature.retail.RefundFlow.RefundState.NeedsCard -> { paymentStatus = OureaPaymentUiState.Idle; refundNeedsCard = r }
                         }
                     }
@@ -371,9 +371,11 @@ class MainActivity : ComponentActivity() {
                                 onDismiss = { paymentStatus = OureaPaymentUiState.Idle }
                             )
                         } else {
-                            OureaPaymentResultDialog(true, state.message, state.orderNumber) { paymentStatus = OureaPaymentUiState.Idle }
+                            // No amount: a refund ("Refund done", not "Payment Success").
+                            OureaPaymentResultDialog(true, state.message, state.orderNumber, title = stringResource(R.string.ourea_refund_done)) { paymentStatus = OureaPaymentUiState.Idle }
                         }
-                        is OureaPaymentUiState.Error -> OureaPaymentResultDialog(false, state.message) { paymentStatus = OureaPaymentUiState.Idle }
+                        is OureaPaymentUiState.Error -> OureaPaymentResultDialog(false, state.message,
+                            title = if (state.refund) stringResource(R.string.ourea_refund_failed) else null) { paymentStatus = OureaPaymentUiState.Idle }
                         else -> {}
                     }
 
@@ -769,7 +771,8 @@ sealed class OureaPaymentUiState {
     object Idle : OureaPaymentUiState()
     /** [amountCents]: what this SALE took, set only by the payment flows -- a refund leaves it null. */
     data class Success(val message: String, val orderNumber: Int? = null, val amountCents: Int? = null) : OureaPaymentUiState()
-    data class Error(val message: String) : OureaPaymentUiState()
+    /** [refund]: a refund that failed -- titled as one, not as a failed payment. */
+    data class Error(val message: String, val refund: Boolean = false) : OureaPaymentUiState()
     /** [waitingForCard]: the card terminal is waiting for the customer (radar instead of a spinner). */
     data class Processing(val message: String, val waitingForCard: Boolean = false) : OureaPaymentUiState()
 }
@@ -804,10 +807,10 @@ fun OureaPaymentProcessingDialog(message: String, waitingForCard: Boolean = fals
 }
 
 @Composable
-fun OureaPaymentResultDialog(isSuccess: Boolean, message: String, orderNumber: Int? = null, onDismiss: () -> Unit) {
+fun OureaPaymentResultDialog(isSuccess: Boolean, message: String, orderNumber: Int? = null, title: String? = null, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(if (isSuccess) R.string.ourea_payment_success else R.string.ourea_payment_failed)) },
+        title = { Text(title ?: stringResource(if (isSuccess) R.string.ourea_payment_success else R.string.ourea_payment_failed)) },
         text = {
             Column {
                 // Quick-service: the call number, big, to tell the customer.

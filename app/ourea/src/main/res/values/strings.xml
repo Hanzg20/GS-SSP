@@ -121,4 +121,6 @@
     <string name="ourea_order_discount">Order discount</string>
     <string name="ourea_discounts">Discounts</string>
     <string name="ourea_whole_order">Whole order</string>
+    <string name="ourea_refund_done">Refund done</string>
+    <string name="ourea_refund_failed">Refund failed</string>
 </resources>

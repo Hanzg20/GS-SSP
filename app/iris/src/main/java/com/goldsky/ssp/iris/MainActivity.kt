@@ -346,7 +346,7 @@ class MainActivity : ComponentActivity() {
                         when (val state = paymentStatus) {
                             is PaymentUiState.Processing -> PaymentProcessingDialog(state.message)
                             is PaymentUiState.Success -> PaymentResultDialog(true, stringResource(R.string.iris_approved_code, state.authCode), state.orderNumber) { paymentStatus = PaymentUiState.Idle }
-                            is PaymentUiState.Done -> PaymentResultDialog(true, state.message) { paymentStatus = PaymentUiState.Idle }
+                            is PaymentUiState.Done -> PaymentResultDialog(true, state.message, title = stringResource(R.string.iris_refund_done)) { paymentStatus = PaymentUiState.Idle }
                             is PaymentUiState.RefundNeedsCard -> com.goldsky.ssp.feature.retail.RefundNeedsCardDialog(
                                 amountCents = state.order.amountCents,
                                 onCardTapped = {
@@ -361,7 +361,8 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onCancel = { paymentStatus = PaymentUiState.Idle }
                             )
-                            is PaymentUiState.Error -> PaymentResultDialog(false, state.message) { paymentStatus = PaymentUiState.Idle }
+                            is PaymentUiState.Error -> PaymentResultDialog(false, state.message,
+                                title = if (state.refund) stringResource(R.string.iris_refund_failed) else null) { paymentStatus = PaymentUiState.Idle }
                             else -> {}
                         }
                     } }
@@ -773,7 +774,7 @@ fun IrisSystemHeader(staff: StaffMember, onLock: () -> Unit) {
 private fun RefundFlow.RefundState.toUi(): PaymentUiState = when (this) {
     is RefundFlow.RefundState.Processing -> PaymentUiState.Processing(message)
     is RefundFlow.RefundState.Done -> PaymentUiState.Done(message)
-    is RefundFlow.RefundState.Failed -> PaymentUiState.Error(message)
+    is RefundFlow.RefundState.Failed -> PaymentUiState.Error(message, refund = true)
     is RefundFlow.RefundState.NeedsCard -> PaymentUiState.RefundNeedsCard(order, approver)
 }
 
@@ -785,9 +786,10 @@ private fun signedInName(): String? = StaffRepository.current?.name
 sealed class PaymentUiState {
     object Idle : PaymentUiState()
     data class Success(val authCode: String, val orderNumber: Int? = null) : PaymentUiState()
-    data class Error(val message: String) : PaymentUiState()
+    /** [refund]: a refund that failed -- titled as one, not as a failed payment. */
+    data class Error(val message: String, val refund: Boolean = false) : PaymentUiState()
     data class Processing(val message: String) : PaymentUiState()
-    // A non-sale outcome to confirm (e.g. a refund), shown as-is.
+    // A refund that went through, shown as-is under "Refund done" (not "Payment Success").
     data class Done(val message: String) : PaymentUiState()
     // The card sale couldn't be reversed (usually: already settled). Socket-mode
     // Refund needs the customer's card; otherwise it's refunded in the WizarPOS
@@ -817,10 +819,11 @@ fun PaymentProcessingDialog(message: String) {
 }
 
 @Composable
-fun PaymentResultDialog(isSuccess: Boolean, message: String, orderNumber: Int? = null, onDismiss: () -> Unit) {
+fun PaymentResultDialog(isSuccess: Boolean, message: String, orderNumber: Int? = null, title: String? = null, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(if (isSuccess) R.string.iris_payment_success else R.string.iris_payment_failed)) },
+        // [title]: a refund's own wording; a sale's otherwise.
+        title = { Text(title ?: stringResource(if (isSuccess) R.string.iris_payment_success else R.string.iris_payment_failed)) },
         text = {
             Column {
                 // Quick-service: the call number to tell the customer.

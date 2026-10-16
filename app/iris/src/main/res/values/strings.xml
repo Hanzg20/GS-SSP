@@ -21,4 +21,6 @@
     <string name="iris_role_cashier">Cashier</string>
     <string name="iris_payment_success">Payment Success</string>
     <string name="iris_payment_failed">Payment Failed</string>
+    <string name="iris_refund_done">Refund done</string>
+    <string name="iris_refund_failed">Refund failed</string>
 </resources>

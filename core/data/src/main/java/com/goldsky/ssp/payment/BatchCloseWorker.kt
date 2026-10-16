@@ -20,7 +20,10 @@ class BatchCloseWorker(appContext: Context, params: WorkerParameters) : Coroutin
         if (runAttemptCount + 1 >= MAX_ATTEMPTS) {
             Log.e("BatchCloseWorker", "Settle failed $MAX_ATTEMPTS times, giving up until tomorrow: ${outcome.message}")
             val sn = DeviceRepository.getPersistedDeviceSn() ?: "UNKNOWN"
-            DiagnosticManager.reportError(sn, "BATCH_CLOSE_GAVE_UP", severity = "CRITICAL", trace = outcome.message)
+            // A demo-PAYWizard test terminal never settles: a warning, not a CRITICAL alert every day.
+            val demo = SettlementManager.onDemoPayments(applicationContext)
+            DiagnosticManager.reportError(sn, "BATCH_CLOSE_GAVE_UP", severity = if (demo) "WARNING" else "CRITICAL",
+                trace = outcome.message + if (demo) " (demo PAYWizard, no acquirer app)" else "")
             return Result.success() // keeps the periodic schedule; tomorrow tries again
         }
         return Result.retry()

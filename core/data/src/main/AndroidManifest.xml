@@ -12,6 +12,9 @@
         <package android:name="com.goldsky.ssp.iris" />
         <package android:name="com.goldsky.ssp.ourea" />
         <package android:name="com.goldsky.ssp.ourea.eye" />
+        <!-- Which payment app the terminal has: SettlementManager.onDemoPayments. -->
+        <package android:name="com.wizarpos.paywizard.demo" />
+        <package android:name="com.smartpos.nuvei.smartpay" />
     </queries>
 
     <application>
