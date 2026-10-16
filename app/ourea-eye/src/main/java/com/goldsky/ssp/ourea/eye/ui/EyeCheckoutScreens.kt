@@ -258,7 +258,8 @@ fun TipScreen(state: CfdDisplayState.Tip, onChosen: (Int) -> Unit) {
             palette = eyeTipPalette,
             onChosen = onChosen,
             modifier = Modifier.fillMaxSize().padding(18.dp),
-            review = state.review
+            review = state.review,
+            askTip = state.askTip
         )
     }
 }

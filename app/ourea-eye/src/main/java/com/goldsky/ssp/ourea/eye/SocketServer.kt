@@ -20,7 +20,7 @@ sealed class CfdDisplayState {
     /** [cardPrompt] false: the amount only (tip chosen, staff may still take cash). */
     data class Payment(val amountCents: Int, val cardPrompt: Boolean = true) : CfdDisplayState()
     /** The customer chooses a tip ([basisCents]: before tax); [tipId] is Ourea's request. */
-    data class Tip(val tipId: String, val basisCents: Int, val totalCents: Int, val cardNext: Boolean = false, val review: com.goldsky.ssp.common.Tipping.Review? = null) : CfdDisplayState()
+    data class Tip(val tipId: String, val basisCents: Int, val totalCents: Int, val cardNext: Boolean = false, val review: com.goldsky.ssp.common.Tipping.Review? = null, val askTip: Boolean = true) : CfdDisplayState()
     /** [orderNumber]: a quick-service counter's call number, shown big. */
     data class ThankYou(val orderNumber: Int? = null) : CfdDisplayState()
 }
@@ -100,7 +100,7 @@ object SocketServerManager {
                     tipChoice.value = null
                     withContext(Dispatchers.Main) {
                         // CardNext: Ourea starts the card sale the moment the tip is in.
-                        // Review: a dine-in bill to check before the tip.
+                        // Review: a dine-in bill to check before the tip. AskTip false: the bill only.
                         val review = (root["Review"] as? JsonObject)?.let { r ->
                             com.goldsky.ssp.common.Tipping.Review(
                                 title = r["Title"]?.jsonPrimitive?.content ?: "",
@@ -118,7 +118,8 @@ object SocketServerManager {
                                 dueLabel = r["DueLabel"]?.jsonPrimitive?.content
                             )
                         }
-                        onStateChanged?.invoke(CfdDisplayState.Tip(id, basis, total, root["CardNext"]?.jsonPrimitive?.booleanOrNull ?: false, review))
+                        onStateChanged?.invoke(CfdDisplayState.Tip(id, basis, total, root["CardNext"]?.jsonPrimitive?.booleanOrNull ?: false, review,
+                            root["AskTip"]?.jsonPrimitive?.booleanOrNull ?: true))
                     }
                     response = "{\"ResultCode\":\"0\",\"Tip\":\"READY\"}"
                 }

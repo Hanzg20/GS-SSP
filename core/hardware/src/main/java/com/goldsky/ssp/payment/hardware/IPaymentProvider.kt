@@ -194,9 +194,10 @@ interface IPaymentProvider {
      * thread, unless [cancelTip] comes first. Providers without a display answer
      * Unavailable at once. [cardNext]: the card sale starts right after the tip, so
      * the display goes straight to "tap your card" (not a bare amount). [review]: the
-     * bill the customer checks and confirms before the tip (dine-in).
+     * bill the customer checks and confirms before the tip (dine-in). [askTip] false:
+     * the store asks no tips -- only the [review]; confirming it answers Chosen(0).
      */
-    fun requestTip(basisCents: Int, totalCents: Int, cardNext: Boolean = false, review: com.goldsky.ssp.common.Tipping.Review? = null, onAnswer: (TipAnswer) -> Unit) {
+    fun requestTip(basisCents: Int, totalCents: Int, cardNext: Boolean = false, review: com.goldsky.ssp.common.Tipping.Review? = null, askTip: Boolean = true, onAnswer: (TipAnswer) -> Unit) {
         onAnswer(TipAnswer.Unavailable)
     }
 

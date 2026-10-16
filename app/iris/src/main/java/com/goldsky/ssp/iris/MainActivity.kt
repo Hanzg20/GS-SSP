@@ -184,8 +184,9 @@ class MainActivity : ComponentActivity() {
 
                 fun checkout(sale: CheckoutSale, ticket: com.goldsky.ssp.model.KitchenTicket? = null) {
                     orderTicket = ticket
-                    // No tip step unless the store asks for tips (off for retail).
-                    if (DeviceRepository.isTipsEnabled()) activeSaleData = sale else pay(sale, 0)
+                    // No tip step unless the store asks for tips (off for retail); paying a
+                    // table, the customer still checks the bill first.
+                    if (DeviceRepository.isTipsEnabled() || checkPay != null) activeSaleData = sale else pay(sale, 0)
                 }
 
                 // Re-check the order right before taking money: another terminal may
@@ -308,6 +309,7 @@ class MainActivity : ComponentActivity() {
                                 review = checkPay?.let { cp ->
                                     cp.billReview(dine.check, getString(com.goldsky.ssp.feature.retail.R.string.dine_review_title, cp.tableName, cp.checkNo))
                                 },
+                                askTip = DeviceRepository.isTipsEnabled(),
                                 basisCents = sale.subtotalCents,
                                 totalCents = sale.subtotalCents + sale.taxCents,
                                 onTip = { tip ->

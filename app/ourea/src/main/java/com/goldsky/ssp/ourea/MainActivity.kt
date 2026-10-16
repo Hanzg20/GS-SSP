@@ -193,8 +193,9 @@ class MainActivity : ComponentActivity() {
                                         // Staff choose how the customer pays; with tips on, the customer
                                         // then picks the tip on the Eye and that payment starts at once
                                         // (card: straight to "tap your card"), not back to this screen.
+                                        // Paying a table, the customer checks the bill first, tips or not.
                                         fun choose(method: String) {
-                                            if (DeviceRepository.isTipsEnabled()) { tipFor = method; activeSaleData = subtotal to tax }
+                                            if (DeviceRepository.isTipsEnabled() || checkPay != null) { tipFor = method; activeSaleData = subtotal to tax }
                                             else payWith(method, subtotal, tax, tip)
                                         }
                                         OureaPaymentScreen(
@@ -274,6 +275,7 @@ class MainActivity : ComponentActivity() {
                                 basisCents = subtotal,
                                 totalCents = subtotal + tax,
                                 cardNext = tipFor == "CARD",
+                                askTip = DeviceRepository.isTipsEnabled(),
                                 // Dine-in: the customer never saw the check being taken -- the bill
                                 // comes first. A counter sale was watched on the display already.
                                 review = checkPay?.let { cp ->
@@ -283,7 +285,8 @@ class MainActivity : ComponentActivity() {
                                     val method = tipFor
                                     activeSaleData = null
                                     tipFor = null
-                                    if (method != null) payWith(method, subtotal, tax, tip)
+                                    // Tips off: an Eye from before AskTip still offers them -- not charged.
+                                    if (method != null) payWith(method, subtotal, tax, if (DeviceRepository.isTipsEnabled()) tip else 0)
                                 },
                                 // Back to choosing how to pay.
                                 onCancel = { activeSaleData = null; tipFor = null; eyeCartAgain++ }

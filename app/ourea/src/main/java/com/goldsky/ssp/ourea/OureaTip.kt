@@ -30,12 +30,14 @@ fun OureaTipStep(
     cardNext: Boolean = false,
     // Dine-in: the bill the customer checks and confirms first.
     review: com.goldsky.ssp.common.Tipping.Review? = null,
+    // False: the store asks no tips -- the customer only checks [review].
+    askTip: Boolean = true,
     onTip: (Int) -> Unit,
     onCancel: () -> Unit,
 ) {
     var askHere by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
-        provider.requestTip(basisCents, totalCents, cardNext, review) { answer ->
+        provider.requestTip(basisCents, totalCents, cardNext, review, askTip) { answer ->
             when (answer) {
                 is IPaymentProvider.TipAnswer.Chosen -> onTip(answer.tipCents)
                 IPaymentProvider.TipAnswer.Unavailable -> askHere = true
@@ -52,7 +54,8 @@ fun OureaTipStep(
             onTip = onTip,
             onCancel = onCancel,
             staffNote = stringResource(R.string.ourea_tip_turn_screen),
-            review = review
+            review = review,
+            askTip = askTip
         )
     } else {
         // Staff side while the customer chooses on the Eye: progress only.
@@ -61,7 +64,7 @@ fun OureaTipStep(
                 Column(Modifier.padding(28.dp).widthIn(min = 320.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     CircularProgressIndicator(color = OureaGold)
                     Text(stringResource(if (review != null) R.string.ourea_review_waiting_title else R.string.ourea_tip_waiting_title), color = OureaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text(stringResource(R.string.ourea_tip_waiting_desc, money(totalCents)), color = OureaTextSecondary, fontSize = 14.sp)
+                    Text(stringResource(if (askTip) R.string.ourea_tip_waiting_desc else R.string.ourea_review_waiting_desc, money(totalCents)), color = OureaTextSecondary, fontSize = 14.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         TextButton(onClick = onCancel) { Text(stringResource(R.string.ourea_tip_cancel), color = OureaTextSecondary) }
                         OutlinedButton(onClick = { provider.cancelTip(); askHere = true }) { Text(stringResource(R.string.ourea_tip_ask_here)) }

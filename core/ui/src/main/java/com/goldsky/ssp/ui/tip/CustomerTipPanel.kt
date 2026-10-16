@@ -54,13 +54,15 @@ fun CustomerTipPanel(
     modifier: Modifier = Modifier,
     // Set: the customer first checks the bill and confirms it, then picks the tip.
     review: Tipping.Review? = null,
+    // False (the store asks no tips): confirming the bill is the answer, a tip of 0.
+    askTip: Boolean = true,
 ) {
     var custom by remember { mutableStateOf(false) }
     var reviewed by remember(review) { mutableStateOf(review == null) }
     BoxWithConstraints(modifier) {
         // 480dp square on the Eye, a phone on Iris, a dialog on Ourea: the tiles take the room there is.
         val compact = maxWidth < 420.dp || maxHeight < 520.dp
-        if (!reviewed && review != null) ReviewBill(review, palette, compact) { reviewed = true }
+        if (!reviewed && review != null) ReviewBill(review, palette, compact) { if (askTip) reviewed = true else onChosen(0) }
         else if (custom) CustomTip(basisCents, palette, compact, onBack = { custom = false }, onChosen = onChosen)
         else TipOptions(basisCents, totalCents, palette, compact, onCustom = { custom = true }, onChosen = onChosen)
     }

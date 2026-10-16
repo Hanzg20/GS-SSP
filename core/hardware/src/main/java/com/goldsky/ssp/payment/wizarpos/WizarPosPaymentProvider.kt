@@ -511,7 +511,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
      * per 10 s, not a poll per second. An Eye from before tips answers DisplayTip
      * without "Tip":"READY": Unavailable, and Ourea asks on its own screen.
      */
-    override fun requestTip(basisCents: Int, totalCents: Int, cardNext: Boolean, review: com.goldsky.ssp.common.Tipping.Review?, onAnswer: (IPaymentProvider.TipAnswer) -> Unit) {
+    override fun requestTip(basisCents: Int, totalCents: Int, cardNext: Boolean, review: com.goldsky.ssp.common.Tipping.Review?, askTip: Boolean, onAnswer: (IPaymentProvider.TipAnswer) -> Unit) {
         val id = "TIP-" + System.currentTimeMillis()
         tipId = id
         fun answer(a: IPaymentProvider.TipAnswer) {
@@ -525,6 +525,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
             val payload = org.json.JSONObject().apply {
                 put("TransType", "DisplayTip"); put("CallerName", "GS-SSP"); put("TipId", id)
                 put("BasisCents", basisCents); put("TotalCents", totalCents); put("CardNext", cardNext)
+                put("AskTip", askTip)
                 review?.let { r ->
                     put("Review", org.json.JSONObject().apply {
                         put("Title", r.title); put("SubtotalCents", r.subtotalCents); put("TaxCents", r.taxCents); put("TotalCents", r.totalCents)

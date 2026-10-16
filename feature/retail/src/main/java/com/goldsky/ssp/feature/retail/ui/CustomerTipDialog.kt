@@ -31,6 +31,8 @@ fun CustomerTipDialog(
     onCancel: () -> Unit,
     staffNote: String = stringResource(R.string.retail_tip_hand_over),
     review: com.goldsky.ssp.common.Tipping.Review? = null,
+    // False: only the bill review (a table paid where the store asks no tips).
+    askTip: Boolean = true,
 ) {
     val colors = MaterialTheme.colorScheme
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
@@ -50,6 +52,7 @@ fun CustomerTipDialog(
                     }
                     CustomerTipPanel(
                         review = review,
+                        askTip = askTip,
                         basisCents = basisCents,
                         totalCents = totalCents,
                         palette = TipPalette(
