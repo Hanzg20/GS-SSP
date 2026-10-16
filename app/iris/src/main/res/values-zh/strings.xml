@@ -24,4 +24,5 @@
     <string name="iris_payment_failed">付款失败</string>
     <string name="iris_refund_done">退款完成</string>
     <string name="iris_refund_failed">退款失败</string>
+    <string name="iris_pay_card">刷卡</string>
 </resources>

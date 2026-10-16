@@ -327,7 +327,9 @@ class MainActivity : ComponentActivity() {
                         if (choosingCheckPay && payingCheck != null) {
                             com.goldsky.ssp.feature.retail.dine.CheckPayDialog(
                                 detail = payingCheck,
-                                onPay = { cp ->
+                                // Iris takes cards only (the handheld at the table).
+                                methods = listOf("CARD" to stringResource(R.string.iris_pay_card)),
+                                onPay = { cp, _ ->
                                     choosingCheckPay = false
                                     checkPay = cp
                                     checkout(CheckoutSale(cp.amountCents - cp.taxCents, cp.taxCents, cp.lines))

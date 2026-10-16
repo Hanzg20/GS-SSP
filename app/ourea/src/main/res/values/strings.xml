@@ -123,4 +123,6 @@
     <string name="ourea_whole_order">Whole order</string>
     <string name="ourea_refund_done">Refund done</string>
     <string name="ourea_refund_failed">Refund failed</string>
+    <string name="ourea_pay_card">Card  %1$s</string>
+    <string name="ourea_card">Card</string>
 </resources>

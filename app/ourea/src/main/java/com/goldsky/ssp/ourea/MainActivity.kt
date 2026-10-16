@@ -175,6 +175,23 @@ class MainActivity : ComponentActivity() {
                             "MEMBER" -> { confirmingPayment = Triple(subtotal, tax, tip); showMemberDialog = true }
                         }
                     }
+                    // The method picked on the cart or the check's pay dialog. With tips on, or paying
+                    // a table (the customer checks the bill first), the Eye comes first and this
+                    // payment starts the moment it answers (card: straight to "tap your card").
+                    // confirmingPayment only holds the amounts for the cash / member dialogs now.
+                    fun startPay(method: String, subtotal: Int, tax: Int) {
+                        // Member-card tier discounts would leave a check part-paid: counter sales only.
+                        if (method == "MEMBER" && checkPay != null) {
+                            paymentStatus = OureaPaymentUiState.Error(getString(R.string.ourea_member_not_for_checks)); return
+                        }
+                        confirmingPayment = Triple(subtotal, tax, 0)
+                        if (DeviceRepository.isTipsEnabled() || checkPay != null) { tipFor = method; activeSaleData = subtotal to tax }
+                        else payWith(method, subtotal, tax, 0)
+                    }
+                    // Backed out of a payment (cash / member dialog, the Eye's tip or bill): back to the cart or check.
+                    fun abandonPay() {
+                        confirmingPayment = null; checkPay = null; tipFor = null; activeSaleData = null; eyeCartAgain++
+                    }
 
                     Row(modifier = Modifier.fillMaxSize()) {
                         OureaSidebar(
@@ -186,40 +203,14 @@ class MainActivity : ComponentActivity() {
                         Box(modifier = Modifier.weight(1f).background(OureaBackground)) {
                             when (destination) {
                                 OureaDestination.TABLES, OureaDestination.CHECKOUT -> {
-                                    val confirming = confirmingPayment
                                     val openCheck = dine.check
-                                    if (confirming != null) {
-                                        val (subtotal, tax, tip) = confirming
-                                        // Staff choose how the customer pays; with tips on, the customer
-                                        // then picks the tip on the Eye and that payment starts at once
-                                        // (card: straight to "tap your card"), not back to this screen.
-                                        // Paying a table, the customer checks the bill first, tips or not.
-                                        fun choose(method: String) {
-                                            if (DeviceRepository.isTipsEnabled() || checkPay != null) { tipFor = method; activeSaleData = subtotal to tax }
-                                            else payWith(method, subtotal, tax, tip)
-                                        }
-                                        OureaPaymentScreen(
-                                            subtotalCents = subtotal,
-                                            taxCents = tax,
-                                            tipCents = tip,
-                                            tipByCustomer = DeviceRepository.isTipsEnabled(),
-                                            onChargeCard = { choose("CARD") },
-                                            onCash = { choose("CASH") },
-                                            onQr = { choose("QR") },
-                                            // Member-card tier discounts would leave a check part-paid: counter sales only.
-                                            onMember = {
-                                                if (checkPay != null) paymentStatus = OureaPaymentUiState.Error(getString(R.string.ourea_member_not_for_checks))
-                                                else choose("MEMBER")
-                                            },
-                                            onBack = { confirmingPayment = null; checkPay = null; eyeCartAgain++ }
-                                        )
-                                    } else if (destination == OureaDestination.TABLES && openCheck == null) {
+                                    if (destination == OureaDestination.TABLES && openCheck == null) {
                                         com.goldsky.ssp.feature.retail.dine.DineFloor(dine, signedIn.id, signedIn.name, minCell = 150.dp)
                                     } else if (destination == OureaDestination.TABLES && openCheck != null) {
                                         com.goldsky.ssp.feature.retail.dine.DineRefresh(dine)
                                         OureaCheckoutScreen(
                                             viewModel = roundViewModel,
-                                            onCheckout = {},
+                                            onPay = {},
                                             checkMode = OureaCheckMode(
                                                 detail = openCheck,
                                                 busy = dine.busy,
@@ -234,17 +225,21 @@ class MainActivity : ComponentActivity() {
                                     } else {
                                         OureaCheckoutScreen(
                                             viewModel = retailViewModel,
-                                            onCheckout = {
+                                            onPay = { method ->
                                                 // Priced here, not the cart's running total: the sale is what gets charged.
                                                 val sale = retailViewModel.checkoutSale()
                                                 val subtotal = sale.subtotalCents
                                                 saleLines = sale.lines
                                                 discountSale = sale
                                                 val tax = sale.taxCents
-                                                orderTicket = if (DeviceRepository.getBusinessType() == DeviceRepository.BusinessType.QUICK_SERVICE)
+                                                // Any restaurant (quick-service, or a dine-in one's counter / take-out
+                                                // orders): the order goes to the kitchen. Was QUICK_SERVICE only, so a
+                                                // dine-in restaurant's counter orders offered dine-in / take-out and a
+                                                // note, then never reached the kitchen. Same test as Iris.
+                                                orderTicket = if (com.goldsky.ssp.feature.retail.ui.isQuickService())
                                                     retailViewModel.kitchenTicket(this@MainActivity, signedIn.name) else null
-                                                // How to pay first; the tip (if the store asks for one) comes with it.
-                                                confirmingPayment = Triple(subtotal, tax, 0)
+                                                // The tip (if the store asks for one) comes with the method picked.
+                                                startPay(method, subtotal, tax)
                                             }
                                         )
                                     }
@@ -288,8 +283,8 @@ class MainActivity : ComponentActivity() {
                                     // Tips off: an Eye from before AskTip still offers them -- not charged.
                                     if (method != null) payWith(method, subtotal, tax, if (DeviceRepository.isTipsEnabled()) tip else 0)
                                 },
-                                // Back to choosing how to pay.
-                                onCancel = { activeSaleData = null; tipFor = null; eyeCartAgain++ }
+                                // Back to the cart / the check (no "how to pay" screen any more).
+                                onCancel = { abandonPay() }
                             )
                         }
                     }
@@ -314,14 +309,19 @@ class MainActivity : ComponentActivity() {
                     if (choosingCheckPay && payingCheck != null) {
                         com.goldsky.ssp.feature.retail.dine.CheckPayDialog(
                             detail = payingCheck,
-                            onPay = { pay ->
+                            methods = listOf(
+                                "CARD" to stringResource(R.string.ourea_card),
+                                "CASH" to stringResource(R.string.ourea_cash),
+                                "QR" to stringResource(R.string.ourea_qr_code)
+                            ),
+                            onPay = { pay, method ->
                                 choosingCheckPay = false
                                 checkPay = pay
                                 saleLines = pay.lines
                                 orderTicket = null
                                 val tax = pay.taxPart(payingCheck)
                                 val sub = pay.amountCents - tax
-                                confirmingPayment = Triple(sub, tax, 0)
+                                startPay(method, sub, tax)
                             },
                             onDismiss = { choosingCheckPay = false }
                         )
@@ -388,7 +388,7 @@ class MainActivity : ComponentActivity() {
                                 confirmingPayment = null
                                 triggerCashPayment(subtotal, tax, tip, cashReceivedCents, saleLines, orderTicket, ::onPaymentSettled, checkExtras(checkPay, dine, signedIn.name))
                             },
-                            onDismiss = { showCashDialog = false }
+                            onDismiss = { showCashDialog = false; abandonPay() }
                         )
                     }
 
@@ -400,7 +400,7 @@ class MainActivity : ComponentActivity() {
                                 confirmingPayment = null
                                 triggerVipPayment(subtotal, tax, tip, code, orderTicket, ::onPaymentSettled)
                             },
-                            onDismiss = { showMemberDialog = false }
+                            onDismiss = { showMemberDialog = false; abandonPay() }
                         )
                     }
 

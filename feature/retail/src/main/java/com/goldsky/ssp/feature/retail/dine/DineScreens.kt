@@ -343,7 +343,14 @@ fun CheckTotals(detail: DineRepository.CheckDetail) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CheckPayDialog(detail: DineRepository.CheckDetail, onPay: (CheckPay) -> Unit, onDismiss: () -> Unit) {
+fun CheckPayDialog(
+    detail: DineRepository.CheckDetail,
+    // How it can be paid, (key, label), first = the main button ("Card $12.40"). The button
+    // pressed is the choice: no separate "how to pay" screen after this (owner, 2026-10-16).
+    methods: List<Pair<String, String>>,
+    onPay: (CheckPay, method: String) -> Unit,
+    onDismiss: () -> Unit
+) {
     var mode by remember { mutableStateOf(0) }       // 0 all, 1 by items, 2 equal shares
     val picked = remember { mutableStateListOf<String>() }
     var ways by remember { mutableStateOf(detail.check.guests.coerceIn(2, 20)) }
@@ -400,10 +407,24 @@ fun CheckPayDialog(detail: DineRepository.CheckDetail, onPay: (CheckPay) -> Unit
                             modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
                     }
                 }
+                // Pay with: the main method carries the amount, the others sit beside it.
+                methods.firstOrNull()?.let { (key, label) ->
+                    Button(
+                        enabled = pay != null, onClick = { pay?.let { onPay(it, key) } },
+                        modifier = Modifier.fillMaxWidth().height(52.dp)
+                    ) { Text(label + (pay?.let { "  " + money(it.amountCents) } ?: ""), fontWeight = FontWeight.Bold) }
+                }
+                if (methods.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    methods.drop(1).forEach { (key, label) ->
+                        OutlinedButton(
+                            enabled = pay != null, onClick = { pay?.let { onPay(it, key) } },
+                            modifier = Modifier.weight(1f).height(48.dp)
+                        ) { Text(label, maxLines = 1) }
+                    }
+                }
             }
         },
-        confirmButton = { Button(enabled = pay != null, onClick = { pay?.let(onPay) }) { Text(stringResource(R.string.dine_pay_go)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.retail_mod_cancel)) } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.retail_mod_cancel)) } }
     )
 }
 

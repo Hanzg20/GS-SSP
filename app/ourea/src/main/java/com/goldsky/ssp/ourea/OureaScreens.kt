@@ -197,7 +197,7 @@ class OureaCheckMode(
 )
 
 @Composable
-fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, checkMode: OureaCheckMode? = null) {
+fun OureaCheckoutScreen(viewModel: RetailViewModel, onPay: (method: String) -> Unit, checkMode: OureaCheckMode? = null) {
     val context = LocalContext.current
     val catalog by RetailRepository.catalog.collectAsState()
     val cart = viewModel.cart
@@ -346,12 +346,35 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onCheckout: (Int) -> Unit, c
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
+            // How the customer pays IS the checkout: card (most sales, with the amount), then
+            // cash / QR / member card -- no separate "how to pay" screen (owner, 2026-10-16).
+            val payTotal = sale.subtotalCents + sale.taxCents
             OureaGradientButton(
-                text = stringResource(R.string.ourea_checkout),
-                onClick = { if (total > 0) onCheckout(total) },
+                text = stringResource(R.string.ourea_pay_card, "$" + "%.2f".format(payTotal / 100.0)),
+                onClick = { if (total > 0) onPay("CARD") },
                 enabled = total > 0,
+                icon = Icons.Default.CreditCard,
                 modifier = Modifier.fillMaxWidth().height(52.dp)
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    Triple("CASH", R.string.ourea_cash, Icons.Default.Payments),
+                    Triple("QR", R.string.ourea_qr_code, Icons.Default.QrCode2),
+                    Triple("MEMBER", R.string.ourea_member_card, Icons.Default.CardMembership)
+                ).forEach { (key, label, icon) ->
+                    OutlinedButton(
+                        onClick = { if (total > 0) onPay(key) },
+                        enabled = total > 0,
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp)
+                    ) {
+                        Icon(icon, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(label), maxLines = 1, fontSize = 13.sp)
+                    }
+                }
+            }
             }
         }
 
@@ -792,82 +815,6 @@ private fun OureaStockBadge(stockQty: Int, modifier: Modifier = Modifier) {
         modifier = modifier.clip(RoundedCornerShape(6.dp)).background(color.copy(alpha = 0.15f)).padding(horizontal = 8.dp, vertical = 2.dp)
     ) {
         Text(label, color = color, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-    }
-}
-
-/**
- * Bill-breakdown + charge screen shown after the tip step, styled after the
- * reference's payment-confirmation mockup. All four of the reference's
- * payment methods are now wired to real backend logic: card-present (via
- * PaymentProviderFactory, unchanged), cash (staff-attested, recorded
- * directly as PAID), QR (QrPaymentRepository -- the same Supabase-backed
- * scan-to-pay session/poll feature/wash's kiosk flow uses), and member card
- * (VipRepository, manually-entered code instead of an NFC tap -- see
- * MainActivity.triggerVipPayment's doc comment for why). None of these are
- * non-functional decoration anymore.
- */
-@Composable
-fun OureaPaymentScreen(
-    subtotalCents: Int,
-    taxCents: Int,
-    tipCents: Int,
-    // Tips on: the customer chooses it on the Eye after the method is picked here.
-    tipByCustomer: Boolean = false,
-    onChargeCard: () -> Unit,
-    onCash: () -> Unit,
-    onQr: () -> Unit,
-    onMember: () -> Unit,
-    onBack: () -> Unit
-) {
-    val total = subtotalCents + taxCents + tipCents
-    Row(modifier = Modifier.fillMaxSize().background(OureaBackground).padding(24.dp)) {
-        // widthIn(max=) rather than a bare fixed width: fillMaxWidth() below sizes every
-        // button to whatever this column actually gets, so they never overflow this weight(1f)
-        // pane's real width the way a hard-coded 280.dp on each button previously could (visually
-        // confirmed on-device: at this column's actual measured width, fixed-width buttons
-        // rendered past the column's right edge and were hidden behind the Bill Details panel).
-        Column(modifier = Modifier.weight(1f).widthIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-            Text(stringResource(R.string.ourea_confirm_payment), color = OureaTextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(24.dp))
-            OureaGradientButton(
-                text = stringResource(R.string.ourea_charge_card),
-                onClick = onChargeCard,
-                icon = Icons.Default.CreditCard,
-                modifier = Modifier.fillMaxWidth().height(72.dp)
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            OureaPaymentMethodButton(stringResource(R.string.ourea_cash), Icons.Default.Payments, onCash, Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(12.dp))
-            OureaPaymentMethodButton(stringResource(R.string.ourea_qr_code), Icons.Default.QrCode, onQr, Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(12.dp))
-            OureaPaymentMethodButton(stringResource(R.string.ourea_member_card), Icons.Default.Badge, onMember, Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(16.dp))
-            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.ourea_back_to_order))
-            }
-        }
-        Column(
-            modifier = Modifier
-                .width(340.dp)
-                .fillMaxHeight()
-                .glassCard(RoundedCornerShape(16.dp), elevation = 4.dp)
-                .padding(20.dp)
-        ) {
-            Text(stringResource(R.string.ourea_bill_details), color = OureaTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(16.dp))
-            BillLine(stringResource(R.string.ourea_subtotal), subtotalCents, OureaTextSecondary)
-            BillLine(stringResource(R.string.ourea_tax), taxCents, OureaTextSecondary)
-            if (tipCents > 0) BillLine(stringResource(R.string.ourea_tip), tipCents, OureaTextSecondary)
-            else if (tipByCustomer) Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(stringResource(R.string.ourea_tip), color = OureaTextSecondary)
-                Text(stringResource(R.string.ourea_tip_next_on_eye), color = OureaTextSecondary, fontSize = 13.sp)
-            }
-            Divider(color = OureaSurfaceVariant, modifier = Modifier.padding(vertical = 12.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(stringResource(R.string.ourea_total_due), color = OureaTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Text("$${"%.2f".format(total / 100.0)}", color = OureaGold, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            }
-        }
     }
 }
 
