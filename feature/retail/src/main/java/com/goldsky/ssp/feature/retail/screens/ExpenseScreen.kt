@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,7 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.goldsky.ssp.db.ExpenseEntity
 import com.goldsky.ssp.db.LocalDatabase
-import com.goldsky.ssp.feature.retail.ui.GoldSkyCyan
+import com.goldsky.ssp.feature.retail.ui.EmptyArt
+import com.goldsky.ssp.feature.retail.ui.EmptyState
+import com.goldsky.ssp.ui.theme.GsTheme
 import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.payment.ExpenseRepository
 import com.goldsky.ssp.payment.StaffRepository
@@ -34,13 +37,12 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 /**
- * The store's expenses -- the same cloud records 小海狸 books by voice
- * (ExpenseRepository): added here by hand or from a receipt photo, listed from
- * the cloud (offline copy when there's no connection), visible in CMP.
+ * The store's expenses, the Journal's third tab -- the same cloud records 小海狸
+ * books by voice (ExpenseRepository): added here by hand or from a receipt photo,
+ * listed from the cloud (offline copy when there's no connection), visible in CMP.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ExpenseScreen(onScanReceipt: () -> Unit) {
+fun ExpensesPane(onScanReceipt: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var expenses by remember { mutableStateOf<List<ExpenseEntity>>(emptyList()) }
@@ -59,21 +61,34 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
         AddExpenseDialog(onDismiss = { adding = false }, onSaved = { adding = false; reload() })
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.retail_expenses), fontWeight = FontWeight.Black) },
-                actions = {
-                    IconButton(onClick = { adding = true }) { Icon(Icons.Default.Add, contentDescription = stringResource(R.string.retail_add_expense)) }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.primary
-                )
-            )
-        },
-        floatingActionButton = {
+    Box(Modifier.fillMaxSize()) {
+        if (isLoading) {
+            JournalSkeleton()
+        } else if (expenses.isEmpty()) {
+            EmptyState(EmptyArt.RECEIPT, stringResource(R.string.retail_no_expenses_recorded), stringResource(R.string.journal_expense_hint),
+                Modifier.align(Alignment.Center))
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                // Room under the last row for the buttons.
+                contentPadding = PaddingValues(top = 4.dp, bottom = 160.dp)
+            ) {
+                items(expenses, key = { it.id }) { expense ->
+                    ExpenseRow(expense)
+                }
+            }
+        }
+        // Typed in, or from a receipt photo (the bigger, more common one).
+        Column(
+            Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SmallFloatingActionButton(
+                onClick = { adding = true },
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            ) { Icon(Icons.Default.Add, contentDescription = stringResource(R.string.retail_add_expense)) }
             FloatingActionButton(
                 onClick = onScanReceipt,
                 containerColor = MaterialTheme.colorScheme.primary,
@@ -83,87 +98,25 @@ fun ExpenseScreen(onScanReceipt: () -> Unit) {
                 Icon(Icons.Default.CameraAlt, contentDescription = stringResource(R.string.retail_scan_receipt))
             }
         }
-    ) { padding ->
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-            }
-        } else if (expenses.isEmpty()) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(Icons.Default.Receipt, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(stringResource(R.string.retail_no_expenses_recorded), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(
-                    onClick = { adding = true },
-                    modifier = Modifier.padding(top = 16.dp),
-                    colors = ButtonDefaults.buttonColors()
-                ) {
-                    Text(stringResource(R.string.retail_add_manually), fontWeight = FontWeight.Bold)
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(vertical = 16.dp)
-            ) {
-                items(expenses) { expense ->
-                    ExpenseCard(expense)
-                }
-            }
-        }
     }
 }
 
+/** One expense, a row like a sale in Records: how it was booked, amount, date · category · paid to · by. */
 @Composable
-fun ExpenseCard(expense: ExpenseEntity) {
+private fun ExpenseRow(expense: ExpenseEntity) {
+    val context = LocalContext.current
     val dateStr = remember(expense.createdAt, expense.spentOn) {
         expense.spentOn ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(expense.createdAt))
     }
-    val via = when (expense.source) { "voice" -> " · 🎙"; "receipt" -> " · 📷"; else -> "" }
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
-        tonalElevation = 2.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = expense.vendor.ifBlank { expense.note ?: "" }.uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp
-                )
-                Text(
-                    text = "$${"%.2f".format(expense.amountCents / 100.0)}",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "$dateStr • ${ExpenseRepository.label(LocalContext.current, expense.category)}$via" +
-                        (expense.staffName?.let { " • $it" } ?: "") + (if (expense.synced) "" else " • " + stringResource(R.string.retail_not_uploaded_yet)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            if (expense.imageUrl != null) {
-                Icon(Icons.Default.CameraAlt, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-            }
+    JournalRow(
+        icon = when (expense.source) { "voice" -> Icons.Default.Mic; "receipt" -> Icons.Default.CameraAlt; else -> Icons.Default.Receipt },
+        title = "$" + "%.2f".format(expense.amountCents / 100.0),
+        subtitle = listOfNotNull(dateStr, ExpenseRepository.label(context, expense.category),
+            expense.vendor.ifBlank { expense.note }?.ifBlank { null }, expense.staffName).joinToString(" · "),
+        trailing = if (expense.synced) null else {
+            { JournalChip(stringResource(R.string.journal_not_uploaded), GsTheme.colors.warning) }
         }
-    }
+    )
 }
 
 /** Manual entry: amount, date, who was paid, category, note. */

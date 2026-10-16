@@ -177,6 +177,30 @@ object NoteRepository {
         }
     }
 
+    /** Edits a note's title and text (Journal). The local copy changes even offline; false if the cloud didn't take it. */
+    suspend fun update(context: Context, id: String, title: String, content: String): Boolean = withContext(Dispatchers.IO) {
+        val cleanContent = content.trim()
+        if (cleanContent.isBlank()) return@withContext false
+        val cleanTitle = title.trim().ifBlank { cleanContent.lines().firstOrNull()?.take(30) ?: "" }
+        val dao = LocalDatabase.getInstance(context).noteDao()
+        val existing = dao.getAll().find { it.id == id } ?: return@withContext false
+        val now = System.currentTimeMillis()
+        val edited = existing.copy(title = cleanTitle, content = cleanContent, updatedAt = now)
+        dao.insert(edited)
+        // Never uploaded: it goes up whole, edits included, with the next sync.
+        if (!existing.synced) return@withContext upload(context, edited, emptyList(), null)
+        try {
+            SupabaseClientProvider.ensureAuthenticated()
+            SupabaseClientProvider.client.postgrest["notes"].update(UpdatePatch(cleanTitle, cleanContent, existing.pinned, iso(now))) {
+                filter { eq("id", id) }
+            }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "update failed in cloud: ${e.message}")
+            false
+        }
+    }
+
     suspend fun delete(context: Context, id: String): Boolean = withContext(Dispatchers.IO) {
         LocalDatabase.getInstance(context).noteDao().deleteById(id)
         try {

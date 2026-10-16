@@ -276,8 +276,8 @@ class MainActivity : ComponentActivity() {
                                 composable("day_report") {
                                     DayReportScreen(onBack = { navController.popBackStack() })
                                 }
-                                composable("expenses") {
-                                    ExpenseScreen(onScanReceipt = { navController.navigate("scan_receipt") })
+                                composable("journal") {
+                                    com.goldsky.ssp.feature.retail.screens.JournalScreen(onScanReceipt = { navController.navigate("scan_receipt") })
                                 }
                                 composable("scan_receipt") {
                                     ReceiptScannerScreen(
@@ -601,10 +601,10 @@ fun CheckoutContainer(
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary
         ) {
-            if (dineIn) IrisTab(selectedTab == 3, stringResource(com.goldsky.ssp.feature.retail.R.string.dine_tables)) { selectedTab = 3 }
-            IrisTab(selectedTab == 0, stringResource(R.string.iris_keypad)) { selectedTab = 0 }
-            IrisTab(selectedTab == 1, stringResource(R.string.iris_library)) { selectedTab = 1 }
-            IrisTab(selectedTab == 2, stringResource(R.string.iris_delivery)) { selectedTab = 2 }
+            if (dineIn) com.goldsky.ssp.feature.retail.ui.PosTab(selectedTab == 3, stringResource(com.goldsky.ssp.feature.retail.R.string.dine_tables)) { selectedTab = 3 }
+            com.goldsky.ssp.feature.retail.ui.PosTab(selectedTab == 0, stringResource(R.string.iris_keypad)) { selectedTab = 0 }
+            com.goldsky.ssp.feature.retail.ui.PosTab(selectedTab == 1, stringResource(R.string.iris_library)) { selectedTab = 1 }
+            com.goldsky.ssp.feature.retail.ui.PosTab(selectedTab == 2, stringResource(R.string.iris_delivery)) { selectedTab = 2 }
         }
 
         Box(modifier = Modifier.weight(1f)) {
@@ -635,7 +635,7 @@ fun CheckoutContainer(
 
 @Composable
 // Cashiers and drivers: Quick + Records (their own). Managers also get AI
-// insights, expenses and Settings.
+// insights, the Journal (notes, to-dos, expenses) and Settings.
 fun MainBottomNavigation(navController: NavHostController, isManager: Boolean) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -684,10 +684,10 @@ fun MainBottomNavigation(navController: NavHostController, isManager: Boolean) {
             }
         )
         if (isManager) NavigationBarItem(
-            selected = currentRoute == "expenses",
-            onClick = { navController.navigate("expenses") { launchSingleTop = true } },
-            icon = { Icon(Icons.Default.Receipt, null) },
-            label = { Text(stringResource(R.string.iris_expenses)) }
+            selected = currentRoute == "journal",
+            onClick = { navController.navigate("journal") { launchSingleTop = true } },
+            icon = { Icon(Icons.Default.MenuBook, null) },
+            label = { Text(stringResource(R.string.iris_journal)) }
         )
         if (isManager) NavigationBarItem(
             selected = currentRoute == "settings",
@@ -777,25 +777,6 @@ private fun RefundFlow.RefundState.toUi(): PaymentUiState = when (this) {
 class PayExtras(val banner: String?, val onPaid: suspend (ref: String, method: String, tip: Int) -> Unit)
 
 private fun signedInName(): String? = StaffRepository.current?.name
-
-/**
- * One tab of the top row. A 360 dp handheld (Q2) with the dine-in Tables tab has four
- * ~90 dp tabs: Tab's own 16 dp side padding left "DELIVERY" too little room and it
- * wrapped onto two lines. Narrow padding and one line, shrinking the text only if a
- * label still doesn't fit.
- */
-@Composable
-private fun IrisTab(selected: Boolean, label: String, onClick: () -> Unit) {
-    val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    Tab(selected = selected, onClick = onClick, modifier = Modifier.height(52.dp)) {
-        var size by remember(label) { mutableStateOf(15.sp) }
-        Text(
-            label, fontWeight = FontWeight.Bold, color = color, fontSize = size, maxLines = 1, softWrap = false,
-            modifier = Modifier.padding(horizontal = 4.dp),
-            onTextLayout = { if (it.didOverflowWidth && size > 11.sp) size = (size.value - 1).sp }
-        )
-    }
-}
 
 sealed class PaymentUiState {
     object Idle : PaymentUiState()

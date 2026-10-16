@@ -6,7 +6,7 @@
     <string name="iris_delivery">送货</string>
     <string name="iris_quick">收银</string>
     <string name="iris_records">记录</string>
-    <string name="iris_expenses">费用</string>
+    <string name="iris_journal">手账</string>
     <string name="iris_settings">设置</string>
     <string name="iris_ok">确定</string>
     <string name="iris_lock">锁定</string>

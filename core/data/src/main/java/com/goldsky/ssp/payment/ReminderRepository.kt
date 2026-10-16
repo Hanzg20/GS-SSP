@@ -45,6 +45,39 @@ object ReminderRepository {
     @Serializable
     private data class DonePatch(val done_at: String)
 
+    /** One to-do as the Journal lists it. [doneAtMillis] null: still open. */
+    data class Reminder(val id: String, val text: String, val dueAtMillis: Long, val doneAtMillis: Long?, val staffName: String?)
+
+    /**
+     * The store's to-dos for the Journal (every terminal's, like 小海狸's brief): all
+     * open ones by due time, then those done in the last 7 days, latest first. Null
+     * offline -- reminders live in the cloud only.
+     */
+    suspend fun list(): List<Reminder>? = withContext(Dispatchers.IO) {
+        val orgId = DeviceRepository.getPersistedOrgId() ?: return@withContext null
+        try {
+            SupabaseClientProvider.ensureAuthenticated()
+            val table = SupabaseClientProvider.client.postgrest["reminders"]
+            val open = table.select {
+                filter { eq("org_id", orgId); exact("done_at", null) }
+                order("due_at", io.github.jan.supabase.postgrest.query.Order.ASCENDING)
+                limit(200)
+            }.decodeList<ReminderRow>()
+            val done = table.select {
+                filter { eq("org_id", orgId); gt("done_at", iso(System.currentTimeMillis() - 7 * 24 * 3_600_000L)) }
+                order("done_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                limit(50)
+            }.decodeList<ReminderRow>()
+            (open + done).mapNotNull { r ->
+                val due = DayReportRepository.parseIsoMillis(r.due_at) ?: return@mapNotNull null
+                Reminder(r.id, r.text, due, r.done_at?.let { DayReportRepository.parseIsoMillis(it) }, r.staff_name)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Reminders not listed: ${e.message}")
+            null
+        }
+    }
+
     /** Saves the reminder and schedules its notification here. False if it couldn't be saved (offline). */
     suspend fun create(context: Context, text: String, dueAtMillis: Long, staff: StaffMember?): Boolean = withContext(Dispatchers.IO) {
         val orgId = DeviceRepository.getPersistedOrgId() ?: return@withContext false
@@ -65,12 +98,14 @@ object ReminderRepository {
         }
     }
 
-    suspend fun markDone(id: String): Boolean = withContext(Dispatchers.IO) {
+    /** [context]: also drops this terminal's pending notification -- done early, nothing to remind. */
+    suspend fun markDone(id: String, context: Context? = null): Boolean = withContext(Dispatchers.IO) {
         try {
             SupabaseClientProvider.ensureAuthenticated()
             SupabaseClientProvider.client.postgrest["reminders"].update(DonePatch(iso(System.currentTimeMillis()))) {
                 filter { eq("id", id) }
             }
+            context?.let { WorkManager.getInstance(it).cancelUniqueWork("reminder_$id") }
             true
         } catch (e: Exception) {
             Log.w(TAG, "Reminder $id not marked done: ${e.message}")
