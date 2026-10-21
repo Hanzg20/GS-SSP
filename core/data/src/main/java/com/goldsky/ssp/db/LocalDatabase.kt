@@ -52,6 +52,7 @@ data class ExpenseEntity(
     val vendor: String,
     val amountCents: Int,
     val category: String,
+    // v12: the receipt photo's path in storage bucket `receipts` once uploaded (expenses.receipt_path).
     val imageUrl: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     // v8: the cloud `expenses` table is the record now; this is its offline
@@ -60,7 +61,12 @@ data class ExpenseEntity(
     val note: String? = null,
     val source: String = "manual",    // manual | receipt | voice
     val staffName: String? = null,
-    val synced: Boolean = false
+    val synced: Boolean = false,
+    // v12: GST/HST paid (null = not recorded); the photo on this terminal until it is uploaded;
+    // the text read off it.
+    val taxCents: Int? = null,
+    val receiptFile: String? = null,
+    val receiptText: String? = null
 )
 
 @Entity(tableName = "local_notes")
@@ -155,6 +161,10 @@ interface ExpenseDao {
     @Query("UPDATE local_expenses SET synced = 1 WHERE id = :id")
     fun markSynced(id: String)
 
+    /** The receipt photo is in the cloud at [path]; the copy on this terminal is no longer needed. */
+    @Query("UPDATE local_expenses SET imageUrl = :path, receiptFile = NULL WHERE id = :id")
+    fun receiptUploaded(id: String, path: String)
+
     @Query("DELETE FROM local_expenses WHERE synced = 1")
     fun deleteSynced()
 
@@ -168,7 +178,7 @@ interface ExpenseDao {
     fun delete(expense: ExpenseEntity)
 }
 
-@Database(entities = [ProductEntity::class, OrderEntity::class, ParkedOrderEntity::class, ExpenseEntity::class, NoteEntity::class], version = 11, exportSchema = false)
+@Database(entities = [ProductEntity::class, OrderEntity::class, ParkedOrderEntity::class, ExpenseEntity::class, NoteEntity::class], version = 12, exportSchema = false)
 abstract class LocalDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
     abstract fun orderDao(): OrderDao
@@ -207,6 +217,14 @@ abstract class LocalDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE local_expenses ADD COLUMN taxCents INTEGER")
+                db.execSQL("ALTER TABLE local_expenses ADD COLUMN receiptFile TEXT")
+                db.execSQL("ALTER TABLE local_expenses ADD COLUMN receiptText TEXT")
+            }
+        }
+
         private val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE local_products ADD COLUMN modifierGroupsJson TEXT")
@@ -236,7 +254,7 @@ abstract class LocalDatabase : RoomDatabase() {
                     LocalDatabase::class.java,
                     "ssp_local_db"
                 )
-                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

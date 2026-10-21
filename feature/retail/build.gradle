@@ -52,4 +52,6 @@ dependencies {
     
     // ML Kit
     implementation 'com.google.mlkit:text-recognition:16.0.0'
+    // Receipts: Chinese + Latin in one model, bundled (works without Google Play services -- the Q2 has none).
+    implementation 'com.google.mlkit:text-recognition-chinese:16.0.0'
 }

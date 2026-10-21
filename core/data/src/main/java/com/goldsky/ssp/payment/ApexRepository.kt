@@ -52,6 +52,16 @@ object ApexRepository {
         val mime: String
     )
 
+    // No defaults (see TranscribeRequest).
+    @Serializable
+    private data class ReceiptRequest(
+        val action: String,
+        val staffId: String,
+        val language: String,
+        val timezone: String,
+        val text: String
+    )
+
     data class Turn(val fromUser: Boolean, val text: String, val at: String)
 
     sealed class Result {
@@ -66,6 +76,8 @@ object ApexRepository {
          */
         data class Proposal(val data: JsonObject) : Result()
         data class Transcript(val text: String) : Result()
+        /** A receipt read by the model; every amount was found printed in the text (apex-assistant toReceipt). */
+        data class Receipt(val vendor: String?, val date: String?, val totalCents: Int?, val taxCents: Int?, val hstNumber: String?) : Result()
         /** Oldest first; [Turn.at] is the server's ISO timestamp. */
         data class History(val turns: List<Turn>) : Result()
         data class Failed(val message: String) : Result()
@@ -120,6 +132,22 @@ object ApexRepository {
             }
         }
     }
+
+    /**
+     * A receipt photo's text the terminal's own rules found no total in (ReceiptParser): the
+     * model reads store, date, total, GST/HST and the HST number; amounts not printed in the
+     * text come back null. Managers only, like everything 小海狸 does.
+     */
+    suspend fun readReceipt(context: Context, staffId: String, text: String): Result =
+        call(context, ReceiptRequest("receipt", staffId, UiLanguage.current(context), timezone(), text.take(8000)), "receipt") { body ->
+            val r = body["receipt"]?.let { runCatching { it.jsonObject }.getOrNull() }
+            if (r == null) Result.Failed(body["skipped"]?.jsonPrimitive?.contentOrNull ?: "No receipt")
+            else {
+                fun s(k: String) = r[k]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() && it != "null" }
+                fun cents(k: String) = s(k)?.toDoubleOrNull()?.let { Math.round(it * 100).toInt() }
+                Result.Receipt(s("vendor"), s("date"), cents("total"), cents("tax"), s("hstNumber"))
+            }
+        }
 
     private fun timezone(): String = java.util.TimeZone.getDefault().id
 

@@ -224,3 +224,57 @@ Reply with ONE JSON object and nothing else:
 Never invent an amount or a time that wasn't said: use null for amount, "" for due.`;
 }
 
+
+// ---- receipts ---------------------------------------------------------------
+
+/**
+ * Reading a receipt photo's text when the terminal's own rules found no total (the Journal,
+ * 2026-10-20). One photo per receipt, a long one folded head to foot: store, date, total,
+ * GST/HST, the store's GST/HST number -- nothing else.
+ */
+export const RECEIPT_PROMPT = `You read the OCR text of ONE store receipt (rows top to bottom; a long receipt may be folded, so the middle can be missing; OCR may split a label and its amount onto neighbouring rows).
+Reply with ONLY this JSON, nothing else:
+{"vendor": "<store name as printed, or null>", "date": "<YYYY-MM-DD or null>", "total": "<the amount paid, after tax, exactly as printed, e.g. \\"45.20\\", or null>", "tax": "<GST/HST/PST/QST added up, exactly as printed if one line, or null>", "hst_number": "<the store's GST/HST number like 123456789RT0001, or null>"}
+The total is never cash tendered, change, a subtotal, savings or a points balance. Copy numbers exactly as they appear. When unsure, use null -- never guess.`;
+
+export type ReceiptRead = { vendor: string | null; date: string | null; total: number | null; tax: number | null; hstNumber: string | null };
+
+/** "45.20" printed somewhere in the text (also as 45,20 or $45.20), as a whole amount. */
+function printed(text: string, amount: number): boolean {
+  const s = amount.toFixed(2);
+  const [w, c] = s.split(".");
+  const withCommas = Number(w).toLocaleString("en-US");
+  return [`${w}.${c}`, `${w},${c}`, `${withCommas}.${c}`].some((v) =>
+    new RegExp(`(^|[^\d.,])${v.replace(/[.,]/g, (m) => "\\" + m)}(?![\d%])`).test(text)
+  );
+}
+
+/**
+ * The model's JSON -> the fields, every number re-checked against the receipt's own text:
+ * an amount that isn't printed on it is dropped (null), a date must be real, within the
+ * last year and not ahead of [today] (YYYY-MM-DD).
+ */
+export function toReceipt(raw: string, text: string, today: string): ReceiptRead {
+  const m = raw.match(/\{[\s\S]*\}/);
+  let o: any = {};
+  try { o = m ? JSON.parse(m[0]) : {}; } catch { o = {}; }
+  const num = (v: unknown): number | null => {
+    const n = typeof v === "number" ? v : typeof v === "string" ? Number(v.replace(/[$\s]/g, "").replace(/,(\d{2})$/, ".$1").replace(/,/g, "")) : NaN;
+    if (!isFinite(n) || n <= 0 || n >= 1_000_000) return null;
+    const r = Math.round(n * 100) / 100;
+    return printed(text, r) ? r : null;
+  };
+  const total = num(o.total);
+  let tax = num(o.tax);
+  if (tax !== null && total !== null && tax >= total) tax = null;
+  let date: string | null = typeof o.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.date) ? o.date : null;
+  if (date) {
+    const d = new Date(date + "T12:00:00Z");
+    const yearAgo = `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`;
+    if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== date || date > today || date < yearAgo) date = null;
+  }
+  const hstRaw = typeof o.hst_number === "string" ? o.hst_number.replace(/\s|-/g, "").toUpperCase() : "";
+  const hst = /^\d{9}RT\d{4}$/.test(hstRaw) && text.replace(/\s|-/g, "").toUpperCase().includes(hstRaw) ? `${hstRaw.slice(0, 9)} RT ${hstRaw.slice(11)}` : null;
+  const vendor = typeof o.vendor === "string" && o.vendor.trim() ? o.vendor.trim().slice(0, 120) : null;
+  return { vendor, date, total, tax, hstNumber: hst };
+}

@@ -282,20 +282,8 @@ class MainActivity : ComponentActivity() {
                                     com.goldsky.ssp.feature.retail.screens.JournalScreen(onScanReceipt = { navController.navigate("scan_receipt") })
                                 }
                                 composable("scan_receipt") {
-                                    ReceiptScannerScreen(
-                                        onReceiptCaptured = { vendor, amount ->
-                                            CoroutineScope(Dispatchers.IO).launch {
-                                                // Same cloud record as manual and voice entries; a supplier
-                                                // receipt is most often stock, the manager can change it in CMP.
-                                                ExpenseRepository.record(
-                                                    this@MainActivity, vendor, "INVENTORY", amount, ExpenseRepository.today(),
-                                                    null, "receipt", StaffRepository.current
-                                                )
-                                                withContext(Dispatchers.Main) { navController.popBackStack() }
-                                            }
-                                        },
-                                        onBack = { navController.popBackStack() }
-                                    )
+                                    // One photo per receipt, read and confirmed there; saved with the photo.
+                                    ReceiptScannerScreen(onDone = { navController.popBackStack() }, onBack = { navController.popBackStack() })
                                 }
                                 // Managers only (the nav item is hidden for cashiers too).
                                 composable("settings") { if (signedIn.isManager) SettingsScreen(showBusinessType = true) }

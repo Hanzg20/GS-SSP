@@ -34,7 +34,7 @@
 // No key at all: brief/ask answer { skipped }, the terminal shows the numbers only.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { calendarLines, localNow, looksLikeCommand, parsePrompt, toProposal } from "./parse.ts";
+import { calendarLines, localNow, looksLikeCommand, parsePrompt, toProposal, RECEIPT_PROMPT, toReceipt } from "./parse.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -291,6 +291,17 @@ Deno.serve(async (req) => {
       if (typeof body.audio !== "string" || !body.audio) return json({ error: "No audio" }, 400);
       const text = await transcribe(body.audio, typeof body.mime === "string" ? body.mime : "audio/mp4", lang);
       return text === null ? json({ skipped: "No speech-to-text key configured" }) : json({ text });
+    }
+
+    // A receipt photo's text the terminal couldn't find a total in: the model reads the four
+    // fields, every number re-checked against the text (parse.ts toReceipt). Not kept as chat.
+    if (action === "receipt") {
+      const text = String(body.text ?? "").slice(0, 8000);
+      if (!text.trim()) return json({ error: "No text" }, 400);
+      const provider = pickProvider();
+      if (!provider) return json({ skipped: "No model key configured" });
+      const out = await provider.call(RECEIPT_PROMPT, [{ role: "user", content: text }]);
+      return json({ receipt: toReceipt(out, text, localNow(tz).date) });
     }
 
     const { data: stats, error: statsError } = await db.rpc("apex_store_stats", { p_org: orgId, p_tz: tz });
