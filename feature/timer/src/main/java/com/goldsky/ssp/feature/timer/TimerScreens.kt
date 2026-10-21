@@ -605,20 +605,20 @@ fun TechScreen(
             color = if (demoMode) Amber else TextLo, fontSize = 11.sp,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
         )
-        // The site's network changes now and then: Wi-Fi, or the terminal's own SIM.
+        // System check: network (Wi-Fi / SIM / Ethernet), card service, HOME, overlay, clock, screen, volume.
         val ctx = androidx.compose.ui.platform.LocalContext.current
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(Surface, RoundedCornerShape(10.dp)).padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("网络设置", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Text("切换 Wi-Fi，或用本机 SIM 卡上网；按返回键回到这里", color = TextLo, fontSize = 11.sp)
+                Text("系统检查", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("网络、刷卡服务、默认桌面、权限、时间、屏幕、音量，一键去设置", color = TextLo, fontSize = 11.sp)
             }
             OutlinedButton(
-                onClick = { (ctx as? android.app.Activity)?.let { com.goldsky.ssp.ui.NetworkSettings.open(it) } },
+                onClick = { ctx.startActivity(android.content.Intent(ctx, com.goldsky.ssp.ui.SystemCheckActivity::class.java)) },
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-            ) { Text("Wi-Fi / SIM", fontSize = 13.sp, color = TextHi) }
+            ) { Text("打开", fontSize = 13.sp, color = TextHi) }
         }
         PaymentSelfTestPanel(selfTest, onRunSelfTest, onSettle)
         Row(

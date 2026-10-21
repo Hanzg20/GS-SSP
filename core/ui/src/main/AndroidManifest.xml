@@ -10,5 +10,11 @@
             android:exported="false"
             android:screenOrientation="nosensor"
             android:theme="@style/Theme.SSP.Fullscreen" />
+        <!-- Technician system check: network, card service, HOME, overlay, clock, screen, volume. -->
+        <activity
+            android:name="com.goldsky.ssp.ui.SystemCheckActivity"
+            android:exported="false"
+            android:screenOrientation="nosensor"
+            android:theme="@style/Theme.SSP.Fullscreen" />
     </application>
 </manifest>

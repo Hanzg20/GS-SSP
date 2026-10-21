@@ -2098,7 +2098,7 @@ class MainActivity : BaseAdActivity() {
 
         dialog.findViewById<Button>(R.id.btn_op_network)?.setOnClickListener {
             applyClickFeedback(it)
-            com.goldsky.ssp.ui.NetworkSettings.open(this@MainActivity)
+            startActivity(android.content.Intent(this@MainActivity, com.goldsky.ssp.ui.SystemCheckActivity::class.java))
         }
 
         dialog.findViewById<Button>(R.id.btn_op_batch).setOnClickListener { v ->
