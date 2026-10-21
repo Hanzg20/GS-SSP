@@ -599,6 +599,9 @@ fun TechScreen(
             TextButton(onClick = onPaymentTests) { Text("支付用例", color = Amber) }
             TextButton(onClick = onExit) { Text("返回", color = Amber) }
         }
+        // Everything below the bar scrolls as one page: on the Q3mini's ~480x480 screen the
+        // panels above used to stay put and left the scrolling part a sliver (owner, 2026-10-20).
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
         Text(
             if (demoMode) "演示模式开：客户流程跳过刷卡、不驱动输出、不写交易记录。重启应用自动关闭。"
             else "演示模式关：客户流程真实刷卡、真实驱动输出。",
@@ -632,14 +635,15 @@ fun TechScreen(
             Switch(checked = dualBay, onCheckedChange = onDualChange, modifier = Modifier.scale(0.8f))
         }
         if (dualBay) {
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                Bay.entries.forEach { bay ->
-                    BayOutputPanel(bay, baySettings[bay] ?: OutputSettings(OutputMode.COIN_PULSES, bay.defaultPort), { onBayChange(bay, it) }) { onTestBay(bay) }
-                }
+            Bay.entries.forEach { bay ->
+                BayOutputPanel(bay, baySettings[bay] ?: OutputSettings(OutputMode.COIN_PULSES, bay.defaultPort), { onBayChange(bay, it) }) { onTestBay(bay) }
             }
         } else {
             OutputSettingsPanel(outputSettings, onOutputChange, onTestOutput)
-            Box(Modifier.weight(1f)) { holdTest() }
+            // The output test is a list of its own (pinned countdown): a fixed height inside the
+            // page, so the two scrolls don't fight -- it scrolls within, the page around it.
+            Box(Modifier.fillMaxWidth().height(420.dp)) { holdTest() }
+        }
         }
     }
 }
