@@ -16,7 +16,9 @@ data class Heartbeat(
     val device_sn: String, // must match the heartbeats table column name exactly (PostgREST rejects unknown columns)
     val is_serial_ok: Boolean,
     val storage_free_mb: Long,
-    val network_type: String
+    val network_type: String,
+    /** Kiosk screen in front; null = not a kiosk app ([KioskFront]). */
+    val kiosk_in_front: Boolean? = null
 )
 
 class HeartbeatWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
@@ -43,7 +45,8 @@ class HeartbeatWorker(appContext: Context, params: WorkerParameters) : Coroutine
                     // No provider registered (e.g. a cold process before the shell wired one) is "not ok", not a failed heartbeat.
                     is_serial_ok = try { HardwareFactory.getSerialProvider(context, vendor).isOpened() } catch (e: Exception) { false },
                     storage_free_mb = File(context.filesDir.absolutePath).freeSpace / (1024 * 1024),
-                    network_type = "WIFI" // Simplified
+                    network_type = "WIFI", // Simplified
+                    kiosk_in_front = KioskFront.forHeartbeat(context)
                 )
                 SupabaseClientProvider.ensureAuthenticated()
                 SupabaseClientProvider.client.postgrest["heartbeats"].insert(heartbeat)

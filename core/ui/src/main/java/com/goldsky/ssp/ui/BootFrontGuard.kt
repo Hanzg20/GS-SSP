@@ -1,7 +1,6 @@
 package com.goldsky.ssp.ui
 
 import android.app.Activity
-import android.app.ActivityManager
 import android.app.Application
 import android.app.role.RoleManager
 import android.content.Intent
@@ -13,6 +12,7 @@ import android.provider.Settings
 import android.util.Log
 import com.goldsky.ssp.payment.DeviceRepository
 import com.goldsky.ssp.payment.DiagnosticManager
+import com.goldsky.ssp.payment.KioskFront
 
 /**
  * Brings the kiosk back to the front when something else covers it right
@@ -22,7 +22,7 @@ import com.goldsky.ssp.payment.DiagnosticManager
  * 2026-10-20: in socket mode -- ours -- OPC starts in the foreground unless
  * configured otherwise.)
  *
- * Polls whether this app is in the foreground (asked from the system, not counted
+ * Polls whether this app is in the foreground ([KioskFront], asked from the system, not counted
  * from activity callbacks: a count was thrown off by the splash starting before the
  * guard was installed, and on 253 and 255 the guard then never acted -- 2026-10-21).
  * Polling also catches OPC coming to the front again after we were back.
@@ -56,8 +56,10 @@ object BootFrontGuard {
     fun install(activity: Activity) {
         if (installed) return
         installed = true
-        if (SystemClock.elapsedRealtime() > BOOT_WINDOW_MS) return
         val app = activity.application
+        // Reports in front / covered to Cael for as long as the app runs, not only after boot.
+        KioskFrontWatch.start(app)
+        if (SystemClock.elapsedRealtime() > BOOT_WINDOW_MS) return
         val cls = activity.javaClass
         handler.postDelayed(object : Runnable {
             override fun run() { if (poll(app, cls)) handler.postDelayed(this, POLL_MS) }
@@ -71,7 +73,7 @@ object BootFrontGuard {
     private fun poll(app: Application, cls: Class<out Activity>): Boolean {
         val now = SystemClock.elapsedRealtime()
         val uptime = now / 1000
-        if (inFront()) {
+        if (KioskFront.inFront()) {
             if (frontSince == 0L) {
                 frontSince = now
                 if (timeline.isNotEmpty()) note("${uptime}s in front")
@@ -99,13 +101,6 @@ object BootFrontGuard {
         note("#$relaunches ${if (viaHome) "home" else "kiosk"}${if (sent) "" else " refused"}")
         Log.w(TAG, "Covered ${uptime}s after boot; back to front (#$relaunches)")
         return true
-    }
-
-    /** Whether one of this app's activities is on screen -- asked from the system. */
-    private fun inFront(): Boolean {
-        val info = ActivityManager.RunningAppProcessInfo()
-        ActivityManager.getMyMemoryState(info)
-        return info.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
     }
 
     private fun note(s: String) { if (timeline.isNotEmpty()) timeline.append(", "); timeline.append(s) }
