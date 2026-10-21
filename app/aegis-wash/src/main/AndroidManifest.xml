@@ -126,10 +126,8 @@
             android:launchMode="singleTask"
             android:screenOrientation="nosensor"
             android:configChanges="orientation|keyboardHidden|screenSize">
-            <intent-filter>
-                <action android:name="com.goldsky.ssp.action.MAIN" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
+            <!-- No com.goldsky.ssp.action.MAIN / DEFAULT filter: WizarPOS asked to drop it (2026-10-20);
+                 SplashActivity opens this activity by class (its MAIN_ACTIVITY meta-data). -->
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
             </intent-filter>
@@ -144,28 +142,30 @@
             android:exported="true"
             android:screenOrientation="nosensor"
             android:theme="@style/Theme.SSP.Fullscreen">
+            <!-- Splash opens this by class: MainActivity no longer declares com.goldsky.ssp.action.MAIN. -->
+            <meta-data android:name="com.goldsky.ssp.MAIN_ACTIVITY" android:value="com.goldsky.ssp.feature.wash.MainActivity" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.HOME" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
+                <!-- <category android:name="android.intent.category.LAUNCHER" /> wizarpos 要求不加这个-->
+                  <category android:name="android.intent.category.HOME" />
+                  <category android:name="android.intent.category.DEFAULT" />
+              </intent-filter>
+          </activity>
 
-        <activity
-            android:name="com.goldsky.ssp.ui.AdActivity"
-            android:exported="false"
-            android:screenOrientation="nosensor"
-            android:theme="@style/Theme.SSP.Fullscreen"
-            android:configChanges="orientation|keyboardHidden|screenSize" />
+          <activity
+              android:name="com.goldsky.ssp.ui.AdActivity"
+              android:exported="false"
+              android:screenOrientation="nosensor"
+              android:theme="@style/Theme.SSP.Fullscreen"
+              android:configChanges="orientation|keyboardHidden|screenSize" />
 
-        <activity
-            android:name="com.goldsky.ssp.ui.VipActivity"
-            android:exported="false"
-            android:screenOrientation="nosensor"
-            android:theme="@style/Theme.SSP.Fullscreen"
-            android:configChanges="orientation|keyboardHidden|screenSize" />
+          <activity
+              android:name="com.goldsky.ssp.ui.VipActivity"
+              android:exported="false"
+              android:screenOrientation="nosensor"
+              android:theme="@style/Theme.SSP.Fullscreen"
+              android:configChanges="orientation|keyboardHidden|screenSize" />
 
-    </application>
+      </application>
 
-</manifest>
+  </manifest>

@@ -2096,6 +2096,11 @@ class MainActivity : BaseAdActivity() {
             }
         }
 
+        dialog.findViewById<Button>(R.id.btn_op_network)?.setOnClickListener {
+            applyClickFeedback(it)
+            com.goldsky.ssp.ui.NetworkSettings.open(this@MainActivity)
+        }
+
         dialog.findViewById<Button>(R.id.btn_op_batch).setOnClickListener { v ->
             applyClickFeedback(v)
             // Closing the batch sends the day's sales to the bank at once and can't be

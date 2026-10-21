@@ -36,12 +36,19 @@ object AppSwitcher {
 
     /** The other Aegis app installed on this terminal: (package, name), or null. */
     fun other(context: Context): Pair<String, String>? =
-        APPS.firstOrNull { (pkg, _) ->
-            pkg != context.packageName && context.packageManager.getLaunchIntentForPackage(pkg) != null
-        }
+        APPS.firstOrNull { (pkg, _) -> pkg != context.packageName && launchIntent(context, pkg) != null }
+
+    /**
+     * How to open an Aegis app: its launcher entry, or -- Aegis Wash has none since WizarPOS
+     * asked to drop LAUNCHER (2026-10-20) -- its HOME entry (every Aegis app is a kiosk HOME).
+     */
+    private fun launchIntent(context: Context, pkg: String): Intent? =
+        context.packageManager.getLaunchIntentForPackage(pkg)
+            ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(pkg)
+                .takeIf { it.resolveActivity(context.packageManager) != null }
 
     fun switchTo(activity: Activity, pkg: String) {
-        val launch = activity.packageManager.getLaunchIntentForPackage(pkg) ?: return
+        val launch = launchIntent(activity, pkg) ?: return
         Log.w(TAG, "Switching to $pkg")
         activity.startActivity(
             launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)

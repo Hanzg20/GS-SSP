@@ -42,8 +42,16 @@ class SplashActivity : AppCompatActivity() {
             // We need to find the specific MainActivity that was previously the launcher.
             // Since we're changing the launcher to SplashActivity, we need to know 
             // where to go. A common pattern is to use a specific Action.
-            val mainIntent = Intent("com.goldsky.ssp.action.MAIN")
-            mainIntent.`package` = packageName
+            // The app's MainActivity named in the manifest (meta-data com.goldsky.ssp.MAIN_ACTIVITY on
+            // this activity): opened by class, so it needs no intent filter of its own -- WizarPOS
+            // asked us to drop com.goldsky.ssp.action.MAIN from Aegis Wash (2026-10-20). The action
+            // stays the fallback for apps that still declare it.
+            val mainClass = runCatching {
+                packageManager.getActivityInfo(componentName, android.content.pm.PackageManager.GET_META_DATA)
+                    .metaData?.getString("com.goldsky.ssp.MAIN_ACTIVITY")
+            }.getOrNull()
+            val mainIntent = if (mainClass != null) Intent().setClassName(packageName, mainClass)
+            else Intent("com.goldsky.ssp.action.MAIN").setPackage(packageName)
             // AppSwitcher's EXTRA_CLAIM_HOME has to reach MainActivity.
             getIntent().extras?.let { mainIntent.putExtras(it) }
             

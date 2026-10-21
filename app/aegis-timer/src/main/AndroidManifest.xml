@@ -44,16 +44,16 @@
     <!-- Package visibility for the payment apps/services the providers bind
          (see aegis-wash's manifest for the on-device evidence). -->
     <queries>
-        <!-- LauncherClaim reads the current default HOME. -->
+        <!-- LauncherClaim reads the current default HOME (Android 11+ needs this to see it). -->
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
         </intent>
-        <intent>
-            <action android:name="com.pax.us.std.poslink.aidl" />
-        </intent>
-        <package android:name="com.cloudpos.scanserver" />
-        <!-- AppSwitcher: technician switch to the other Aegis app. -->
+     <intent>
+         <action android:name="com.pax.us.std.poslink.aidl" />
+     </intent>
+     <package android:name="com.cloudpos.scanserver" />
+     <!-- AppSwitcher: technician switch to the other Aegis app. -->
         <package android:name="com.goldsky.ssp.aegis.wash" />
     </queries>
 

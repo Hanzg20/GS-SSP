@@ -394,6 +394,19 @@
             android:textColor="@color/text_dark"
             android:textStyle="bold" />
 
+        <!-- Wi-Fi / SIM: the site's network changes now and then (opens Android's network settings). -->
+        <Button
+            android:id="@+id/btn_op_network"
+            android:layout_width="0dp"
+            android:layout_height="80dp"
+            android:layout_margin="4dp"
+            android:layout_columnWeight="1"
+            android:text="NETWORK
+Wi-Fi / SIM"
+            android:backgroundTint="@color/tech_pill_bg"
+            android:textColor="@color/tech_cyan"
+            android:textStyle="bold" />
+
         <Button
             android:id="@+id/btn_op_check"
             android:layout_width="0dp"
