@@ -280,6 +280,14 @@ object DeviceRepository {
         return runCatching { UiThemeStyle.valueOf(name ?: UiThemeStyle.CYBER.name) }.getOrDefault(UiThemeStyle.CYBER)
     }
 
+    /**
+     * The org this device belongs to now, asked from the server: a store move in Cael
+     * changes it, and the SYNC_CONFIG sent after a move fetched the OLD org's config
+     * with the persisted id (and fell back to the cache) until the app restarted
+     * (255, 2026-10-21). Falls back to the persisted id when offline.
+     */
+    suspend fun refreshOrgId(sn: String): String? = syncDeviceIdentity(sn)?.org_id ?: getPersistedOrgId()
+
     private fun persistOrgId(orgId: String?) {
         if (orgId == null) return
         prefs()?.edit()?.putString(KEY_ORG_ID, orgId)?.apply()

@@ -109,7 +109,7 @@ class MainActivity : ComponentActivity() {
         com.goldsky.ssp.ui.PayWizardGuard.start(this) { timerVm.canEnterTechMode }
         com.goldsky.ssp.payment.AppSwitcher.claimHomeIfSwitched(this)
         RemoteCommandManager.startListening(this, deviceSn, vendor, object : RemoteCommandManager.CommandListener {
-            override fun onSyncRequested() = loadConfig(DeviceRepository.getPersistedOrgId())
+            override fun onSyncRequested() { lifecycleScope.launch { loadConfig(DeviceRepository.refreshOrgId(deviceSn)) } }
             // A LOCK mid-session lets the paid session finish; it only blocks new sales.
             override fun onLockRequested(locked: Boolean) = timerVm.setLocked(DeviceAccessManager.isLocked())
             override suspend fun onStartServiceRequested(productId: String?, startHex: String?, commandId: String, bay: String?) =

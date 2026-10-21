@@ -203,7 +203,7 @@ class MainActivity : BaseAdActivity() {
         com.goldsky.ssp.payment.AppSwitcher.claimHomeIfSwitched(this)
         RemoteCommandManager.startListening(this, deviceSn, hardwareVendor, object : RemoteCommandManager.CommandListener {
             override fun onSyncRequested() {
-                loadInitialConfig(DeviceRepository.getPersistedOrgId())
+                CoroutineScope(Dispatchers.Main).launch { loadInitialConfig(DeviceRepository.refreshOrgId(deviceSn)) }
             }
 
             override fun onLockRequested(locked: Boolean) {
