@@ -27,6 +27,15 @@
     <string name="btn_pay_card_desc">Tap, Insert or Swipe</string>
     <string name="btn_pay_scan">Scan to Pay</string>
     <string name="btn_pay_scan_desc">Mobile Wallets / QR Code</string>
+    <string name="btn_pay_code">Scan Coupon / VIP Code</string>
+    <string name="btn_pay_code_desc">Hold your code up to the camera</string>
+    <string name="tts_scan_code_prompt">Please hold your coupon or VIP code up to the camera, and turn your phone screen brightness up.</string>
+    <string name="pay_scan_timeout">No code detected. Please try again, or pay by card.</string>
+    <string name="pay_scan_unavailable">The camera is not working right now. Please pay by card.</string>
+    <string name="pay_coupon_other_package">This coupon is only for %1$s. Please choose that wash, or pay by card.</string>
+    <string name="pay_vip_short">VIP %1$s: balance %2$s, this wash is %3$s. Please top up, or pay by card.</string>
+    <string name="pay_vip_inactive">This VIP card has been deactivated. Please pay by card.</string>
+    <string name="tts_coupon_pay_rest">Coupon applied. Please tap your card to pay the rest.</string>
     <string name="btn_back">Back</string>
     <string name="prompt_tap_card">Tap Card</string>
 

@@ -84,6 +84,13 @@ class MainActivity : BaseAdActivity() {
         private const val SCAN_TIMEOUT_MS = 15000L
         // A scanned VIP code / coupon waits this long for a wash to be chosen.
         private const val PENDING_TIMEOUT_MS = 60_000L
+        // Payment page "Scan Coupon / VIP Code": longer than the home belt's scan --
+        // the customer still has to find the code on their phone. The prompt is
+        // spoken when the camera opens and repeated until a code is read, at most
+        // PAY_SCAN_PROMPTS times (one utterance is ~6 s).
+        private const val PAY_SCAN_TIMEOUT_MS = 25_000L
+        private const val PAY_SCAN_PROMPTS = 3
+        private const val PAY_SCAN_PROMPT_EVERY_MS = 7_000L
     }
 
     private lateinit var layoutPackageSelection: ConstraintLayout
@@ -493,6 +500,105 @@ class MainActivity : BaseAdActivity() {
     private fun initCouponScan() {
         if (paymentDialog?.isShowing == true) return // a payment is already in flight, ignore
 
+        runCodeScan(SCAN_TIMEOUT_MS, onFail = { end ->
+            showScanFeedback(getString(when (end) {
+                ScanEnd.TIMEOUT -> R.string.toast_scan_timeout
+                ScanEnd.UNAVAILABLE -> R.string.toast_scanner_unavailable
+                ScanEnd.UNREADABLE -> R.string.toast_scan_failed
+            }))
+        }) { result ->
+            val scanned = result.trim()
+            // Length + suffix only, not the full code -- enough to
+            // cross-reference against the coupons table when a
+            // redemption result looks wrong, without logging a
+            // reusable code in full. Added after a real "already_used"
+            // report that turned out to be a stale QR code still on
+            // screen (a coupon genuinely already redeemed, correctly
+            // rejected) rather than a bug -- there was previously no way
+            // to tell which code the camera actually decoded without
+            // this, 2026-09-19.
+            Log.d("MainActivity", "Scanned code: len=${scanned.length} suffix=${scanned.takeLast(6)}")
+            runOnUiThread {
+                if (Regex("^[A-Za-z0-9]{6}$").matches(scanned)) {
+                    CoroutineScope(Dispatchers.Main).launch {
+                        val cardUid = VipRepository.resolveCardUidByQrCode(scanned)
+                        // Can't cover even the cheapest package: say so now, not
+                        // after the customer has picked one.
+                        val lowest = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)
+                            ?.filter { it.price_cents > 0 }?.minOfOrNull { it.price_cents }
+                        val scannedCard = cardUid?.let { VipRepository.getVipCard(it) }
+                        if (scannedCard != null && lowest != null && scannedCard.balance_cents < lowest) {
+                            showScanFeedback(getString(R.string.toast_vip_insufficient,
+                                "$" + String.format(java.util.Locale.US, "%.2f", scannedCard.balance_cents / 100.0),
+                                "$" + String.format(java.util.Locale.US, "%.2f", lowest / 100.0)))
+                        } else if (cardUid != null) {
+                            pendingCoupon = null
+                            pendingVipCardUid = cardUid
+                            // Best-effort lookup for the card no./balance line; a
+                            // failure here must not block the flow, the deduct RPC
+                            // re-validates the card server-side anyway.
+                            val card = scannedCard
+                            showScanPending(
+                                getString(R.string.pending_vip_title, scanned.uppercase(), card?.let { formatCents(it.balance_cents) } ?: ""),
+                                getString(R.string.tts_pending_vip),
+                            )
+                        } else {
+                            showScanFeedback(getString(R.string.toast_member_code_invalid))
+                        }
+                    }
+                } else {
+                    CoroutineScope(Dispatchers.Main).launch {
+                        // peek_coupon() only -- redeem_coupon() (the real,
+                        // atomic consumption) is deliberately deferred until
+                        // the customer confirms below, see
+                        // showCouponConfirmDialog()'s comment for why.
+                        when (val peek = CouponRepository.peekCoupon(scanned, deviceSn)) {
+                            is CouponPeekResult.Success -> {
+                                val matchedProduct = findMatchingLocalProduct(peek)
+                                if (matchedProduct != null) {
+                                    pendingVipCardUid = null
+                                    showCouponConfirmDialog(scanned, peek, matchedProduct)
+                                } else if (peek.applicableProductId == null) {
+                                    // Generic "any package" discount (no specific package to
+                                    // pre-select and confirm) -- unchanged from the original
+                                    // flow: consume now, let the customer pick a package
+                                    // afterward, discount applied on top of it.
+                                    // Checked only; consumed when it pays (see pendingCoupon).
+                                    pendingVipCardUid = null
+                                    pendingCoupon = PendingCoupon(scanned, peek.type, peek.value)
+                                    showScanPending(
+                                        getString(R.string.pending_coupon_title, couponLabel(peek.type, peek.value)),
+                                        getString(R.string.tts_pending_coupon),
+                                    )
+                                } else {
+                                    // Bound to a specific package (applicable_product_id set),
+                                    // but nothing in the local catalog matches that id -- most
+                                    // likely the device's synced config and the portal's
+                                    // products table have drifted (see products vs
+                                    // app_configurations comment in docs/supabase_full_schema.sql).
+                                    // Never consumed here (peek_coupon only) -- staff can still
+                                    // redeem it manually.
+                                    showScanFeedback(getString(R.string.toast_coupon_see_staff))
+                                }
+                            }
+                            is CouponPeekResult.Rejected, CouponPeekResult.NetworkError -> {
+                                showScanFeedback(getString(couponRejectionMessageRes(scanned)))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private enum class ScanEnd { TIMEOUT, UNAVAILABLE, UNREADABLE }
+
+    /**
+     * One camera scan, shared by the home-screen scan belt and the payment page's
+     * "Scan Coupon / VIP Code": [onCode] with the decoded text, or [onFail] once,
+     * on the main thread.
+     */
+    private fun runCodeScan(timeoutMs: Long, onFail: (ScanEnd) -> Unit, onCode: (String) -> Unit) {
         val scanner = HardwareFactory.getScannerProvider(this, hardwareVendor)
 
         // Cancel any previous pending timeout before scheduling a new one --
@@ -508,99 +614,19 @@ class MainActivity : BaseAdActivity() {
         // message with the generic "couldn't read that code" one.
         isScanTimingOut = false
         val timeoutRunnable = Runnable {
-            Log.w("MainActivity", "Coupon scan timed out after ${SCAN_TIMEOUT_MS}ms with no result")
+            Log.w("MainActivity", "Code scan timed out after ${timeoutMs}ms with no result")
             isScanTimingOut = true
             scanner.stopScan()
-            showScanFeedback(getString(R.string.toast_scan_timeout))
+            onFail(ScanEnd.TIMEOUT)
         }
         scanTimeoutRunnable = timeoutRunnable
-        scanTimeoutHandler.postDelayed(timeoutRunnable, SCAN_TIMEOUT_MS)
+        scanTimeoutHandler.postDelayed(timeoutRunnable, timeoutMs)
 
         val scanStartedAt = android.os.SystemClock.elapsedRealtime()
         scanner.startScan(object : com.goldsky.ssp.payment.hardware.IScannerProvider.ScanCallback {
             override fun onScanSuccess(result: String) {
                 scanTimeoutRunnable?.let { scanTimeoutHandler.removeCallbacks(it) }
-                val scanned = result.trim()
-                // Length + suffix only, not the full code -- enough to
-                // cross-reference against the coupons table when a
-                // redemption result looks wrong, without logging a
-                // reusable code in full. Added after a real "already_used"
-                // report that turned out to be a stale QR code still on
-                // screen (a coupon genuinely already redeemed, correctly
-                // rejected) rather than a bug -- there was previously no way
-                // to tell which code the camera actually decoded without
-                // this, 2026-09-19.
-                Log.d("MainActivity", "Scanned code: len=${scanned.length} suffix=${scanned.takeLast(6)}")
-                runOnUiThread {
-                    if (Regex("^[A-Za-z0-9]{6}$").matches(scanned)) {
-                        CoroutineScope(Dispatchers.Main).launch {
-                            val cardUid = VipRepository.resolveCardUidByQrCode(scanned)
-                            // Can't cover even the cheapest package: say so now, not
-                            // after the customer has picked one.
-                            val lowest = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)
-                                ?.filter { it.price_cents > 0 }?.minOfOrNull { it.price_cents }
-                            val scannedCard = cardUid?.let { VipRepository.getVipCard(it) }
-                            if (scannedCard != null && lowest != null && scannedCard.balance_cents < lowest) {
-                                showScanFeedback(getString(R.string.toast_vip_insufficient,
-                                    "$" + String.format(java.util.Locale.US, "%.2f", scannedCard.balance_cents / 100.0),
-                                    "$" + String.format(java.util.Locale.US, "%.2f", lowest / 100.0)))
-                            } else if (cardUid != null) {
-                                pendingCoupon = null
-                                pendingVipCardUid = cardUid
-                                // Best-effort lookup for the card no./balance line; a
-                                // failure here must not block the flow, the deduct RPC
-                                // re-validates the card server-side anyway.
-                                val card = scannedCard
-                                showScanPending(
-                                    getString(R.string.pending_vip_title, scanned.uppercase(), card?.let { formatCents(it.balance_cents) } ?: ""),
-                                    getString(R.string.tts_pending_vip),
-                                )
-                            } else {
-                                showScanFeedback(getString(R.string.toast_member_code_invalid))
-                            }
-                        }
-                    } else {
-                        CoroutineScope(Dispatchers.Main).launch {
-                            // peek_coupon() only -- redeem_coupon() (the real,
-                            // atomic consumption) is deliberately deferred until
-                            // the customer confirms below, see
-                            // showCouponConfirmDialog()'s comment for why.
-                            when (val peek = CouponRepository.peekCoupon(scanned, deviceSn)) {
-                                is CouponPeekResult.Success -> {
-                                    val matchedProduct = findMatchingLocalProduct(peek)
-                                    if (matchedProduct != null) {
-                                        pendingVipCardUid = null
-                                        showCouponConfirmDialog(scanned, peek, matchedProduct)
-                                    } else if (peek.applicableProductId == null) {
-                                        // Generic "any package" discount (no specific package to
-                                        // pre-select and confirm) -- unchanged from the original
-                                        // flow: consume now, let the customer pick a package
-                                        // afterward, discount applied on top of it.
-                                        // Checked only; consumed when it pays (see pendingCoupon).
-                                        pendingVipCardUid = null
-                                        pendingCoupon = PendingCoupon(scanned, peek.type, peek.value)
-                                        showScanPending(
-                                            getString(R.string.pending_coupon_title, couponLabel(peek.type, peek.value)),
-                                            getString(R.string.tts_pending_coupon),
-                                        )
-                                    } else {
-                                        // Bound to a specific package (applicable_product_id set),
-                                        // but nothing in the local catalog matches that id -- most
-                                        // likely the device's synced config and the portal's
-                                        // products table have drifted (see products vs
-                                        // app_configurations comment in docs/supabase_full_schema.sql).
-                                        // Never consumed here (peek_coupon only) -- staff can still
-                                        // redeem it manually.
-                                        showScanFeedback(getString(R.string.toast_coupon_see_staff))
-                                    }
-                                }
-                                is CouponPeekResult.Rejected, CouponPeekResult.NetworkError -> {
-                                    showScanFeedback(getString(couponRejectionMessageRes(scanned)))
-                                }
-                            }
-                        }
-                    }
-                }
+                runOnUiThread { onCode(result) }
             }
             override fun onScanFailure(errorMsg: String) {
                 scanTimeoutRunnable?.let { scanTimeoutHandler.removeCallbacks(it) }
@@ -612,13 +638,11 @@ class MainActivity : BaseAdActivity() {
                     Log.d("MainActivity", "Scan stop after timeout confirmed: $errorMsg")
                     return
                 }
-                Log.w("MainActivity", "Coupon scan failed: $errorMsg")
+                Log.w("MainActivity", "Code scan failed: $errorMsg")
                 // Scanner never started: say so (not "couldn't read that code") and report why.
                 val elapsed = android.os.SystemClock.elapsedRealtime() - scanStartedAt
                 val startFailure = DiagnosticManager.reportScanFailure(deviceSn, errorMsg, elapsed)
-                runOnUiThread {
-                    showScanFeedback(getString(if (startFailure) R.string.toast_scanner_unavailable else R.string.toast_scan_failed))
-                }
+                runOnUiThread { onFail(if (startFailure) ScanEnd.UNAVAILABLE else ScanEnd.UNREADABLE) }
             }
         })
     }
@@ -723,12 +747,7 @@ class MainActivity : BaseAdActivity() {
      */
     private fun showCouponConfirmDialog(code: String, peek: CouponPeekResult.Success, product: Product) {
         val originalPriceCents = product.price_cents
-        val discountedCents = when (peek.type) {
-            "PERCENT_OFF" -> originalPriceCents - (originalPriceCents * peek.value / 100)
-            "FIXED_OFF" -> maxOf(0, originalPriceCents - peek.value)
-            "FREE_WASH" -> 0
-            else -> originalPriceCents
-        }
+        val discountedCents = couponPrice(originalPriceCents, peek.type, peek.value)
         val expiryLine = peek.expiresAt?.let { getString(R.string.coupon_confirm_expires, it.replace("T", " ").take(16)) } ?: ""
         val message = if (discountedCents <= 0) {
             getString(R.string.coupon_confirm_message_free, product.name, originalPriceCents / 100.0, expiryLine)
@@ -857,14 +876,7 @@ class MainActivity : BaseAdActivity() {
         val coupon = pendingCoupon
         if (coupon != null) {
             pendingCoupon = null
-            // Formula from docs/coupon_redemption_integration.md §3.2 --
-            // clamped at 0, never negative (no "change back to the customer").
-            val finalPriceCents = when (coupon.type) {
-                "PERCENT_OFF" -> priceInCents - (priceInCents * coupon.value / 100)
-                "FIXED_OFF" -> maxOf(0, priceInCents - coupon.value)
-                "FREE_WASH" -> 0
-                else -> priceInCents
-            }
+            val finalPriceCents = couponPrice(priceInCents, coupon.type, coupon.value)
             if (finalPriceCents <= 0) {
                 // Free wash: the coupon is the payment -- consume it first.
                 CoroutineScope(Dispatchers.Main).launch {
@@ -899,34 +911,44 @@ class MainActivity : BaseAdActivity() {
     // serviceCents: the package's own price -- what the wash delivers (pulses).
     // priceInCents: what the customer pays; lower only after a coupon or a
     // VIP tier discount, which must never shorten the wash itself.
-    private fun showPaymentDialog(priceInCents: Int, startHex: String, productId: String? = null, serviceCents: Int = priceInCents, couponCode: String? = null) {
+    // [notice]: why the customer is back on this page (no code read, balance short,
+    // ...) -- shown and spoken, and the page is shown even with one method only.
+    private fun showPaymentDialog(priceInCents: Int, startHex: String, productId: String? = null, serviceCents: Int = priceInCents, couponCode: String? = null, notice: String? = null) {
         if (DeviceAccessManager.isLocked()) {
             Toast.makeText(this, "Terminal locked: ${DeviceAccessManager.lockReason()}", Toast.LENGTH_LONG).show()
             resetAdTimer()
             return
         }
 
-        when (ConfigManager.getConfig()?.settings?.payment_method_mode ?: PaymentMethodMode.ALL) {
-            PaymentMethodMode.CARD_ONLY -> {
-                Log.i("SSP_TEST", "Direct CARD_ONLY path triggered")
-                stopAdTimer()
-                startPaymentFlow(true, priceInCents, startHex, productId, serviceCents, couponCode)
-                return
-            }
-            PaymentMethodMode.SCAN_ONLY -> {
-                stopAdTimer()
-                startPaymentFlow(false, priceInCents, startHex, productId, serviceCents, couponCode)
-                return
-            }
-            // Any other value (including ALL) falls through to the selection
-            // dialog below -- an invalid config must never silently disable
-            // every payment method.
+        // Any mode other than CARD_ONLY / SCAN_ONLY (including ALL) offers both --
+        // an invalid config must never silently disable every payment method.
+        val mode = ConfigManager.getConfig()?.settings?.payment_method_mode ?: PaymentMethodMode.ALL
+        val mobileQr = scanPaysWithMobileQr()
+        // A coupon that left something to pay was already scanned: the rest is paid
+        // by card (a phone QR can still pay it in MOBILE_QR mode).
+        val scanAllowed = mode != PaymentMethodMode.CARD_ONLY && (couponCode == null || mobileQr)
+        val cardAllowed = mode != PaymentMethodMode.SCAN_ONLY || (couponCode != null && !mobileQr)
+        if (notice == null && !(scanAllowed && cardAllowed)) {
+            Log.i("SSP_TEST", "Single payment method: ${if (cardAllowed) "card" else "scan"}")
+            stopAdTimer()
+            startPaymentFlow(cardAllowed, priceInCents, startHex, productId, serviceCents, couponCode)
+            return
         }
 
         stopAdTimer()
 
         val selectionDialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         selectionDialog.setContentView(R.layout.dialog_payment_selection)
+        selectionDialog.findViewById<View>(R.id.btn_choice_card).visibility = if (cardAllowed) View.VISIBLE else View.GONE
+        selectionDialog.findViewById<View>(R.id.btn_choice_scan).visibility = if (scanAllowed) View.VISIBLE else View.GONE
+        if (!mobileQr) {
+            selectionDialog.findViewById<TextView>(R.id.tv_scan_text).text = getString(R.string.btn_pay_code)
+            selectionDialog.findViewById<TextView>(R.id.tv_scan_sub).text = getString(R.string.btn_pay_code_desc)
+        }
+        if (notice != null) {
+            selectionDialog.findViewById<TextView>(R.id.tv_choice_notice).apply { text = notice; visibility = View.VISIBLE }
+            TtsManager.speak(notice)
+        }
 
         selectionDialog.findViewById<View>(R.id.btn_choice_card).setOnClickListener {
             Log.i("SSP_TEST", "Card selected in dialog")
@@ -951,7 +973,12 @@ class MainActivity : BaseAdActivity() {
         selectionDialog.show()
     }
 
-    private fun startPaymentFlow(isCard: Boolean, priceInCents: Int, startHex: String, productId: String? = null, serviceCents: Int = priceInCents, couponCode: String? = null) {
+    // [cardGuide]: what to say on the card page instead of the plain "tap your card".
+    private fun startPaymentFlow(isCard: Boolean, priceInCents: Int, startHex: String, productId: String? = null, serviceCents: Int = priceInCents, couponCode: String? = null, cardGuide: String? = null) {
+        if (!isCard && !scanPaysWithMobileQr()) {
+            startCodePayment(priceInCents, startHex, productId, serviceCents)
+            return
+        }
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         dialog.setContentView(R.layout.dialog_payment)
         paymentDialog = dialog
@@ -971,7 +998,7 @@ class MainActivity : BaseAdActivity() {
                 // SmartPay, though -- speak ours (same as Aegis Timer).
                 layoutCard.visibility = View.GONE
                 layoutQr.visibility = View.GONE
-                TtsManager.speak(getString(R.string.prompt_card_guide))
+                TtsManager.speak(cardGuide ?: getString(R.string.prompt_card_guide))
                 initCardPayment(priceInCents, startHex, dialog, productId, serviceCents, couponCode)
             } else {
                 layoutCard.visibility = View.VISIBLE
@@ -980,7 +1007,7 @@ class MainActivity : BaseAdActivity() {
                 
                 // DYNAMIC VOICE: Localized amount and instruction
                 TtsManager.announceAmount(priceInCents, "Total amount is")
-                TtsManager.speak(getString(R.string.prompt_card_guide))
+                TtsManager.speak(cardGuide ?: getString(R.string.prompt_card_guide))
 
                 // Presence-check step -- a no-op pass-through for ID TECH (which has
                 // no cheap detection separate from the real sale; see
@@ -1343,6 +1370,82 @@ class MainActivity : BaseAdActivity() {
                 })
             }
         }
+    }
+
+    private fun scanPaysWithMobileQr() = ConfigManager.getConfig()?.settings?.scan_pays_with == "MOBILE_QR"
+
+    /**
+     * Payment page "Scan Coupon / VIP Code" (2026-10-21, customer request): the package
+     * is already chosen, the camera opens and the voice tells the customer to hold the
+     * code up to it. A VIP code pays the whole price from the balance; a coupon makes it
+     * free or leaves the rest for the card -- the same VIP / coupon steps as a home-screen
+     * scan (peek first, consumed only when it pays). Anything that can't pay brings the
+     * customer back to the payment page with the reason, so the card is one tap away.
+     */
+    private fun startCodePayment(priceInCents: Int, startHex: String, productId: String?, serviceCents: Int) {
+        val back = { why: String -> showPaymentDialog(priceInCents, startHex, productId, serviceCents, notice = why) }
+        val prompt = getString(R.string.tts_scan_code_prompt)
+        val prompts = List(PAY_SCAN_PROMPTS) { i ->
+            Runnable { TtsManager.speak(prompt) }.also { scanFeedbackHandler.postDelayed(it, i * PAY_SCAN_PROMPT_EVERY_MS) }
+        }
+        val quiet = { prompts.forEach(scanFeedbackHandler::removeCallbacks); TtsManager.stop() }
+
+        runCodeScan(PAY_SCAN_TIMEOUT_MS, onFail = { end ->
+            quiet()
+            back(getString(if (end == ScanEnd.UNAVAILABLE) R.string.pay_scan_unavailable else R.string.pay_scan_timeout))
+        }) { result ->
+            quiet()
+            val code = result.trim()
+            Log.d("MainActivity", "Pay scan: len=${code.length} suffix=${code.takeLast(6)}")
+            CoroutineScope(Dispatchers.Main).launch {
+                // Same format routing as the home-screen scan: 6 characters = member code.
+                if (Regex("^[A-Za-z0-9]{6}$").matches(code)) {
+                    val uid = VipRepository.resolveCardUidByQrCode(code)
+                    if (uid == null) { back(getString(R.string.toast_member_code_invalid)); return@launch }
+                    // card == null: lookup failed (network) -- don't block, the deduct RPC
+                    // re-validates server-side (same as startPreAuthenticatedVipFlow).
+                    val card = VipRepository.getVipCard(uid)
+                    when {
+                        card != null && !card.is_active -> back(getString(R.string.pay_vip_inactive))
+                        card != null && card.balance_cents < priceInCents ->
+                            back(getString(R.string.pay_vip_short, vipCardNumber(card), formatCents(card.balance_cents), formatCents(priceInCents)))
+                        else -> proceedVipPayment(priceInCents, startHex, uid, productId)
+                    }
+                    return@launch
+                }
+                when (val peek = CouponRepository.peekCoupon(code, deviceSn)) {
+                    is CouponPeekResult.Success -> {
+                        val forProduct = peek.applicableProductId
+                        if (forProduct != null && forProduct != productId) {
+                            val name = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)?.find { it.id == forProduct }?.name
+                            back(getString(R.string.pay_coupon_other_package, name ?: "another wash"))
+                            return@launch
+                        }
+                        val restCents = couponPrice(priceInCents, peek.type, peek.value)
+                        if (restCents <= 0) {
+                            // Free wash: the coupon is the payment -- consume it first.
+                            when (CouponRepository.redeemCoupon(code, deviceSn)) {
+                                is CouponRedeemResult.Success -> startFreeWashFlow(serviceCents, startHex, productId)
+                                else -> back(getString(couponRejectionMessageRes(code)))
+                            }
+                        } else {
+                            // Consumed after the card for the rest is approved (redeemPaidCoupon).
+                            startPaymentFlow(true, restCents, startHex, productId, serviceCents, couponCode = code,
+                                cardGuide = getString(R.string.tts_coupon_pay_rest))
+                        }
+                    }
+                    is CouponPeekResult.Rejected, CouponPeekResult.NetworkError -> back(getString(couponRejectionMessageRes(code)))
+                }
+            }
+        }
+    }
+
+    /** docs/coupon_redemption_integration.md section 3.2 -- clamped at 0, never negative (no "change back"). */
+    private fun couponPrice(priceInCents: Int, type: String, value: Int): Int = when (type) {
+        "PERCENT_OFF" -> priceInCents - (priceInCents * value / 100)
+        "FIXED_OFF" -> maxOf(0, priceInCents - value)
+        "FREE_WASH" -> 0
+        else -> priceInCents
     }
 
     private fun initQrPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null, serviceCents: Int = priceInCents, couponCode: String? = null) {

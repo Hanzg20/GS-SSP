@@ -51,6 +51,11 @@ data class KioskSettings(
     val locale_tag: String = "en-US", // For dynamic TTS localization
     val print_receipt_enabled: Boolean = false, // Cloud-configurable; some sites run without paper loaded
     val payment_method_mode: Int = PaymentMethodMode.ALL, // 0=ALL, 1=CARD_ONLY, 2=SCAN_ONLY -- see PaymentMethodMode
+    // What "scan" means on the Wash payment page: "CODE" -- the customer holds a coupon /
+    // VIP code up to the terminal's camera (2026-10-21, customer request); "MOBILE_QR" --
+    // the terminal shows a QR the customer pays on their phone (create-qr-session; not
+    // live in Canada, only ever used by the test org). Not set from Cael.
+    val scan_pays_with: String = "CODE",
     // Device-level dispense config (see com.goldsky.ssp.dispense.DispenseEngine).
     // "pulse_credit" (default) | "single_command" | "mdb_vend"
     val dispense_protocol: String = "pulse_credit",
