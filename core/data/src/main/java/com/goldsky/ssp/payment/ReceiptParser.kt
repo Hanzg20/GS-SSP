@@ -40,6 +40,8 @@ object ReceiptParser {
         AI_FILLED,
         /** A return / refund slip (negative total, "REFUND"): money back, not an expense. No total is filled in. */
         REFUND,
+        /** Barely anything legible (no total, under 3 amounts): blurred or too far -- retake it. */
+        UNREADABLE,
     }
 
     data class Fields(
@@ -61,7 +63,8 @@ object ReceiptParser {
     private val NOT_TOTAL = Regex("""SAVING|ITEMS?\b|QTY|QUANTITY|DISCOUNT|POINTS|NUMBER OF|TIPS?\b|TENDER""")
     private val TAX = Regex("""\b(HST|GST|QST|PST|TAX)\b|税|稅""")
     private val TOTAL_TAX = Regex("""TOTAL\s+(TAX|HST|GST)|(TAX|HST|GST)\s+TOTAL|税额|稅額""")
-    private val NOT_TAX = Regex("""BEFORE\s+TAX|PRE-?TAX|EXEMPT|NON-?TAX|TAXABLE|NO\s+TAX|免税|免稅""")
+    // "GROCERY NON TAX" (Geelano, 2026-10-20): an item's tax status, not a tax line.
+    private val NOT_TAX = Regex("""BEFORE\s+TAX|PRE-?TAX|EXEMPT|NON[-\s]?TAX|TAXABLE|NO\s+TAX|免税|免稅""")
     private val NOT_VENDOR = Regex("""WELCOME|RECEIPT|INVOICE|TEL\b|PHONE|WWW\.|HTTP|\.COM|CUSTOMER|COPY|欢迎|歡迎|收据|收據|发票|發票""")
     // A return / refund slip. "REFUND" alone isn't enough: "MAX REFUND VALUE 25.00" is a return
     // policy on an ordinary sale (Home Hardware, 2026-10-20) -- it takes the money going back.
@@ -126,9 +129,16 @@ object ReceiptParser {
         // Tax: one "total tax" row if there is one, else every GST/HST/PST/QST row added up.
         val taxRows = up.indices.filter { i -> val r = up[i]
             TAX.containsMatchIn(r) && !NOT_TAX.containsMatchIn(r) && !SUBTOTAL.containsMatchIn(r) && (!TOTAL.containsMatchIn(r) || TOTAL_TAX.containsMatchIn(r)) }
+        // A tax word alone on its row ("HST:"): its amount sits on the next row.
+        fun taxAmount(i: Int) = amounts(printed[i]).lastOrNull()
+            ?: printed.getOrNull(i + 1)?.takeIf { !TOTAL.containsMatchIn(up[i + 1]) }?.let { amounts(it).lastOrNull() }
         val totalTaxRow = taxRows.lastOrNull { TOTAL_TAX.containsMatchIn(up[it]) }
-        val tax = if (totalTaxRow != null) amounts(printed[totalTaxRow]).lastOrNull()
-        else taxRows.mapNotNull { amounts(printed[it]).lastOrNull() }.takeIf { it.isNotEmpty() }?.sum()
+        var tax = if (totalTaxRow != null) taxAmount(totalTaxRow)
+        else taxRows.mapNotNull { taxAmount(it) }.takeIf { it.isNotEmpty() }?.sum()
+        // A "tax" as big as the total was read off the wrong row.
+        if (tax != null && total != null && tax >= total) tax = null
+        // No tax line read, but a subtotal and a total that differ by a tax-sized amount: that's the tax.
+        if (tax == null && subtotal != null && total != null && total > subtotal && (total - subtotal) * 5 <= total) tax = total - subtotal
 
         val hst = printed.firstNotNullOfOrNull { HST_NUMBER.find(it) }?.let { "${it.groupValues[1]} RT ${it.groupValues[2]}" }
         // This purchase's date: not a return's original sale or an expiry; one printed with a
@@ -148,7 +158,11 @@ object ReceiptParser {
         }?.trim()?.take(120)
 
         if (refund) return withFlags(Fields(vendor, date, null, null, null, hst, emptySet())).let { it.copy(flags = it.flags + Flag.REFUND) }
-        return withFlags(Fields(vendor, date, total, tax, subtotal, hst, emptySet()))
+        val read = withFlags(Fields(vendor, date, total, tax, subtotal, hst, emptySet()))
+        // Hardly any amounts read and no total: the photo, not the rules (blurred, too far --
+        // a full-page bill shot from a distance, 2026-10-20). Retake rather than type it all.
+        val amountsRead = printed.sumOf { amounts(it).size }
+        return if (total == null && amountsRead < 3) read.copy(flags = read.flags + Flag.UNREADABLE) else read
     }
 
     /**
@@ -188,11 +202,15 @@ object ReceiptParser {
     private val MONTHS = listOf("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
     private val WORDY = Regex("""\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\.?\s+(\d{1,2}),?\s+(20\d{2})\b""")
     private val CJK = Regex("""(20\d{2})年(\d{1,2})月(\d{1,2})日""")
+    // "Sep 14/2026" and "14 Sep 2026" (Geelano, 2026-10-20).
+    private val WORDY_SLASH = Regex("""\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\.?\s*(\d{1,2})\s*/\s*(20\d{2})\b""")
+    private val DAY_WORDY = Regex("""\b(\d{1,2})\s+(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\.?,?\s+(20\d{2})\b""")
 
     /**
-     * A date in the row, as yyyy-MM-dd: 2026-10-16, 2026/10/16, 10/16/2026 or 16/10/2026
-     * (whichever is a real date no later than today and within the last year -- the closer to
-     * today when both are), 10/16/26, Oct 16, 2026, 2026年10月16日.
+     * A date in the row, as yyyy-MM-dd: 2026-10-16, 2026/10/16, 10/16/2026, 16/10/2026 or
+     * 26/10/16 (yy/mm/dd, Shoppers) -- whichever reading is a real date no later than today
+     * and within the last year, the closest to today when several are -- 10/16/26,
+     * Oct 16, 2026, Sep 14/2026, 14 Sep 2026, 2026年10月16日.
      */
     fun findDate(row: String, today: String): String? {
         fun ok(y: Int, m: Int, d: Int): String? {
@@ -206,14 +224,20 @@ object ReceiptParser {
         }
         CJK.find(row)?.let { m -> ok(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())?.let { return it } }
         ISO.find(row)?.let { m -> ok(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())?.let { return it } }
-        WORDY.find(row.uppercase(Locale.ROOT))?.let { m ->
+        val upper = row.uppercase(Locale.ROOT)
+        for (re in listOf(WORDY, WORDY_SLASH)) re.find(upper)?.let { m ->
             ok(m.groupValues[3].toInt(), MONTHS.indexOf(m.groupValues[1]) + 1, m.groupValues[2].toInt())?.let { return it }
         }
+        DAY_WORDY.find(upper)?.let { m ->
+            ok(m.groupValues[3].toInt(), MONTHS.indexOf(m.groupValues[2]) + 1, m.groupValues[1].toInt())?.let { return it }
+        }
         SLASH.find(row)?.let { m ->
-            val a = m.groupValues[1].toInt(); val b = m.groupValues[2].toInt()
-            val y = m.groupValues[3].toInt().let { if (it < 100) 2000 + it else it }
+            val a = m.groupValues[1].toInt(); val b = m.groupValues[2].toInt(); val c = m.groupValues[3]
+            val y = c.toInt().let { if (it < 100) 2000 + it else it }
             val mdy = ok(y, a, b); val dmy = ok(y, b, a)
-            return listOfNotNull(mdy, dmy).maxOrNull()
+            // yy/mm/dd: only with two-digit parts all round ("26/07/02").
+            val ymd = if (c.length == 2) ok(2000 + a, b, c.toInt()) else null
+            return listOfNotNull(mdy, dmy, ymd).maxOrNull()
         }
         return null
     }

@@ -218,4 +218,73 @@ class ReceiptParserTest {
         // The model can't turn it into an expense either.
         assertNull(ReceiptParser.merge(f, ReceiptParser.Fields(null, null, 5424, null, null, null, emptySet())).totalCents)
     }
+
+    // ---- second round on the Q2, 2026-10-20 ----
+
+    @Test
+    fun `real - Geelano, NON TAX item and Sep 14 slash 2026`() {
+        val f = real("""
+            GEELANO INTERNA TIIONAL GROCERY
+            14:58:09 #174280 3
+            Sep 14/2028  Clerk: DANIEL Cash ier : DANIEL  Amount
+            Clic Light Red KjdneyBeans 2 10.49  GROCERY NON TAX  fresh onions 5 lb
+            48.43
+            Iten Count :7  Sublota) :  0.43
+            HST:
+            48.86
+            Total due:  48.86
+            Sep 14/2026  Card Mmber :祥ト本9962  Card Iype : Mas tercard
+            Author ization# : 042042  Host Da te : 14 Sep 2026  Host Time : 14:58: 06
+        """)
+        assertEquals(4886, f.totalCents)
+        assertNull(f.taxCents)                 // not 10.49 off an item row, not the total
+        assertTrue(Flag.TAX_MISSING in f.flags)
+        assertEquals("2026-09-14", f.date)
+    }
+
+    @Test
+    fun `real - Shoppers, yy slash mm slash dd`() {
+        val f = real("""
+            SHOPPERS  DRUG MART
+            RICOLA MOUN HE  SUBTOTAL:
+            1.30
+            HST:
+            TOTAL:
+            1 Itom  11.29
+            787257211 RTO003
+            REFERENCE #  26/07/02 21:45:23
+        """)
+        assertEquals(1129, f.totalCents)
+        assertEquals("2026-07-02", f.date)
+    }
+
+    @Test
+    fun `real - a tax line holding the total is not the tax`() {
+        val f = real("""
+            STORE #  734
+            REG: 2. 99  SUB-TOTAL  1.69
+            HST TAX  14,68
+            TOTAL  14.68
+        """)
+        assertEquals(1468, f.totalCents)
+        assertNull(f.taxCents)
+    }
+
+    @Test
+    fun `subtotal and total give the tax when no tax line was read`() {
+        val f = parse("SHOP", "2026-10-19", "SUBTOTAL 40.00", "TOTAL 45.20")
+        assertEquals(520, f.taxCents)
+    }
+
+    @Test
+    fun `real - blurred full-page invoice is unreadable, not guessed`() {
+        val f = real("""
+            ENCEL AUTO TECH n  NCHCE
+            sericeecela
+            HEOK NSPECT AND DAG BRAKES OVER HEATING-RRJC
+            DORA REMOVE & REPLACE REAR PADS AND ROTORS c)
+        """)
+        assertTrue(Flag.UNREADABLE in f.flags)
+        assertNull(f.totalCents)
+    }
 }

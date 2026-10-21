@@ -371,4 +371,9 @@
     <string name="expense_close">关闭</string>
     <string name="receipt_flag_ai">部分内容由小海狸读出，请对照照片核对。</string>
     <string name="receipt_flag_refund">这是退货/退款单，是退回的钱，不是支出。除非确有需要，请不要保存。</string>
+    <string name="receipt_frame_none">把收据放在深色桌面上，会自动框出</string>
+    <string name="receipt_frame_hold">已找到收据，请拿稳</string>
+    <string name="receipt_frame_ready">已框好，可以拍了</string>
+    <string name="receipt_focusing">正在对焦…</string>
+    <string name="receipt_flag_unreadable">几乎没认出内容：照片模糊或离得太远。请靠近、拿稳后重拍。整页的账单，只拍有合计的那一部分即可。</string>
 </resources>

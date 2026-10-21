@@ -372,4 +372,9 @@
     <string name="expense_close">Close</string>
     <string name="receipt_flag_ai">Some fields were read by Beaver: check them against the photo.</string>
     <string name="receipt_flag_refund">This is a return / refund slip: money back, not an expense. Don\'t save it unless you mean to.</string>
+    <string name="receipt_frame_none">Lay the receipt on a dark surface to frame it</string>
+    <string name="receipt_frame_hold">Receipt found: hold still</string>
+    <string name="receipt_frame_ready">Framed: take the photo</string>
+    <string name="receipt_focusing">Focusing…</string>
+    <string name="receipt_flag_unreadable">Hardly anything could be read: the photo is blurred or too far. Retake it closer, holding still. A full-page bill: photograph just the part with the total.</string>
 </resources>

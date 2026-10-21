@@ -74,21 +74,58 @@ fun ReceiptScannerScreen(onDone: () -> Unit, onBack: () -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    // Preview, live frames and the photo all 4:3, so the frame drawn on the preview sits on the sheet.
     val imageCapture = remember {
-        ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build()
+        ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+            .setTargetAspectRatio(AspectRatio.RATIO_4_3).build()
+    }
+    // The receipt found in the live frame ("扫描王" style), smoothed; stable = held still a moment.
+    var quad by remember { mutableStateOf<DocumentDetector.Quad?>(null) }
+    var stable by remember { mutableStateOf(false) }
+    var frameAspect by remember { mutableFloatStateOf(3f / 4f) }
+    val analysis = remember {
+        ImageAnalysis.Builder().setTargetAspectRatio(AspectRatio.RATIO_4_3)
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
     }
     // Chinese model: reads Chinese and Latin text, so mixed receipts come out whole.
     val recognizer = remember { TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build()) }
     var busy by remember { mutableStateOf(false) }
+    var focusing by remember { mutableStateOf(false) }
+    // The bound camera (for focusing) and the preview (to place the focus point).
+    val cameraRef = remember { arrayOfNulls<Camera>(1) }
+    val previewRef = remember { arrayOfNulls<PreviewView>(1) }
     var captured by remember { mutableStateOf<Captured?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val readFailed = stringResource(R.string.receipt_read_failed)
 
-    DisposableEffect(Unit) { onDispose { cameraExecutor.shutdown(); recognizer.close() } }
+    DisposableEffect(Unit) {
+        var smooth: DocumentDetector.Quad? = null
+        var misses = 0
+        var still = 0
+        analysis.setAnalyzer(cameraExecutor) { image ->
+            val (gray, w, h) = runCatching { image.uprightGray() }.getOrNull() ?: Triple(IntArray(0), 0, 0)
+            image.close()
+            val found = if (w > 0) DocumentDetector.detect(gray, w, h) else null
+            if (found == null) {
+                // A frame or two without it isn't "gone": the hand moves, the light flickers.
+                if (++misses >= 5) { smooth = null; still = 0 }
+            } else {
+                misses = 0
+                val prev = smooth
+                still = if (prev != null && prev.distance(found) < 0.02f) still + 1 else 0
+                smooth = prev?.towards(found, 0.4f) ?: found
+            }
+            val q = smooth
+            val ready = q != null && still >= 6
+            val aspect = if (w > 0) w.toFloat() / h else 0f
+            androidx.core.content.ContextCompat.getMainExecutor(context).execute {
+                quad = q; stable = ready; if (aspect > 0f) frameAspect = aspect
+            }
+        }
+        onDispose { analysis.clearAnalyzer(); cameraExecutor.shutdown(); recognizer.close() }
+    }
 
-    fun shoot() {
-        if (busy) return
-        busy = true; error = null
+    fun capture() {
         imageCapture.takePicture(cameraExecutor, object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
                 val bitmap = runCatching { image.toUprightBitmap() }.getOrNull()
@@ -106,25 +143,74 @@ fun ReceiptScannerScreen(onDone: () -> Unit, onBack: () -> Unit) {
         })
     }
 
+    // Focus first, then the photo: shot straight away it could come out soft (two full-page
+    // bills, 2026-10-20). Focus on the receipt when it's framed, else the middle; no answer
+    // within 1.5 s and the photo is taken anyway.
+    fun shoot() {
+        if (busy) return
+        busy = true; focusing = true; error = null
+        val cam = cameraRef[0]
+        var taken = false
+        val go = { if (!taken) { taken = true; focusing = false; capture() } }
+        if (cam == null) { go(); return }
+        val q = quad
+        val cx = q?.let { (0 until 4).map { i -> it.x(i) }.average().toFloat() } ?: 0.5f
+        val cy = q?.let { (0 until 4).map { i -> it.y(i) }.average().toFloat() } ?: 0.5f
+        val point = previewRef[0]?.meteringPointFactory?.createPoint(cx * (previewRef[0]?.width ?: 1), cy * (previewRef[0]?.height ?: 1))
+            ?: SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(0.5f, 0.5f)
+        val action = FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF)
+            .setAutoCancelDuration(3, java.util.concurrent.TimeUnit.SECONDS).build()
+        val main = androidx.core.content.ContextCompat.getMainExecutor(context)
+        runCatching { cam.cameraControl.startFocusAndMetering(action).addListener({ go() }, main) }.onFailure { go() }
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ go() }, 1500)
+    }
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = { ctx ->
-                PreviewView(ctx).apply {
+                PreviewView(ctx).also { previewRef[0] = it }.apply {
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     scaleType = PreviewView.ScaleType.FIT_CENTER
                     val future = ProcessCameraProvider.getInstance(ctx)
                     future.addListener({
                         val provider = future.get()
-                        val preview = Preview.Builder().build().also { it.setSurfaceProvider(surfaceProvider) }
+                        val preview = Preview.Builder().setTargetAspectRatio(AspectRatio.RATIO_4_3).build().also { it.setSurfaceProvider(surfaceProvider) }
                         runCatching {
                             provider.unbindAll()
-                            provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture)
-                        }.onFailure { Log.e("ReceiptScanner", "camera bind failed", it) }
+                            cameraRef[0] = provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture, analysis)
+                        }.onFailure {
+                            // A camera that can't run all three: photo without the live frame.
+                            Log.w("ReceiptScanner", "camera bind with analysis failed, without it", it)
+                            runCatching {
+                                provider.unbindAll()
+                                cameraRef[0] = provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture)
+                            }.onFailure { e -> Log.e("ReceiptScanner", "camera bind failed", e) }
+                        }
                     }, androidx.core.content.ContextCompat.getMainExecutor(ctx))
                 }
             },
             modifier = Modifier.fillMaxSize()
         )
+
+        // The receipt found, framed on the preview: white while it moves, green once held still.
+        val frameColor = if (stable) GsTheme.colors.success else Color.White
+        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+            val q = quad ?: return@Canvas
+            // The preview shows the whole picture (FIT_CENTER): where it sits in this view.
+            val viewAspect = size.width / size.height
+            val cw = if (viewAspect > frameAspect) size.height * frameAspect else size.width
+            val ch = if (viewAspect > frameAspect) size.height else size.width / frameAspect
+            val left = (size.width - cw) / 2f; val top = (size.height - ch) / 2f
+            val path = androidx.compose.ui.graphics.Path().apply {
+                moveTo(left + q.x(0) * cw, top + q.y(0) * ch)
+                for (i in 1 until 4) lineTo(left + q.x(i) * cw, top + q.y(i) * ch)
+                close()
+            }
+            drawPath(path, frameColor.copy(alpha = 0.18f))
+            drawPath(path, frameColor, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx(),
+                join = androidx.compose.ui.graphics.StrokeJoin.Round))
+            for (i in 0 until 4) drawCircle(frameColor, 6.dp.toPx(), androidx.compose.ui.geometry.Offset(left + q.x(i) * cw, top + q.y(i) * ch))
+        }
 
         // How to hold a long receipt.
         Column(
@@ -133,6 +219,11 @@ fun ReceiptScannerScreen(onDone: () -> Unit, onBack: () -> Unit) {
         ) {
             Text(stringResource(R.string.receipt_hint_title), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             Text(stringResource(R.string.receipt_hint), color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+            Text(
+                stringResource(when { stable -> R.string.receipt_frame_ready; quad != null -> R.string.receipt_frame_hold; else -> R.string.receipt_frame_none }),
+                color = if (stable) GsTheme.colors.success else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
         IconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 4.dp)) {
             Icon(Icons.Default.ArrowBack, stringResource(R.string.retail_back), tint = Color.White)
@@ -148,7 +239,7 @@ fun ReceiptScannerScreen(onDone: () -> Unit, onBack: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) { if (busy) CircularProgressIndicator(Modifier.size(32.dp), color = Color.Black, strokeWidth = 3.dp) }
             Spacer(Modifier.height(8.dp))
-            Text(stringResource(if (busy) R.string.receipt_reading else R.string.receipt_shoot), color = Color.White, fontSize = 13.sp)
+            Text(stringResource(when { focusing -> R.string.receipt_focusing; busy -> R.string.receipt_reading; else -> R.string.receipt_shoot }), color = Color.White, fontSize = 13.sp)
         }
     }
 
@@ -161,6 +252,35 @@ fun ReceiptScannerScreen(onDone: () -> Unit, onBack: () -> Unit) {
     }
 }
 
+/**
+ * A small grey, upright copy of a live frame for [DocumentDetector]: sampled straight from the
+ * luminance plane (~[target] px wide), turned by the rotation the camera reports.
+ */
+private fun ImageProxy.uprightGray(target: Int = 160): Triple<IntArray, Int, Int> {
+    val plane = planes[0]
+    val buf = plane.buffer
+    val rs = plane.rowStride; val ps = plane.pixelStride
+    val sw = width; val sh = height
+    val rot = imageInfo.rotationDegrees
+    val uw = if (rot % 180 == 0) sw else sh
+    val uh = if (rot % 180 == 0) sh else sw
+    val step = maxOf(1, uw / target)
+    val w = uw / step; val h = uh / step
+    val out = IntArray(w * h)
+    for (y in 0 until h) for (x in 0 until w) {
+        val ux = x * step; val uy = y * step
+        val sx: Int; val sy: Int
+        when (rot) {
+            90 -> { sx = uy; sy = sh - 1 - ux }
+            180 -> { sx = sw - 1 - ux; sy = sh - 1 - uy }
+            270 -> { sx = sw - 1 - uy; sy = ux }
+            else -> { sx = ux; sy = uy }
+        }
+        out[y * w + x] = buf.get(sy * rs + sx * ps).toInt() and 0xFF
+    }
+    return Triple(out, w, h)
+}
+
 /** Upright bitmap from the capture (JPEG bytes + the rotation the camera reports). */
 private fun ImageProxy.toUprightBitmap(): Bitmap {
     val buffer = planes[0].buffer
@@ -171,8 +291,15 @@ private fun ImageProxy.toUprightBitmap(): Bitmap {
     return Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, Matrix().apply { postRotate(degrees.toFloat()) }, true)
 }
 
-/** Reads the full-size photo, keeps a 1600 px JPEG of it as the record, and finds the fields. */
-private suspend fun read(context: android.content.Context, photo: Bitmap, recognizer: com.google.mlkit.vision.text.TextRecognizer): Captured {
+/**
+ * The receipt from the full-size photo: found again, cut out and squared up (as if scanned
+ * flat), then read; a 1600 px JPEG of it is kept as the record. Not found: the photo as taken.
+ */
+private suspend fun read(context: android.content.Context, taken: Bitmap, recognizer: com.google.mlkit.vision.text.TextRecognizer): Captured {
+    val photo = withContext(Dispatchers.Default) {
+        val (gray, w, h) = DocumentDetector.grayOf(taken)
+        DocumentDetector.detect(gray, w, h)?.let { q -> runCatching { DocumentDetector.flatten(taken, q) }.getOrNull() } ?: taken
+    }
     val result = kotlinx.coroutines.suspendCancellableCoroutine<com.google.mlkit.vision.text.Text> { cont ->
         recognizer.process(InputImage.fromBitmap(photo, 0))
             .addOnSuccessListener { cont.resumeWith(Result.success(it)) }
@@ -187,7 +314,9 @@ private suspend fun read(context: android.content.Context, photo: Bitmap, recogn
     // No total by the rules: 小海狸 reads the text (managers only; its amounts must be printed
     // on the receipt). Offline or refused: the owner types what's missing, as before.
     val staff = StaffRepository.current
-    if (ReceiptParser.Flag.TOTAL_MISSING in fields.flags && ReceiptParser.Flag.REFUND !in fields.flags && staff?.isManager == true && rows.isNotEmpty()) {
+    // Not for a refund slip, nor a photo with nothing legible on it (no numbers to read).
+    if (ReceiptParser.Flag.TOTAL_MISSING in fields.flags && ReceiptParser.Flag.REFUND !in fields.flags &&
+        ReceiptParser.Flag.UNREADABLE !in fields.flags && staff?.isManager == true && rows.isNotEmpty()) {
         val ai = com.goldsky.ssp.payment.ApexRepository.readReceipt(context, staff.id, rows.joinToString("\n"))
         if (ai is com.goldsky.ssp.payment.ApexRepository.Result.Receipt) {
             fields = ReceiptParser.merge(fields, ReceiptParser.Fields(ai.vendor, ai.date, ai.totalCents, ai.taxCents, null, ai.hstNumber, emptySet()))
@@ -253,8 +382,9 @@ private fun ReceiptConfirm(c: Captured, onRetake: () -> Unit, onSaved: () -> Uni
                         f.hstNumber?.let { Text(stringResource(R.string.receipt_hst_number, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         // Why something is marked, in plain words.
                         listOfNotNull(
+                            R.string.receipt_flag_unreadable.takeIf { Flag.UNREADABLE in f.flags },
                             R.string.receipt_flag_refund.takeIf { Flag.REFUND in f.flags },
-                            R.string.receipt_flag_total_missing.takeIf { Flag.TOTAL_MISSING in f.flags && Flag.REFUND !in f.flags },
+                            R.string.receipt_flag_total_missing.takeIf { Flag.TOTAL_MISSING in f.flags && Flag.REFUND !in f.flags && Flag.UNREADABLE !in f.flags },
                             R.string.receipt_flag_mismatch.takeIf { Flag.TOTAL_MISMATCH in f.flags },
                             R.string.receipt_flag_tax_missing.takeIf { Flag.TAX_MISSING in f.flags },
                             R.string.receipt_flag_tax_odd.takeIf { Flag.TAX_ODD in f.flags },
