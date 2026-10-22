@@ -77,6 +77,9 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         val screen: Screen = Screen.Home,
         val packages: List<TimerPackage> = emptyList(),
         val title: String = "Self-Service",
+        // False when the merchant set no brand name (title is the fallback): the header
+        // then gives the announcement both lines' height.
+        val titleSet: Boolean = false,
         val subtitle: String? = null,
         val locked: Boolean = false,
         val healthy: Boolean = true,
@@ -167,6 +170,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 packages = packages,
                 title = config.branding.brand_name.takeUnless { n -> n.isBlank() || n == "GS-SSP" } ?: "Self-Service",
+                titleSet = config.branding.brand_name.let { n -> n.isNotBlank() && n != "GS-SSP" },
                 subtitle = config.branding.welcome_message,
             )
         }

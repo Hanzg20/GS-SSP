@@ -166,6 +166,47 @@ private fun TickerText(text: String, color: Color, fontSize: TextUnit) {
     )
 }
 
+/**
+ * Brand name over the announcement ticker, with the health dot. When only one of
+ * the two is filled in, it takes the height of both (customer request, 2026-10-21;
+ * same as Wash's BrandingManager.applyHeader): the name shrinks only if it can't fit.
+ */
+@Composable
+private fun HomeHeader(s: TimerViewModel.UiState, gap: androidx.compose.ui.unit.Dp) {
+    val ticker = s.subtitle?.takeIf { it.isNotBlank() }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) {
+            when {
+                ticker == null -> FitText(s.title, maxSp = 36, minSp = 18)
+                !s.titleSet -> TickerText(ticker, color = TextHi, fontSize = 36.sp)
+                else -> Text(s.title, color = TextHi, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
+        }
+        Box(Modifier.size(10.dp).clip(CircleShape).background(if (s.healthy) Emerald else Coral))
+    }
+    if (ticker != null && s.titleSet) {
+        Spacer(Modifier.height(gap))
+        TickerText(ticker, color = TextHi, fontSize = 16.sp)
+    }
+}
+
+/** One bold line at [maxSp], or smaller (not under [minSp]) until it fits the width. */
+@Composable
+private fun FitText(text: String, maxSp: Int, minSp: Int) {
+    val measurer = rememberTextMeasurer()
+    var width by remember { mutableIntStateOf(0) }
+    val size = remember(text, width) {
+        if (width == 0) maxSp
+        else (maxSp downTo minSp).firstOrNull { sp ->
+            measurer.measure(text, TextStyle(fontSize = sp.sp, fontWeight = FontWeight.Bold), maxLines = 1, softWrap = false).size.width <= width
+        } ?: minSp
+    }
+    Text(
+        text, color = TextHi, fontSize = size.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false,
+        modifier = Modifier.fillMaxWidth().onSizeChanged { width = it.width },
+    )
+}
+
 @Composable
 private fun HomeScreen(
     s: TimerViewModel.UiState,
@@ -175,16 +216,7 @@ private fun HomeScreen(
     onScan: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(s.title, color = TextHi, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            }
-            Box(Modifier.size(10.dp).clip(CircleShape).background(if (s.healthy) Emerald else Coral))
-        }
-        s.subtitle?.takeIf { it.isNotBlank() }?.let {
-            Spacer(Modifier.height(6.dp))
-            TickerText(it, color = TextHi, fontSize = 16.sp)
-        }
+        HomeHeader(s, gap = 6.dp)
 
         Spacer(Modifier.height(14.dp))
         val productName = s.packages.map { it.name }.distinct().singleOrNull() ?: "Self-Service"
@@ -235,14 +267,7 @@ private fun DualHomeScreen(
     onScan: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(s.title, color = TextHi, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f))
-            Box(Modifier.size(10.dp).clip(CircleShape).background(if (s.healthy) Emerald else Coral))
-        }
-        s.subtitle?.takeIf { it.isNotBlank() }?.let {
-            Spacer(Modifier.height(4.dp))
-            TickerText(it, color = TextHi, fontSize = 16.sp)
-        }
+        HomeHeader(s, gap = 4.dp)
         Spacer(Modifier.height(8.dp))
         val productName = s.packages.map { it.name }.distinct().singleOrNull() ?: "Self-Service"
         Text("Choose the number shown on your ${productName.lowercase()}".let { if (productName == "Self-Service") "Choose your unit" else it }, color = TextLo, fontSize = 14.sp)
