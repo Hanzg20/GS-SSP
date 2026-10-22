@@ -1,5 +1,6 @@
 package com.goldsky.ssp.ui
 
+import com.goldsky.ssp.common.TtsManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -74,6 +75,7 @@ class VipActivity : BaseAdActivity() {
         }
 
         loadPlans()
+        TtsManager.speakRepeated(getString(R.string.tts_vip_pick_amount))
     }
 
     /** The merchant name for the pass: the configured brand name without a "Welcome to" greeting. */

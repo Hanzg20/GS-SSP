@@ -3,10 +3,10 @@
     <!-- Standard Screen Dimensions -->
     <dimen name="header_logo_size">50dp</dimen>
     <dimen name="header_title_size">18sp</dimen>
-    <dimen name="card_price_size">32sp</dimen>
-    <dimen name="card_label_size">11sp</dimen>
+    <dimen name="card_price_size">40sp</dimen>
+    <dimen name="card_label_size">18sp</dimen>
     <dimen name="card_margin">6dp</dimen>
-    <dimen name="vip_banner_title_size">16sp</dimen>
+    <dimen name="vip_banner_title_size">22sp</dimen>
     <dimen name="vip_banner_sub_size">10sp</dimen>
     <dimen name="scan_hint_size">11sp</dimen>
 

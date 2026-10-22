@@ -39,7 +39,7 @@
                 android:layout_weight="1"
                 android:letterSpacing="0.15"
                 android:textColor="@color/text_muted"
-                android:textSize="10sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -74,7 +74,7 @@
             android:gravity="center"
             android:lineSpacingExtra="2dp"
             android:textColor="@color/text_muted"
-            android:textSize="13sp" />
+            android:textSize="17sp" />
 
         <!-- Step 1: two choices. -->
         <LinearLayout
@@ -190,6 +190,7 @@
                 android:drawablePadding="4dp"
                 android:gravity="center_vertical"
                 android:text="@string/vip_secure"
+                android:visibility="gone"
                 android:textColor="@color/text_muted"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -234,7 +235,7 @@
                 android:layout_marginEnd="6dp"
                 android:layout_weight="1"
                 android:textColor="@color/text_light"
-                android:textSize="14sp"
+                android:textSize="18sp"
                 android:textStyle="bold"
                 app:strokeColor="#4A4A54"
                 xmlns:app="http://schemas.android.com/apk/res-auto" />
@@ -247,7 +248,7 @@
                 android:layout_weight="1"
                 android:backgroundTint="@color/gold_accent"
                 android:textColor="@color/text_dark"
-                android:textSize="14sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>

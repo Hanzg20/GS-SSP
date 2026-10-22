@@ -31,7 +31,7 @@
         android:paddingEnd="16dp"
         android:text="@string/vip_back_arrow"
         android:textColor="@color/text_light"
-        android:textSize="13sp"
+        android:textSize="18sp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -43,7 +43,7 @@
         android:letterSpacing="0.18"
         android:text="@string/vip_page_title"
         android:textColor="@color/gold_accent"
-        android:textSize="15sp"
+        android:textSize="22sp"
         android:textStyle="bold"
         app:layout_constraintBottom_toBottomOf="@id/btn_back_main"
         app:layout_constraintEnd_toEndOf="parent"
@@ -75,17 +75,31 @@
             android:layout_height="wrap_content"
             android:elevation="10dp" />
 
+        <!-- The one thing to do on this page, in big type (the small benefit lines are gone). -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            android:text="@string/vip_pick_amount"
+            android:textColor="@color/gold_accent"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
         <TextView
             style="@style/VipBenefit"
+            android:visibility="gone"
             android:layout_marginTop="14dp"
             android:text="@string/vip_benefit_bonus" />
 
         <TextView
             style="@style/VipBenefit"
+            android:visibility="gone"
             android:text="@string/vip_benefit_digital" />
 
         <TextView
             style="@style/VipBenefit"
+            android:visibility="gone"
             android:text="@string/vip_benefit_scan" />
     </LinearLayout>
 
@@ -123,7 +137,7 @@
             android:letterSpacing="0.1"
             android:text="@string/vip_guide_buy_title"
             android:textColor="@color/gold_accent"
-            android:textSize="12sp"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <TextView
@@ -133,7 +147,7 @@
             android:layout_marginTop="2dp"
             android:text="@string/vip_guide_buy_body"
             android:textColor="@color/text_light"
-            android:textSize="12sp" />
+            android:textSize="16sp" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -142,7 +156,7 @@
             android:letterSpacing="0.1"
             android:text="@string/vip_guide_use_title"
             android:textColor="@color/gold_accent"
-            android:textSize="12sp"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <TextView
@@ -152,7 +166,7 @@
             android:lineSpacingExtra="2dp"
             android:text="@string/vip_guide_use_body"
             android:textColor="@color/text_light"
-            android:textSize="12sp" />
+            android:textSize="16sp" />
     </LinearLayout>
 
     <!-- How it works, one line. -->
@@ -163,6 +177,7 @@
         android:gravity="center"
         android:letterSpacing="0.04"
         android:text="@string/vip_how_it_works"
+        android:visibility="gone"
         android:textColor="@color/text_muted"
         android:textSize="11sp"
         app:layout_constraintBottom_toBottomOf="parent"

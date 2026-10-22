@@ -203,7 +203,7 @@
             app:layout_constraintBottom_toTopOf="@id/card_7"
             app:layout_constraintVertical_chainStyle="packed">
             <TextView android:id="@+id/tv_price_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="$4" android:textColor="@color/gold_accent" android:textSize="@dimen/card_price_size" android:textStyle="bold" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_bias="0.4" />
-            <TextView android:id="@+id/tv_label_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Starter" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_4" />
+            <TextView android:id="@+id/tv_label_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Starter" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" android:textStyle="bold" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_4" />
             <TextView android:id="@+id/tv_duration_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="4 min" android:textColor="@color/text_muted" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_label_4" />
         </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -224,7 +224,7 @@
             app:layout_constraintBottom_toTopOf="@id/card_8"
             app:layout_constraintVertical_chainStyle="packed">
             <TextView android:id="@+id/tv_price_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="$5" android:textColor="@color/gold_accent" android:textSize="@dimen/card_price_size" android:textStyle="bold" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_bias="0.4" />
-            <TextView android:id="@+id/tv_label_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Basic" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_5" />
+            <TextView android:id="@+id/tv_label_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Basic" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" android:textStyle="bold" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_5" />
             <TextView android:id="@+id/tv_duration_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="5 min" android:textColor="@color/text_muted" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_label_5" />
         </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -245,7 +245,7 @@
             app:layout_constraintBottom_toTopOf="@id/card_custom"
             app:layout_constraintVertical_chainStyle="packed">
             <TextView android:id="@+id/tv_price_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="$6" android:textColor="@color/gold_accent" android:textSize="@dimen/card_price_size" android:textStyle="bold" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_bias="0.4" />
-            <TextView android:id="@+id/tv_label_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Deluxe" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_6" />
+            <TextView android:id="@+id/tv_label_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Deluxe" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" android:textStyle="bold" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_6" />
             <TextView android:id="@+id/tv_duration_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="6 min" android:textColor="@color/text_muted" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_label_6" />
         </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -265,7 +265,7 @@
             app:layout_constraintTop_toBottomOf="@id/card_4"
             app:layout_constraintBottom_toBottomOf="parent">
             <TextView android:id="@+id/tv_price_7" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="$7" android:textColor="@color/gold_accent" android:textSize="@dimen/card_price_size" android:textStyle="bold" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_bias="0.4" />
-            <TextView android:id="@+id/tv_label_7" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Extra" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_7" />
+            <TextView android:id="@+id/tv_label_7" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Extra" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" android:textStyle="bold" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_7" />
             <TextView android:id="@+id/tv_duration_7" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="7 min" android:textColor="@color/text_muted" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_label_7" />
         </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -285,7 +285,7 @@
             app:layout_constraintTop_toBottomOf="@id/card_5"
             app:layout_constraintBottom_toBottomOf="parent">
             <TextView android:id="@+id/tv_price_8" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="$8" android:textColor="@color/gold_accent" android:textSize="@dimen/card_price_size" android:textStyle="bold" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_bias="0.4" />
-            <TextView android:id="@+id/tv_label_8" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Premium" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_8" />
+            <TextView android:id="@+id/tv_label_8" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Premium" android:textColor="@color/text_light" android:textSize="@dimen/card_label_size" android:textStyle="bold" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_price_8" />
             <TextView android:id="@+id/tv_duration_8" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="8 min" android:textColor="@color/text_muted" android:textSize="@dimen/card_label_size" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_label_8" />
         </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -351,6 +351,7 @@
 
         <TextView
             android:id="@+id/tv_vip_banner_sub"
+            android:visibility="gone"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/vip_banner_subtitle"

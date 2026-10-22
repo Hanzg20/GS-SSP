@@ -286,7 +286,7 @@
                 android:layout_marginTop="12dp"
                 android:gravity="center"
                 android:textColor="@color/text_muted"
-                android:textSize="14sp"
+                android:textSize="20sp"
                 android:textStyle="bold"
                 app:layout_constraintTop_toBottomOf="@id/pb_wash_stages"
                 app:layout_constraintStart_toStartOf="parent"

@@ -103,6 +103,7 @@ class VipPurchaseFlow(
         dialog.setContentView(R.layout.dialog_vip_purchase)
         dialog.setCancelable(false)
         dialog.setOnDismissListener {
+            TtsManager.cancelRepeat()
             stopScan(); stopRipple(); handler.removeCallbacksAndMessages(null); onActive(false)
         }
         v<View>(R.id.opt_vp_new).setOnClickListener { showPhone() }
@@ -120,6 +121,7 @@ class VipPurchaseFlow(
         screen(Step.CHOOSE, activity.getString(R.string.vip_buy_title, money(plan.amount_cents), money(plan.totalCents)),
             activity.getString(R.string.vip_buy_choose))
         options.visibility = View.VISIBLE
+        TtsManager.speakRepeated(activity.getString(R.string.tts_vip_choose))
     }
 
     private fun showPhone() {
@@ -198,7 +200,7 @@ class VipPurchaseFlow(
         amount.text = (if (testCents != null) "TEST " else "") + money(chargeCents)
         payBlock.visibility = View.VISIBLE
         startRipple()
-        TtsManager.speak("Please present your card")
+        TtsManager.speakRepeated(activity.getString(R.string.prompt_card_guide))
         val provider = PaymentProviderFactory.getPaymentProvider(activity, vendor)
         var cardInfo: IPaymentProvider.CardInfo? = null
         var cancelled = false
@@ -296,11 +298,13 @@ class VipPurchaseFlow(
     }
 
     private fun newCard(r: VipLoadResult.Loaded) {
-        TtsManager.speak("Your VIP card is ready. Please take a photo of your member code.")
         // No message line: the room goes to the card, the photo hint to the step label.
         screen(Step.DONE, activity.getString(R.string.vip_done_new_title), "",
             primary = activity.getString(R.string.vip_done) to { close() }, closable = false)
         stepLabel.text = activity.getString(R.string.vip_step_photo)
+        // Spoken until Done / the auto close (after screen(), which ends the last prompt):
+        // this photo is the customer's card.
+        TtsManager.speakRepeated("Your VIP card is ready. Please take a photo of your member code.")
         // The card itself says it all; its height goes to the QR code.
         title.visibility = View.GONE
         pass.apply {
@@ -364,6 +368,8 @@ class VipPurchaseFlow(
     ) {
         handler.removeCallbacks(autoClose)
         stopRipple()
+        // A new step: the last step's repeated prompt is over.
+        TtsManager.cancelRepeat()
         title.text = heading
         title.visibility = View.VISIBLE
         message.text = text

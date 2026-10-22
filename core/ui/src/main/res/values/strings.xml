@@ -22,12 +22,15 @@
 
     <string name="scan_voucher_hint">Hold Coupon / Member QR Code Up to the Screen</string>
 
-    <string name="payment_choice_title">Select Payment Method</string>
-    <string name="btn_pay_card">Pay with Card</string>
+    <string name="payment_choice_title">Pay</string>
+    <string name="pay_title">Pay %1$s</string>
+    <string name="card_minutes">%1$d MIN</string>
+    <string name="tts_choose_payment">Tap Card to pay by card, or tap Scan to use a coupon or VIP code.</string>
+    <string name="btn_pay_card">Pay by Card</string>
     <string name="btn_pay_card_desc">Tap, Insert or Swipe</string>
     <string name="btn_pay_scan">Scan to Pay</string>
     <string name="btn_pay_scan_desc">Mobile Wallets / QR Code</string>
-    <string name="btn_pay_code">Scan Coupon / VIP Code</string>
+    <string name="btn_pay_code">Scan Coupon / VIP</string>
     <string name="btn_pay_code_desc">Hold your code up to the camera</string>
     <string name="tts_scan_code_prompt">Please hold your coupon or VIP code up to the camera, and turn your phone screen brightness up.</string>
     <string name="pay_scan_timeout">No code detected. Please try again, or pay by card.</string>
@@ -39,7 +42,7 @@
     <string name="btn_back">Back</string>
     <string name="prompt_tap_card">Tap Card</string>
 
-    <string name="vip_banner_title">BECOME A VIP MEMBER</string>
+    <string name="vip_banner_title">VIP · UP TO 25% BONUS</string>
     <string name="vip_banner_subtitle">Get up to 25%% Bonus Credit</string>
     <string name="vip_tier1_load">$50 LOAD</string>
     <string name="vip_tier1_get">$60 TOTAL</string>
@@ -56,6 +59,9 @@
     <string name="vip_guide_buy_body_terminal">Tap an amount on the left to buy a new card or top up yours here, by card.</string>
     <string name="vip_guide_use_title">HOW TO USE</string>
     <string name="vip_page_title">VIP MEMBERSHIP</string>
+    <string name="vip_pick_amount">Choose an amount →</string>
+    <string name="tts_vip_pick_amount">Choose how much to load on your VIP card.</string>
+    <string name="tts_vip_choose">Tap New card, or Top up an existing card.</string>
     <string name="vip_opt_new_title">New card</string>
     <string name="vip_opt_new_sub">Get a digital card\nwith your own code</string>
     <string name="vip_opt_topup_title">Top up</string>
@@ -161,7 +167,7 @@
     <string name="status_paid">Paid</string>
     <string name="status_sending_command">Activating Wash Equipment...</string>
     <string name="status_success">Payment Successful!</string>
-    <string name="status_enjoy_wash">All Successful!\nEnjoy Your Wash</string>
+    <string name="status_enjoy_wash">Enjoy Your Wash!</string>
     <!-- Machine failed after a successful payment. Same wording as Aegis Timer. -->
     <string name="status_error_reversing">Machine error.\nReversing your payment…</string>
     <string name="tts_error_reversing">Sorry, the machine could not start. Your payment is being reversed.</string>

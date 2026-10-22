@@ -85,12 +85,9 @@ class MainActivity : BaseAdActivity() {
         // A scanned VIP code / coupon waits this long for a wash to be chosen.
         private const val PENDING_TIMEOUT_MS = 60_000L
         // Payment page "Scan Coupon / VIP Code": longer than the home belt's scan --
-        // the customer still has to find the code on their phone. The prompt is
-        // spoken when the camera opens and repeated until a code is read, at most
-        // PAY_SCAN_PROMPTS times (one utterance is ~6 s).
-        private const val PAY_SCAN_TIMEOUT_MS = 25_000L
-        private const val PAY_SCAN_PROMPTS = 3
-        private const val PAY_SCAN_PROMPT_EVERY_MS = 7_000L
+        // the customer still has to find the code on their phone; the prompt is
+        // repeated meanwhile (TtsManager.speakRepeated, three times ~10 s apart).
+        private const val PAY_SCAN_TIMEOUT_MS = 30_000L
     }
 
     private lateinit var layoutPackageSelection: ConstraintLayout
@@ -347,12 +344,14 @@ class MainActivity : BaseAdActivity() {
             findViewById<View>(id)?.setOnClickListener { applyClickFeedback(it) }
         }
 
-        findViewById<View>(R.id.layout_scan_belt).setOnClickListener {
-            initCouponScan()
-        }
+        // One scan entry only, on the payment page (2026-10-21, customer request):
+        // the home-screen belt is hidden and its row goes to bigger package cards.
+        // initCouponScan() stays for the technician panel's scan test.
+        findViewById<View>(R.id.layout_scan_belt).visibility = View.GONE
     }
 
     private fun applyClickFeedback(view: View) {
+        TtsManager.cancelRepeat()
         view.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).withEndAction {
             view.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
         }.start()
@@ -401,14 +400,16 @@ class MainActivity : BaseAdActivity() {
                 val oldPrice = priceView.text.toString().filter { it.isDigit() }.toIntOrNull() ?: 0
                 val newPrice = product.price_cents / 100
                 animatePrice(priceView, oldPrice, newPrice)
-                labelView.text = product.name
+                // Price and minutes are what the customer picks by: one big line,
+                // no package name and no second small line (customer request).
                 // duration_sec rides in the same flexible `attributes` JSONB
                 // as serial_hex -- falls back to the price-as-minutes
                 // convention the default config already uses (1 dollar = 1
                 // minute) if a product omits it rather than showing nothing.
                 val durationSec = product.attributes?.get("duration_sec")?.jsonPrimitive?.intOrNull
                     ?: (newPrice * 60)
-                durationView.text = "${durationSec / 60} min"
+                labelView.text = getString(R.string.card_minutes, durationSec / 60)
+                durationView.visibility = View.GONE
 
                 cardView.setOnClickListener {
                     applyClickFeedback(it)
@@ -421,15 +422,8 @@ class MainActivity : BaseAdActivity() {
                 val fallbackPrice = index + 4
                 cardView.visibility = View.VISIBLE
                 priceView.text = "$$fallbackPrice"
-                labelView.text = when(fallbackPrice) {
-                    4 -> "Starter"
-                    5 -> "Basic"
-                    6 -> "Deluxe"
-                    7 -> "Extra"
-                    8 -> "Premium"
-                    else -> "Wash"
-                }
-                durationView.text = "$fallbackPrice min"
+                labelView.text = getString(R.string.card_minutes, fallbackPrice)
+                durationView.visibility = View.GONE
                 cardView.setOnClickListener {
                     applyClickFeedback(it)
                     val hex = "AA 01 ${"%02X".format(fallbackPrice)} 55"
@@ -939,16 +933,17 @@ class MainActivity : BaseAdActivity() {
 
         val selectionDialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         selectionDialog.setContentView(R.layout.dialog_payment_selection)
+        selectionDialog.findViewById<TextView>(R.id.tv_choice_title).text = getString(R.string.pay_title, formatCents(priceInCents))
         selectionDialog.findViewById<View>(R.id.btn_choice_card).visibility = if (cardAllowed) View.VISIBLE else View.GONE
         selectionDialog.findViewById<View>(R.id.btn_choice_scan).visibility = if (scanAllowed) View.VISIBLE else View.GONE
-        if (!mobileQr) {
-            selectionDialog.findViewById<TextView>(R.id.tv_scan_text).text = getString(R.string.btn_pay_code)
-            selectionDialog.findViewById<TextView>(R.id.tv_scan_sub).text = getString(R.string.btn_pay_code_desc)
+        if (mobileQr) {
+            selectionDialog.findViewById<TextView>(R.id.tv_scan_text).text = getString(R.string.btn_pay_scan)
         }
         if (notice != null) {
             selectionDialog.findViewById<TextView>(R.id.tv_choice_notice).apply { text = notice; visibility = View.VISIBLE }
-            TtsManager.speak(notice)
         }
+        // Spoken until the customer taps (applyClickFeedback); a notice says why they're back.
+        TtsManager.speakRepeated(notice ?: getString(if (scanAllowed && cardAllowed) R.string.tts_choose_payment else R.string.prompt_card_guide))
 
         selectionDialog.findViewById<View>(R.id.btn_choice_card).setOnClickListener {
             Log.i("SSP_TEST", "Card selected in dialog")
@@ -998,7 +993,7 @@ class MainActivity : BaseAdActivity() {
                 // SmartPay, though -- speak ours (same as Aegis Timer).
                 layoutCard.visibility = View.GONE
                 layoutQr.visibility = View.GONE
-                TtsManager.speak(cardGuide ?: getString(R.string.prompt_card_guide))
+                TtsManager.speakRepeated(cardGuide ?: getString(R.string.prompt_card_guide))
                 initCardPayment(priceInCents, startHex, dialog, productId, serviceCents, couponCode)
             } else {
                 layoutCard.visibility = View.VISIBLE
@@ -1007,7 +1002,7 @@ class MainActivity : BaseAdActivity() {
                 
                 // DYNAMIC VOICE: Localized amount and instruction
                 TtsManager.announceAmount(priceInCents, "Total amount is")
-                TtsManager.speak(cardGuide ?: getString(R.string.prompt_card_guide))
+                TtsManager.speakRepeated(cardGuide ?: getString(R.string.prompt_card_guide))
 
                 // Presence-check step -- a no-op pass-through for ID TECH (which has
                 // no cheap detection separate from the real sale; see
@@ -1348,10 +1343,13 @@ class MainActivity : BaseAdActivity() {
                                     DeclineReason.DECLINED -> R.string.pay_result_declined
                                 }
                             )
-                            Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
-                            if (reason != DeclineReason.CANCELLED) TtsManager.speak(msg)
                             dialog.dismiss()
-                            resetAdTimer()
+                            if (reason == DeclineReason.CANCELLED) {
+                                TtsManager.cancelRepeat()
+                                resetAdTimer()
+                            } else {
+                                showPaymentDialog(priceInCents, startHex, productId, serviceCents, couponCode, notice = msg)
+                            }
                         }
                         if (isHardwareFault) {
                             DiagnosticManager.reportError(deviceSn, "CARD_READER_FAULT", severity = "CRITICAL", trace = errorMsg)
@@ -1384,11 +1382,8 @@ class MainActivity : BaseAdActivity() {
      */
     private fun startCodePayment(priceInCents: Int, startHex: String, productId: String?, serviceCents: Int) {
         val back = { why: String -> showPaymentDialog(priceInCents, startHex, productId, serviceCents, notice = why) }
-        val prompt = getString(R.string.tts_scan_code_prompt)
-        val prompts = List(PAY_SCAN_PROMPTS) { i ->
-            Runnable { TtsManager.speak(prompt) }.also { scanFeedbackHandler.postDelayed(it, i * PAY_SCAN_PROMPT_EVERY_MS) }
-        }
-        val quiet = { prompts.forEach(scanFeedbackHandler::removeCallbacks); TtsManager.stop() }
+        TtsManager.speakRepeated(getString(R.string.tts_scan_code_prompt))
+        val quiet = { TtsManager.stop() }
 
         runCodeScan(PAY_SCAN_TIMEOUT_MS, onFail = { end ->
             quiet()
@@ -1742,7 +1737,7 @@ class MainActivity : BaseAdActivity() {
                 // (this used to announce "Refund fully processed" right here).
                 val autoReverse = refNum.isNotEmpty() && com.goldsky.ssp.payment.RefundPolicy.AUTO_REVERSAL
                 tvStatus?.text = getString(if (autoReverse) R.string.status_error_reversing else R.string.status_error_contact)
-                TtsManager.speak(getString(if (autoReverse) R.string.tts_error_reversing else R.string.status_error_contact))
+                TtsManager.speakRepeated(getString(if (autoReverse) R.string.tts_error_reversing else R.string.status_error_contact))
 
                 // Industrial Audit: Report hardware failure and trigger VOID
                 // (falling back to REFUND automatically if VOID is declined,
@@ -1788,10 +1783,11 @@ class MainActivity : BaseAdActivity() {
                     }
                     if (result == null) Log.w("SSP_HARDWARE", "Reversal still pending after ${REVERSAL_WAIT_MS}ms for $ecrRefNum")
                     tvStatus?.text = reversedText
-                    TtsManager.speak(reversedText)
+                    TtsManager.speakRepeated(reversedText)
                 }
                 paymentInFlight = false
                 delay(8000)
+                TtsManager.cancelRepeat()
                 dialog?.dismiss()
                 resetAdTimer()
             }

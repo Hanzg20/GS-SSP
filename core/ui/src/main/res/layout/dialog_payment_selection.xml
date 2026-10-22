@@ -13,8 +13,8 @@
         android:layout_marginTop="16dp"
         android:layout_marginEnd="16dp"
         android:text="@string/payment_choice_title"
-        android:textColor="@color/text_light"
-        android:textSize="26sp"
+        android:textColor="@color/gold_accent"
+        android:textSize="34sp"
         android:textStyle="bold"
         app:layout_constraintEnd_toStartOf="@id/btn_cancel_choice"
         app:layout_constraintStart_toStartOf="parent"
@@ -29,7 +29,7 @@
         android:background="@drawable/bg_glass_card"
         android:padding="16dp"
         android:textColor="@color/gold_accent"
-        android:textSize="18sp"
+        android:textSize="22sp"
         android:textStyle="bold"
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/tv_choice_title" />
@@ -59,7 +59,7 @@
                 android:layout_width="64dp"
                 android:layout_height="64dp"
                 android:layout_marginStart="24dp"
-                android:src="@android:drawable/ic_dialog_info"
+                android:src="@drawable/ic_tap_card_placeholder"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
@@ -71,7 +71,7 @@
                 android:layout_marginStart="24dp"
                 android:text="@string/btn_pay_card"
                 android:textColor="@color/text_light"
-                android:textSize="22sp"
+                android:textSize="28sp"
                 android:textStyle="bold"
                 app:layout_constraintBottom_toTopOf="@id/tv_card_sub"
                 app:layout_constraintStart_toEndOf="@id/img_card_icon"
@@ -80,6 +80,7 @@
 
             <TextView
                 android:id="@+id/tv_card_sub"
+                android:visibility="gone"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/btn_pay_card_desc"
@@ -117,9 +118,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="24dp"
-                android:text="@string/btn_pay_scan"
+                android:text="@string/btn_pay_code"
                 android:textColor="@color/text_light"
-                android:textSize="22sp"
+                android:textSize="28sp"
                 android:textStyle="bold"
                 app:layout_constraintBottom_toTopOf="@id/tv_scan_sub"
                 app:layout_constraintStart_toEndOf="@id/img_scan_icon"
@@ -128,6 +129,7 @@
 
             <TextView
                 android:id="@+id/tv_scan_sub"
+                android:visibility="gone"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/btn_pay_scan_desc"
@@ -149,6 +151,7 @@
         android:backgroundTint="@color/btn_neutral_bg"
         android:text="@string/btn_cancel"
         android:textColor="@color/coral_red"
+        android:textSize="18sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 

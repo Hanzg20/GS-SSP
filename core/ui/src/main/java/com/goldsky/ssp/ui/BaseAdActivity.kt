@@ -44,6 +44,8 @@ abstract class BaseAdActivity : AppCompatActivity() {
      */
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
         BootFrontGuard.onTouch()
+        // The customer is acting: a repeated voice prompt stops (TtsManager.speakRepeated).
+        if (ev?.actionMasked == MotionEvent.ACTION_DOWN) com.goldsky.ssp.common.TtsManager.cancelRepeat()
         resetAdTimer()
         return super.dispatchTouchEvent(ev)
     }

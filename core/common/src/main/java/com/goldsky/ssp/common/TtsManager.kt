@@ -7,6 +7,8 @@ import android.media.AudioManager
 import android.media.audiofx.LoudnessEnhancer
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -167,10 +169,46 @@ object TtsManager : DefaultLifecycleObserver {
         speak(textToSpeak)
     }
 
+    private val repeatHandler = Handler(Looper.getMainLooper())
+    private var repeatRunnable: Runnable? = null
+
+    /**
+     * A step waiting for the customer (tap your card, hold up your code, ...): said now
+     * and again until they act, at most [times] -- the kiosk screen is small and read
+     * from a car (customer request, 2026-10-21). Any other [speak], [stop] or
+     * [cancelRepeat] ends the repeats; call [cancelRepeat] when the customer acts.
+     */
+    fun speakRepeated(text: String, times: Int = 3) {
+        cancelRepeat()
+        var left = times
+        val runnable = object : Runnable {
+            override fun run() {
+                speakNow(text)
+                if (--left > 0) repeatHandler.postDelayed(this, repeatGapMs(text)) else repeatRunnable = null
+            }
+        }
+        repeatRunnable = runnable
+        runnable.run()
+    }
+
+    /** Ends [speakRepeated]'s repeats; what is being said now finishes. */
+    fun cancelRepeat() {
+        repeatRunnable?.let { repeatHandler.removeCallbacks(it) }
+        repeatRunnable = null
+    }
+
+    // The utterance (~13 characters a second) plus a pause to act in.
+    private fun repeatGapMs(text: String) = maxOf(3_000L, text.length * 75L) + 3_000L
+
     /**
      * Core speak method with Audio Focus handling.
      */
     fun speak(text: String) {
+        cancelRepeat()
+        speakNow(text)
+    }
+
+    private fun speakNow(text: String) {
         if (!isInitialized || tts == null) {
             Log.w(TAG, "TTS not ready, skipping: $text")
             return
@@ -206,6 +244,7 @@ object TtsManager : DefaultLifecycleObserver {
     }
 
     fun stop() {
+        cancelRepeat()
         tts?.stop()
     }
 
