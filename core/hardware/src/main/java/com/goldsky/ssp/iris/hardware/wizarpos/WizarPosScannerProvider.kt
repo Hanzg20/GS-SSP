@@ -20,6 +20,40 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
     companion object {
         private const val TAG = "WizarPosScanner"
         private const val MIN_RUN_MS = 1000L
+        // A failed open is retried once after this: 253 refused 8 opens in a row
+        // within 1-37 ms (2026-10-21) -- the scan service answering "not open" without
+        // trying the camera, the state it is in while it recovers from a scan that was
+        // stopped too early (see requestSeq).
+        private const val RETRY_MS = 1000L
+        private const val SCAN_SERVICE = "com.cloudpos.scanserver"
+    }
+
+    /** When a scan last read a code (0 = not in this process). */
+    @Volatile private var lastScanOkAt = 0L
+
+    // Camera availability as the system reports it: false while another app holds the camera.
+    private val cameraFree = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    init {
+        runCatching {
+            val cm = context.getSystemService(android.hardware.camera2.CameraManager::class.java)
+            cm?.registerAvailabilityCallback(object : android.hardware.camera2.CameraManager.AvailabilityCallback() {
+                override fun onCameraAvailable(cameraId: String) { cameraFree[cameraId] = true }
+                override fun onCameraUnavailable(cameraId: String) { cameraFree[cameraId] = false }
+            }, mainHandler)
+        }.onFailure { Log.w(TAG, "No camera availability callback: ${it.message}") }
+    }
+
+    override fun diagnostics(): String {
+        val pm = context.packageManager
+        val service = runCatching {
+            val info = pm.getPackageInfo(SCAN_SERVICE, 0)
+            "scan service ${info.versionName}" + if (info.applicationInfo?.enabled == false) " DISABLED" else ""
+        }.getOrDefault("scan service NOT INSTALLED")
+        val camPerm = if (context.checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) "camera permission ok" else "camera permission DENIED"
+        val cams = if (cameraFree.isEmpty()) "camera state unknown" else cameraFree.entries.sortedBy { it.key }.joinToString(" ") { "cam${it.key}=" + if (it.value) "free" else "IN USE" }
+        val last = if (lastScanOkAt == 0L) "no scan read yet" else "last read ${(System.currentTimeMillis() - lastScanOkAt) / 60_000} min ago"
+        return "$service; $camPerm; $cams; $last"
     }
 
     private var scannerDevice: IScannerDevice? = null
@@ -58,7 +92,21 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
         previewWindow = window
     }
 
+    /** [openOnce], and once more after [RETRY_MS] with a fresh device handle; diagnostics added on failure. */
     private fun ensureOpened(): Boolean {
+        openError = null
+        if (openOnce()) return true
+        Log.w(TAG, "Scanner open failed (${openError}); retrying in ${RETRY_MS} ms")
+        runCatching { scannerDevice?.close() }
+        scannerDevice = null
+        openError = null
+        Thread.sleep(RETRY_MS)
+        if (openOnce()) { Log.i(TAG, "Scanner opened on the retry"); return true }
+        openError = "${openError ?: "unknown"} (retried once) -- ${diagnostics()}"
+        return false
+    }
+
+    private fun openOnce(): Boolean {
         if (scannerDevice == null) {
             try {
                 scannerDevice = POSTerminalAdvance.getInstance().getScannerDevice()
@@ -149,6 +197,7 @@ class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
                         }
                         delivered = true
                         if (result.resultCode == ScanResult.SCAN_SUCCESS) {
+                            lastScanOkAt = System.currentTimeMillis()
                             mainHandler.post { callback.onScanSuccess(result.text ?: "") }
                         } else {
                             mainHandler.post { callback.onScanFailure("Scan error: ${result.resultCode}") }

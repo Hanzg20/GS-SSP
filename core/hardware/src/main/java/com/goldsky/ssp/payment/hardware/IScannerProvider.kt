@@ -31,4 +31,7 @@ interface IScannerProvider {
      * null = full screen. No-op for scanners without an on-screen preview.
      */
     fun setPreviewWindow(window: android.graphics.Rect?) {}
+
+    /** What decides whether the scanner can open (service, permission, camera, last good scan); "" if nothing to say. */
+    fun diagnostics(): String = ""
 }

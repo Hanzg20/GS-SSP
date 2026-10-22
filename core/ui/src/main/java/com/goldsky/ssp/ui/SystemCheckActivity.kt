@@ -1,5 +1,8 @@
 package com.goldsky.ssp.ui
 
+import com.goldsky.ssp.payment.hardware.IScannerProvider
+import com.goldsky.ssp.payment.hardware.HardwareFactory
+import android.widget.Toast
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
@@ -61,8 +64,11 @@ class SystemCheckActivity : ComponentActivity() {
     private val red = Color(0xFFFF5A5F)
     private val muted = Color(0xFF8A96A3)
 
-    /** One line of the check. [ok] null: for information only. [fix]: the page that changes it. */
-    private data class Row(val label: String, val value: String, val ok: Boolean?, val fix: Fix? = null)
+    /**
+     * One line of the check. [ok] null: for information only. [fix]: the page that changes it.
+     * [test]: a button that tries the thing itself (label to action).
+     */
+    private data class Row(val label: String, val value: String, val ok: Boolean?, val fix: Fix? = null, val test: Pair<String, () -> Unit>? = null)
 
     private enum class Fix(val label: String) {
         NETWORK("网络 Wi-Fi / SIM / 有线"), HOME("默认桌面 Home app"), OVERLAY("悬浮窗权限 Overlay"),
@@ -119,6 +125,11 @@ class SystemCheckActivity : ComponentActivity() {
                 Text(r.label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Text(r.value, color = if (r.ok == false) red else muted, fontSize = 12.sp)
             }
+            r.test?.let { (label, action) ->
+                OutlinedButton(onClick = action, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)) {
+                    Text(label, color = amber, fontSize = 12.sp)
+                }
+            }
             if (r.fix != null && r.ok == false) {
                 Button(onClick = { open(r.fix) }, colors = ButtonDefaults.buttonColors(containerColor = amber, contentColor = bg),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)) { Text("去设置 Fix", fontSize = 12.sp) }
@@ -141,6 +152,7 @@ class SystemCheckActivity : ComponentActivity() {
             rows += Row("默认桌面 Default home", if (held) "是本应用 This app" else "不是本应用 — 重启后不会回到收款界面 Not this app: a reboot won't come back here", held, Fix.HOME)
         }
         val overlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this@SystemCheckActivity)
+        if (DeviceRepository.getPersistedHardwareVendor().uppercase() == "WIZARPOS") rows += scanner()
         rows += Row("悬浮窗权限 Overlay permission", if (overlay) "已允许 Allowed" else "未允许 — 开机被 OPC 盖住时拉不回来 Not allowed: can't take the screen back from OPC after a boot", overlay, Fix.OVERLAY)
         rows += clock()
         val timeout = runCatching { Settings.System.getInt(contentResolver, Settings.System.SCREEN_OFF_TIMEOUT) }.getOrNull()
@@ -178,6 +190,35 @@ class SystemCheckActivity : ComponentActivity() {
     }
 
     /** The cloud the terminal reports to: its host answers on 443 within 3 s. */
+    /**
+     * The camera scanner (coupon / VIP codes): the scan service, the camera, the last good
+     * read -- and a test that opens it. 253 refused scans for ten minutes (2026-10-21).
+     */
+    private fun scanner(): Row {
+        val provider = runCatching { HardwareFactory.getScannerProvider(this, DeviceRepository.getPersistedHardwareVendor()) }.getOrNull()
+        val info = provider?.diagnostics().orEmpty().ifEmpty { "?" }
+        val bad = provider == null || info.contains("NOT INSTALLED") || info.contains("DISABLED") || info.contains("DENIED")
+        return Row("扫码器 Scanner (coupon / VIP)", info, if (provider == null) false else !bad, test = "测试 Test" to { testScan() })
+    }
+
+    /** Opens the scanner like a customer scan; says what came back. */
+    private fun testScan() {
+        val provider = runCatching { HardwareFactory.getScannerProvider(this, DeviceRepository.getPersistedHardwareVendor()) }.getOrNull()
+            ?: return Toast.makeText(this, "没有扫码器 No scanner", Toast.LENGTH_LONG).show()
+        val stop = Runnable { provider.stopScan() }
+        window.decorView.postDelayed(stop, 15_000)
+        provider.startScan(object : IScannerProvider.ScanCallback {
+            override fun onScanSuccess(result: String) {
+                window.decorView.removeCallbacks(stop)
+                runOnUiThread { Toast.makeText(this@SystemCheckActivity, "扫码正常 Scanner OK: ${result.take(12)}", Toast.LENGTH_LONG).show(); refresh++ }
+            }
+            override fun onScanFailure(errorMsg: String) {
+                window.decorView.removeCallbacks(stop)
+                runOnUiThread { Toast.makeText(this@SystemCheckActivity, "扫码失败 Scan failed: $errorMsg", Toast.LENGTH_LONG).show(); refresh++ }
+            }
+        })
+    }
+
     private fun cloud(): Row {
         val host = runCatching { Uri.parse(SupabaseConfig.URL).host }.getOrNull()
         val ok = host != null && runCatching { Socket().use { it.connect(InetSocketAddress(host, 443), 3_000) }; true }.getOrDefault(false)
