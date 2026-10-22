@@ -40,7 +40,17 @@ object SupabaseClientProvider {
             }
         }
         install(Postgrest)
-        install(Auth)
+        install(Auth) {
+            // Keep the session in memory across our app going to the background. With
+            // the lifecycle callbacks on, Auth reloads the session from storage when the
+            // app comes back to the front, and a request made in that moment went out
+            // with only the publishable key: RLS matched nothing, silently. Seen twice
+            // on 255 (2026-10-21): a card sale's PENDING insert as PAYWizard's screen came
+            // up, and a command's final status right after the scanner page closed --
+            // both are other apps' screens covering ours for seconds, the normal case
+            // on these terminals. Token refresh keeps running (alwaysAutoRefresh).
+            enableLifecycleCallbacks = false
+        }
         install(Realtime)
         install(Storage)
     }

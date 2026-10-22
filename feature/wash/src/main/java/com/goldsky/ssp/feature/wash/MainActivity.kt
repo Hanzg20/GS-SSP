@@ -203,6 +203,10 @@ class MainActivity : BaseAdActivity() {
                 CoroutineScope(Dispatchers.Main).launch { loadInitialConfig(DeviceRepository.refreshOrgId(deviceSn)) }
             }
 
+            // Remote scanner test from Cael: nobody buying or washing (the ad screen counts as idle).
+            override fun isIdleForScannerTest() =
+                !isWorking && !paymentInFlight && paymentDialog?.isShowing != true
+
             override fun onLockRequested(locked: Boolean) {
                 if (locked) {
                     paymentDialog?.dismiss()

@@ -110,6 +110,8 @@ class MainActivity : ComponentActivity() {
         com.goldsky.ssp.payment.AppSwitcher.claimHomeIfSwitched(this)
         RemoteCommandManager.startListening(this, deviceSn, vendor, object : RemoteCommandManager.CommandListener {
             override fun onSyncRequested() { lifecycleScope.launch { loadConfig(DeviceRepository.refreshOrgId(deviceSn)) } }
+            // Remote scanner test from Cael: only when idle (same check as the PAYWizard restart).
+            override fun isIdleForScannerTest() = timerVm.canEnterTechMode
             // A LOCK mid-session lets the paid session finish; it only blocks new sales.
             override fun onLockRequested(locked: Boolean) = timerVm.setLocked(DeviceAccessManager.isLocked())
             override suspend fun onStartServiceRequested(productId: String?, startHex: String?, commandId: String, bay: String?) =

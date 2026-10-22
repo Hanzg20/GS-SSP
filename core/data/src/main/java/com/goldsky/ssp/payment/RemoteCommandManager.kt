@@ -43,6 +43,8 @@ object RemoteCommandManager {
     private const val POLL_WINDOW_MS = 10 * 60_000L
     // START_SERVICE / REBOOT older than this are not run by the poll.
     private const val FRESH_MS = 60_000L
+    private const val SCANNER_TEST_MS = 4_000L
+    private val KNOWN_COMMANDS = setOf("REBOOT", "SYNC_CONFIG", "LOCK", "UNLOCK", "FETCH_LOGS", "START_SERVICE", "SCANNER_TEST")
 
     // Command ids already taken by this process (Realtime or poll), so a
     // command seen by both paths runs once. Bounded: old ids fall out.
@@ -69,6 +71,9 @@ object RemoteCommandManager {
         /** Same, with the side a dual-bay terminal should run it on (payload "bay": "1"/"2", null if not sent). */
         suspend fun onStartServiceRequested(productId: String?, startHex: String?, commandId: String, bay: String?): Boolean? =
             onStartServiceRequested(productId, startHex, commandId)
+
+        /** Nobody is using the terminal, so SCANNER_TEST may open the camera page. False: refused. */
+        fun isIdleForScannerTest(): Boolean = false
     }
 
     private var commandListener: CommandListener? = null
@@ -152,7 +157,7 @@ object RemoteCommandManager {
                 // A late START_SERVICE hands out a service nobody is waiting
                 // for any more (seen: one run 9 min after it was sent); a late
                 // REBOOT reboots a terminal at a surprising moment.
-                (command.command == "START_SERVICE" || command.command == "REBOOT") && ageMs > FRESH_MS -> "EXPIRED"
+                (command.command == "START_SERVICE" || command.command == "REBOOT" || command.command == "SCANNER_TEST") && ageMs > FRESH_MS -> "EXPIRED"
                 (command.command == "LOCK" || command.command == "UNLOCK") && command.id != latestLockId -> "SUPERSEDED"
                 else -> null
             }
@@ -216,10 +221,18 @@ object RemoteCommandManager {
 
     private fun executeCommand(context: Context, deviceCommand: DeviceCommand, vendor: String) {
         val cmd = deviceCommand.command
+        // A terminal can run two GoldSky apps (255: Wash + Timer), both listening for the
+        // same serial number. One that doesn't know a command leaves its status alone for
+        // the one that does -- an older Timer marked SCANNER_TEST FAILED (2026-10-21).
+        if (cmd !in KNOWN_COMMANDS) {
+            Log.d(TAG, "Not handled here, status left alone: $cmd")
+            return
+        }
         CoroutineScope(Dispatchers.IO).launch {
             updateCommandStatus(deviceCommand.id, "EXECUTING")
             
             var success = true
+            var result: String? = null
             try {
                 when (cmd) {
                     "REBOOT" -> {
@@ -297,6 +310,13 @@ object RemoteCommandManager {
                             success = false
                         }
                     }
+                    "SCANNER_TEST" -> {
+                        val idle = withContext(Dispatchers.Main) { commandListener?.isIdleForScannerTest() == true }
+                        val (ok, text) = if (idle) scannerTest(context, vendor) else false to "Not run: the terminal is in use (or this app has no scanner test)"
+                        Log.i(TAG, "Remote SCANNER_TEST -> $text")
+                        success = ok
+                        result = text
+                    }
                     else -> {
                         Log.d(TAG, "Unknown command: $cmd")
                         success = false
@@ -307,20 +327,47 @@ object RemoteCommandManager {
                 success = false
             }
 
-            updateCommandStatus(deviceCommand.id, if (success) "SUCCESS" else "FAILED")
+            updateCommandStatus(deviceCommand.id, if (success) "SUCCESS" else "FAILED", result)
         }
     }
 
-    private suspend fun updateCommandStatus(id: String, status: String) {
+    /**
+     * SCANNER_TEST: opens the scanner like a customer scan and closes it again -- no code
+     * needed: what fails on site is the open itself (253, 2026-10-21: the scan service
+     * refused within milliseconds). Opened = no failure within [SCANNER_TEST_MS] (the
+     * provider retries a refused open once, ~1 s).
+     */
+    private suspend fun scannerTest(context: Context, vendor: String): Pair<Boolean, String> {
+        val scanner = runCatching { HardwareFactory.getScannerProvider(context, vendor) }.getOrNull()
+            ?: return false to "No scanner for $vendor"
+        val failure = withContext(Dispatchers.Main) {
+            val done = CompletableDeferred<String?>()
+            scanner.startScan(object : com.goldsky.ssp.payment.hardware.IScannerProvider.ScanCallback {
+                override fun onScanSuccess(result: String) { done.complete(null) }
+                override fun onScanFailure(errorMsg: String) { done.complete(errorMsg) }
+            })
+            val outcome = withTimeoutOrNull(SCANNER_TEST_MS) { done.await() }
+            scanner.stopScan()
+            outcome
+        }
+        val info = scanner.diagnostics()
+        return if (failure == null) true to "Scanner opened. $info" else false to "Scanner did not open: $failure. $info"
+    }
+
+    private suspend fun updateCommandStatus(id: String, status: String, result: String? = null) {
         try {
-            SupabaseClientProvider.client.postgrest["device_commands"].update(
+            val res = SupabaseClientProvider.client.postgrest["device_commands"].update(
                 {
                     set("status", status)
+                    if (result != null) set("result", result)
                 }
             ) {
+                select()
                 filter { eq("id", id) }
             }
-        } catch (e: Exception) {
+            // Nothing updated = the request went out without this terminal's session (RLS).
+            if (res.data.trim() == "[]") Log.w(TAG, "Command $id -> $status matched no row") else Log.i(TAG, "Command $id -> $status")
+        } catch (e: Throwable) {
             Log.e(TAG, "Failed to update command status: ${e.message}")
         }
     }
