@@ -4,8 +4,8 @@
 -- so a value below max here means the terminal refused (Do Not Disturb, a
 -- fixed-volume device).
 -- NULL = not reported (a build before Wash 1.1.8 / Timer 1.2.7).
--- Apply BEFORE installing those builds: PostgREST rejects a heartbeat that
--- carries a column the table doesn't have.
+-- Those builds resend a heartbeat without the volume while these columns are
+-- missing (PostgREST rejects unknown columns), so the order does not matter.
 BEGIN;
 
 ALTER TABLE public.heartbeats ADD COLUMN IF NOT EXISTS voice_volume SMALLINT;

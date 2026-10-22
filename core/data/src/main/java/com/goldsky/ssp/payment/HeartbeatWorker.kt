@@ -56,7 +56,15 @@ class HeartbeatWorker(appContext: Context, params: WorkerParameters) : Coroutine
                     voice_volume_max = volume?.second
                 )
                 SupabaseClientProvider.ensureAuthenticated()
-                SupabaseClientProvider.client.postgrest["heartbeats"].insert(heartbeat)
+                try {
+                    SupabaseClientProvider.client.postgrest["heartbeats"].insert(heartbeat)
+                } catch (e: Exception) {
+                    // Database without docs/migrations/2026-10-22_voice_volume.sql yet: PostgREST
+                    // rejects the unknown column. Null fields at their default aren't sent.
+                    if (e.message?.contains("voice_volume") != true) throw e
+                    Log.w("HeartbeatWorker", "Heartbeat without the volume (column missing)")
+                    SupabaseClientProvider.client.postgrest["heartbeats"].insert(heartbeat.copy(voice_volume = null, voice_volume_max = null))
+                }
                 lastSentAt = System.currentTimeMillis()
                 true
             } catch (e: Exception) {

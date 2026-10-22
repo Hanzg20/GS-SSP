@@ -15,15 +15,20 @@ import java.util.concurrent.Executors
 /**
  * WizarPOS Scanner implementation using CloudPOS Advance SDK.
  */
-class WizarPosScannerProvider(private val context: Context) : IScannerProvider {
+class WizarPosScannerProvider(context: Context) : IScannerProvider {
+    // The application, never the Activity this was created from: the SDK binds the scan
+    // service with this context on every open(), and a binding from an Activity that has
+    // since been destroyed is refused ("Binding with unknown activity") -- open() then
+    // returns false within milliseconds. That was the "scanner won't open" on 253 and 255
+    // (2026-10-21 / 22): every time the kiosk Activity was recreated (OPC covering it, a
+    // HOME relaunch), scans failed until the app restarted.
+    private val context: Context = context.applicationContext
 
     companion object {
         private const val TAG = "WizarPosScanner"
         private const val MIN_RUN_MS = 1000L
-        // A failed open is retried once after this: 253 refused 8 opens in a row
-        // within 1-37 ms (2026-10-21) -- the scan service answering "not open" without
-        // trying the camera, the state it is in while it recovers from a scan that was
-        // stopped too early (see requestSeq).
+        // A failed open is retried once after this. (253's 1-37 ms refusals on 2026-10-21
+        // were the destroyed-Activity binding, see [context], not the scan service.)
         private const val RETRY_MS = 1000L
         private const val SCAN_SERVICE = "com.cloudpos.scanserver"
     }
