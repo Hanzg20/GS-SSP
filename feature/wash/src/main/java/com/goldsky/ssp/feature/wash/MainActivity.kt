@@ -364,13 +364,29 @@ class MainActivity : BaseAdActivity() {
         CoroutineScope(Dispatchers.Main).launch {
             val config = ConfigManager.loadConfig(this@MainActivity, orgId)
             refreshProductsUI(config.products.forVertical(WASH_VERTICAL))
-            
+            refreshVipBanner()
+
             // Sync dynamic TTS language
             TtsManager.setLocale(config.settings.locale_tag)
             
             // Apply tenant branding
             BrandingManager.applyLogo(findViewById(R.id.img_logo), config.branding)
             BrandingManager.applyHeader(findViewById(R.id.tv_brand_title), findViewById(R.id.tv_title), config.branding, getString(R.string.header_default_title))
+        }
+    }
+
+    /**
+     * The VIP banner's "up to N% bonus" from the store's own load plans -- it was a fixed
+     * 25% that went stale when Eagleson's plans changed (2026-10-21). No plans / offline:
+     * the plain title.
+     */
+    private fun refreshVipBanner() {
+        CoroutineScope(Dispatchers.Main).launch {
+            val best = com.goldsky.ssp.payment.VipLoadRepository.getPlans()
+                ?.filter { it.amount_cents > 0 }
+                ?.maxOfOrNull { it.bonus_cents * 100 / it.amount_cents } ?: 0
+            findViewById<TextView>(R.id.tv_vip_banner_text).text =
+                if (best > 0) getString(R.string.vip_banner_bonus, best) else getString(R.string.vip_banner_plain)
         }
     }
 

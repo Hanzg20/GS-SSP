@@ -42,7 +42,9 @@
     <string name="btn_back">Back</string>
     <string name="prompt_tap_card">Tap Card</string>
 
-    <string name="vip_banner_title">VIP · UP TO 25% BONUS</string>
+    <string name="vip_banner_title">BECOME A VIP MEMBER</string>
+    <string name="vip_banner_plain">BECOME A VIP MEMBER</string>
+    <string name="vip_banner_bonus">VIP · UP TO %1$d%% BONUS</string>
     <string name="vip_banner_subtitle">Get up to 25%% Bonus Credit</string>
     <string name="vip_tier1_load">$50 LOAD</string>
     <string name="vip_tier1_get">$60 TOTAL</string>
