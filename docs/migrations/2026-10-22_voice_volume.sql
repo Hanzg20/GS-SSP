@@ -1,9 +1,9 @@
 -- 2026-10-22: the voice prompt volume, reported with each heartbeat. Customers at
 -- Eagleson said the voice was too quiet; 255 sat at 10/15 and nobody could see
--- 253's from Cael. Wash 1.1.8 / Timer 1.2.7 also hold it at full (VoiceVolume),
+-- 253's from Cael. Wash 1.1.7 / Timer 1.2.6 also hold it at full (VoiceVolume),
 -- so a value below max here means the terminal refused (Do Not Disturb, a
 -- fixed-volume device).
--- NULL = not reported (a build before Wash 1.1.8 / Timer 1.2.7).
+-- NULL = not reported (a build before Wash 1.1.7 / Timer 1.2.6).
 -- Those builds resend a heartbeat without the volume while these columns are
 -- missing (PostgREST rejects unknown columns), so the order does not matter.
 BEGIN;
