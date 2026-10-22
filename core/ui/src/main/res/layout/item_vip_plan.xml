@@ -50,6 +50,24 @@
             android:textStyle="bold" />
     </LinearLayout>
 
+    <!-- The plan the store marked as most popular in Cael (vip_load_plans.is_popular). -->
+    <TextView
+        android:id="@+id/tv_plan_popular"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:background="@drawable/bg_vip_ribbon"
+        android:letterSpacing="0.12"
+        android:paddingStart="8dp"
+        android:paddingTop="1dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="1dp"
+        android:text="@string/vip_most_popular"
+        android:textColor="@color/text_dark"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
     <!-- Highest bonus ratio of the merchant's plans (computed, never hand-set). -->
     <TextView
         android:id="@+id/tv_plan_best"

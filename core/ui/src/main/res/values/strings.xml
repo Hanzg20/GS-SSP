@@ -87,6 +87,7 @@
     <string name="vip_tile_get">GET %1$s</string>
     <string name="vip_tile_bonus">+%1$s FREE</string>
     <string name="vip_best_value">BEST VALUE</string>
+    <string name="vip_most_popular">MOST POPULAR</string>
     <string name="vip_plan_load">%1$s LOAD</string>
     <string name="vip_plan_total">%1$s TOTAL</string>
     <string name="vip_member_code">Member code</string>

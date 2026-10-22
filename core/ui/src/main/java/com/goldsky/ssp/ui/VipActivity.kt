@@ -117,6 +117,7 @@ class VipActivity : BaseAdActivity() {
         v.findViewById<TextView>(R.id.tv_plan_bonus).apply {
             if (plan.bonus_cents > 0) text = getString(R.string.vip_tile_bonus, VipLoadPlan.money(plan.bonus_cents)) else visibility = View.GONE
         }
+        if (plan.is_popular) v.findViewById<View>(R.id.tv_plan_popular).visibility = View.VISIBLE
         if (best) {
             v.setBackgroundResource(R.drawable.bg_vip_tile_best)
             v.findViewById<View>(R.id.tv_plan_best).visibility = View.VISIBLE

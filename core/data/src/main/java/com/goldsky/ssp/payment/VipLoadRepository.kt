@@ -10,7 +10,8 @@ import kotlinx.serialization.Serializable
 
 /** A merchant's VIP load plan: pay [amount_cents], get [bonus_cents] extra (vip_load_plans). */
 @Serializable
-data class VipLoadPlan(val id: String, val amount_cents: Int, val bonus_cents: Int = 0) {
+// is_popular: the store's chosen "MOST POPULAR" plan (docs/migrations/2026-10-21_vip_plan_popular.sql).
+data class VipLoadPlan(val id: String, val amount_cents: Int, val bonus_cents: Int = 0, val is_popular: Boolean = false) {
     val totalCents get() = amount_cents + bonus_cents
 
     companion object {
