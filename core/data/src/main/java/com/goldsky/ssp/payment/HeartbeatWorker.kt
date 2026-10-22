@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.goldsky.ssp.common.VoiceVolume
 import com.goldsky.ssp.payment.hardware.HardwareFactory
 import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +19,10 @@ data class Heartbeat(
     val storage_free_mb: Long,
     val network_type: String,
     /** Kiosk screen in front; null = not a kiosk app ([KioskFront]). */
-    val kiosk_in_front: Boolean? = null
+    val kiosk_in_front: Boolean? = null,
+    /** Voice prompt volume and its max ([VoiceVolume]); null = not read. */
+    val voice_volume: Int? = null,
+    val voice_volume_max: Int? = null
 )
 
 class HeartbeatWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
@@ -40,13 +44,16 @@ class HeartbeatWorker(appContext: Context, params: WorkerParameters) : Coroutine
         suspend fun send(context: Context): Boolean = withContext(Dispatchers.IO) {
             try {
                 val vendor = DeviceRepository.getPersistedHardwareVendor()
+                val volume = VoiceVolume.read(context)
                 val heartbeat = Heartbeat(
                     device_sn = DeviceRepository.getPersistedDeviceSn() ?: "UNKNOWN_SN",
                     // No provider registered (e.g. a cold process before the shell wired one) is "not ok", not a failed heartbeat.
                     is_serial_ok = try { HardwareFactory.getSerialProvider(context, vendor).isOpened() } catch (e: Exception) { false },
                     storage_free_mb = File(context.filesDir.absolutePath).freeSpace / (1024 * 1024),
                     network_type = "WIFI", // Simplified
-                    kiosk_in_front = KioskFront.forHeartbeat(context)
+                    kiosk_in_front = KioskFront.forHeartbeat(context),
+                    voice_volume = volume?.first,
+                    voice_volume_max = volume?.second
                 )
                 SupabaseClientProvider.ensureAuthenticated()
                 SupabaseClientProvider.client.postgrest["heartbeats"].insert(heartbeat)

@@ -28,12 +28,14 @@ object TtsManager : DefaultLifecycleObserver {
     private var audioManager: AudioManager? = null
 
     // Our own audio session for the engine's output, so a LoudnessEnhancer can
-    // lift it (the kiosk speaker is small and the stream sits at 12/15 on
-    // bay5). +6 dB clipped on the Q3mini speaker (2026-10-07); +2 dB is a
-    // gentle lift that stays clean.
+    // lift it (the kiosk speaker is small). +6 dB clipped on the Q3mini speaker
+    // (2026-10-07); +2 dB stayed clean but customers still found it quiet
+    // (2026-10-22, with the stream at 10/15 -- now held at full by [VoiceVolume]):
+    // +4 dB, to be confirmed by ear on 255.
     private var sessionId: Int = AudioManager.ERROR
     private var loudness: LoudnessEnhancer? = null
-    private const val LOUDNESS_GAIN_MB = 200
+    private const val LOUDNESS_GAIN_MB = 400
+    private var appContext: Context? = null
 
     /**
      * en-us-x-tpf: the owner's pick (2026-10-07), the closest local voice to
@@ -57,6 +59,8 @@ object TtsManager : DefaultLifecycleObserver {
      * Initializes the TTS engine and binds to activity lifecycle.
      */
     fun registerLifecycle(context: Context, lifecycleOwner: LifecycleOwner) {
+        appContext = context.applicationContext
+        VoiceVolume.ensureFull(context)
         if (tts == null) {
             audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             tts = TextToSpeech(context.applicationContext) { status ->
@@ -216,6 +220,7 @@ object TtsManager : DefaultLifecycleObserver {
 
         Log.d(TAG, "Speaking: $text")
 
+        appContext?.let { VoiceVolume.ensureFull(it) }
         requestDucking()
 
         // Explicit max utterance volume -- previously null, which left the
