@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  VIP membership page (redesigned 2026-10-06). The VIP card is electronic:
-  the member code is the card, so the hero is a drawn digital pass
-  (VipCardView), not a photo of a plastic card.
-
-  Left: the pass + three benefits. Right: the merchant's load plans as
-  tiles (item_vip_plan, from vip_load_plans); or, offline / no plans, the
-  how-to guide. Bottom: how it works. The Q3mini gives the app only ~410dp
-  of height on its 480x480 screen, so everything is sized to that.
+  VIP membership page (redesigned 2026-10-06; 2026-10-21: the sample pass and the
+  small benefit / how-it-works lines are gone, the plans fill the page 2 x 2).
+  Plans are the merchant's vip_load_plans (item_vip_plan); offline / no plans,
+  the how-to guide. The Q3mini gives the app only ~410dp of height on its
+  480x480 screen, so everything is sized to that.
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -50,85 +47,32 @@
         app:layout_constraintStart_toEndOf="@id/btn_back_main"
         app:layout_constraintTop_toTopOf="@id/btn_back_main" />
 
-    <androidx.constraintlayout.widget.Guideline
-        android:id="@+id/guide_mid"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        app:layout_constraintGuide_percent="0.48" />
 
-    <!-- Left: the digital pass and what it gives you. -->
-    <LinearLayout
-        android:id="@+id/layout_vip_left"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:layout_marginEnd="6dp"
-        android:orientation="vertical"
-        app:layout_constraintEnd_toStartOf="@id/guide_mid"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/btn_back_main">
-
-        <com.goldsky.ssp.ui.VipCardView
-            android:id="@+id/vip_card_face"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:elevation="10dp" />
-
-        <!-- The one thing to do on this page, in big type (the small benefit lines are gone). -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:gravity="center"
-            android:text="@string/vip_pick_amount"
-            android:textColor="@color/gold_accent"
-            android:textSize="22sp"
-            android:textStyle="bold" />
-
-        <TextView
-            style="@style/VipBenefit"
-            android:visibility="gone"
-            android:layout_marginTop="14dp"
-            android:text="@string/vip_benefit_bonus" />
-
-        <TextView
-            style="@style/VipBenefit"
-            android:visibility="gone"
-            android:text="@string/vip_benefit_digital" />
-
-        <TextView
-            style="@style/VipBenefit"
-            android:visibility="gone"
-            android:text="@string/vip_benefit_scan" />
-    </LinearLayout>
-
-    <!-- Right: load plans (filled by VipActivity), or the guide. -->
+    <!-- Load plans, 2 x 2 (filled by VipActivity), or the guide. The sample pass is gone:
+         the plans are what the page is for. -->
     <LinearLayout
         android:id="@+id/layout_tiers"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginStart="6dp"
         android:layout_marginTop="12dp"
         android:layout_marginBottom="8dp"
         android:orientation="vertical"
         android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@id/tv_vip_how"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/guide_mid"
+        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btn_back_main" />
 
     <LinearLayout
         android:id="@+id/layout_vip_guide"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="6dp"
         android:layout_marginTop="12dp"
         android:background="@drawable/bg_vip_tile"
         android:orientation="vertical"
         android:padding="12dp"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/guide_mid"
+        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btn_back_main">
 
         <TextView

@@ -66,7 +66,6 @@ class VipActivity : BaseAdActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_vip)
 
-        findViewById<VipCardView>(R.id.vip_card_face).brandName = brandName()
 
         // The BACK button was once left unwired -- with the kiosk's hidden
         // nav bar that made this page a dead end (found on-device 2026-08-29).
@@ -88,12 +87,24 @@ class VipActivity : BaseAdActivity() {
     /** Fills the right column with the merchant's plans (CMP, vip_load_plans); keeps the guide if there are none. */
     private fun loadPlans() {
         lifecycleScope.launch {
-            val plans = VipLoadRepository.getPlans()?.take(3)
+            // Up to four plans, two per row (2 x 2 on the 480 x 480 screen).
+            val plans = VipLoadRepository.getPlans()?.take(4)
             if (plans.isNullOrEmpty()) return@launch
             val container = findViewById<LinearLayout>(R.id.layout_tiers)
             container.removeAllViews()
             val best = bestValue(plans)
-            plans.forEach { plan -> container.addView(tile(container, plan, plan == best)) }
+            plans.chunked(2).forEachIndexed { i, pair ->
+                val row = LinearLayout(this@VipActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
+                        if (i > 0) topMargin = (8 * resources.displayMetrics.density).toInt()
+                    }
+                }
+                pair.forEach { plan -> row.addView(tile(row, plan, plan == best)) }
+                // An odd last plan keeps half the width, not the whole row.
+                if (pair.size == 1) row.addView(View(this@VipActivity), LinearLayout.LayoutParams(0, 0, 1f))
+                container.addView(row)
+            }
             container.visibility = View.VISIBLE
             findViewById<View>(R.id.layout_vip_guide).visibility = View.GONE
         }
@@ -101,11 +112,10 @@ class VipActivity : BaseAdActivity() {
 
     private fun tile(parent: LinearLayout, plan: VipLoadPlan, best: Boolean): View {
         val v = LayoutInflater.from(this).inflate(R.layout.item_vip_plan, parent, false)
-        v.findViewById<TextView>(R.id.tv_plan_pay).text = VipLoadPlan.money(plan.amount_cents)
+        v.findViewById<TextView>(R.id.tv_plan_pay).text = getString(R.string.vip_tile_pay_amount, VipLoadPlan.money(plan.amount_cents))
         v.findViewById<TextView>(R.id.tv_plan_get).text = getString(R.string.vip_tile_get, VipLoadPlan.money(plan.totalCents))
         v.findViewById<TextView>(R.id.tv_plan_bonus).apply {
-            val pct = bonusPercent(plan)
-            if (pct > 0) text = getString(R.string.vip_tile_bonus, pct) else visibility = View.GONE
+            if (plan.bonus_cents > 0) text = getString(R.string.vip_tile_bonus, VipLoadPlan.money(plan.bonus_cents)) else visibility = View.GONE
         }
         if (best) {
             v.setBackgroundResource(R.drawable.bg_vip_tile_best)
@@ -119,8 +129,6 @@ class VipActivity : BaseAdActivity() {
         }
         return v
     }
-
-    private fun bonusPercent(plan: VipLoadPlan) = plan.bonus_cents * 100 / plan.amount_cents
 
     /** The single plan with the highest bonus ratio; none if tied or no bonus at all. */
     private fun bestValue(plans: List<VipLoadPlan>): VipLoadPlan? {

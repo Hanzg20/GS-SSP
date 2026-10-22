@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One VIP load plan tile (VipActivity): PAY $50 | GET $60 + bonus pill. -->
+<!-- One VIP load plan tile (VipActivity, 2 x 2 grid): PAY $50 / GET $65 / +$15 FREE.
+     The bonus in dollars, not percent: "+$15 FREE" is what customers read at a glance. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="0dp"
-    android:layout_marginBottom="8dp"
+    android:layout_width="0dp"
+    android:layout_height="match_parent"
+    android:layout_marginStart="4dp"
+    android:layout_marginEnd="4dp"
     android:layout_weight="1"
     android:background="@drawable/bg_vip_tile"
     android:clickable="true"
@@ -13,66 +15,39 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="14dp"
-        android:paddingEnd="12dp">
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="8dp">
 
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:letterSpacing="0.2"
-                android:text="@string/vip_tile_pay"
-                android:visibility="gone"
-                android:textColor="@color/text_muted"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tv_plan_pay"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/text_light"
-                android:textSize="30sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <LinearLayout
+        <TextView
+            android:id="@+id/tv_plan_pay"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:gravity="end"
-            android:orientation="vertical">
+            android:textColor="@color/text_light"
+            android:textSize="22sp"
+            android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/tv_plan_get"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/gold_accent"
-                android:textSize="28sp"
-                android:textStyle="bold" />
+        <TextView
+            android:id="@+id/tv_plan_get"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/gold_accent"
+            android:textSize="32sp"
+            android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/tv_plan_bonus"
-                android:visibility="gone"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:background="@drawable/bg_vip_bonus_pill"
-                android:letterSpacing="0.06"
-                android:paddingStart="8dp"
-                android:paddingTop="1dp"
-                android:paddingEnd="8dp"
-                android:paddingBottom="1dp"
-                android:textColor="@color/gold_accent"
-                android:textSize="10sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+        <TextView
+            android:id="@+id/tv_plan_bonus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/bg_vip_bonus_pill"
+            android:paddingStart="10dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="2dp"
+            android:textColor="@color/gold_accent"
+            android:textSize="16sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <!-- Highest bonus ratio of the merchant's plans (computed, never hand-set). -->

@@ -81,8 +81,9 @@
     <string name="vip_benefit_scan">Scan your code, wash in seconds</string>
     <string name="vip_how_it_works">①  Choose an amount    ②  Pay by card    ③  Scan your code to wash</string>
     <string name="vip_tile_pay">PAY</string>
+    <string name="vip_tile_pay_amount">PAY %1$s</string>
     <string name="vip_tile_get">GET %1$s</string>
-    <string name="vip_tile_bonus">+%1$d%% BONUS</string>
+    <string name="vip_tile_bonus">+%1$s FREE</string>
     <string name="vip_best_value">BEST VALUE</string>
     <string name="vip_plan_load">%1$s LOAD</string>
     <string name="vip_plan_total">%1$s TOTAL</string>
