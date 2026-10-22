@@ -63,7 +63,7 @@
             android:layout_marginTop="6dp"
             android:gravity="center"
             android:textColor="@color/text_light"
-            android:textSize="21sp"
+            android:textSize="24sp"
             android:textStyle="bold" />
 
         <TextView
@@ -89,18 +89,18 @@
                 android:id="@+id/opt_vp_new"
                 style="@style/VipOption"
                 android:layout_marginEnd="6dp">
-                <ImageView android:layout_width="40dp" android:layout_height="40dp" android:contentDescription="@null" android:src="@drawable/ic_vip_new_card" />
+                <ImageView android:layout_width="64dp" android:layout_height="64dp" android:contentDescription="@null" android:src="@drawable/ic_vip_new_card" />
                 <TextView style="@style/VipOptionTitle" android:text="@string/vip_opt_new_title" />
-                <TextView style="@style/VipOptionSub" android:text="@string/vip_opt_new_sub" />
+                
             </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/opt_vp_topup"
                 style="@style/VipOption"
                 android:layout_marginStart="6dp">
-                <ImageView android:layout_width="40dp" android:layout_height="40dp" android:contentDescription="@null" android:src="@drawable/ic_vip_topup" />
+                <ImageView android:layout_width="64dp" android:layout_height="64dp" android:contentDescription="@null" android:src="@drawable/ic_vip_topup" />
                 <TextView style="@style/VipOptionTitle" android:text="@string/vip_opt_topup_title" />
-                <TextView style="@style/VipOptionSub" android:text="@string/vip_opt_topup_sub" />
+                
             </LinearLayout>
         </LinearLayout>
 
@@ -181,18 +181,6 @@
                     android:contentDescription="@null"
                     android:src="@drawable/ic_vip_contactless" />
             </FrameLayout>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:drawableStart="@drawable/ic_vip_lock"
-                android:drawablePadding="4dp"
-                android:gravity="center_vertical"
-                android:text="@string/vip_secure"
-                android:visibility="gone"
-                android:textColor="@color/text_muted"
-                android:textSize="11sp" />
         </LinearLayout>
 
         <ProgressBar

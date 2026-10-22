@@ -118,17 +118,31 @@ class VipPurchaseFlow(
     // ---- steps ------------------------------------------------------------
 
     private fun showChoose() {
-        screen(Step.CHOOSE, activity.getString(R.string.vip_buy_title, money(plan.amount_cents), money(plan.totalCents)),
-            activity.getString(R.string.vip_buy_choose))
+        // No explanation line: the two big buttons say it.
+        screen(Step.CHOOSE, activity.getString(R.string.vip_buy_title, money(plan.amount_cents), money(plan.totalCents)), "")
         options.visibility = View.VISIBLE
         TtsManager.speakRepeated(activity.getString(R.string.tts_vip_choose))
     }
 
+    /**
+     * A new card needs the phone number (owner, 2026-10-21): the code photo is the
+     * customer's only proof of the card, and the number is how staff find the card
+     * again (lost code, a payment question). Ten digits, North America.
+     */
     private fun showPhone() {
         screen(
             Step.DETAILS, activity.getString(R.string.vip_phone_title), activity.getString(R.string.vip_phone_message),
-            primary = activity.getString(R.string.vip_continue) to { pay(cardUid = null, phone = phoneDigits.ifEmpty { null }) },
-            secondary = activity.getString(R.string.vip_skip) to { pay(cardUid = null, phone = null) },
+            primary = activity.getString(R.string.vip_continue) to {
+                if (phoneDigits.length == PHONE_DIGITS) {
+                    pay(cardUid = null, phone = phoneDigits)
+                } else {
+                    val why = activity.getString(R.string.vip_phone_incomplete, PHONE_DIGITS - phoneDigits.length)
+                    message.text = why
+                    message.setTextColor(activity.getColor(R.color.coral_red))
+                    TtsManager.speak(why)
+                }
+            },
+            secondary = activity.getString(R.string.vip_back) to { showChoose() },
         )
         phoneDigits = ""
         input.apply {
@@ -142,15 +156,17 @@ class VipPurchaseFlow(
             setText("")
         }
         keypad.visibility = View.VISIBLE
+        TtsManager.speakRepeated(activity.getString(R.string.tts_vip_phone))
     }
 
     private fun showMemberCode(error: String? = null) {
         screen(
             Step.DETAILS, activity.getString(R.string.vip_code_title), error ?: activity.getString(R.string.vip_code_message),
             // The WizarPOS scanner opens its own full-screen camera page, so it
-            // only starts when asked -- typing the code stays one tap away.
-            primary = activity.getString(R.string.vip_continue) to { lookUpCard(input.text.toString()) },
-            secondary = activity.getString(R.string.vip_scan_code) to { startScan() },
+            // only starts when asked. Scanning is the main way (the big gold
+            // button); typing the code and Continue stay one tap away.
+            primary = activity.getString(R.string.vip_scan_code) to { startScan() },
+            secondary = activity.getString(R.string.vip_continue) to { lookUpCard(input.text.toString()) },
             errorTone = error != null,
         )
         input.apply {
@@ -163,6 +179,7 @@ class VipPurchaseFlow(
             hint = "ABC123"
             setText("")
         }
+        if (error == null) TtsManager.speakRepeated(activity.getString(R.string.tts_vip_code)) else TtsManager.speak(error)
     }
 
     private fun lookUpCard(raw: String) {
@@ -400,7 +417,7 @@ class VipPurchaseFlow(
         } else {
             button.visibility = View.VISIBLE
             button.text = action.first
-            button.setOnClickListener { action.second() }
+            button.setOnClickListener { TtsManager.cancelRepeat(); action.second() }
         }
     }
 
@@ -428,11 +445,12 @@ class VipPurchaseFlow(
     }
 
     private fun key(k: TextView) {
+        TtsManager.cancelRepeat()
         handler.removeCallbacks(autoClose)
         handler.postDelayed(autoClose, IDLE_MS)
         phoneDigits = when {
             k.tag == "del" -> phoneDigits.dropLast(1)
-            phoneDigits.length < 15 -> phoneDigits + k.text
+            phoneDigits.length < PHONE_DIGITS -> phoneDigits + k.text
             else -> phoneDigits
         }
         input.setText(formatPhone(phoneDigits))
@@ -492,6 +510,8 @@ class VipPurchaseFlow(
     private companion object {
         const val TAG = "VipPurchaseFlow"
         const val IDLE_MS = 60_000L
+        // A North American phone number (stores are in Canada).
+        const val PHONE_DIGITS = 10
         const val SCAN_TIMEOUT_MS = 30_000L
         const val RESULT_MS = 20_000L
         /** Long enough to photograph the member code. */

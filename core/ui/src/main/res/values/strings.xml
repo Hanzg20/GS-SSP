@@ -75,7 +75,7 @@
     <string name="vip_step_done">ALL DONE</string>
     <string name="vip_step_photo">YOUR VIP CARD · TAKE A PHOTO</string>
     <string name="vip_pay_heading">Total to pay</string>
-    <string name="vip_done_new_hint">Take a photo of your card. Scan its code on the main screen to pay for a wash.</string>
+    <string name="vip_done_new_hint">Take a photo of your card. Scan its code when you pay for a wash.</string>
     <string name="vip_done_topup_hint">Your new balance</string>
     <string name="vip_back_arrow">‹  BACK</string>
     <string name="vip_benefit_bonus">Bonus credit on every load</string>
@@ -100,11 +100,14 @@
     <string name="vip_buy_choose">Buy a new VIP card, or add this to the card you already have?</string>
     <string name="vip_buy_new">NEW CARD</string>
     <string name="vip_buy_topup">TOP UP MY CARD</string>
-    <string name="vip_phone_title">Phone number (optional)</string>
-    <string name="vip_phone_message">If you lose your member code, our staff can find your card with this number.</string>
+    <string name="vip_phone_title">Your phone number</string>
+    <string name="vip_phone_message">To find your card if you lose the code.</string>
+    <string name="vip_phone_incomplete">Please enter all 10 digits (%1$d more).</string>
+    <string name="tts_vip_phone">Please enter your phone number, then tap Continue.</string>
+    <string name="tts_vip_code">Scan your member code, or type it, then tap Continue.</string>
     <string name="vip_code_title">Your member code</string>
-    <string name="vip_code_message">Scan your member QR code, or type the 6-character code below.</string>
-    <string name="vip_scan_code">SCAN QR CODE</string>
+    <string name="vip_code_message">Scan your code, or type it below.</string>
+    <string name="vip_scan_code">SCAN MY CODE</string>
     <string name="vip_code_invalid">The member code has 6 letters and numbers. Please try again.</string>
     <string name="vip_code_checking">Checking your card…</string>
     <string name="vip_code_unknown">We could not find that card. Please check the code and try again.</string>
@@ -114,7 +117,7 @@
     <string name="vip_current_balance">Current balance: %1$s</string>
     <string name="vip_loading">Payment approved. Loading your card…</string>
     <string name="vip_done_new_title">Your VIP card is ready</string>
-    <string name="vip_done_new_message">Balance %1$s. Take a photo of this code: scan it on the main screen to pay for your wash.</string>
+    <string name="vip_done_new_message">Balance %1$s. Take a photo of this code: scan it when you pay for a wash.</string>
     <string name="vip_done_topup_title">Balance topped up</string>
     <string name="vip_done_topup_message">Your new balance is %1$s.</string>
     <string name="vip_not_completed">Not completed</string>
