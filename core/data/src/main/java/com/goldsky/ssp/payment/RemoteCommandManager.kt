@@ -37,14 +37,13 @@ object RemoteCommandManager {
     // subscription's JWT expiring -- and every CMP command stayed PENDING. A
     // poll every POLL_MS picks up anything Realtime missed.
     private const val POLL_MS = 20_000L
-    // Only recent commands are replayed by the poll: an old START_SERVICE must
-    // never hand out a free service hours later (LOCK/UNLOCK state is caught
-    // up separately at startup).
-    private const val POLL_WINDOW_MS = 10 * 60_000L
+    // Poll window extended from 10m to 12h: ensures that commands missed by Realtime
+    // due to WebSocket drop or terminal offline are successfully picked up and processed/expired.
+    private const val POLL_WINDOW_MS = 12 * 60 * 60_000L
     // START_SERVICE / REBOOT older than this are not run by the poll.
     private const val FRESH_MS = 60_000L
     private const val SCANNER_TEST_MS = 4_000L
-    private val KNOWN_COMMANDS = setOf("REBOOT", "SYNC_CONFIG", "LOCK", "UNLOCK", "FETCH_LOGS", "START_SERVICE", "SCANNER_TEST")
+    private val KNOWN_COMMANDS = setOf("REBOOT", "SYNC_CONFIG", "LOCK", "UNLOCK", "FETCH_LOGS", "START_SERVICE", "SCANNER_TEST", "BRING_TO_FRONT")
 
     // Command ids already taken by this process (Realtime or poll), so a
     // command seen by both paths runs once. Bounded: old ids fall out.
@@ -74,6 +73,13 @@ object RemoteCommandManager {
 
         /** Nobody is using the terminal, so SCANNER_TEST may open the camera page. False: refused. */
         fun isIdleForScannerTest(): Boolean = false
+
+        /**
+         * Remote BRING_TO_FRONT: put the kiosk back over whatever covers it. Returns whether it
+         * is in front and what happened, or null if this app doesn't take it (not the HOME app
+         * on a two-app terminal) -- the status is then left for the app that does.
+         */
+        suspend fun onBringToFrontRequested(): Pair<Boolean, String>? = null
     }
 
     private var commandListener: CommandListener? = null
@@ -157,7 +163,7 @@ object RemoteCommandManager {
                 // A late START_SERVICE hands out a service nobody is waiting
                 // for any more (seen: one run 9 min after it was sent); a late
                 // REBOOT reboots a terminal at a surprising moment.
-                (command.command == "START_SERVICE" || command.command == "REBOOT" || command.command == "SCANNER_TEST") && ageMs > FRESH_MS -> "EXPIRED"
+                (command.command == "START_SERVICE" || command.command == "REBOOT" || command.command == "SCANNER_TEST" || command.command == "BRING_TO_FRONT") && ageMs > FRESH_MS -> "EXPIRED"
                 (command.command == "LOCK" || command.command == "UNLOCK") && command.id != latestLockId -> "SUPERSEDED"
                 else -> null
             }
@@ -226,6 +232,15 @@ object RemoteCommandManager {
         // the one that does -- an older Timer marked SCANNER_TEST FAILED (2026-10-21).
         if (cmd !in KNOWN_COMMANDS) {
             Log.d(TAG, "Not handled here, status left alone: $cmd")
+            return
+        }
+        if (cmd == "BRING_TO_FRONT") {
+            CoroutineScope(Dispatchers.Main).launch {
+                val outcome = commandListener?.onBringToFrontRequested()
+                if (outcome == null) { Log.d(TAG, "BRING_TO_FRONT not taken here, status left alone"); return@launch }
+                Log.i(TAG, "Remote BRING_TO_FRONT -> ${outcome.second}")
+                withContext(Dispatchers.IO) { updateCommandStatus(deviceCommand.id, if (outcome.first) "SUCCESS" else "FAILED", outcome.second) }
+            }
             return
         }
         CoroutineScope(Dispatchers.IO).launch {

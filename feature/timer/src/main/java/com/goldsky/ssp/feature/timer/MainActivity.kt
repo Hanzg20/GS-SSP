@@ -116,6 +116,12 @@ class MainActivity : ComponentActivity() {
             override fun onLockRequested(locked: Boolean) = timerVm.setLocked(DeviceAccessManager.isLocked())
             override suspend fun onStartServiceRequested(productId: String?, startHex: String?, commandId: String, bay: String?) =
                 timerVm.startRemoteSession(productId, commandId, bay)
+            // Never over a sale (same idle check). A running session keeps timing either way.
+            override suspend fun onBringToFrontRequested(): Pair<Boolean, String>? {
+                if (!com.goldsky.ssp.ui.KioskRecall.handles(application)) return null
+                if (!timerVm.canEnterTechMode) return false to "Not run: a payment or session is in progress"
+                return com.goldsky.ssp.ui.KioskRecall.bringBack(application, this@MainActivity.javaClass)
+            }
         })
         ShadowManager.startSync(this, deviceSn)
         // Heartbeat, offline transaction replay, daily batch close, storage

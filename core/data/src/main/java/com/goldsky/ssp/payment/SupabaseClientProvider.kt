@@ -3,6 +3,7 @@ package com.goldsky.ssp.payment
 import android.util.Log
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.gotrue.Auth
+import io.github.jan.supabase.gotrue.SessionStatus
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.Realtime
@@ -13,7 +14,9 @@ import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import okhttp3.ConnectionPool
 import java.util.concurrent.TimeUnit
@@ -101,6 +104,9 @@ object SupabaseClientProvider {
     // heartbeat) call this at once.
     private val authMutex = kotlinx.coroutines.sync.Mutex()
 
+    // The SDK's retry delay (10 s) plus one refresh within our connect timeout (15 s).
+    private const val SESSION_RETRY_WAIT_MS = 30_000L
+
     suspend fun ensureAuthenticated() {
         val signedInNow = authMutex.withLock {
             // The saved session loads asynchronously; checking before it has means
@@ -109,7 +115,25 @@ object SupabaseClientProvider {
             // while the session had just flipped to an unlinked one matched 0
             // rows under RLS (failed sales stuck PENDING, 2026-10-10).
             runCatching { client.auth.awaitInitialization() }
+            // A saved session whose refresh couldn't reach Supabase (Wi-Fi not up yet
+            // after a power cut) reads as NetworkError, and currentSessionOrNull() is
+            // null then -- but the SDK still holds it and retries every 10 s. Signing in
+            // here made a throwaway anonymous user each time, overwritten by that retry
+            // seconds later (254: one per offline start-up, 255 collected 292).
+            if (client.auth.sessionStatus.value is SessionStatus.NetworkError) {
+                Log.i(TAG, "Saved session's refresh is retrying; waiting for it instead of signing in")
+                withTimeoutOrNull(SESSION_RETRY_WAIT_MS) {
+                    client.auth.sessionStatus.first {
+                        it is SessionStatus.Authenticated || it is SessionStatus.NotAuthenticated
+                    }
+                }
+            }
             if (client.auth.currentSessionOrNull() != null) return@withLock false
+            // Still unreachable: the saved session is kept, and its retry takes over.
+            if (client.auth.sessionStatus.value is SessionStatus.NetworkError) {
+                Log.w(TAG, "Supabase still unreachable; keeping the saved session")
+                return@withLock false
+            }
             try {
                 client.auth.signInAnonymously()
                 Log.i(TAG, "Signed in anonymously for postgrest/realtime access")

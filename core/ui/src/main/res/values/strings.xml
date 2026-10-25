@@ -56,12 +56,14 @@
     <string name="vip_feature_1">24/7 Self-Serve</string>
     <string name="vip_feature_2">Warm Water &amp; High Pressure</string>
     <string name="vip_feature_3">No Expiry</string>
-    <string name="vip_guide_buy_title">HOW TO GET A CARD</string>
-    <string name="vip_guide_buy_body">Ask our attendant to buy a VIP card or top up your balance.</string>
-    <string name="vip_guide_buy_body_terminal">Tap an amount on the left to buy a new card or top up yours here, by card.</string>
-    <string name="vip_guide_use_title">HOW TO USE</string>
     <string name="vip_page_title">VIP MEMBERSHIP</string>
     <string name="vip_pick_amount">Choose an amount →</string>
+    <string name="vip_unavailable_title">VIP top-up unavailable</string>
+    <string name="vip_unavailable_body">Please pay by card for now.</string>
+    <string name="tts_vip_unavailable">VIP top-up is not available right now. Please pay by card.</string>
+    <string name="vip_offline_title">Network disconnected</string>
+    <string name="vip_offline_body">VIP top-up is unavailable.\nPlease try again later.</string>
+    <string name="tts_vip_offline">The network is disconnected. VIP top-up is unavailable. Please try again later.</string>
     <string name="tts_vip_pick_amount">Choose how much to load on your VIP card.</string>
     <string name="tts_vip_choose">Tap New card, or Top up an existing card.</string>
     <string name="vip_opt_new_title">New card</string>
@@ -125,7 +127,6 @@
     <string name="vip_reversed">We could not load your card, so your payment was reversed. No charge was made.</string>
     <string name="vip_unconfirmed_title">Please see the attendant</string>
     <string name="vip_see_attendant">Your payment went through but we could not confirm your card. Please show this reference to the attendant: %1$s</string>
-    <string name="vip_guide_use_body">1. On the main screen, hold your member QR code up to the camera.\n2. Choose your wash.\n3. It is paid from your balance — your remaining balance is shown on screen.</string>
 
     <string name="prompt_pay_title">Waiting for Payment</string>
     <string name="prompt_pay_subtitle">Amount Due: %s</string>

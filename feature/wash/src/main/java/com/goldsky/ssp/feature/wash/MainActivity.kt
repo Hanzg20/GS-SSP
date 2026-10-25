@@ -219,6 +219,13 @@ class MainActivity : BaseAdActivity() {
 
             override suspend fun onStartServiceRequested(productId: String?, startHex: String?, commandId: String): Boolean =
                 remoteStartWash(productId, commandId)
+
+            // Never over a sale: PAYWizard's card screen covers the kiosk while one runs.
+            override suspend fun onBringToFrontRequested(): Pair<Boolean, String>? {
+                if (!com.goldsky.ssp.ui.KioskRecall.handles(application)) return null
+                if (isWorking || paymentInFlight) return false to "Not run: a payment or wash is in progress"
+                return com.goldsky.ssp.ui.KioskRecall.bringBack(application, this@MainActivity.javaClass)
+            }
         })
 
         ShadowManager.startSync(this, deviceSn)

@@ -63,54 +63,43 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btn_back_main" />
 
+    <!-- No plans: the network is down (a top-up can't be credited without the server, and a
+         card can't be charged either), or the store has none. Says which, offers nothing. -->
     <LinearLayout
-        android:id="@+id/layout_vip_guide"
+        android:id="@+id/layout_vip_unavailable"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
         android:layout_marginTop="12dp"
+        android:layout_marginBottom="8dp"
         android:background="@drawable/bg_vip_tile"
+        android:gravity="center"
         android:orientation="vertical"
-        android:padding="12dp"
+        android:padding="16dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/tv_vip_how"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btn_back_main">
 
         <TextView
+            android:id="@+id/tv_vip_unavailable_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:letterSpacing="0.1"
-            android:text="@string/vip_guide_buy_title"
+            android:gravity="center"
+            android:text="@string/vip_unavailable_title"
             android:textColor="@color/gold_accent"
-            android:textSize="16sp"
+            android:textSize="26sp"
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/tv_vip_guide_buy"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:text="@string/vip_guide_buy_body"
-            android:textColor="@color/text_light"
-            android:textSize="16sp" />
-
-        <TextView
+            android:id="@+id/tv_vip_unavailable_body"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:letterSpacing="0.1"
-            android:text="@string/vip_guide_use_title"
-            android:textColor="@color/gold_accent"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:lineSpacingExtra="2dp"
-            android:text="@string/vip_guide_use_body"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:text="@string/vip_unavailable_body"
             android:textColor="@color/text_light"
-            android:textSize="16sp" />
+            android:textSize="22sp" />
     </LinearLayout>
 
     <!-- How it works, one line. -->

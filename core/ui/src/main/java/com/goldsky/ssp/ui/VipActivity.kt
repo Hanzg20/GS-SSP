@@ -74,7 +74,6 @@ class VipActivity : BaseAdActivity() {
         }
 
         loadPlans()
-        TtsManager.speakRepeated(getString(R.string.tts_vip_pick_amount))
     }
 
     /** The merchant name for the pass: the configured brand name without a "Welcome to" greeting. */
@@ -84,12 +83,27 @@ class VipActivity : BaseAdActivity() {
             ?.trim()
             ?.takeUnless { it.isBlank() || it == "GS-SSP" } ?: "VIP CLUB"
 
-    /** Fills the right column with the merchant's plans (CMP, vip_load_plans); keeps the guide if there are none. */
+    /**
+     * Fills the page with the merchant's plans (CMP, vip_load_plans). None (offline, or the
+     * store has none): says VIP top-up is unavailable -- a load can't be credited without
+     * the server, so the page used to show an old guide whose options couldn't work.
+     */
     private fun loadPlans() {
         lifecycleScope.launch {
             // Up to four plans, two per row (2 x 2 on the 480 x 480 screen).
             val plans = VipLoadRepository.getPlans()?.take(4)
-            if (plans.isNullOrEmpty()) return@launch
+            if (plans.isNullOrEmpty()) {
+                // null: couldn't reach the server -- say the network is down (a card can't be
+                // charged then either); empty: this store sells no VIP top-ups.
+                val offline = plans == null
+                findViewById<TextView>(R.id.tv_vip_unavailable_title)
+                    .setText(if (offline) R.string.vip_offline_title else R.string.vip_unavailable_title)
+                findViewById<TextView>(R.id.tv_vip_unavailable_body)
+                    .setText(if (offline) R.string.vip_offline_body else R.string.vip_unavailable_body)
+                findViewById<View>(R.id.layout_vip_unavailable).visibility = View.VISIBLE
+                TtsManager.speakRepeated(getString(if (offline) R.string.tts_vip_offline else R.string.tts_vip_unavailable))
+                return@launch
+            }
             val container = findViewById<LinearLayout>(R.id.layout_tiers)
             container.removeAllViews()
             val best = bestValue(plans)
@@ -106,7 +120,7 @@ class VipActivity : BaseAdActivity() {
                 container.addView(row)
             }
             container.visibility = View.VISIBLE
-            findViewById<View>(R.id.layout_vip_guide).visibility = View.GONE
+            TtsManager.speakRepeated(getString(R.string.tts_vip_pick_amount))
         }
     }
 

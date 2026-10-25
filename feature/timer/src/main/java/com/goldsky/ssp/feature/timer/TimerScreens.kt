@@ -84,13 +84,13 @@ fun TimerApp(
                 is Screen.BayStarted -> ResultScreen(
                     Emerald, "✓",
                     if (screen.extended) "${screen.pkg.name} ${screen.bay.number}: time added" else "${screen.pkg.name} ${screen.bay.number} is on",
-                    "+${formatDuration(screen.pkg.durationSec)}\nThe countdown is on the main screen.",
+                    "+${formatDuration(screen.pkg.durationSec)}",
                 )
                 is Screen.Running -> RunningScreen(screen, s.now)
-                is Screen.Finished -> ResultScreen(Emerald, "✓", "Time's up", "Thank you — see you next time!")
+                is Screen.Finished -> ResultScreen(Emerald, "✓", "Time's up", "")
                 is Screen.Declined -> when (screen.reason) {
                     DeclineReason.CANCELLED -> ResultScreen(TextLo, "✕", "Payment cancelled", "No charge was made.")
-                    DeclineReason.UNAVAILABLE -> ResultScreen(Coral, "!", "Card payment unavailable", "Card payment is temporarily unavailable.\nPlease contact the attendant.")
+                    DeclineReason.UNAVAILABLE -> ResultScreen(Coral, "!", "Card payment unavailable", "Please contact the attendant.")
                     DeclineReason.DECLINED -> ResultScreen(Coral, "✕", "Payment not completed", "No charge was made.\nPlease try again or use another card.")
                 }
                 is Screen.StartFailed -> ResultScreen(
@@ -108,7 +108,7 @@ fun TimerApp(
                 s.pending?.let { PendingBanner(it, onClearPending) }
                 s.notice?.let {
                     Text(
-                        it, color = TextHi, fontSize = 13.sp, textAlign = TextAlign.Center,
+                        it, color = TextHi, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                             .background(Coral.copy(alpha = 0.92f), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
                     )
@@ -221,7 +221,6 @@ private fun HomeScreen(
         Spacer(Modifier.height(14.dp))
         val productName = s.packages.map { it.name }.distinct().singleOrNull() ?: "Self-Service"
         Text(productName, color = TextHi, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
-        Text("Choose your time", color = TextLo, fontSize = 15.sp)
         Spacer(Modifier.height(14.dp))
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -239,8 +238,7 @@ private fun HomeScreen(
                     Modifier.matchParentSize().background(Bg.copy(alpha = 0.92f), RoundedCornerShape(18.dp)),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
                 ) {
-                    Text("Temporarily out of service", color = TextHi, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("Sorry for the inconvenience", color = TextLo, fontSize = 13.sp)
+                    Text("Temporarily out of service", color = TextHi, fontSize = 26.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -248,7 +246,7 @@ private fun HomeScreen(
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             ScanButton(onScan)
-            Text("  💳 Card · Tap", color = TextLo, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            Spacer(Modifier.weight(1f))
             TripleTapText(version, onTechTrigger)
         }
     }
@@ -270,7 +268,7 @@ private fun DualHomeScreen(
         HomeHeader(s, gap = 4.dp)
         Spacer(Modifier.height(8.dp))
         val productName = s.packages.map { it.name }.distinct().singleOrNull() ?: "Self-Service"
-        Text("Choose the number shown on your ${productName.lowercase()}".let { if (productName == "Self-Service") "Choose your unit" else it }, color = TextLo, fontSize = 14.sp)
+        Text("Choose the number shown on your ${productName.lowercase()}".let { if (productName == "Self-Service") "Choose your unit" else it }, color = TextHi, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -290,8 +288,7 @@ private fun DualHomeScreen(
                     Modifier.matchParentSize().background(Bg.copy(alpha = 0.92f), RoundedCornerShape(18.dp)),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
                 ) {
-                    Text("Temporarily out of service", color = TextHi, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("Sorry for the inconvenience", color = TextLo, fontSize = 13.sp)
+                    Text("Temporarily out of service", color = TextHi, fontSize = 26.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -299,7 +296,7 @@ private fun DualHomeScreen(
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             ScanButton(onScan)
-            Text("  💳 Card · Tap", color = TextLo, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            Spacer(Modifier.weight(1f))
             TripleTapText(version, onTechTrigger)
         }
     }
@@ -353,7 +350,7 @@ private fun BayColumn(
                 Text(formatPrice(pkg.priceCents), color = Bg, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
                     (if (running) "+" else "") + formatDuration(pkg.durationSec),
-                    color = Bg, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End,
+                    color = Bg, fontSize = 19.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -383,12 +380,11 @@ private fun BayRing(running: Boolean, remaining: Long, totalMs: Long, color: Col
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     VacuumDrawing(true, color, Modifier.size(size * 0.42f))
                     Text(formatClock(remaining), color = TextHi, fontSize = 26.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                    Text("IN USE", color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 }
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     VacuumDrawing(false, color, Modifier.size(size * 0.62f))
-                    Text("Available", color = TextLo, fontSize = 13.sp)
+                    Text("Available", color = TextHi, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -417,7 +413,7 @@ private fun PackageCard(pkg: TimerPackage, enabled: Boolean, modifier: Modifier,
             Text(formatDuration(pkg.durationSec), color = TextHi, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
         }
         Text(
-            "START", color = Bg, fontSize = 15.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+            "START", color = Bg, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth().background(Amber, RoundedCornerShape(10.dp)).padding(vertical = 9.dp),
         )
     }
@@ -464,7 +460,6 @@ private fun PayingScreen(p: Screen.Paying, demo: Boolean, onCancel: () -> Unit) 
                 "  ·  ${formatDuration(p.pkg.durationSec)}",
             color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Bold,
         )
-        Text(p.pkg.name, color = TextLo, fontSize = 14.sp)
         Spacer(Modifier.weight(1f))
         Box(Modifier.size(150.dp).scale(pulse), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
@@ -481,19 +476,17 @@ private fun PayingScreen(p: Screen.Paying, demo: Boolean, onCancel: () -> Unit) 
             }
         }
         Spacer(Modifier.height(16.dp))
-        Text(p.message, color = TextHi, fontSize = 18.sp, textAlign = TextAlign.Center)
-        if (!demo) Text("Follow the prompts on the reader", color = TextLo, fontSize = 13.sp)
+        Text(p.message, color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Spacer(Modifier.weight(1f))
         // A real sale can't be cancelled from here: WizarPOS's
         // cancelCurrentTransaction is a no-op (the P3 socket is blocked on the
         // sale), and PAYWizard's own screen -- which has a Cancel -- is in front
-        // during payment anyway. Don't show a button that does nothing.
+        // during payment anyway. Don't show a button that does nothing, nor
+        // hints about the reader nobody sees under PAYWizard's screen.
         if (demo) {
             OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().height(48.dp)) {
                 Text("Cancel", color = TextLo, fontSize = 16.sp)
             }
-        } else {
-            Text("To cancel, press Cancel on the card reader", color = TextLo, fontSize = 13.sp)
         }
     }
 }
@@ -512,7 +505,7 @@ private fun RunningScreen(r: Screen.Running, now: Long) {
         Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("${r.pkg.name.uppercase()} ON", color = color, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("${r.pkg.name.uppercase()} ON", color = color, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.weight(1f))
         Box(Modifier.size(300.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize().padding(10.dp)) {
@@ -522,13 +515,13 @@ private fun RunningScreen(r: Screen.Running, now: Long) {
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(formatClock(remaining), color = TextHi, fontSize = 72.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                Text("remaining", color = TextLo, fontSize = 15.sp)
             }
         }
         Spacer(Modifier.weight(1f))
+        // Only the last 30 s get a line: that's when the customer has to act.
         Text(
-            if (endingSoon) "Almost done — finish up!" else "Stops automatically when time runs out",
-            color = if (endingSoon) Amber else TextLo, fontSize = 15.sp,
+            if (endingSoon) "Almost done — finish up!" else "",
+            color = Amber, fontSize = 24.sp, fontWeight = FontWeight.Bold,
         )
     }
 }
@@ -546,8 +539,10 @@ private fun ResultScreen(accent: Color, glyph: String, title: String, body: Stri
         }
         Spacer(Modifier.height(20.dp))
         Text(title, color = TextHi, fontSize = 26.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(8.dp))
-        Text(body, color = TextLo, fontSize = 16.sp, textAlign = TextAlign.Center)
+        if (body.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(body, color = TextHi, fontSize = 20.sp, textAlign = TextAlign.Center)
+        }
     }
 }
 
@@ -811,11 +806,11 @@ private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () ->
 private fun ScanButton(onScan: () -> Unit) {
     Row(
         Modifier.clip(RoundedCornerShape(20.dp)).border(1.5.dp, Amber, RoundedCornerShape(20.dp))
-            .clickable(onClick = onScan).padding(horizontal = 12.dp, vertical = 6.dp),
+            .clickable(onClick = onScan).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("▣", color = Amber, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-        Text("  Coupon / VIP code", color = Amber, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text("▣", color = Amber, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("  Coupon / VIP code", color = Amber, fontSize = 17.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -878,23 +873,20 @@ private fun ConfirmScreen(c: Screen.Confirm, onConfirm: () -> Unit, onCancel: ()
             Text(if (vip != null) "Pay with your VIP card?" else "Use this coupon?", color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(4.dp))
             val unit = c.bay?.let { " · ${c.pkg.name} ${it.number}" } ?: ""
-            Text("${formatDuration(c.pkg.durationSec)} · ${formatPrice(c.pkg.priceCents)}$unit", color = TextLo, fontSize = 15.sp)
+            Text("${formatDuration(c.pkg.durationSec)} · ${formatPrice(c.pkg.priceCents)}$unit", color = TextHi, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(16.dp))
             if (vip != null) {
                 Text(formatPrice(c.pkg.priceCents), color = Amber, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold)
-                Text("from your VIP balance", color = TextLo, fontSize = 14.sp)
                 Spacer(Modifier.height(6.dp))
                 val after = vip.balanceCents - c.pkg.priceCents
                 Text(
                     if (after >= 0) "Balance ${formatPrice(vip.balanceCents)} → ${formatPrice(after)}" else "Balance ${formatPrice(vip.balanceCents)} is not enough",
-                    color = if (after >= 0) TextHi else Coral, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                    color = if (after >= 0) TextHi else Coral, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
                 )
             } else if (coupon != null) {
-                Text(couponLabel(coupon), color = Emerald, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(couponLabel(coupon), color = Emerald, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
                 Text(if (c.chargeCents <= 0) "FREE" else "Pay ${formatPrice(c.chargeCents)}", color = Amber, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold)
-                if (c.chargeCents > 0) Text("by card after you confirm", color = TextLo, fontSize = 14.sp)
-                coupon.expiresAt?.let { Text("Coupon expires ${it.replace("T", " ").take(10)}", color = TextLo, fontSize = 12.sp) }
             }
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

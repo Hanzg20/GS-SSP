@@ -93,14 +93,19 @@ object BootFrontGuard {
         relaunches++
         // Every other try through HOME: lands on this app's HOME entry, which opens the kiosk.
         val viaHome = relaunches % 2 == 0
-        val intent = if (viaHome) Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(app.packageName)
-        else Intent(app, cls).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val sent = runCatching { app.startActivity(intent) }
-            .onFailure { Log.w(TAG, "Relaunch refused: ${it.message}") }.isSuccess
+        val sent = relaunch(app, cls, viaHome)
         note("#$relaunches ${if (viaHome) "home" else "kiosk"}${if (sent) "" else " refused"}")
         Log.w(TAG, "Covered ${uptime}s after boot; back to front (#$relaunches)")
         return true
+    }
+
+    /** One start of the kiosk [cls], or of this app's HOME entry; false if the system refused it outright. */
+    internal fun relaunch(app: Application, cls: Class<out Activity>, viaHome: Boolean): Boolean {
+        val intent = if (viaHome) Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(app.packageName)
+        else Intent(app, cls).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return runCatching { app.startActivity(intent) }
+            .onFailure { Log.w(TAG, "Relaunch refused: ${it.message}") }.isSuccess
     }
 
     private fun note(s: String) { if (timeline.isNotEmpty()) timeline.append(", "); timeline.append(s) }
@@ -115,7 +120,7 @@ object BootFrontGuard {
         runCatching { DiagnosticManager.reportError(DeviceRepository.getPersistedDeviceSn().orEmpty(), "KIOSK_COVERED_AT_BOOT", severity = "WARNING", trace = trace) }
     }
 
-    private fun holdsHome(app: Application): Boolean {
+    internal fun holdsHome(app: Application): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
         return runCatching { app.getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_HOME) == true }.getOrDefault(false)
     }

@@ -315,12 +315,12 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 val card = uid?.let { VipRepository.getVipCard(it) }
                 when {
                     uid == null || card == null -> notice("Member code not recognized")
-                    !card.is_active -> notice("This VIP card is deactivated. Please contact the attendant.")
+                    !card.is_active -> notice("This VIP card is deactivated.")
                     // Can't cover even the cheapest package: say so now.
                     _state.value.packages.filter { it.priceCents > 0 }.minOfOrNull { it.priceCents }
                         ?.let { card.balance_cents < it } == true -> {
-                        val lowest = _state.value.packages.filter { it.priceCents > 0 }.minOf { it.priceCents }
-                        notice("Insufficient balance: ${dollars(card.balance_cents)} (lowest ${dollars(lowest)}). Top up on the VIP page or pay by card.")
+                        // No "top up on the VIP page": Timer has none (it's Wash's).
+                        notice("Insufficient VIP balance: ${dollars(card.balance_cents)}. Please pay by card.")
                     }
                     else -> setPending(Pending.Vip(uid, code.uppercase(), card.balance_cents))
                 }
@@ -332,7 +332,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     if (forHere) setPending(Pending.Coupon(code, peek.type, peek.value, peek.applicableProductId, peek.expiresAt))
                     else notice("This coupon can't be used here")
                 }
-                else -> notice("This code can't be used. Please see the attendant.")
+                else -> notice("This code can't be used.")
             }
         }
     }
@@ -384,7 +384,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     val msg = when (r.reason) {
                         "insufficient_balance" -> "Not enough VIP balance (${formatPrice(vip.balanceCents)}). Please pay by card or top up."
                         "daily_limit_exceeded" -> "This card's daily limit is reached."
-                        else -> "This VIP card can't be used. Please see the attendant."
+                        else -> "This VIP card can't be used."
                     }
                     _state.update { it.copy(screen = Screen.Home) }
                     notice(msg)
@@ -409,7 +409,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     )
                     startPaidService(pkg, bay, ref, "coupon ${coupon.code}", "Your coupon covers it.")
                 }
-                else -> { _state.update { it.copy(screen = Screen.Home) }; notice("This coupon can't be used. Please see the attendant.") }
+                else -> { _state.update { it.copy(screen = Screen.Home) }; notice("This coupon can't be used.") }
             }
         }
     }
