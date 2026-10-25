@@ -267,9 +267,9 @@ private fun DualHomeScreen(
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
         HomeHeader(s, gap = 4.dp)
         Spacer(Modifier.height(8.dp))
+        // No "Choose the number shown on your vacuum" line (owner, 2026-10-25): the big unit
+        // titles over each column say it.
         val productName = s.packages.map { it.name }.distinct().singleOrNull() ?: "Self-Service"
-        Text("Choose the number shown on your ${productName.lowercase()}".let { if (productName == "Self-Service") "Choose your unit" else it }, color = TextHi, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (s.packages.isEmpty()) {
@@ -330,7 +330,7 @@ private fun BayColumn(
     ) {
         Text(
             bay.title(productName),
-            color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, maxLines = 1,
+            color = TextHi, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, maxLines = 1,
         )
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             BayRing(running, remaining, run?.totalMs ?: 0L, accent)
@@ -344,13 +344,13 @@ private fun BayColumn(
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (enabled) Amber else SurfaceHi)
                     .clickable(enabled = enabled) { onSelect(pkg) }
-                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                    .padding(horizontal = 10.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(formatPrice(pkg.priceCents), color = Bg, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                Text(formatPrice(pkg.priceCents), color = Bg, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
                     (if (running) "+" else "") + formatDuration(pkg.durationSec),
-                    color = Bg, fontSize = 19.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End,
+                    color = Bg, fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -379,12 +379,12 @@ private fun BayRing(running: Boolean, remaining: Long, totalMs: Long, color: Col
             if (running) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     VacuumDrawing(true, color, Modifier.size(size * 0.42f))
-                    Text(formatClock(remaining), color = TextHi, fontSize = 26.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Text(formatClock(remaining), color = TextHi, fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                 }
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     VacuumDrawing(false, color, Modifier.size(size * 0.62f))
-                    Text("Available", color = TextHi, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("Available", color = TextHi, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
