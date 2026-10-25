@@ -382,7 +382,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 is VipDeductResult.Rejected -> {
                     val msg = when (r.reason) {
-                        "insufficient_balance" -> "Not enough VIP balance (${formatPrice(vip.balanceCents)}). Please pay by card or top up."
+                        "insufficient_balance" -> "Not enough VIP balance (${formatPrice(vip.balanceCents)}). Please pay by card."
                         "daily_limit_exceeded" -> "This card's daily limit is reached."
                         else -> "This VIP card can't be used."
                     }

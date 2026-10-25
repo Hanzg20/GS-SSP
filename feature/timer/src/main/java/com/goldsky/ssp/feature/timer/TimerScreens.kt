@@ -91,13 +91,13 @@ fun TimerApp(
                 is Screen.Declined -> when (screen.reason) {
                     DeclineReason.CANCELLED -> ResultScreen(TextLo, "✕", "Payment cancelled", "No charge was made.")
                     DeclineReason.UNAVAILABLE -> ResultScreen(Coral, "!", "Card payment unavailable", "Please contact the attendant.")
-                    DeclineReason.DECLINED -> ResultScreen(Coral, "✕", "Payment not completed", "No charge was made.\nPlease try again or use another card.")
+                    DeclineReason.DECLINED -> ResultScreen(Coral, "✕", "Payment not completed", "No charge was made.")
                 }
                 is Screen.StartFailed -> ResultScreen(
                     Coral, "!", "Machine could not start",
                     when (screen.refunded) {
                         null -> "Reversing your payment…\nIf the card reader asks, present your card again."
-                        true -> "Your payment has been reversed.\nNo charge was made."
+                        true -> "Payment reversed. No charge was made."
                         false -> "Please contact the attendant.\nYour payment will be refunded or compensated."
                     },
                 )
