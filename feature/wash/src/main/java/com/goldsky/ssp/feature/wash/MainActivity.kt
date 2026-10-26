@@ -307,6 +307,22 @@ class MainActivity : BaseAdActivity() {
         }
     }
 
+    /**
+     * `adb shell am start -n <wash>/...MainActivity --es opc_probe GetPosInfo`: asks OPC for its
+     * terminal info (no money involved) and logs the answer under "OpcProbe" -- checks the
+     * AIDL / socket path on a terminal without a card sale. GetPosInfo only.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getStringExtra("opc_probe") != "GetPosInfo" || paymentInFlight) return
+        CoroutineScope(Dispatchers.Main).launch {
+            val p = runCatching { PaymentProviderFactory.getPaymentProvider(this@MainActivity, hardwareVendor) }.getOrNull()
+                as? com.goldsky.ssp.payment.wizarpos.WizarPosPaymentProvider
+            val answer = p?.executeRaw(mapOf("TransType" to "GetPosInfo", "TransIndexCode" to "P-${System.currentTimeMillis()}"))
+            Log.i("OpcProbe", "GetPosInfo -> $answer")
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         applyKioskWindowFlags()

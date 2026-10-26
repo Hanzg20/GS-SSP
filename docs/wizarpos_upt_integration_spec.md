@@ -102,8 +102,8 @@ PAYWizard 即 `com.wizarpos.opc`。它只是中转：收到我们的 SALE 后，
 **OPC 设置页（关键三项）**
 | 项 | 值 |
 |---|---|
-| Protocol type | SOCKET SERVER |
-| Port | 6031 |
+| Protocol type | **Default**（AIDL，Wash 1.1.8 / Timer 1.2.7 起，OPC 留在后台）。更早版本只会 socket，必须 SOCKET SERVER |
+| Port | 6031（只有 SOCKET SERVER 用） |
 | **PaymentApp PkgName** | 实际收单的支付应用包名。Nuvei 终端填 **`com.smartpos.nuvei.smartpay`** |
 
 - OPC **只接受它能绑定的支付应用**：在 255 上填 `com.wizarpos.paywizard.demo` 会被拒（对话框清空重开，提示不能设置），填 `com.smartpos.nuvei.smartpay` 立即生效、无需重启。

@@ -44,6 +44,7 @@ class WizarPosHardwareProvider : IHardwareProvider {
 
     override fun init(context: Context) {
         this.context = context
+        com.goldsky.ssp.payment.wizarpos.WizarPosAidlClient.appContext = context.applicationContext
         Log.i(TAG, "Initializing WizarPOS Hardware Provider")
 
         if (BuildConfig.IS_MOCK) {

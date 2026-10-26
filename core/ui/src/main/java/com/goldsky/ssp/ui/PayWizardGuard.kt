@@ -53,7 +53,7 @@ object PayWizardGuard {
             while (isActive) {
                 // Only the app on screen acts: a kiosk left running in the background (two apps
                 // on a test terminal) must never open PAYWizard over the one the customer uses.
-                if (foreground(activity) && idle() && !portOpen()) recover(activity) { foreground(activity) && idle() }
+                if (foreground(activity) && idle() && !reachable()) recover(activity) { foreground(activity) && idle() }
                 delay(CHECK_MS)
             }
         }
@@ -62,6 +62,13 @@ object PayWizardGuard {
     private fun foreground(owner: LifecycleOwner) = owner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
 
     private fun installed(ctx: Context) = runCatching { ctx.packageManager.getPackageInfo(OPC, 0); true }.getOrDefault(false)
+
+    /**
+     * OPC can take a sale: its AIDL service binds (AIDL mode has no socket, and binding
+     * starts OPC without showing it) or its port answers (socket mode).
+     */
+    private suspend fun reachable(): Boolean =
+        com.goldsky.ssp.payment.wizarpos.WizarPosAidlClient.available() || portOpen()
 
     /** True when something accepts a connection on PAYWizard's port. */
     suspend fun portOpen(): Boolean = withContext(Dispatchers.IO) {

@@ -17,7 +17,9 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * WizarPOS Payment Provider implementation.
- * Integrates with PAYWizard app via Local Socket (127.0.0.1, port 6031 or 6666).
+ * Integrates with PAYWizard (OPC) on this terminal through its AIDL service
+ * (WizarPosAidlClient), falling back to the local socket (127.0.0.1, port 6031 or
+ * 6666) when OPC has no AIDL service to bind; a networked UPT is socket only.
  * Aligned with WIZARPOSPaymentAppIntegrationProtocolV2.3.13 and P3 Protocol.
  */
 class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProvider {
@@ -79,21 +81,63 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
     /** ISO 4217 numeric code for this terminal's region (CA -> CAD 124, else USD 840). */
     private fun currencyCode() = if (CoreConfig.region == "CA") "124" else "840"
 
+    private sealed interface Reply {
+        data class Answer(val json: String) : Reply
+        /** Sent, but nothing came back: the outcome is unknown. */
+        data object NoAnswer : Reply
+        /** Not sent (OPC busy or not running): nothing can have been charged. */
+        data object NotSent : Reply
+    }
+
+    /**
+     * Sends one request JSON to PAYWizard. This terminal's own OPC: AIDL first; the socket
+     * only when the AIDL service can't be bound -- then nothing was sent, so the request can
+     * never go out twice. An AIDL call that got no answer is NOT retried on the socket.
+     */
+    private suspend fun send(requestJson: String): Reply {
+        val local = WizarPosSocketClient.targetHost.ifBlank { "127.0.0.1" } == "127.0.0.1"
+        if (local) {
+            when (val r = WizarPosAidlClient.transact(requestJson)) {
+                is WizarPosAidlClient.Outcome.Sent -> {
+                    Log.i(TAG, "Sent via AIDL" + if (r.json == null) "; no answer" else "")
+                    return r.json?.let { Reply.Answer(it) } ?: Reply.NoAnswer
+                }
+                WizarPosAidlClient.Outcome.Unavailable -> Log.w(TAG, "OPC AIDL service unavailable; using the socket")
+            }
+        }
+        // Handshake Request (CTRL=0xF1) with 4 random bytes
+        val randomBytes = ByteArray(4).apply { java.util.Random().nextBytes(this) }
+        val handshakeRes = WizarPosSocketClient.sendRequest(randomBytes, WizarPosP3Protocol.CTRL_HANDSHAKE_REQ)
+        if (handshakeRes == null && local) {
+            // No answer from this terminal's own PAYWizard: busy (or not running).
+            // Nothing sent yet, nothing charged -- fail now rather than wait 200 s on the sale.
+            Log.w(TAG, "P3 Handshake got no reply; not sending the request")
+            return Reply.NotSent
+        } else if (handshakeRes == null) {
+            // A networked UPT (Q3mini over Wi-Fi): its firmware doesn't answer the handshake.
+            Log.w(TAG, "P3 Handshake got no reply from the remote terminal; sending the request directly")
+        } else if (!handshakeRes.contentEquals(randomBytes)) {
+            Log.w(TAG, "P3 Handshake mismatch, attempting to proceed anyway...")
+        } else {
+            Log.i(TAG, "P3 Handshake Successful")
+        }
+        // Transaction Request (CTRL=0x01)
+        val bytes = WizarPosSocketClient.sendRequest(requestJson) ?: return Reply.NoAnswer
+        return Reply.Answer(String(bytes, Charsets.UTF_8))
+    }
+
     /**
      * Technician payment test runner (WizarPOS/Nuvei AIDL test cases): sends
      * [fields] as given -- string values, CallerName/CurrencyCode added unless
-     * present -- after the P3 handshake, and returns PAYWizard's raw JSON
+     * present -- and returns PAYWizard's raw JSON
      * answer, or null when PAYWizard didn't answer. No record is written and
      * nothing is reversed: the runner owns the whole case.
      */
     suspend fun executeRaw(fields: Map<String, String>): String? = withContext(Dispatchers.IO) {
-        val nonce = ByteArray(4).apply { java.util.Random().nextBytes(this) }
-        WizarPosSocketClient.sendRequest(nonce, WizarPosP3Protocol.CTRL_HANDSHAKE_REQ) ?: return@withContext null
         val all = mapOf("CallerName" to "GS-SSP", "CurrencyCode" to currencyCode()) + fields
         val body = kotlinx.serialization.json.JsonObject(all.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) })
         Log.i(TAG, "Test runner request: $body")
-        val bytes = WizarPosSocketClient.sendRequest(body.toString()) ?: return@withContext null
-        String(bytes, Charsets.UTF_8)
+        (send(body.toString()) as? Reply.Answer)?.json
     }
 
     override fun startSale(amountInCents: Int, ecrRefNum: String, callback: IPaymentProvider.PaymentCallback) {
@@ -168,19 +212,17 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
     override fun queryTransaction(refNum: String, callback: (IPaymentProvider.QueryResult) -> Unit) {
         CoroutineScope(Dispatchers.IO).launch {
             val result = try {
-                val randomBytes = ByteArray(4).apply { java.util.Random().nextBytes(this) }
-                WizarPosSocketClient.sendRequest(randomBytes, WizarPosP3Protocol.CTRL_HANDSHAKE_REQ)
                 val request = GlobalRequest(
                     TransType = "QueryTransaction",
                     CurrencyCode = currencyCode(),
                     OriTransIndexCode = refNum,
                     TransIndexCode = "Q-" + java.lang.System.currentTimeMillis()
                 )
-                val bytes = WizarPosSocketClient.sendRequest(json.encodeToString(request))
-                if (bytes == null) {
+                val reply = send(json.encodeToString(request))
+                if (reply !is Reply.Answer) {
                     IPaymentProvider.QueryResult.Error("no response from PAYWizard")
                 } else {
-                    val root = json.parseToJsonElement(String(bytes, Charsets.UTF_8)).jsonObject
+                    val root = json.parseToJsonElement(reply.json).jsonObject
                     fun field(k: String) = root[k]?.jsonPrimitive?.content?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
                     val code = field("RespCode")
                     when {
@@ -208,32 +250,13 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         callback: IPaymentProvider.PaymentCallback
     ) {
         try {
-            // Step 2 & 3: Handshake Request (CTRL=0xF1) with 4 random bytes
-            val randomBytes = ByteArray(4).apply { java.util.Random().nextBytes(this) }
-            val handshakeRes = WizarPosSocketClient.sendRequest(randomBytes, WizarPosP3Protocol.CTRL_HANDSHAKE_REQ)
-            val localPayWizard = WizarPosSocketClient.targetHost.ifBlank { "127.0.0.1" } == "127.0.0.1"
-
-            if (handshakeRes == null && localPayWizard) {
-                // No answer from this terminal's own PAYWizard: busy (or not running).
-                // Nothing sent yet, nothing charged -- fail now rather than wait 200 s on the sale.
-                Log.w(TAG, "P3 Handshake got no reply; not sending the sale")
+            val reply = send(json.encodeToString(request))
+            if (reply == Reply.NotSent) {
                 callback.onFailure("Payment service busy (P3 handshake no reply)", true)
                 return
-            } else if (handshakeRes == null) {
-                // A networked UPT (Q3mini over Wi-Fi): its firmware doesn't answer the handshake.
-                Log.w(TAG, "P3 Handshake got no reply from the remote terminal; sending the sale directly")
-            } else if (!handshakeRes.contentEquals(randomBytes)) {
-                Log.w(TAG, "P3 Handshake mismatch, attempting to proceed anyway...")
-            } else {
-                Log.i(TAG, "P3 Handshake Successful")
             }
-
-            // Step 4: Transaction Request (CTRL=0x01)
-            val requestJson = json.encodeToString(request)
-            val responseBytes = WizarPosSocketClient.sendRequest(requestJson)
-            
-            if (responseBytes != null) {
-                val response = String(responseBytes, Charsets.UTF_8)
+            if (reply is Reply.Answer) {
+                val response = reply.json
                 val root = json.parseToJsonElement(response).jsonObject
                 // Batch totals (BatchDetailInfo) for reconciliation. Settle
                 // responses carry no full card data, only masked lists.
