@@ -45,3 +45,20 @@
 1. TMS 推"不在前台启动"参数到 253/254 → 重启验证（不影响收款）。
 2. 拿到 .aidl → app 改 AIDL → 255 验证。
 3. 升级 253/254 → 再请 WizarPOS 用 TMS 切 AIDL（同一晚，晚上做）。
+
+## 结果（2026-10-25 夜）
+
+- 不等 WizarPOS 的 .aidl：从 255 的 OPC 2.17.3 读出 `IPaymentPay` 接口，Wash 1.1.8 / Timer 1.2.7 改为 AIDL 优先、socket 兜底（a25dfbf）。
+- 255、254 的 OPC 改成 Default。255：刷卡、重启、$1 刷卡+撤销都正常。254：老版本刷卡失败（预期），新版本 $0.10 成功，重启后 OPC 不再挡屏。
+- 253 还是 Wash 1.1.6 + SOCKET SERVER（离线），恢复后先装 1.1.8 再改 Default。
+
+## WizarPOS（Maggie）2026-10-26 00:01
+
+> aidl 模式下，OPC 就不在前台，其他模式需要特殊配置。
+> 另外，如果 aidl 模式下，launcher 偶发不在前台的情况，下一版 fix，会重新 release。
+
+→ OPC 新版之前，BootFrontGuard 和 Cael "Bring to front" 保留；新版先在 255 测，再推 253/254。
+
+## 我们的回复（建议）
+
+> 收到，谢谢！我们已经改成 AIDL，254、255 都切到 Default 了，254 重启后 OPC 不再挡屏。想问一下：Launcher 偶发不在前台，一般是什么情况下出现（开机后？交易结束后？），大概多久能出新版？新版出来请先告诉我们，我们在 255 上测完再推到其他机器。我们现在是 OPC 2.17.3-global。
