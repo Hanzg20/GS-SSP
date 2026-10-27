@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.layout
@@ -52,6 +53,8 @@ private val Emerald = Color(0xFF10B981)
 private val Coral = Color(0xFFF43F5E)
 private val TextHi = Color(0xFFE6EDF7)
 private val TextLo = Color(0xFF8A97AD)
+private val BayOrange = Color(0xFFC96A12)
+private val BayBlue = Color(0xFF263E9C)
 
 @Composable
 fun TimerApp(
@@ -276,7 +279,8 @@ private fun DualHomeScreen(
                 Text("Loading…", color = TextLo, modifier = Modifier.align(Alignment.Center))
             } else {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Bay.entries.forEach { bay ->
+                    // Unit 2 stands to the left of the terminal, unit 1 to the right (owner, 2026-10-26).
+                    listOf(Bay.TWO, Bay.ONE).forEach { bay ->
                         BayColumn(bay, productName, s.bays[bay], s.now, s.packages, enabled = !s.locked, modifier = Modifier.weight(1f).fillMaxHeight()) {
                             onSelect(it, bay)
                         }
@@ -328,10 +332,7 @@ private fun BayColumn(
             .padding(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            bay.title(productName),
-            color = TextHi, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, maxLines = 1,
-        )
+        BayTitle(bay, productName)
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             BayRing(running, remaining, run?.totalMs ?: 0L, accent)
         }
@@ -355,6 +356,43 @@ private fun BayColumn(
                 )
             }
         }
+    }
+}
+
+/** The unit's name on its own colour, with an arrow pointing out to that vacuum. */
+@Composable
+private fun BayTitle(bay: Bay, productName: String) {
+    val left = bay == Bay.TWO
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+        if (left) BayArrow(left = true)
+        Text(
+            bay.title(productName),
+            color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1,
+            modifier = Modifier.background(if (left) BayOrange else BayBlue, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp),
+        )
+        if (!left) BayArrow(left = false)
+    }
+}
+
+@Composable
+private fun BayArrow(left: Boolean) {
+    Canvas(Modifier.size(18.dp, 20.dp)) {
+        val w = size.width
+        val h = size.height
+        val head = w * 0.5f
+        val path = Path().apply {
+            // Drawn pointing right, mirrored for the left one.
+            fun x(v: Float) = if (left) w - v else v
+            moveTo(x(0f), h * 0.32f)
+            lineTo(x(w - head), h * 0.32f)
+            lineTo(x(w - head), 0f)
+            lineTo(x(w), h / 2)
+            lineTo(x(w - head), h)
+            lineTo(x(w - head), h * 0.68f)
+            lineTo(x(0f), h * 0.68f)
+            close()
+        }
+        drawPath(path, TextHi)
     }
 }
 
