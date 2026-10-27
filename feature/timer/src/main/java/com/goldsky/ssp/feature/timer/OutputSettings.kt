@@ -26,8 +26,14 @@ data class OutputSettings(
     val centsPerPulse: Int = 100,
     /** COIN_PULSES: pulse ON time, and the same OFF gap between pulses. */
     val pulseWidthMs: Long = 100,
+    /**
+     * COIN_PULSES: pulses added to (or, negative, taken from) every purchase, set on site
+     * to match what the machine's own timer gives for them (owner, 2026-10-26: the
+     * Eagleson vacuum ran ~1 min longer than its packages at 25c a pulse).
+     */
+    val pulseAdjust: Int = 0,
 ) {
-    fun pulsesFor(priceCents: Int): Int = (priceCents / centsPerPulse.coerceAtLeast(1)).coerceAtLeast(1)
+    fun pulsesFor(priceCents: Int): Int = (priceCents / centsPerPulse.coerceAtLeast(1) + pulseAdjust).coerceAtLeast(1)
 }
 
 /**
@@ -78,6 +84,7 @@ class OutputSettingsStore(context: Context) {
         voltage = prefs.getInt(prefix + KEY_VOLTAGE, d.voltage),
         centsPerPulse = prefs.getInt(prefix + KEY_CENTS, d.centsPerPulse),
         pulseWidthMs = prefs.getLong(prefix + KEY_WIDTH, d.pulseWidthMs),
+        pulseAdjust = prefs.getInt(prefix + KEY_ADJUST, d.pulseAdjust),
     )
 
     private fun save(prefix: String, s: OutputSettings) {
@@ -87,6 +94,7 @@ class OutputSettingsStore(context: Context) {
             .putInt(prefix + KEY_VOLTAGE, s.voltage)
             .putInt(prefix + KEY_CENTS, s.centsPerPulse)
             .putLong(prefix + KEY_WIDTH, s.pulseWidthMs)
+            .putInt(prefix + KEY_ADJUST, s.pulseAdjust)
             .apply()
     }
 
@@ -99,6 +107,7 @@ class OutputSettingsStore(context: Context) {
         const val KEY_VOLTAGE = "voltage"
         const val KEY_CENTS = "cents_per_pulse"
         const val KEY_WIDTH = "pulse_width_ms"
+        const val KEY_ADJUST = "pulse_adjust"
     }
 }
 
@@ -111,17 +120,20 @@ class ConfigurableOutput(
     private val settings: () -> OutputSettings,
 ) : TimerOutput {
 
-    override suspend fun start(durationMs: Long, priceCents: Int): Boolean {
+    override suspend fun start(durationMs: Long, priceCents: Int, onPulse: (Int, Int) -> Unit): Boolean {
         val s = settings()
         return when (s.mode) {
             OutputMode.RELAY_HOLD -> gpio.holdRelayOutput(s.port, durationMs)
             OutputMode.LEVEL_HOLD -> gpio.triggerLogicPulse(s.port, s.voltage, durationMs, 100)
             OutputMode.COIN_PULSES -> {
                 val n = s.pulsesFor(priceCents)
-                Log.i(TAG, "Coin pulses: $n x ${s.pulseWidthMs}ms for $priceCents cents on port ${s.port}")
+                Log.i(TAG, "Coin pulses: $n x ${s.pulseWidthMs}ms for $priceCents cents (adjust ${s.pulseAdjust}) on port ${s.port}")
                 // One pulse train at a time across both bays: each pulse is a
                 // blocking SDK call on the same Digit IO board.
-                pulseLock.withLock { (1..n).all { gpio.triggerLogicPulse(s.port, s.voltage, s.pulseWidthMs, s.pulseWidthMs) } }
+                onPulse(0, n)
+                pulseLock.withLock {
+                    (1..n).all { i -> gpio.triggerLogicPulse(s.port, s.voltage, s.pulseWidthMs, s.pulseWidthMs).also { if (it) onPulse(i, n) } }
+                }
             }
         }
     }

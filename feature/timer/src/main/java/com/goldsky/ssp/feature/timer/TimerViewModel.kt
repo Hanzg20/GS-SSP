@@ -68,6 +68,8 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
          * why the customer is back here (no code read, balance short, ...).
          */
         data class ChoosePay(val pkg: TimerPackage, val bay: Bay?, val notice: String? = null, val card: Boolean = true, val scan: Boolean = true) : Screen
+        /** Paid: the machine is being started (coin pulses going out, shown as they go). */
+        data class Starting(val pkg: TimerPackage, val bay: Bay?) : Screen
         /** The scanner is open for a code that pays for [pkg] (the camera page covers ours). */
         data class ScanToPay(val pkg: TimerPackage, val bay: Bay?) : Screen
     }
@@ -97,6 +99,8 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         val dual: Boolean = false,
         /** Dual-bay: the sides currently running. */
         val bays: Map<Bay, BayRun> = emptyMap(),
+        /** Pulse trains in progress, by unit code ("" on a single-unit terminal). */
+        val pulses: Map<String, PulseTrain> = emptyMap(),
         /** Short customer message (scan result, code not valid here, ...). */
         val notice: String? = null,
     )
@@ -109,6 +113,9 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     data class BayRun(val endsAt: Long, val totalMs: Long) {
         fun remaining(now: Long) = (endsAt - now).coerceAtLeast(0)
     }
+
+    /** Coin pulses being sent to a unit right now: [sent] of [total]. */
+    data class PulseTrain(val sent: Int, val total: Int)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -211,7 +218,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             PaymentMethodMode.CARD_ONLY -> payByCard(pkg, side)
             PaymentMethodMode.SCAN_ONLY -> {
                 _state.update { it.copy(screen = Screen.ScanToPay(pkg, side)) }
-                TtsManager.speakRepeated(str(com.goldsky.ssp.core.ui.R.string.tts_scan_code_prompt), times = 1)
+                TtsManager.speakRepeated(str(com.goldsky.ssp.core.ui.R.string.tts_scan_code_prompt))
                 scanRequests.tryEmit(Unit)
             }
             else -> showChoosePay(pkg, side, null)
@@ -248,7 +255,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         returnHomeJob?.cancel()
         TtsManager.stop()
         _state.update { it.copy(screen = Screen.ScanToPay(c.pkg, c.bay)) }
-        TtsManager.speakRepeated(str(com.goldsky.ssp.core.ui.R.string.tts_scan_code_prompt), times = 1)
+        TtsManager.speakRepeated(str(com.goldsky.ssp.core.ui.R.string.tts_scan_code_prompt))
         scanRequests.tryEmit(Unit)
     }
 
@@ -308,7 +315,10 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 uid == null || card == null -> back("Member code not recognized.")
                 !card.is_active -> back("This VIP card is deactivated.")
                 card.balance_cents < sc.pkg.priceCents -> back("Insufficient VIP balance: ${dollars(card.balance_cents)}. Please pay by card.")
-                else -> _state.update { it.copy(screen = Screen.Confirm(sc.pkg, sc.bay, Pending.Vip(uid, code.uppercase(), card.balance_cents), 0)) }
+                else -> {
+                    _state.update { it.copy(screen = Screen.Confirm(sc.pkg, sc.bay, Pending.Vip(uid, code.uppercase(), card.balance_cents), 0)) }
+                    TtsManager.speakRepeated("Pay ${dollars(sc.pkg.priceCents)} from your VIP balance? Tap Confirm.")
+                }
             }
             return
         }
@@ -322,7 +332,11 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             }
             else -> {
                 val coupon = Pending.Coupon(code, peek.type, peek.value, peek.applicableProductId, peek.expiresAt)
-                _state.update { it.copy(screen = Screen.Confirm(sc.pkg, sc.bay, coupon, couponPrice(sc.pkg.priceCents, coupon))) }
+                val charge = couponPrice(sc.pkg.priceCents, coupon)
+                _state.update { it.copy(screen = Screen.Confirm(sc.pkg, sc.bay, coupon, charge)) }
+                TtsManager.speakRepeated(
+                    if (charge <= 0) "Coupon accepted. Tap Confirm to start." else "Coupon accepted. Tap Confirm, then pay ${dollars(charge)} by card."
+                )
             }
         }
     }
@@ -340,7 +354,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         val chargeCents = testCents ?: amountCents
         val ecrRefNum = (if (testCents != null) TestSale.REF_PREFIX else "TIMER_") + System.currentTimeMillis()
         _state.update { it.copy(screen = Screen.Paying(pkg, "Tap, insert or swipe your card", side, chargeCents)) }
-        TtsManager.speak("Please present your card")
+        TtsManager.speakRepeated("Please tap, insert or swipe your card.")
         viewModelScope.launch {
             // PENDING before the bank call, same as wash: a crash between
             // approval and our own write must never leave an untracked charge.
@@ -382,6 +396,13 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     if (_state.value.screen is Screen.Paying) {
                         val reason = DeclineReason.classify(errorMsg, isHardwareFault)
                         showThenHome(Screen.Declined(reason), if (reason == DeclineReason.UNAVAILABLE) 8000 else 4000)
+                        TtsManager.speakRepeated(
+                            when (reason) {
+                                DeclineReason.CANCELLED -> "Payment cancelled. No charge was made."
+                                DeclineReason.UNAVAILABLE -> "Card payment is unavailable. Please contact the attendant."
+                                DeclineReason.DECLINED -> "Payment not completed. No charge was made."
+                            }
+                        )
                     }
                 }
 
@@ -415,12 +436,15 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun cancelConfirm() {
-        if (_state.value.screen is Screen.Confirm) _state.update { it.copy(screen = Screen.Home) }
+        if (_state.value.screen !is Screen.Confirm) return
+        TtsManager.stop()
+        _state.update { it.copy(screen = Screen.Home) }
     }
 
     /** The customer confirmed the Confirm screen. */
     fun confirm() {
         val c = _state.value.screen as? Screen.Confirm ?: return
+        TtsManager.stop()
         when (val pending = c.pending) {
             is Pending.Vip -> payWithVip(c.pkg, c.bay, pending)
             is Pending.Coupon ->
@@ -502,7 +526,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (started) {
             TransactionRepository.updateHardwareStatus(getApplication(), ref, "ACK_RECEIVED")
-            TtsManager.speak("$spoken Your ${pkg.name.lowercase()} is on.")
+            TtsManager.speakRepeated(if (bay != null) "$spoken ${pkg.name} ${bay.number} is on." else "$spoken Your ${pkg.name.lowercase()} is on.")
         } else {
             TransactionRepository.updateHardwareStatus(getApplication(), ref, "HARDWARE_ERROR")
             DiagnosticManager.reportError(
@@ -592,7 +616,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             if (startBay(bay, pkg, ecrRefNum)) {
                 if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "ACK_RECEIVED")
                 showThenHome(Screen.BayStarted(bay, pkg, extended), BAY_STARTED_MS)
-                TtsManager.speak(
+                TtsManager.speakRepeated(
                     if (extended) "Payment approved. Time added to ${pkg.name} ${bay.number}."
                     else "Payment approved. ${pkg.name} ${bay.number} is on."
                 )
@@ -607,7 +631,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         val issuedAt = SystemClock.elapsedRealtime()
         if (startOutput(pkg.durationMs, pkg.priceCents, ecrRefNum, pkg.productId)) {
             runSession(pkg, pkg.durationMs - (SystemClock.elapsedRealtime() - issuedAt), pkg.durationMs)
-            TtsManager.speak("Payment approved. Your ${pkg.name.lowercase()} is on.")
+            TtsManager.speakRepeated("Payment approved. Your ${pkg.name.lowercase()} is on.")
             // startOutput only returns true once the board accepted the hold
             // (not rejected within the confirm window) -- the same evidence
             // wash's DigitIo "Confirmed" rests on. COMMAND_SENT_UNCONFIRMED
@@ -626,12 +650,13 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
      * rejection; still running after that means the board accepted it.
      */
     private suspend fun startOutput(durationMs: Long, priceCents: Int, ecrRefNum: String, productId: String): Boolean {
+        _state.value.packages.find { it.productId == productId }?.let { pkg -> _state.update { it.copy(screen = Screen.Starting(pkg, null)) } }
         store.save(SessionStore.Active(ecrRefNum, productId, System.currentTimeMillis() + durationMs, durationMs))
         val out = output
         holdRejected = false
         var confirmed = false
         val hold = viewModelScope.launch(Dispatchers.IO) {
-            val ok = out.start(durationMs, priceCents)
+            val ok = try { out.start(durationMs, priceCents) { sent, total -> showPulses("", sent, total) } } finally { endPulses("") }
             if (!ok) {
                 holdRejected = true
                 // Failed after the confirm window (e.g. pulse 3 of 8 in coin
@@ -661,14 +686,14 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 if (left <= 0) break
                 if (!warned && left <= WARN_BEFORE_END_MS) {
                     warned = true
-                    TtsManager.speak("Thirty seconds remaining")
+                    TtsManager.speakRepeated("Thirty seconds left. Please finish up.")
                 }
                 delay(250)
             }
             // Second safeguard behind the hardware timer.
             withContext(Dispatchers.IO) { output.stop() }
             store.clear()
-            TtsManager.speak("Time is up. Thank you!")
+            TtsManager.speakRepeated("Time is up. Thank you!")
             showThenHome(Screen.Finished(pkg), 5000)
         }
     }
@@ -677,7 +702,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun onStartFailed(pkg: TimerPackage, ecrRefNum: String, bankRef: String, demo: Boolean, chargeCents: Int = pkg.priceCents) {
         val autoReverse = com.goldsky.ssp.payment.RefundPolicy.AUTO_REVERSAL
         _state.update { it.copy(screen = Screen.StartFailed(refunded = if (autoReverse) null else false)) }
-        TtsManager.speak(
+        TtsManager.speakRepeated(
             if (autoReverse) "Sorry, the machine could not start. Your payment is being reversed."
             else "Sorry, the machine could not start. Please contact the attendant."
         )
@@ -761,12 +786,18 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         val current = _state.value.bays[bay]
         val totalMs = (current?.remaining(now) ?: 0L) + pkg.durationMs
         bayStore.save(SessionStore.Active(ecrRefNum, pkg.productId, System.currentTimeMillis() + totalMs, totalMs))
+        _state.update { it.copy(screen = Screen.Starting(pkg, bay)) }
 
         val out = bayOutput(bay)
         val rejected = AtomicBoolean(false)
         val confirmed = AtomicBoolean(false)
         val pulses = viewModelScope.launch(Dispatchers.IO) {
-            if (!out.start(pkg.durationMs, pkg.priceCents)) {
+            val ok = try {
+                out.start(pkg.durationMs, pkg.priceCents) { sent, total -> showPulses(bay.code, sent, total) }
+            } finally {
+                endPulses(bay.code)
+            }
+            if (!ok) {
                 rejected.set(true)
                 if (confirmed.get()) DiagnosticManager.reportError(deviceSn, "TIMER_OUTPUT_PARTIAL", severity = "CRITICAL", trace = "$ecrRefNum bay=${bay.code} ${pkg.priceCents} cents")
             }
@@ -782,16 +813,44 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
+    /** Pulse animation state for [key]. Called from the IO pulse coroutine. */
+    private fun showPulses(key: String, sent: Int, total: Int) = _state.update {
+        it.copy(pulses = it.pulses + (key to PulseTrain(sent, total)))
+    }
+
+    /**
+     * The train is over: its last state (all lit, 0 left) stays a moment, so even a 1-pulse
+     * train (gone in half a second) is seen, then the time countdown takes over.
+     */
+    private fun endPulses(key: String) {
+        val last = _state.value.pulses[key] ?: return
+        viewModelScope.launch {
+            delay(PULSES_DONE_HOLD_MS)
+            _state.update { if (it.pulses[key] == last) it.copy(pulses = it.pulses - key) else it }
+        }
+    }
+
     /** Clears sides whose time ran out. The machine stops itself; this is display only. */
     private fun expireBays() {
         val now = SystemClock.elapsedRealtime()
+        val name = _state.value.packages.firstOrNull()?.name ?: "Number"
+        // Last 30 s of a unit: say it once per run (time added after that re-arms it).
+        _state.value.bays.forEach { (bay, run) ->
+            val left = run.remaining(now)
+            if (left in 1..WARN_BEFORE_END_MS) {
+                if (warnedBays.add(bay)) TtsManager.speakRepeated("Thirty seconds left on $name ${bay.number}.")
+            } else if (left > WARN_BEFORE_END_MS) {
+                warnedBays.remove(bay)
+            }
+        }
         val done = _state.value.bays.filterValues { it.remaining(now) <= 0 }.keys
         if (done.isEmpty()) return
-        done.forEach { bayStores.getValue(it).clear() }
+        done.forEach { bayStores.getValue(it).clear(); warnedBays.remove(it) }
         _state.update { it.copy(bays = it.bays - done) }
-        val name = _state.value.packages.firstOrNull()?.name ?: "Number"
-        done.forEach { TtsManager.speak("Time is up on $name ${it.number}. Thank you!") }
+        done.forEach { TtsManager.speakRepeated("Time is up on $name ${it.number}. Thank you!") }
     }
+
+    private val warnedBays = mutableSetOf<Bay>()
 
     /**
      * App restarted mid-session: put the countdowns back. Nothing is sent to
@@ -819,6 +878,9 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         returnHomeJob?.cancel()
         returnHomeJob = viewModelScope.launch {
             delay(afterMs)
+            // A prompt repeats only while its page is up (owner, 2026-10-26: "Vacuum 2 is
+            // on" went on over Home); the sentence being said finishes.
+            TtsManager.cancelRepeat()
             _state.update { it.copy(screen = Screen.Home) }
             refreshHealth()
         }
@@ -854,6 +916,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         private const val BAY_STARTED_MS = 4_000L
         private const val PENDING_MS = 90_000L
         private const val CHOICE_MS = 60_000L
+        private const val PULSES_DONE_HOLD_MS = 1_000L
         private const val NOTICE_MS = 5_000L
     }
 }

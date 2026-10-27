@@ -32,6 +32,7 @@ import androidx.compose.foundation.BorderStroke
 import com.goldsky.ssp.core.ui.R as UiR
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -98,14 +99,16 @@ fun TimerApp(
                 is Screen.Confirm -> ConfirmScreen(screen, onConfirm, onCancelConfirm)
                 is Screen.ChoosePay -> ChoosePayScreen(screen, onChoiceCard, onChoiceScan, onChoiceCancel)
                 is Screen.ScanToPay -> ScanToPayScreen(screen, onScanBack)
+                is Screen.Starting -> StartingScreen(screen, s.pulses[screen.bay?.code ?: ""])
                 is Screen.Working -> WorkingScreen(screen.message)
                 is Screen.Paying -> PayingScreen(screen, s.demoMode, onCancelPayment)
                 is Screen.BayStarted -> ResultScreen(
                     Emerald, "✓",
                     if (screen.extended) "${screen.pkg.name} ${screen.bay.number}: time added" else "${screen.pkg.name} ${screen.bay.number} is on",
                     "+${formatDuration(screen.pkg.durationSec)}",
+                    train = s.pulses[screen.bay.code],
                 )
-                is Screen.Running -> RunningScreen(screen, s.now)
+                is Screen.Running -> RunningScreen(screen, s.now, s.pulses[""])
                 is Screen.Finished -> ResultScreen(Emerald, "✓", "Time's up", "")
                 is Screen.Declined -> when (screen.reason) {
                     DeclineReason.CANCELLED -> ResultScreen(TextLo, "✕", "Payment cancelled", "No charge was made.")
@@ -291,7 +294,7 @@ private fun DualHomeScreen(
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     // Unit 2 stands to the left of the terminal, unit 1 to the right (owner, 2026-10-26).
                     listOf(Bay.TWO, Bay.ONE).forEach { bay ->
-                        BayColumn(bay, productName, s.bays[bay], s.now, s.packages, enabled = !s.locked, modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        BayColumn(bay, productName, s.bays[bay], s.pulses[bay.code], s.now, s.packages, enabled = !s.locked, modifier = Modifier.weight(1f).fillMaxHeight()) {
                             onSelect(it, bay)
                         }
                     }
@@ -319,6 +322,7 @@ private fun BayColumn(
     bay: Bay,
     productName: String,
     run: TimerViewModel.BayRun?,
+    train: TimerViewModel.PulseTrain?,
     now: Long,
     packages: List<TimerPackage>,
     enabled: Boolean,
@@ -344,7 +348,13 @@ private fun BayColumn(
     ) {
         BayTitle(bay, productName)
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            BayRing(running, remaining, run?.totalMs ?: 0L, Color.White)
+            if (train != null) {
+                BoxWithConstraints(contentAlignment = Alignment.Center) {
+                    PulseRing(train, Color.White, Color.Black.copy(alpha = 0.22f), Color.White, minOf(maxWidth, maxHeight, 150.dp), 44)
+                }
+            } else {
+                BayRing(running, remaining, run?.totalMs ?: 0L, Color.White)
+            }
         }
         packages.take(3).forEach { pkg ->
             Row(
@@ -584,6 +594,21 @@ private fun PayChoice(title: String, sub: String, fill: Color, text: Color, onCl
     }
 }
 
+/** Paid, machine starting: the pulse ring while coin pulses go out (a spinner for hold modes). */
+@Composable
+private fun StartingScreen(st: Screen.Starting, train: TimerViewModel.PulseTrain?) {
+    Column(
+        Modifier.fillMaxSize().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+    ) {
+        st.bay?.let { BayTag(it, st.pkg.name); Spacer(Modifier.height(14.dp)) }
+        if (train != null) PulseRing(train, Emerald, SurfaceHi, Ink, 220.dp, 72)
+        else CircularProgressIndicator(color = Ink, modifier = Modifier.size(56.dp))
+        Spacer(Modifier.height(14.dp))
+        Text("Starting…", color = TextHi, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
 /** Behind the scanner's camera page, and what's left when the customer backs out of it. */
 @Composable
 private fun ScanToPayScreen(sc: Screen.ScanToPay, onBack: () -> Unit) {
@@ -603,7 +628,7 @@ private fun ScanToPayScreen(sc: Screen.ScanToPay, onBack: () -> Unit) {
 // ---- Running ------------------------------------------------------------
 
 @Composable
-private fun RunningScreen(r: Screen.Running, now: Long) {
+private fun RunningScreen(r: Screen.Running, now: Long, train: TimerViewModel.PulseTrain? = null) {
     val remaining = (r.totalMs - (now - r.startedAt)).coerceAtLeast(0)
     val fraction = if (r.totalMs <= 0) 0f else remaining.toFloat() / r.totalMs
     val endingSoon = remaining <= 30_000
@@ -616,7 +641,9 @@ private fun RunningScreen(r: Screen.Running, now: Long) {
     ) {
         Text("${r.pkg.name.uppercase()} ON", color = if (endingSoon) AmberText else Emerald, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.weight(1f))
-        Box(Modifier.size(300.dp), contentAlignment = Alignment.Center) {
+        if (train != null) {
+            PulseRing(train, Emerald, SurfaceHi, Ink, 300.dp, 88)
+        } else Box(Modifier.size(300.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize().padding(10.dp)) {
                 val stroke = 22.dp.toPx()
                 drawArc(SurfaceHi, 0f, 360f, false, style = Stroke(stroke))
@@ -635,15 +662,64 @@ private fun RunningScreen(r: Screen.Running, now: Long) {
     }
 }
 
+/**
+ * Coin pulses going out to the machine: one ring segment per pulse, lit as each is sent,
+ * the one in flight blinking, a scan glint circling inside; in the middle the pulses still
+ * to send, counting down. Replaces the time countdown until the train is done.
+ */
+@Composable
+private fun PulseRing(
+    train: TimerViewModel.PulseTrain, lit: Color, track: Color, text: Color,
+    ringSize: androidx.compose.ui.unit.Dp, numberSp: Int,
+) {
+    val t = rememberInfiniteTransition(label = "pulseRing")
+    val sweep by t.animateFloat(0f, 360f, infiniteRepeatable(tween(1200, easing = LinearEasing)), label = "sweep")
+    val blink by t.animateFloat(0.2f, 1f, infiniteRepeatable(tween(260), RepeatMode.Reverse), label = "blink")
+    val left = (train.total - train.sent).coerceAtLeast(0)
+    Box(Modifier.size(ringSize), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize().padding(4.dp)) {
+            val n = train.total.coerceAtLeast(1)
+            val stroke = size.minDimension * 0.08f
+            val step = 360f / n
+            val gap = if (n > 1) minOf(8f, step * 0.3f) else 0f
+            val inset = stroke / 2
+            val arcSize = Size(size.width - stroke, size.height - stroke)
+            for (i in 0 until n) {
+                val c = when {
+                    i < train.sent -> lit
+                    i == train.sent -> lit.copy(alpha = blink)
+                    else -> track
+                }
+                drawArc(c, -90f + i * step + gap / 2, step - gap, false, topLeft = Offset(inset, inset), size = arcSize, style = Stroke(stroke))
+            }
+            // Scan glint on an inner track.
+            val r = stroke * 2.1f
+            rotate(sweep) {
+                drawArc(
+                    lit.copy(alpha = 0.45f), -90f, 70f, false,
+                    topLeft = Offset(r, r), size = Size(size.width - 2 * r, size.height - 2 * r),
+                    style = Stroke(stroke * 0.3f, cap = StrokeCap.Round),
+                )
+            }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("ϟ", color = lit.copy(alpha = blink), fontSize = (numberSp * 0.4f).sp, fontWeight = FontWeight.Bold)
+            Text("$left", color = text, fontSize = numberSp.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+
 // ---- Results --------------------------------------------------------------
 
 @Composable
-private fun ResultScreen(accent: Color, glyph: String, title: String, body: String) {
+private fun ResultScreen(accent: Color, glyph: String, title: String, body: String, train: TimerViewModel.PulseTrain? = null) {
     Column(
         Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
     ) {
-        Box(Modifier.size(110.dp).clip(CircleShape).background(accent.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+        if (train != null) {
+            PulseRing(train, accent, SurfaceHi, Ink, 170.dp, 60)
+        } else Box(Modifier.size(110.dp).clip(CircleShape).background(accent.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
             Text(glyph, color = accent, fontSize = 56.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(20.dp))
@@ -817,7 +893,7 @@ private fun OutputSettingsPanel(s: OutputSettings, onChange: (OutputSettings) ->
                 Text("脉宽", color = TechTextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
                 listOf(50L, 100L, 200L, 500L).forEach { w -> Pick("${w}ms", s.pulseWidthMs == w) { onChange(s.copy(pulseWidthMs = w)) } }
             }
-            Text("例：$2 套餐 → ${s.pulsesFor(200)} 个脉冲", color = TechTextLo, fontSize = 10.sp)
+            PulseAdjustRow(s, onChange)
         }
     }
 }
@@ -853,9 +929,36 @@ private fun BayOutputPanel(bay: Bay, s: OutputSettings, onChange: (OutputSetting
             Text("脉宽", color = TechTextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
             listOf(50L, 100L, 200L, 500L).forEach { w -> Pick("${w}ms", s.pulseWidthMs == w) { onChange(s.copy(pulseWidthMs = w)) } }
         }
-        Text("例：$2 套餐 → ${s.pulsesFor(200)} 个脉冲", color = TechTextLo, fontSize = 10.sp)
+        PulseAdjustRow(s, onChange)
     }
 }
+
+/**
+ * Pulses added to / taken from every purchase, so the machine's own timer gives what the
+ * packages say (measured on site). Shows what $2 / $3 send with it.
+ */
+@Composable
+private fun PulseAdjustRow(s: OutputSettings, onChange: (OutputSettings) -> Unit) {
+    @Composable
+    fun Step(label: String, enabled: Boolean, onClick: () -> Unit) = OutlinedButton(
+        onClick = onClick, enabled = enabled,
+        contentPadding = PaddingValues(0.dp), modifier = Modifier.size(width = 40.dp, height = 32.dp),
+    ) { Text(label, color = TechText, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("脉冲增减", color = TechTextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 6.dp))
+        Step("−", s.pulseAdjust > -PULSE_ADJUST_MAX) { onChange(s.copy(pulseAdjust = s.pulseAdjust - 1)) }
+        Text(
+            if (s.pulseAdjust > 0) "+${s.pulseAdjust}" else "${s.pulseAdjust}",
+            color = if (s.pulseAdjust == 0) TechText else Amber, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center, modifier = Modifier.width(44.dp),
+        )
+        Step("+", s.pulseAdjust < PULSE_ADJUST_MAX) { onChange(s.copy(pulseAdjust = s.pulseAdjust + 1)) }
+    }
+    Text("每次购买实际发：$2 → ${s.pulsesFor(200)} 个脉冲，$3 → ${s.pulsesFor(300)} 个（最少 1 个）", color = TechTextLo, fontSize = 10.sp)
+}
+
+private const val PULSE_ADJUST_MAX = 20
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

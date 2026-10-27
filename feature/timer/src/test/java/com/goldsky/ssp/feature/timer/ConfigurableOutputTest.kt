@@ -27,6 +27,14 @@ class ConfigurableOutputTest {
     }
 
     @Test
+    fun pulseAdjustAddsOrTakesFromEveryPurchase() {
+        assertEquals(6, OutputSettings(centsPerPulse = 25, pulseAdjust = -2).pulsesFor(200))
+        assertEquals(10, OutputSettings(centsPerPulse = 25, pulseAdjust = -2).pulsesFor(300))
+        assertEquals(5, OutputSettings(centsPerPulse = 50, pulseAdjust = 1).pulsesFor(200))
+        assertEquals(1, OutputSettings(centsPerPulse = 100, pulseAdjust = -5).pulsesFor(200)) // still never zero
+    }
+
+    @Test
     fun coinModeSendsOnePulsePerUnitAndNothingOnResume() = runBlocking {
         val gpio = FakeGpio()
         val out = ConfigurableOutput(gpio) { OutputSettings(mode = OutputMode.COIN_PULSES, centsPerPulse = 100, pulseWidthMs = 1) }

@@ -13,8 +13,10 @@ interface TimerOutput {
      * Switches the output on for [durationMs]. May block for the whole
      * duration on some vendors (see IGpioProvider.holdRelayOutput) -- call off
      * the main thread. Returns false only on a definite hardware rejection.
+     * [onPulse] (coin pulses only): (sent, total) before the first pulse and after each one,
+     * for the screen's pulse animation.
      */
-    suspend fun start(durationMs: Long, priceCents: Int): Boolean
+    suspend fun start(durationMs: Long, priceCents: Int, onPulse: (Int, Int) -> Unit = { _, _ -> }): Boolean
 
     /** Session interrupted by a restart: re-establish the remaining time. */
     suspend fun resume(remainingMs: Long): Boolean = start(remainingMs, 0)
@@ -30,12 +32,21 @@ interface TimerOutput {
  * piece to swap.
  */
 class RelayHoldOutput(private val gpio: IGpioProvider, private val port: Int = 0) : TimerOutput {
-    override suspend fun start(durationMs: Long, priceCents: Int) = gpio.holdRelayOutput(port, durationMs)
+    override suspend fun start(durationMs: Long, priceCents: Int, onPulse: (Int, Int) -> Unit) = gpio.holdRelayOutput(port, durationMs)
     override fun stop() { gpio.releaseHold(port) }
 }
 
-/** Technician demo mode: runs the customer flow end to end, drives nothing. */
+/**
+ * Technician demo mode: runs the customer flow end to end, drives nothing. Plays a short
+ * pulse train (one per 50c, 2..12) so the pulse animation can be seen without a machine.
+ */
 object DemoOutput : TimerOutput {
-    override suspend fun start(durationMs: Long, priceCents: Int) = true
+    override suspend fun start(durationMs: Long, priceCents: Int, onPulse: (Int, Int) -> Unit): Boolean {
+        if (priceCents <= 0) return true
+        val n = (priceCents / 50).coerceIn(2, 12)
+        onPulse(0, n)
+        for (i in 1..n) { kotlinx.coroutines.delay(400); onPulse(i, n) }
+        return true
+    }
     override fun stop() {}
 }
