@@ -949,7 +949,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         private const val MIN_RESUME_MS = 5_000L
         private const val BAY_STARTED_MS = 4_000L
         private const val PENDING_MS = 90_000L
-        private const val CHOICE_MS = 60_000L
+        private const val CHOICE_MS = 30_000L
         internal const val AUTO_CARD_MS = 4_000L
         private const val PULSES_DONE_HOLD_MS = 1_000L
         private const val NOTICE_MS = 5_000L

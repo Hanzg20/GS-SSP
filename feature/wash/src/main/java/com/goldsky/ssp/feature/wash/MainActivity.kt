@@ -58,6 +58,8 @@ class MainActivity : BaseAdActivity() {
     companion object {
         // Payment page: the card sale starts by itself after this long (see showPaymentDialog).
         private const val AUTO_CARD_MS = 4_000L
+        // Payment page left alone (e.g. back from a timed-out card sale): Home after this long.
+        private const val CHOICE_IDLE_MS = 30_000L
         // Only this vertical's packages -- the org's config also carries other
         // terminals' products (e.g. Aegis Timer's vacuum packages), see forVertical.
         private const val WASH_VERTICAL = "WASH"
@@ -1049,6 +1051,14 @@ class MainActivity : BaseAdActivity() {
             resetAdTimer()
         }
         
+        // Nobody chose: back to Home, as Cancel does (the dismiss listener clears this).
+        autoHandler.postDelayed({
+            Log.i("SSP_TEST", "Payment page left alone -- back to Home")
+            TtsManager.stop()
+            selectionDialog.dismiss()
+            resetAdTimer()
+        }, CHOICE_IDLE_MS)
+
         selectionDialog.setOnShowListener { applyKioskWindowFlags() }
         selectionDialog.show()
     }

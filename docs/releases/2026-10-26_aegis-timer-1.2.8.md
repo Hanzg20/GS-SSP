@@ -30,7 +30,7 @@ opens the camera; a VIP code or coupon goes to the existing Confirm page (nothin
 Confirm). No code read, camera down, balance short, coupon for another package, or a VIP / coupon
 refused after Confirm: back to the payment page with the reason in red, the card one tap away
 (before, a refused VIP went to Home with a 5 s line). KioskSettings.payment_method_mode CARD_ONLY
-skips the page straight to the card, SCAN_ONLY straight to the camera. Untouched for 60 s: Home.
+skips the page straight to the card, SCAN_ONLY straight to the camera. Untouched for 30 s: Home (60 s until 2026-10-27).
 Home has no "Coupon / VIP code" button any more (owner): codes are scanned only on the payment
 page, after the package is chosen. The Home-scan path (code waiting for a package, pulsing price
 buttons, banner) is gone with it.
@@ -86,6 +86,11 @@ vacuum 1 $2 -- hint, countdown, card screen after 4 s, back arrow -> payment pag
 cancel line (CARD_1793134280013 / TIMER_1793134728082 CANCELLED); Pay by Card again started a
 new sale at once. A sale while the other app's sale is still open on PAYWizard gets "system is
 busy" (-11) -- only on a terminal with both apps (255).
+
+
+## Payment page left alone goes Home after 30 s (owner, 2026-10-27)
+After the card screen timed out the customer is back on the payment page; untouched it went Home
+after 60 s, now 30 s (the same as Wash 1.1.9, whose page had no limit before).
 
 ## Install
 254 via TMS (`aegis-timer-1.2.8-signed.apk`). After installing, on the technician page: set
