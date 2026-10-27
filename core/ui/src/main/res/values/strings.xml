@@ -28,6 +28,11 @@
     <string name="tts_choose_payment">Tap Card to pay by card, or tap Scan to use a coupon or VIP code.</string>
     <string name="btn_pay_card">Pay by Card</string>
     <string name="btn_pay_card_desc">Tap, Insert or Swipe</string>
+    <!-- Payment page, card starting by itself (customers tap the card right after choosing). -->
+    <string name="pay_card_auto_countdown">Card reader on in %1$d…</string>
+    <string name="pay_choose_or_card">Please choose how to pay — otherwise card payment starts</string>
+    <string name="tts_card_auto">Please choose how to pay. Otherwise, card payment starts.</string>
+    <string name="pay_cancelled_notice">Payment cancelled. No charge was made.</string>
     <string name="btn_pay_scan">Scan to Pay</string>
     <string name="btn_pay_scan_desc">Mobile Wallets / QR Code</string>
     <string name="btn_pay_code">Scan Coupon / VIP</string>

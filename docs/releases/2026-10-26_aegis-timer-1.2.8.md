@@ -2,7 +2,8 @@
 
 1.2.7 is what 254 runs since 2026-10-25 night (AIDL card payments). Everything below came after
 it (2026-10-26) -- first held as "still 1.2.7", renumbered 1.2.8 by the owner on 2026-10-27; the
-store's 1.2.7 APK was rebuilt from f35791d, the code 254 actually has. Wash unchanged (1.1.8).
+store's 1.2.7 APK was rebuilt from f35791d, the code 254 actually has. Wash: 1.1.9 (payment page
+countdown, below; `2026-10-27_aegis-wash-1.1.9.md`).
 
 ## Timer: $0.50 per pulse (owner, 2026-10-26)
 Technician page "每脉冲" now offers $0.25 / $0.50 / $1.00 / $2.00 (single and dual-bay panels). At
@@ -67,6 +68,24 @@ Checked on 255, 2026-10-26.
 `docs/migrations/2026-10-26_vip_lookup_org_scoped.sql`, applied to prod: a member code / card of
 another organization is "not found" -- no balance shown -- instead of showing the balance and
 failing only at the deduction. No app change.
+
+## Payment page: card starts by itself after 4 s (owner, 2026-10-27)
+Customers used to tap their card right after choosing a package, while the payment page was
+still waiting for a choice and the reader was off. Now, the first time on the page (both
+methods allowed): a dark line "Please choose how to pay — otherwise card payment starts", the
+card button blinking "Card reader on in 4… 3…" with a bar running out, spoken once "Please
+choose how to pay. Otherwise, card payment starts." After 4 s the card sale starts (PAYWizard
+asks for the card). Scan / Cancel / Pay by Card stop the countdown. A sale started this way and
+cancelled on the card screen comes back to the payment page ("Payment cancelled. No charge was
+made.", no countdown) -- the customer may have wanted Scan; a cancel after tapping Pay by Card
+still goes Home. Coming back with a reason (no code read, declined, ...) never counts down.
+Single-method stores (payment_method_mode CARD_ONLY / SCAN_ONLY) are unchanged.
+
+Checked on 255, 2026-10-27 (Nuvei, no card tapped, nothing charged): Wash $4 and Timer
+vacuum 1 $2 -- hint, countdown, card screen after 4 s, back arrow -> payment page with the
+cancel line (CARD_1793134280013 / TIMER_1793134728082 CANCELLED); Pay by Card again started a
+new sale at once. A sale while the other app's sale is still open on PAYWizard gets "system is
+busy" (-11) -- only on a terminal with both apps (255).
 
 ## Install
 254 via TMS (`aegis-timer-1.2.8-signed.apk`). After installing, on the technician page: set

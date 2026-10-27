@@ -65,9 +65,10 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         data class Working(val message: String) : Screen
         /**
          * Wash's payment page: card, or scan a coupon / VIP code, for [pkg]. [notice] says
-         * why the customer is back here (no code read, balance short, ...).
+         * why the customer is back here (no code read, balance short, ...). [autoCardAt]: the
+         * card sale starts by itself at this SystemClock.elapsedRealtime() (0 = it doesn't).
          */
-        data class ChoosePay(val pkg: TimerPackage, val bay: Bay?, val notice: String? = null, val card: Boolean = true, val scan: Boolean = true) : Screen
+        data class ChoosePay(val pkg: TimerPackage, val bay: Bay?, val notice: String? = null, val card: Boolean = true, val scan: Boolean = true, val autoCardAt: Long = 0L) : Screen
         /** Paid: the machine is being started (coin pulses going out, shown as they go). */
         data class Starting(val pkg: TimerPackage, val bay: Bay?) : Screen
         /** The scanner is open for a code that pays for [pkg] (the camera page covers ours). */
@@ -132,6 +133,9 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingCardInfo: IPaymentProvider.CardInfo? = null
     private var sessionJob: Job? = null
     private var returnHomeJob: Job? = null
+    private var autoCardJob: Job? = null
+    /** The next card sale was started by the payment page's countdown, not a tap. */
+    private var cardAutoStarted = false
 
     private val output: TimerOutput get() = if (_state.value.demoMode) DemoOutput else realOutput
     private fun bayOutput(bay: Bay): TimerOutput = if (_state.value.demoMode) DemoOutput else realBayOutput(bay)
@@ -221,16 +225,36 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                 TtsManager.speakRepeated(str(com.goldsky.ssp.core.ui.R.string.tts_scan_code_prompt))
                 scanRequests.tryEmit(Unit)
             }
-            else -> showChoosePay(pkg, side, null)
+            else -> showChoosePay(pkg, side, null, autoCard = true)
         }
     }
 
-    private fun showChoosePay(pkg: TimerPackage, bay: Bay?, notice: String?) {
+    /**
+     * [autoCard] (first time on the page): customers used to tap their card right after
+     * choosing a package, while the reader was still off -- so the card sale starts by itself
+     * after [AUTO_CARD_MS], a blinking countdown on the card button; Scan stops it.
+     */
+    private fun showChoosePay(pkg: TimerPackage, bay: Bay?, notice: String?, autoCard: Boolean = false) {
         val mode = ConfigManager.getConfig()?.settings?.payment_method_mode ?: PaymentMethodMode.ALL
-        _state.update {
-            it.copy(screen = Screen.ChoosePay(pkg, bay, notice, card = mode != PaymentMethodMode.SCAN_ONLY, scan = mode != PaymentMethodMode.CARD_ONLY))
+        val card = mode != PaymentMethodMode.SCAN_ONLY
+        val scan = mode != PaymentMethodMode.CARD_ONLY
+        val auto = autoCard && card && notice == null
+        val page = Screen.ChoosePay(pkg, bay, notice, card, scan, if (auto) SystemClock.elapsedRealtime() + AUTO_CARD_MS else 0L)
+        _state.update { it.copy(screen = page) }
+        autoCardJob?.cancel()
+        if (auto) {
+            TtsManager.speak(str(com.goldsky.ssp.core.ui.R.string.tts_card_auto))
+            autoCardJob = viewModelScope.launch {
+                delay(AUTO_CARD_MS)
+                if (_state.value.screen !== page) return@launch
+                returnHomeJob?.cancel()
+                TtsManager.stop()
+                cardAutoStarted = true
+                payByCard(pkg, bay)
+            }
+        } else {
+            TtsManager.speakRepeated(notice ?: str(com.goldsky.ssp.core.ui.R.string.tts_choose_payment))
         }
-        TtsManager.speakRepeated(notice ?: str(com.goldsky.ssp.core.ui.R.string.tts_choose_payment))
         // Nobody chose: back to Home, like any other page left alone.
         returnHomeJob?.cancel()
         returnHomeJob = viewModelScope.launch {
@@ -244,6 +268,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     /** Payment page: "Pay by Card". */
     fun choiceCard() {
         val c = _state.value.screen as? Screen.ChoosePay ?: return
+        autoCardJob?.cancel()
         returnHomeJob?.cancel()
         TtsManager.stop()
         payByCard(c.pkg, c.bay)
@@ -252,6 +277,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     /** Payment page: "Scan Coupon / VIP". MainActivity opens the scanner on [scanRequests]. */
     fun choiceScan() {
         val c = _state.value.screen as? Screen.ChoosePay ?: return
+        autoCardJob?.cancel()
         returnHomeJob?.cancel()
         TtsManager.stop()
         _state.update { it.copy(screen = Screen.ScanToPay(c.pkg, c.bay)) }
@@ -263,6 +289,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     fun choiceCancel() {
         val s = _state.value.screen
         if (s !is Screen.ChoosePay && s !is Screen.ScanToPay) return
+        autoCardJob?.cancel()
         returnHomeJob?.cancel()
         TtsManager.stop()
         _state.update { it.copy(screen = Screen.Home) }
@@ -353,6 +380,9 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         val testCents = TestSale.consume()
         val chargeCents = testCents ?: amountCents
         val ecrRefNum = (if (testCents != null) TestSale.REF_PREFIX else "TIMER_") + System.currentTimeMillis()
+        // Started by the payment page's countdown: a cancel goes back to that page (the
+        // customer may have wanted Scan), not Home.
+        val auto = cardAutoStarted.also { cardAutoStarted = false }
         _state.update { it.copy(screen = Screen.Paying(pkg, "Tap, insert or swipe your card", side, chargeCents)) }
         TtsManager.speakRepeated("Please tap, insert or swipe your card.")
         viewModelScope.launch {
@@ -395,6 +425,10 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     Log.w(TAG, "Sale $ecrRefNum not completed: $errorMsg (hardwareFault=$isHardwareFault)")
                     if (_state.value.screen is Screen.Paying) {
                         val reason = DeclineReason.classify(errorMsg, isHardwareFault)
+                        if (auto && reason == DeclineReason.CANCELLED) {
+                            showChoosePay(pkg, side, str(com.goldsky.ssp.core.ui.R.string.pay_cancelled_notice))
+                            return
+                        }
                         showThenHome(Screen.Declined(reason), if (reason == DeclineReason.UNAVAILABLE) 8000 else 4000)
                         TtsManager.speakRepeated(
                             when (reason) {
@@ -916,6 +950,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         private const val BAY_STARTED_MS = 4_000L
         private const val PENDING_MS = 90_000L
         private const val CHOICE_MS = 60_000L
+        internal const val AUTO_CARD_MS = 4_000L
         private const val PULSES_DONE_HOLD_MS = 1_000L
         private const val NOTICE_MS = 5_000L
     }

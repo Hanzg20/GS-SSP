@@ -1,6 +1,7 @@
 package com.goldsky.ssp.feature.timer
 
 import com.goldsky.ssp.payment.hardware.DeclineReason
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
@@ -46,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.goldsky.ssp.feature.timer.TimerViewModel.Screen
+import kotlinx.coroutines.delay
 import com.goldsky.ssp.payment.TestSale
 
 // Customer screens: white page, near-black text, solid colour fills -- the vacuum stands
@@ -564,6 +566,13 @@ private fun ChoosePayScreen(c: Screen.ChoosePay, onCard: () -> Unit, onScan: () 
             stringResource(UiR.string.pay_title, formatPrice(c.pkg.priceCents)) + "  ·  " + formatDuration(c.pkg.durationSec),
             color = TextHi, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold,
         )
+        if (c.autoCardAt > 0L) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                stringResource(UiR.string.pay_choose_or_card), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().background(Ink, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
         c.notice?.let {
             Spacer(Modifier.height(8.dp))
             Text(
@@ -573,7 +582,7 @@ private fun ChoosePayScreen(c: Screen.ChoosePay, onCard: () -> Unit, onScan: () 
         }
         Spacer(Modifier.height(10.dp))
         Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)) {
-            if (c.card) PayChoice(stringResource(UiR.string.btn_pay_card), stringResource(UiR.string.btn_pay_card_desc), Amber, Ink, onCard)
+            if (c.card) PayChoice(stringResource(UiR.string.btn_pay_card), stringResource(UiR.string.btn_pay_card_desc), Amber, Ink, onCard, c.autoCardAt)
             if (c.scan) PayChoice(stringResource(UiR.string.btn_pay_code), stringResource(UiR.string.btn_pay_code_desc), Ink, Color.White, onScan)
         }
         OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().height(50.dp), border = BorderStroke(2.dp, Ink)) {
@@ -582,15 +591,44 @@ private fun ChoosePayScreen(c: Screen.ChoosePay, onCard: () -> Unit, onScan: () 
     }
 }
 
+/**
+ * [autoAt] (SystemClock.elapsedRealtime, 0 = none): the card sale starts by itself then -- the
+ * line under the title blinks "Card reader on in 3…" and a bar runs out along the bottom.
+ */
 @Composable
-private fun PayChoice(title: String, sub: String, fill: Color, text: Color, onClick: () -> Unit) {
+private fun PayChoice(title: String, sub: String, fill: Color, text: Color, onClick: () -> Unit, autoAt: Long = 0L) {
+    var now by remember { mutableStateOf(SystemClock.elapsedRealtime()) }
+    if (autoAt > 0L) {
+        LaunchedEffect(autoAt) {
+            while (now < autoAt) { delay(100); now = SystemClock.elapsedRealtime() }
+        }
+    }
+    val left = (autoAt - now).coerceAtLeast(0L)
+    val counting = autoAt > 0L && left > 0L
+    val blink by rememberInfiniteTransition(label = "auto").animateFloat(
+        0.15f, 1f, infiniteRepeatable(tween(350), RepeatMode.Reverse), label = "autoBlink",
+    )
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(fill).clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(fill).clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(title, color = text, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
-        Text(sub, color = text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(title, color = text, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+            if (counting) {
+                Text(
+                    stringResource(UiR.string.pay_card_auto_countdown, ((left + 999) / 1000).toInt()),
+                    color = text.copy(alpha = blink), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
+                )
+            } else {
+                Text(sub, color = text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        if (counting) {
+            val total = TimerViewModel.AUTO_CARD_MS.toFloat()
+            Box(Modifier.fillMaxWidth().height(8.dp)) {
+                Box(Modifier.fillMaxWidth((left / total).coerceIn(0f, 1f)).fillMaxHeight().background(text))
+            }
+        }
     }
 }
 

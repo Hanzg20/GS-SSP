@@ -14,6 +14,7 @@ import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import android.view.animation.AlphaAnimation
@@ -55,6 +56,8 @@ import kotlinx.serialization.json.intOrNull
 class MainActivity : BaseAdActivity() {
 
     companion object {
+        // Payment page: the card sale starts by itself after this long (see showPaymentDialog).
+        private const val AUTO_CARD_MS = 4_000L
         // Only this vertical's packages -- the org's config also carries other
         // terminals' products (e.g. Aegis Timer's vacuum packages), see forVertical.
         private const val WASH_VERTICAL = "WASH"
@@ -124,6 +127,10 @@ class MainActivity : BaseAdActivity() {
     // timeout auto-dismiss, since dismissing mid-flight would desync the UI
     // from a bank transaction that's still actually in progress server-side.
     @Volatile private var paymentInFlight = false
+
+    // The next card sale was started by the payment page's countdown, not a tap: a cancel
+    // then goes back to that page (the customer may have wanted Scan), not Home.
+    private var cardAutoStarted = false
 
     // Set by a home-screen "Scan Coupon / Member QR Code" scan (see
     // initCouponScan()) and consumed the moment the customer picks a
@@ -973,6 +980,7 @@ class MainActivity : BaseAdActivity() {
         }
 
         stopAdTimer()
+        cardAutoStarted = false
 
         val selectionDialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         selectionDialog.setContentView(R.layout.dialog_payment_selection)
@@ -985,8 +993,42 @@ class MainActivity : BaseAdActivity() {
         if (notice != null) {
             selectionDialog.findViewById<TextView>(R.id.tv_choice_notice).apply { text = notice; visibility = View.VISIBLE }
         }
-        // Spoken until the customer taps (applyClickFeedback); a notice says why they're back.
-        TtsManager.speakRepeated(notice ?: getString(if (scanAllowed && cardAllowed) R.string.tts_choose_payment else R.string.prompt_card_guide))
+        // First time on the page with both methods: customers used to tap their card right
+        // after choosing a package, while the reader was still off -- so the card sale starts
+        // by itself after AUTO_CARD_MS, a blinking countdown on the card button; Scan stops it.
+        // Otherwise spoken until the customer taps (applyClickFeedback); a notice says why they're back.
+        val autoCard = notice == null && scanAllowed && cardAllowed
+        val autoHandler = Handler(Looper.getMainLooper())
+        var blink: ObjectAnimator? = null
+        selectionDialog.setOnDismissListener { autoHandler.removeCallbacksAndMessages(null); blink?.cancel() }
+        if (autoCard) {
+            TtsManager.speak(getString(R.string.tts_card_auto))
+            selectionDialog.findViewById<TextView>(R.id.tv_choice_notice).apply { text = getString(R.string.pay_choose_or_card); visibility = View.VISIBLE }
+            val sub = selectionDialog.findViewById<TextView>(R.id.tv_card_sub).apply { visibility = View.VISIBLE; textSize = 22f }
+            val bar = selectionDialog.findViewById<ProgressBar>(R.id.pb_card_auto).apply { visibility = View.VISIBLE }
+            blink = ObjectAnimator.ofFloat(sub, View.ALPHA, 1f, 0.15f).apply {
+                duration = 350; repeatMode = ValueAnimator.REVERSE; repeatCount = ValueAnimator.INFINITE; start()
+            }
+            val autoAt = SystemClock.elapsedRealtime() + AUTO_CARD_MS
+            autoHandler.post(object : Runnable {
+                override fun run() {
+                    val left = autoAt - SystemClock.elapsedRealtime()
+                    if (left > 0) {
+                        sub.text = getString(R.string.pay_card_auto_countdown, ((left + 999) / 1000).toInt())
+                        bar.progress = (left * 1000 / AUTO_CARD_MS).toInt()
+                        autoHandler.postDelayed(this, 100)
+                    } else {
+                        Log.i("SSP_TEST", "Card started by the payment page countdown")
+                        TtsManager.stop()
+                        selectionDialog.dismiss()
+                        cardAutoStarted = true
+                        startPaymentFlow(true, priceInCents, startHex, productId, serviceCents, couponCode)
+                    }
+                }
+            })
+        } else {
+            TtsManager.speakRepeated(notice ?: getString(if (scanAllowed && cardAllowed) R.string.tts_choose_payment else R.string.prompt_card_guide))
+        }
 
         selectionDialog.findViewById<View>(R.id.btn_choice_card).setOnClickListener {
             Log.i("SSP_TEST", "Card selected in dialog")
@@ -1335,6 +1377,7 @@ class MainActivity : BaseAdActivity() {
         // for the PENDING row below (UNIQUE constraint), so a fixed constant
         // here would collide across repeated simulated attempts.
         val txRefNum = (if (testCents != null) TestSale.REF_PREFIX else "CARD_") + System.currentTimeMillis()
+        val auto = cardAutoStarted.also { cardAutoStarted = false }
         paymentInFlight = true
 
         CoroutineScope(Dispatchers.Main).launch {
@@ -1387,7 +1430,9 @@ class MainActivity : BaseAdActivity() {
                                 }
                             )
                             dialog.dismiss()
-                            if (reason == DeclineReason.CANCELLED) {
+                            if (reason == DeclineReason.CANCELLED && auto) {
+                                showPaymentDialog(priceInCents, startHex, productId, serviceCents, couponCode, notice = getString(R.string.pay_cancelled_notice))
+                            } else if (reason == DeclineReason.CANCELLED) {
                                 TtsManager.cancelRepeat()
                                 resetAdTimer()
                             } else {

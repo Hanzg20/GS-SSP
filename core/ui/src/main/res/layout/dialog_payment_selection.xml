@@ -90,6 +90,19 @@
                 app:layout_constraintStart_toStartOf="@id/tv_card_text"
                 app:layout_constraintTop_toBottomOf="@id/tv_card_text" />
 
+            <!-- The card sale starting by itself: runs out along the bottom (Wash MainActivity). -->
+            <ProgressBar
+                android:id="@+id/pb_card_auto"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="0dp"
+                android:layout_height="8dp"
+                android:max="1000"
+                android:progressTint="@color/gold_accent"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
         </androidx.constraintlayout.widget.ConstraintLayout>
 
         <!-- Scan Payment Button -->
