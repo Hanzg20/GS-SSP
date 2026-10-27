@@ -136,6 +136,8 @@ class MainActivity : ComponentActivity() {
         }
 
         val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
+        // Payment page "Scan Coupon / VIP": the ViewModel asks, the scanner lives here.
+        lifecycleScope.launch { timerVm.scanRequests.collect { startScan(vendor) } }
 
         setContent {
             val s by timerVm.state.collectAsState()
@@ -188,6 +190,10 @@ class MainActivity : ComponentActivity() {
                     onClearPending = timerVm::clearPending,
                     onConfirm = timerVm::confirm,
                     onCancelConfirm = timerVm::cancelConfirm,
+                    onChoiceCard = timerVm::choiceCard,
+                    onChoiceScan = timerVm::choiceScan,
+                    onChoiceCancel = { stopScan(); timerVm.choiceCancel() },
+                    onScanBack = { stopScan(); timerVm.scanEnded(unavailable = false, quiet = true) },
                 )
             }
             if (showPin) {
@@ -203,12 +209,13 @@ class MainActivity : ComponentActivity() {
 
     private var scanner: com.goldsky.ssp.payment.hardware.IScannerProvider? = null
     private val scanHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val scanTimeout = Runnable { stopScan() }
+    private val scanTimeout = Runnable { stopScan(); timerVm.scanEnded(unavailable = false) }
 
     /** Opens the WizarPOS scanner (its own camera page); gives up after SCAN_TIMEOUT_MS. */
     private fun startScan(vendor: String) {
         stopScan()
-        val s = runCatching { HardwareFactory.getScannerProvider(this, vendor) }.getOrNull() ?: return
+        val s = runCatching { HardwareFactory.getScannerProvider(this, vendor) }.getOrNull()
+            ?: return timerVm.scanEnded(unavailable = true)
         scanner = s
         scanHandler.postDelayed(scanTimeout, SCAN_TIMEOUT_MS)
         val startedAt = android.os.SystemClock.elapsedRealtime()
@@ -220,7 +227,7 @@ class MainActivity : ComponentActivity() {
                 Log.d(TAG, "Scan: $errorMsg")
                 val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
                 if (com.goldsky.ssp.payment.DiagnosticManager.reportScanFailure(deviceSn, errorMsg, elapsed)) {
-                    runOnUiThread { timerVm.showNotice(getString(com.goldsky.ssp.core.ui.R.string.toast_scanner_unavailable)) }
+                    runOnUiThread { stopScan(); timerVm.scanEnded(unavailable = true) }
                 }
             }
         })

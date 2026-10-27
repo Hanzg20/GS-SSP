@@ -27,6 +27,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.BorderStroke
+import com.goldsky.ssp.core.ui.R as UiR
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.layout
@@ -44,17 +47,28 @@ import androidx.compose.ui.unit.sp
 import com.goldsky.ssp.feature.timer.TimerViewModel.Screen
 import com.goldsky.ssp.payment.TestSale
 
-// Unattended-kiosk palette (see .cursorrules): navy base, amber/emerald accents.
-private val Bg = Color(0xFF121824)
-private val Surface = Color(0xFF1B2436)
-private val SurfaceHi = Color(0xFF243049)
+// Customer screens: white page, near-black text, solid colour fills -- the vacuum stands
+// outdoors, and the old navy + amber look washed out in full sun (owner, 2026-10-26).
+// Amber is a fill under Ink text only; amber TEXT on white uses AmberText.
+private val Bg = Color.White
+private val Surface = Color(0xFFEEF1F5)
+private val SurfaceHi = Color(0xFFC3CBD6)
+private val Ink = Color(0xFF0B0F17)
 private val Amber = Color(0xFFFFB800)
-private val Emerald = Color(0xFF10B981)
-private val Coral = Color(0xFFF43F5E)
-private val TextHi = Color(0xFFE6EDF7)
-private val TextLo = Color(0xFF8A97AD)
-private val BayOrange = Color(0xFFC96A12)
-private val BayBlue = Color(0xFF263E9C)
+private val AmberText = Color(0xFF9A4D00)
+private val Emerald = Color(0xFF047857)
+private val Coral = Color(0xFFC8102E)
+private val TextHi = Ink
+private val TextLo = Color(0xFF3D4757)
+// Each unit's own colour on the two-unit home, dark enough for white text in full sun.
+private val BayOrange = Color(0xFFD35F00)
+private val BayBlue = Color(0xFF1D4ED8)
+// Technician pages (staff only, indoors) keep the dark kiosk palette of .cursorrules.
+private val TechBg = Color(0xFF121824)
+private val TechSurface = Color(0xFF1B2436)
+private val TechSurfaceHi = Color(0xFF243049)
+private val TechText = Color(0xFFE6EDF7)
+private val TechTextLo = Color(0xFF8A97AD)
 
 @Composable
 fun TimerApp(
@@ -67,6 +81,10 @@ fun TimerApp(
     onClearPending: () -> Unit = {},
     onConfirm: () -> Unit = {},
     onCancelConfirm: () -> Unit = {},
+    onChoiceCard: () -> Unit = {},
+    onChoiceScan: () -> Unit = {},
+    onChoiceCancel: () -> Unit = {},
+    onScanBack: () -> Unit = {},
 ) {
     // A scanned VIP code / coupon is waiting: the price buttons pulse.
     CompositionLocalProvider(LocalPendingPulse provides (s.pending != null && s.screen is Screen.Home)) {
@@ -82,6 +100,8 @@ fun TimerApp(
                     if (s.dual) DualHomeScreen(s, version, onSelect, onTechTrigger, onScan)
                     else HomeScreen(s, version, { onSelect(it, null) }, onTechTrigger, onScan)
                 is Screen.Confirm -> ConfirmScreen(screen, onConfirm, onCancelConfirm)
+                is Screen.ChoosePay -> ChoosePayScreen(screen, onChoiceCard, onChoiceScan, onChoiceCancel)
+                is Screen.ScanToPay -> ScanToPayScreen(screen, onScanBack)
                 is Screen.Working -> WorkingScreen(screen.message)
                 is Screen.Paying -> PayingScreen(screen, s.demoMode, onCancelPayment)
                 is Screen.BayStarted -> ResultScreen(
@@ -111,7 +131,7 @@ fun TimerApp(
                 s.pending?.let { PendingBanner(it, onClearPending) }
                 s.notice?.let {
                     Text(
-                        it, color = TextHi, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                        it, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                             .background(Coral.copy(alpha = 0.92f), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
                     )
@@ -121,14 +141,14 @@ fun TimerApp(
         val testArmed by TestSale.armed.collectAsState()
         testArmed?.let {
             Text(
-                "TEST MODE · next card sale ${TestSale.format(it.cents)}", color = Bg, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                "TEST MODE · next card sale ${TestSale.format(it.cents)}", color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 2.dp)
                     .background(Amber.copy(alpha = 0.85f), RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 1.dp),
             )
         }
         if (s.demoMode) {
             Text(
-                "DEMO", color = Bg, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                "DEMO", color = Ink, fontSize = 10.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp)
                     .background(Amber, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
             )
@@ -319,22 +339,24 @@ private fun BayColumn(
 ) {
     val remaining = run?.remaining(now) ?: 0L
     val running = run != null && remaining > 0
-    val accent = when {
-        !running -> SurfaceHi
+    val theme = if (bay == Bay.TWO) BayOrange else BayBlue
+    // Running: a black frame, amber in the last 30 s.
+    val frame = when {
+        !running -> theme
         remaining <= 30_000 -> Amber
-        else -> Emerald
+        else -> Ink
     }
     Column(
         modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(Surface)
-            .border(2.dp, accent, RoundedCornerShape(16.dp))
+            .background(theme)
+            .border(4.dp, frame, RoundedCornerShape(16.dp))
             .padding(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         BayTitle(bay, productName)
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            BayRing(running, remaining, run?.totalMs ?: 0L, accent)
+            BayRing(running, remaining, run?.totalMs ?: 0L, Color.White)
         }
         packages.take(3).forEach { pkg ->
             Row(
@@ -343,15 +365,15 @@ private fun BayColumn(
                     .padding(top = 8.dp)
                     .pendingPulse()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (enabled) Amber else SurfaceHi)
+                    .background(if (enabled) Color.White else Color.White.copy(alpha = 0.35f))
                     .clickable(enabled = enabled) { onSelect(pkg) }
                     .padding(horizontal = 10.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(formatPrice(pkg.priceCents), color = Bg, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+                Text(formatPrice(pkg.priceCents), color = Ink, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
                     (if (running) "+" else "") + formatDuration(pkg.durationSec),
-                    color = Bg, fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End,
+                    color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -367,8 +389,8 @@ private fun BayTitle(bay: Bay, productName: String) {
         if (left) BayArrow(left = true)
         Text(
             bay.title(productName),
-            color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1,
-            modifier = Modifier.background(if (left) BayOrange else BayBlue, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp),
+            color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1,
+            modifier = Modifier.padding(horizontal = 4.dp),
         )
         if (!left) BayArrow(left = false)
     }
@@ -392,7 +414,7 @@ private fun BayArrow(left: Boolean) {
             lineTo(x(0f), h * 0.68f)
             close()
         }
-        drawPath(path, TextHi)
+        drawPath(path, Color.White)
     }
 }
 
@@ -410,19 +432,19 @@ private fun BayRing(running: Boolean, remaining: Long, totalMs: Long, color: Col
         Box(Modifier.size(size), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize().padding(4.dp)) {
                 val stroke = 11.dp.toPx()
-                drawArc(SurfaceHi, 0f, 360f, false, style = Stroke(stroke))
+                drawArc(Color.Black.copy(alpha = 0.22f), 0f, 360f, false, style = Stroke(stroke))
                 if (running) drawArc(color, -90f, 360f * animated, false, style = Stroke(stroke, cap = StrokeCap.Round))
             }
             // The vacuum station inside the ring: still when free, air streaming in while it runs.
             if (running) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     VacuumDrawing(true, color, Modifier.size(size * 0.42f))
-                    Text(formatClock(remaining), color = TextHi, fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Text(formatClock(remaining), color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                 }
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     VacuumDrawing(false, color, Modifier.size(size * 0.62f))
-                    Text("Available", color = TextHi, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("Available", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
                 }
             }
         }
@@ -438,8 +460,7 @@ private fun PackageCard(pkg: TimerPackage, enabled: Boolean, modifier: Modifier,
         modifier
             .pendingPulse()
             .clip(RoundedCornerShape(18.dp))
-            .background(Surface)
-            .border(2.dp, SurfaceHi, RoundedCornerShape(18.dp))
+            .background(if (enabled) Amber else SurfaceHi)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 16.dp, horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -447,12 +468,12 @@ private fun PackageCard(pkg: TimerPackage, enabled: Boolean, modifier: Modifier,
     ) {
         Spacer(Modifier.height(4.dp))
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(formatPrice(pkg.priceCents), color = Amber, fontSize = 56.sp, fontWeight = FontWeight.ExtraBold)
-            Text(formatDuration(pkg.durationSec), color = TextHi, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+            Text(formatPrice(pkg.priceCents), color = Ink, fontSize = 56.sp, fontWeight = FontWeight.ExtraBold)
+            Text(formatDuration(pkg.durationSec), color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         }
         Text(
-            "START", color = Bg, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().background(Amber, RoundedCornerShape(10.dp)).padding(vertical = 9.dp),
+            "START", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().background(Ink, RoundedCornerShape(10.dp)).padding(vertical = 9.dp),
         )
     }
 }
@@ -487,10 +508,7 @@ private fun PayingScreen(p: Screen.Paying, demo: Boolean, onCancel: () -> Unit) 
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         p.bay?.let { bay ->
-            Text(
-                bay.title(p.pkg.name), color = Bg, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.background(Amber, RoundedCornerShape(8.dp)).padding(horizontal = 14.dp, vertical = 2.dp),
-            )
+            BayTag(bay, p.pkg.name)
             Spacer(Modifier.height(6.dp))
         }
         Text(
@@ -506,7 +524,7 @@ private fun PayingScreen(p: Screen.Paying, demo: Boolean, onCancel: () -> Unit) 
                 for (i in 0..2) {
                     val r = size.minDimension * (0.16f + i * 0.1f)
                     drawArc(
-                        Amber, startAngle = -45f, sweepAngle = 90f, useCenter = false,
+                        AmberText, startAngle = -45f, sweepAngle = 90f, useCenter = false,
                         topLeft = Offset(center.x - r - size.minDimension * 0.08f, center.y - r),
                         size = Size(r * 2, r * 2), style = Stroke(width = 9f, cap = StrokeCap.Round),
                     )
@@ -529,6 +547,73 @@ private fun PayingScreen(p: Screen.Paying, demo: Boolean, onCancel: () -> Unit) 
     }
 }
 
+/** "VACUUM 2" on that unit's own colour, at the top of the payment pages. */
+@Composable
+private fun BayTag(bay: Bay, productName: String) {
+    Text(
+        bay.title(productName), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
+        modifier = Modifier.background(if (bay == Bay.TWO) BayOrange else BayBlue, RoundedCornerShape(8.dp)).padding(horizontal = 14.dp, vertical = 2.dp),
+    )
+}
+
+/**
+ * Wash's payment page (dialog_payment_selection): "Pay $2", then card or scan a coupon /
+ * VIP code, same words. [ChoosePay.notice] says why the customer is back here.
+ */
+@Composable
+private fun ChoosePayScreen(c: Screen.ChoosePay, onCard: () -> Unit, onScan: () -> Unit, onCancel: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        c.bay?.let { BayTag(it, c.pkg.name); Spacer(Modifier.height(6.dp)) }
+        Text(
+            stringResource(UiR.string.pay_title, formatPrice(c.pkg.priceCents)) + "  ·  " + formatDuration(c.pkg.durationSec),
+            color = TextHi, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold,
+        )
+        c.notice?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                it, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().background(Coral, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)) {
+            if (c.card) PayChoice(stringResource(UiR.string.btn_pay_card), stringResource(UiR.string.btn_pay_card_desc), Amber, Ink, onCard)
+            if (c.scan) PayChoice(stringResource(UiR.string.btn_pay_code), stringResource(UiR.string.btn_pay_code_desc), Ink, Color.White, onScan)
+        }
+        OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().height(50.dp), border = BorderStroke(2.dp, Ink)) {
+            Text("Cancel", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun PayChoice(title: String, sub: String, fill: Color, text: Color, onClick: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(fill).clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(title, color = text, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+        Text(sub, color = text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** Behind the scanner's camera page, and what's left when the customer backs out of it. */
+@Composable
+private fun ScanToPayScreen(sc: Screen.ScanToPay, onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        sc.bay?.let { BayTag(it, sc.pkg.name); Spacer(Modifier.height(6.dp)) }
+        Text(formatPrice(sc.pkg.priceCents) + "  ·  " + formatDuration(sc.pkg.durationSec), color = TextHi, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.weight(1f))
+        Text("▣", color = Ink, fontSize = 64.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(UiR.string.btn_pay_code_desc), color = TextHi, fontSize = 24.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Spacer(Modifier.weight(1f))
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth().height(50.dp), border = BorderStroke(2.dp, Ink)) {
+            Text("Back", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
 // ---- Running ------------------------------------------------------------
 
 @Composable
@@ -543,7 +628,7 @@ private fun RunningScreen(r: Screen.Running, now: Long) {
         Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("${r.pkg.name.uppercase()} ON", color = color, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("${r.pkg.name.uppercase()} ON", color = if (endingSoon) AmberText else Emerald, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.weight(1f))
         Box(Modifier.size(300.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize().padding(10.dp)) {
@@ -559,7 +644,7 @@ private fun RunningScreen(r: Screen.Running, now: Long) {
         // Only the last 30 s get a line: that's when the customer has to act.
         Text(
             if (endingSoon) "Almost done — finish up!" else "",
-            color = Amber, fontSize = 24.sp, fontWeight = FontWeight.Bold,
+            color = AmberText, fontSize = 24.sp, fontWeight = FontWeight.Bold,
         )
     }
 }
@@ -592,10 +677,10 @@ fun PinDialog(onDismiss: () -> Unit, onSubmit: (String) -> Boolean) {
     var wrong by remember { mutableStateOf(false) }
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.width(300.dp).background(Surface, RoundedCornerShape(16.dp)).padding(16.dp),
+            Modifier.width(300.dp).background(TechSurface, RoundedCornerShape(16.dp)).padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("技术员 PIN", color = TextHi, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text("技术员 PIN", color = TechText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Text(
                 if (pin.isEmpty()) "————" else "●".repeat(pin.length),
                 color = if (wrong) Coral else Amber, fontSize = 26.sp, modifier = Modifier.padding(vertical = 8.dp),
@@ -606,7 +691,7 @@ fun PinDialog(onDismiss: () -> Unit, onSubmit: (String) -> Boolean) {
                     row.forEach { k ->
                         Box(
                             Modifier.size(width = 80.dp, height = 46.dp).clip(RoundedCornerShape(10.dp))
-                                .background(if (k == "OK") Amber else SurfaceHi)
+                                .background(if (k == "OK") Amber else TechSurfaceHi)
                                 .clickable {
                                     wrong = false
                                     when (k) {
@@ -616,7 +701,7 @@ fun PinDialog(onDismiss: () -> Unit, onSubmit: (String) -> Boolean) {
                                     }
                                 },
                             contentAlignment = Alignment.Center,
-                        ) { Text(k, color = if (k == "OK") Bg else TextHi, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+                        ) { Text(k, color = if (k == "OK") TechBg else TechText, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
                     }
                 }
             }
@@ -645,13 +730,13 @@ fun TechScreen(
     onSwitchApp: () -> Unit = {},
     onPaymentTests: () -> Unit = {},
 ) {
-    Column(Modifier.fillMaxSize().background(Bg)) {
+    Column(Modifier.fillMaxSize().background(TechBg)) {
         Row(
-            Modifier.fillMaxWidth().background(Surface).padding(horizontal = 12.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().background(TechSurface).padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("技术员模式", color = TextHi, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text("演示模式", color = TextLo, fontSize = 13.sp)
+            Text("技术员模式", color = TechText, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("演示模式", color = TechTextLo, fontSize = 13.sp)
             Switch(checked = demoMode, onCheckedChange = onDemoChange, modifier = Modifier.padding(horizontal = 6.dp).scale(0.8f))
             switchTarget?.let { TextButton(onClick = onSwitchApp) { Text("切换到 $it", color = Amber) } }
             TextButton(onClick = onPaymentTests) { Text("支付用例", color = Amber) }
@@ -663,23 +748,23 @@ fun TechScreen(
         Text(
             if (demoMode) "演示模式开：客户流程跳过刷卡、不驱动输出、不写交易记录。重启应用自动关闭。"
             else "演示模式关：客户流程真实刷卡、真实驱动输出。",
-            color = if (demoMode) Amber else TextLo, fontSize = 11.sp,
+            color = if (demoMode) Amber else TechTextLo, fontSize = 11.sp,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
         )
         // System check: network (Wi-Fi / SIM / Ethernet), card service, HOME, overlay, clock, screen, volume.
         val ctx = androidx.compose.ui.platform.LocalContext.current
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(Surface, RoundedCornerShape(10.dp)).padding(8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(TechSurface, RoundedCornerShape(10.dp)).padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("系统检查", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Text("网络、刷卡服务、默认桌面、权限、时间、屏幕、音量，一键去设置", color = TextLo, fontSize = 11.sp)
+                Text("系统检查", color = TechText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("网络、刷卡服务、默认桌面、权限、时间、屏幕、音量，一键去设置", color = TechTextLo, fontSize = 11.sp)
             }
             OutlinedButton(
                 onClick = { ctx.startActivity(android.content.Intent(ctx, com.goldsky.ssp.ui.SystemCheckActivity::class.java)) },
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-            ) { Text("打开", fontSize = 13.sp, color = TextHi) }
+            ) { Text("打开", fontSize = 13.sp, color = TechText) }
         }
         PaymentSelfTestPanel(selfTest, onRunSelfTest, onSettle)
         Row(
@@ -687,8 +772,8 @@ fun TechScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("一拖二（1 号 / 2 号独立计时）", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Text("1 号 PIN1、2 号 PIN2，各自投币脉冲；切换后退出技术员模式时应用自动重启生效", color = TextLo, fontSize = 10.sp)
+                Text("一拖二（1 号 / 2 号独立计时）", color = TechText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("1 号 PIN1、2 号 PIN2，各自投币脉冲；切换后退出技术员模式时应用自动重启生效", color = TechTextLo, fontSize = 10.sp)
             }
             Switch(checked = dualBay, onCheckedChange = onDualChange, modifier = Modifier.scale(0.8f))
         }
@@ -718,35 +803,35 @@ private fun OutputSettingsPanel(s: OutputSettings, onChange: (OutputSettings) ->
     fun Pick(text: String, selected: Boolean, onClick: () -> Unit) =
         FilterChip(selected = selected, onClick = onClick, label = { Text(text, fontSize = 11.sp) }, modifier = Modifier.padding(end = 4.dp))
 
-    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(Surface, RoundedCornerShape(10.dp)).padding(8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(TechSurface, RoundedCornerShape(10.dp)).padding(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("输出方式", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("输出方式", color = TechText, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Button(
                 onClick = onTest,
-                colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = Bg),
+                colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = TechBg),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
             ) { Text("试运行", fontSize = 12.sp) }
         }
         Row { OutputMode.entries.forEach { m -> Pick(m.label, s.mode == m) { onChange(s.copy(mode = m)) } } }
-        Text(s.mode.hint, color = TextLo, fontSize = 10.sp)
+        Text(s.mode.hint, color = TechTextLo, fontSize = 10.sp)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("端口", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+            Text("端口", color = TechTextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
             listOf(0, 1).forEach { p -> Pick("port $p", s.port == p) { onChange(s.copy(port = p)) } }
             if (s.mode != OutputMode.RELAY_HOLD) {
-                Text("voltage", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(start = 6.dp, end = 4.dp))
+                Text("voltage", color = TechTextLo, fontSize = 11.sp, modifier = Modifier.padding(start = 6.dp, end = 4.dp))
                 listOf(0, 1).forEach { v -> Pick("$v", s.voltage == v) { onChange(s.copy(voltage = v)) } }
             }
         }
         if (s.mode == OutputMode.COIN_PULSES) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("每脉冲", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+                Text("每脉冲", color = TechTextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
                 listOf(25, 50, 100, 200).forEach { c -> Pick("$" + "%.2f".format(c / 100.0), s.centsPerPulse == c) { onChange(s.copy(centsPerPulse = c)) } }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("脉宽", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+                Text("脉宽", color = TechTextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
                 listOf(50L, 100L, 200L, 500L).forEach { w -> Pick("${w}ms", s.pulseWidthMs == w) { onChange(s.copy(pulseWidthMs = w)) } }
             }
-            Text("例：$2 套餐 → ${s.pulsesFor(200)} 个脉冲", color = TextLo, fontSize = 10.sp)
+            Text("例：$2 套餐 → ${s.pulsesFor(200)} 个脉冲", color = TechTextLo, fontSize = 10.sp)
         }
     }
 }
@@ -759,45 +844,45 @@ private fun BayOutputPanel(bay: Bay, s: OutputSettings, onChange: (OutputSetting
     fun Pick(text: String, selected: Boolean, onClick: () -> Unit) =
         FilterChip(selected = selected, onClick = onClick, label = { Text(text, fontSize = 11.sp) }, modifier = Modifier.padding(end = 4.dp))
 
-    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(Surface, RoundedCornerShape(10.dp)).padding(8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(TechSurface, RoundedCornerShape(10.dp)).padding(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("${bay.number} 号（默认 PIN${bay.defaultPort + 1}）", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("${bay.number} 号（默认 PIN${bay.defaultPort + 1}）", color = TechText, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Button(
                 onClick = onTest,
-                colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = Bg),
+                colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = TechBg),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
             ) { Text("发 1 个脉冲", fontSize = 12.sp) }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("端口", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+            Text("端口", color = TechTextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
             listOf(0 to "PIN1", 1 to "PIN2").forEach { (p, name) -> Pick(name, s.port == p) { onChange(s.copy(port = p)) } }
-            Text("voltage", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(start = 6.dp, end = 4.dp))
+            Text("voltage", color = TechTextLo, fontSize = 11.sp, modifier = Modifier.padding(start = 6.dp, end = 4.dp))
             listOf(0, 1).forEach { v -> Pick("$v", s.voltage == v) { onChange(s.copy(voltage = v)) } }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("每脉冲", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+            Text("每脉冲", color = TechTextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
             listOf(25, 50, 100, 200).forEach { c -> Pick("$" + "%.2f".format(c / 100.0), s.centsPerPulse == c) { onChange(s.copy(centsPerPulse = c)) } }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("脉宽", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+            Text("脉宽", color = TechTextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
             listOf(50L, 100L, 200L, 500L).forEach { w -> Pick("${w}ms", s.pulseWidthMs == w) { onChange(s.copy(pulseWidthMs = w)) } }
         }
-        Text("例：$2 套餐 → ${s.pulsesFor(200)} 个脉冲", color = TextLo, fontSize = 10.sp)
+        Text("例：$2 套餐 → ${s.pulsesFor(200)} 个脉冲", color = TechTextLo, fontSize = 10.sp)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () -> Unit, onSettle: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(Surface, RoundedCornerShape(10.dp)).padding(8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(TechSurface, RoundedCornerShape(10.dp)).padding(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("支付撤销自检", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Text("真实刷卡 $1.00，成功后立即撤销", color = TextLo, fontSize = 11.sp)
+                Text("支付撤销自检", color = TechText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("真实刷卡 $1.00，成功后立即撤销", color = TechTextLo, fontSize = 11.sp)
             }
             Button(
                 onClick = onRun, enabled = !s.running,
-                colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = Bg),
+                colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = TechBg),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
             ) { Text(if (s.running) "进行中…" else "开始", fontSize = 13.sp) }
             Spacer(Modifier.width(6.dp))
@@ -816,13 +901,13 @@ private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () ->
             OutlinedButton(
                 onClick = { confirmSettle = true }, enabled = !s.running,
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-            ) { Text("立即结算", fontSize = 13.sp, color = TextHi) }
+            ) { Text("立即结算", fontSize = 13.sp, color = TechText) }
         }
         val armed by TestSale.armed.collectAsState()
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
             Column(Modifier.weight(1f)) {
-                Text("小额真实测试", color = TextHi, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Text("下一笔刷卡按此金额收款，其余完全按真实流程（设备照常运行）", color = TextLo, fontSize = 10.sp)
+                Text("小额真实测试", color = TechText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("下一笔刷卡按此金额收款，其余完全按真实流程（设备照常运行）", color = TechTextLo, fontSize = 10.sp)
             }
             TestSale.AMOUNTS.forEach { c ->
                 FilterChip(
@@ -833,7 +918,7 @@ private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () ->
                 )
             }
         }
-        s.lines.takeLast(3).forEach { Text(it, color = TextLo, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 2) }
+        s.lines.takeLast(3).forEach { Text(it, color = TechTextLo, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 2) }
     }
 }
 
@@ -843,12 +928,12 @@ private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () ->
 @Composable
 private fun ScanButton(onScan: () -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(20.dp)).border(1.5.dp, Amber, RoundedCornerShape(20.dp))
+        Modifier.clip(RoundedCornerShape(20.dp)).background(Amber)
             .clickable(onClick = onScan).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("▣", color = Amber, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Text("  Coupon / VIP code", color = Amber, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text("▣", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("  Coupon / VIP code", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -878,12 +963,12 @@ private fun PendingBanner(p: TimerViewModel.Pending, onClear: () -> Unit) {
         Modifier.fillMaxWidth().background(Amber, RoundedCornerShape(12.dp)).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("✓", color = Bg, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+        Text("✓", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
-            Text(title, color = Bg, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
-            Text("Tap a time below to pay  ↓", color = Bg, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(title, color = Ink, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+            Text("Tap a time below to pay  ↓", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
-        Text("✕", color = Bg, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onClear).padding(horizontal = 14.dp, vertical = 8.dp))
+        Text("✕", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onClear).padding(horizontal = 14.dp, vertical = 8.dp))
     }
 }
 
@@ -905,7 +990,7 @@ private fun ConfirmScreen(c: Screen.Confirm, onConfirm: () -> Unit, onCancel: ()
     ) {
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Surface)
-                .border(1.dp, Amber.copy(alpha = 0.35f), RoundedCornerShape(22.dp)).padding(18.dp),
+                .border(2.dp, SurfaceHi, RoundedCornerShape(22.dp)).padding(18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(if (vip != null) "Pay with your VIP card?" else "Use this coupon?", color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -914,7 +999,7 @@ private fun ConfirmScreen(c: Screen.Confirm, onConfirm: () -> Unit, onCancel: ()
             Text("${formatDuration(c.pkg.durationSec)} · ${formatPrice(c.pkg.priceCents)}$unit", color = TextHi, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(16.dp))
             if (vip != null) {
-                Text(formatPrice(c.pkg.priceCents), color = Amber, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold)
+                Text(formatPrice(c.pkg.priceCents), color = Ink, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(6.dp))
                 val after = vip.balanceCents - c.pkg.priceCents
                 Text(
@@ -924,7 +1009,7 @@ private fun ConfirmScreen(c: Screen.Confirm, onConfirm: () -> Unit, onCancel: ()
             } else if (coupon != null) {
                 Text(couponLabel(coupon), color = Emerald, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text(if (c.chargeCents <= 0) "FREE" else "Pay ${formatPrice(c.chargeCents)}", color = Amber, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold)
+                Text(if (c.chargeCents <= 0) "FREE" else "Pay ${formatPrice(c.chargeCents)}", color = Ink, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold)
             }
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -934,7 +1019,7 @@ private fun ConfirmScreen(c: Screen.Confirm, onConfirm: () -> Unit, onCancel: ()
                 Button(
                     onClick = onConfirm,
                     enabled = vip == null || vip.balanceCents >= c.pkg.priceCents,
-                    colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = Bg),
+                    colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = Ink),
                     modifier = Modifier.weight(1f).height(52.dp),
                 ) { Text("Confirm", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
             }
@@ -947,7 +1032,7 @@ private fun WorkingScreen(message: String) {
     Column(
         Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
     ) {
-        CircularProgressIndicator(color = Amber, modifier = Modifier.size(56.dp))
+        CircularProgressIndicator(color = Ink, modifier = Modifier.size(56.dp))
         Spacer(Modifier.height(16.dp))
         Text(message, color = TextHi, fontSize = 18.sp)
     }

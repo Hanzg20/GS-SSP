@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.goldsky.ssp.common.TtsManager
 import com.goldsky.ssp.model.AppConfig
+import com.goldsky.ssp.model.PaymentMethodMode
 import com.goldsky.ssp.payment.CardTypeClassifier
 import com.goldsky.ssp.payment.ConfigManager
 import com.goldsky.ssp.payment.DeviceAccessManager
@@ -62,6 +63,13 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         data class Confirm(val pkg: TimerPackage, val bay: Bay?, val pending: Pending, val chargeCents: Int) : Screen
         /** Waiting on the server (VIP deduction / coupon redemption). */
         data class Working(val message: String) : Screen
+        /**
+         * Wash's payment page: card, or scan a coupon / VIP code, for [pkg]. [notice] says
+         * why the customer is back here (no code read, balance short, ...).
+         */
+        data class ChoosePay(val pkg: TimerPackage, val bay: Bay?, val notice: String? = null, val card: Boolean = true, val scan: Boolean = true) : Screen
+        /** The scanner is open for a code that pays for [pkg] (the camera page covers ours). */
+        data class ScanToPay(val pkg: TimerPackage, val bay: Bay?) : Screen
     }
 
     /**
@@ -213,7 +221,82 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             }
             return
         }
-        if (s.demoMode) {
+        // Same as Wash: card or scan on a payment page, unless the operator allows only one
+        // (KioskSettings.payment_method_mode); anything else offers both.
+        when (ConfigManager.getConfig()?.settings?.payment_method_mode ?: PaymentMethodMode.ALL) {
+            PaymentMethodMode.CARD_ONLY -> payByCard(pkg, side)
+            PaymentMethodMode.SCAN_ONLY -> {
+                _state.update { it.copy(screen = Screen.ScanToPay(pkg, side)) }
+                TtsManager.speakRepeated(str(com.goldsky.ssp.core.ui.R.string.tts_scan_code_prompt), times = 1)
+                scanRequests.tryEmit(Unit)
+            }
+            else -> showChoosePay(pkg, side, null)
+        }
+    }
+
+    private fun showChoosePay(pkg: TimerPackage, bay: Bay?, notice: String?) {
+        val mode = ConfigManager.getConfig()?.settings?.payment_method_mode ?: PaymentMethodMode.ALL
+        _state.update {
+            it.copy(screen = Screen.ChoosePay(pkg, bay, notice, card = mode != PaymentMethodMode.SCAN_ONLY, scan = mode != PaymentMethodMode.CARD_ONLY))
+        }
+        TtsManager.speakRepeated(notice ?: str(com.goldsky.ssp.core.ui.R.string.tts_choose_payment))
+        // Nobody chose: back to Home, like any other page left alone.
+        returnHomeJob?.cancel()
+        returnHomeJob = viewModelScope.launch {
+            delay(CHOICE_MS)
+            if (_state.value.screen is Screen.ChoosePay) { TtsManager.stop(); _state.update { it.copy(screen = Screen.Home) } }
+        }
+    }
+
+    private fun str(id: Int) = getApplication<Application>().getString(id)
+
+    /** Payment page: "Pay by Card". */
+    fun choiceCard() {
+        val c = _state.value.screen as? Screen.ChoosePay ?: return
+        returnHomeJob?.cancel()
+        TtsManager.stop()
+        payByCard(c.pkg, c.bay)
+    }
+
+    /** Payment page: "Scan Coupon / VIP". MainActivity opens the scanner on [scanRequests]. */
+    fun choiceScan() {
+        val c = _state.value.screen as? Screen.ChoosePay ?: return
+        returnHomeJob?.cancel()
+        TtsManager.stop()
+        _state.update { it.copy(screen = Screen.ScanToPay(c.pkg, c.bay)) }
+        TtsManager.speakRepeated(str(com.goldsky.ssp.core.ui.R.string.tts_scan_code_prompt), times = 1)
+        scanRequests.tryEmit(Unit)
+    }
+
+    /** Payment page "Cancel": nothing was charged. */
+    fun choiceCancel() {
+        val s = _state.value.screen
+        if (s !is Screen.ChoosePay && s !is Screen.ScanToPay) return
+        returnHomeJob?.cancel()
+        TtsManager.stop()
+        _state.update { it.copy(screen = Screen.Home) }
+    }
+
+    /** Opening the scanner for a payment code: MainActivity collects this. */
+    val scanRequests = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /**
+     * The scan ended without a code (timeout, camera unavailable, customer backed out):
+     * back to the payment page with the reason, so the card is one tap away.
+     */
+    fun scanEnded(unavailable: Boolean, quiet: Boolean = false) {
+        val s = _state.value.screen
+        if (s is Screen.ScanToPay) {
+            TtsManager.stop()
+            // [quiet]: the customer pressed Back -- nothing went wrong, no reason to give.
+            showChoosePay(s.pkg, s.bay, if (quiet) null else str(if (unavailable) com.goldsky.ssp.core.ui.R.string.pay_scan_unavailable else com.goldsky.ssp.core.ui.R.string.pay_scan_timeout))
+        } else if (unavailable) {
+            notice(str(com.goldsky.ssp.core.ui.R.string.toast_scanner_unavailable))
+        }
+    }
+
+    private fun payByCard(pkg: TimerPackage, side: Bay?) {
+        if (_state.value.demoMode) {
             _state.update { it.copy(screen = Screen.Paying(pkg, "DEMO — no card needed", side)) }
             viewModelScope.launch {
                 delay(1800)
@@ -223,6 +306,41 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         cardSale(pkg, side, pkg.priceCents)
+    }
+
+    /**
+     * A code scanned on the payment page for [ScanToPay.pkg]: a VIP code or a coupon goes
+     * to the same Confirm page as a Home scan (nothing is spent before Confirm); anything
+     * that can't pay for this package brings the customer back with the reason.
+     */
+    private suspend fun payScanned(code: String, sc: Screen.ScanToPay) {
+        val back = { why: String -> if (_state.value.screen == sc) showChoosePay(sc.pkg, sc.bay, why) }
+        _state.update { it.copy(screen = Screen.Working("Checking your code…")) }
+        if (Regex("^[A-Za-z0-9]{6}$").matches(code)) {
+            val uid = VipRepository.resolveCardUidByQrCode(code)
+            val card = uid?.let { VipRepository.getVipCard(it) }
+            _state.update { it.copy(screen = sc) }
+            when {
+                uid == null || card == null -> back("Member code not recognized.")
+                !card.is_active -> back("This VIP card is deactivated.")
+                card.balance_cents < sc.pkg.priceCents -> back("Insufficient VIP balance: ${dollars(card.balance_cents)}. Please pay by card.")
+                else -> _state.update { it.copy(screen = Screen.Confirm(sc.pkg, sc.bay, Pending.Vip(uid, code.uppercase(), card.balance_cents), 0)) }
+            }
+            return
+        }
+        val peek = CouponRepository.peekCoupon(code, deviceSn)
+        _state.update { it.copy(screen = sc) }
+        when {
+            peek !is CouponPeekResult.Success -> back("This code can't be used.")
+            peek.applicableProductId != null && peek.applicableProductId != sc.pkg.productId -> {
+                val target = _state.value.packages.firstOrNull { it.productId == peek.applicableProductId }
+                back(if (target != null) "This coupon is for the ${formatPrice(target.priceCents)} package." else "This coupon can't be used here.")
+            }
+            else -> {
+                val coupon = Pending.Coupon(code, peek.type, peek.value, peek.applicableProductId, peek.expiresAt)
+                _state.update { it.copy(screen = Screen.Confirm(sc.pkg, sc.bay, coupon, couponPrice(sc.pkg.priceCents, coupon))) }
+            }
+        }
     }
 
     /**
@@ -308,7 +426,13 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onScanned(raw: String) {
         val code = raw.trim()
-        if (code.isEmpty() || _state.value.screen !is Screen.Home) return
+        if (code.isEmpty()) return
+        (_state.value.screen as? Screen.ScanToPay)?.let { sc ->
+            TtsManager.stop()
+            viewModelScope.launch { payScanned(code, sc) }
+            return
+        }
+        if (_state.value.screen !is Screen.Home) return
         viewModelScope.launch {
             if (Regex("^[A-Za-z0-9]{6}$").matches(code)) {
                 val uid = VipRepository.resolveCardUidByQrCode(code)
@@ -384,12 +508,12 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     val msg = when (r.reason) {
                         "insufficient_balance" -> "Not enough VIP balance (${formatPrice(vip.balanceCents)}). Please pay by card."
                         "daily_limit_exceeded" -> "This card's daily limit is reached."
-                        else -> "This VIP card can't be used."
+                        // Also a card of another organization (deduct_vip_balance is org-scoped).
+                        else -> "This VIP card can't be used here."
                     }
-                    _state.update { it.copy(screen = Screen.Home) }
-                    notice(msg)
+                    backToPayment(pkg, bay, msg)
                 }
-                else -> { _state.update { it.copy(screen = Screen.Home) }; notice("Network problem. Please try again.") }
+                else -> backToPayment(pkg, bay, "Network problem. Please try again.")
             }
         }
     }
@@ -409,7 +533,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     )
                     startPaidService(pkg, bay, ref, "coupon ${coupon.code}", "Your coupon covers it.")
                 }
-                else -> { _state.update { it.copy(screen = Screen.Home) }; notice("This coupon can't be used.") }
+                else -> backToPayment(pkg, bay, "This coupon can't be used.")
             }
         }
     }
@@ -442,6 +566,12 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * A VIP balance / coupon that couldn't pay after Confirm: back to the payment page with
+     * the reason, the card one tap away (Wash does the same) -- not a 5 s line on Home.
+     */
+    private fun backToPayment(pkg: TimerPackage, bay: Bay?, why: String) = showChoosePay(pkg, bay, why)
+
     private fun setPending(p: Pending) {
         pendingExpiry?.cancel()
         _state.update { it.copy(pending = p, notice = null) }
@@ -451,9 +581,6 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { if (it.pending == p) it.copy(pending = null) else it }
         }
     }
-
-    /** Short message on the Home screen (e.g. the scanner didn't start). */
-    fun showNotice(text: String) = notice(text)
 
     private fun notice(text: String) {
         noticeJob?.cancel()
@@ -789,6 +916,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         private const val MIN_RESUME_MS = 5_000L
         private const val BAY_STARTED_MS = 4_000L
         private const val PENDING_MS = 90_000L
+        private const val CHOICE_MS = 60_000L
         private const val NOTICE_MS = 5_000L
     }
 }
