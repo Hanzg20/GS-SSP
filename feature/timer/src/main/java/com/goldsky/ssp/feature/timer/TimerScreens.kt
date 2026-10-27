@@ -77,8 +77,6 @@ fun TimerApp(
     onSelect: (TimerPackage, Bay?) -> Unit,
     onCancelPayment: () -> Unit,
     onTechTrigger: () -> Unit,
-    onScan: () -> Unit = {},
-    onClearPending: () -> Unit = {},
     onConfirm: () -> Unit = {},
     onCancelConfirm: () -> Unit = {},
     onChoiceCard: () -> Unit = {},
@@ -86,8 +84,6 @@ fun TimerApp(
     onChoiceCancel: () -> Unit = {},
     onScanBack: () -> Unit = {},
 ) {
-    // A scanned VIP code / coupon is waiting: the price buttons pulse.
-    CompositionLocalProvider(LocalPendingPulse provides (s.pending != null && s.screen is Screen.Home)) {
     Box(Modifier.fillMaxSize().background(Bg)) {
         AnimatedContent(
             targetState = s.screen,
@@ -97,8 +93,8 @@ fun TimerApp(
         ) { screen ->
             when (screen) {
                 Screen.Home ->
-                    if (s.dual) DualHomeScreen(s, version, onSelect, onTechTrigger, onScan)
-                    else HomeScreen(s, version, { onSelect(it, null) }, onTechTrigger, onScan)
+                    if (s.dual) DualHomeScreen(s, version, onSelect, onTechTrigger)
+                    else HomeScreen(s, version, { onSelect(it, null) }, onTechTrigger)
                 is Screen.Confirm -> ConfirmScreen(screen, onConfirm, onCancelConfirm)
                 is Screen.ChoosePay -> ChoosePayScreen(screen, onChoiceCard, onChoiceScan, onChoiceCancel)
                 is Screen.ScanToPay -> ScanToPayScreen(screen, onScanBack)
@@ -128,7 +124,6 @@ fun TimerApp(
         }
         if (s.screen is Screen.Home) {
             Column(Modifier.align(Alignment.TopCenter).padding(top = 6.dp, start = 12.dp, end = 12.dp)) {
-                s.pending?.let { PendingBanner(it, onClearPending) }
                 s.notice?.let {
                     Text(
                         it, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
@@ -153,7 +148,6 @@ fun TimerApp(
                     .background(Amber, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
             )
         }
-    }
     }
 }
 
@@ -236,7 +230,6 @@ private fun HomeScreen(
     version: String,
     onSelect: (TimerPackage) -> Unit,
     onTechTrigger: () -> Unit,
-    onScan: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp)) {
         HomeHeader(s, gap = 6.dp)
@@ -267,11 +260,9 @@ private fun HomeScreen(
         }
 
         Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            ScanButton(onScan)
-            Spacer(Modifier.weight(1f))
-            TripleTapText(version, onTechTrigger)
-        }
+        // No scan button on Home (owner, 2026-10-26): coupons / VIP codes are scanned on the
+        // payment page, after the package is chosen -- as on Wash.
+        Row { Spacer(Modifier.weight(1f)); TripleTapText(version, onTechTrigger) }
     }
 }
 
@@ -285,7 +276,6 @@ private fun DualHomeScreen(
     version: String,
     onSelect: (TimerPackage, Bay?) -> Unit,
     onTechTrigger: () -> Unit,
-    onScan: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
         HomeHeader(s, gap = 4.dp)
@@ -318,11 +308,9 @@ private fun DualHomeScreen(
         }
 
         Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            ScanButton(onScan)
-            Spacer(Modifier.weight(1f))
-            TripleTapText(version, onTechTrigger)
-        }
+        // No scan button on Home (owner, 2026-10-26): coupons / VIP codes are scanned on the
+        // payment page, after the package is chosen -- as on Wash.
+        Row { Spacer(Modifier.weight(1f)); TripleTapText(version, onTechTrigger) }
     }
 }
 
@@ -363,7 +351,6 @@ private fun BayColumn(
                 Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp)
-                    .pendingPulse()
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (enabled) Color.White else Color.White.copy(alpha = 0.35f))
                     .clickable(enabled = enabled) { onSelect(pkg) }
@@ -458,7 +445,6 @@ private fun BayRing(running: Boolean, remaining: Long, totalMs: Long, color: Col
 private fun PackageCard(pkg: TimerPackage, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Column(
         modifier
-            .pendingPulse()
             .clip(RoundedCornerShape(18.dp))
             .background(if (enabled) Amber else SurfaceHi)
             .clickable(enabled = enabled, onClick = onClick)
@@ -923,54 +909,6 @@ private fun PaymentSelfTestPanel(s: PaymentSelfTestViewModel.State, onRun: () ->
 }
 
 // ---- scanned VIP code / coupon --------------------------------------------
-
-/** Opens the scanner for a coupon or a VIP member code (the WizarPOS scanner shows its own camera page). */
-@Composable
-private fun ScanButton(onScan: () -> Unit) {
-    Row(
-        Modifier.clip(RoundedCornerShape(20.dp)).background(Amber)
-            .clickable(onClick = onScan).padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("▣", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Text("  Coupon / VIP code", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-private val LocalPendingPulse = compositionLocalOf { false }
-
-/** Gentle pulse on the price buttons while a scanned VIP code / coupon waits for a choice. */
-@Composable
-private fun Modifier.pendingPulse(): Modifier {
-    if (!LocalPendingPulse.current) return this
-    val t = rememberInfiniteTransition(label = "pendingPulse")
-    val k by t.animateFloat(1f, 1.05f, infiniteRepeatable(tween(550), RepeatMode.Reverse), label = "k")
-    return this.scale(k)
-}
-
-/**
- * Two big lines with a check, like Wash: customers with little English
- * missed the old one-line 13sp banner and thought the scan did nothing
- * (2026-10-07).
- */
-@Composable
-private fun PendingBanner(p: TimerViewModel.Pending, onClear: () -> Unit) {
-    val title = when (p) {
-        is TimerViewModel.Pending.Vip -> "VIP ${p.memberCode}  ·  ${formatPrice(p.balanceCents)}"
-        is TimerViewModel.Pending.Coupon -> "Coupon ${couponLabel(p)}"
-    }
-    Row(
-        Modifier.fillMaxWidth().background(Amber, RoundedCornerShape(12.dp)).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("✓", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
-        Column(Modifier.weight(1f).padding(start = 10.dp)) {
-            Text(title, color = Ink, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
-            Text("Tap a time below to pay  ↓", color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-        }
-        Text("✕", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onClear).padding(horizontal = 14.dp, vertical = 8.dp))
-    }
-}
 
 private fun couponLabel(c: TimerViewModel.Pending.Coupon) = when (c.type) {
     "PERCENT_OFF" -> "${c.value}% OFF"

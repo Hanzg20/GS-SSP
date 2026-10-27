@@ -73,8 +73,8 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * A code scanned on Home, waiting for the customer to pick a package
-     * (same two kinds as wash: a 6-character VIP member code, or a coupon).
+     * A code scanned on the payment page, about to pay on Confirm (same two kinds as
+     * wash: a 6-character VIP member code, or a coupon).
      */
     sealed interface Pending {
         data class Vip(val cardUid: String, val memberCode: String, val balanceCents: Int) : Pending
@@ -97,8 +97,6 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         val dual: Boolean = false,
         /** Dual-bay: the sides currently running. */
         val bays: Map<Bay, BayRun> = emptyMap(),
-        /** Scanned VIP code / coupon waiting for a package. */
-        val pending: Pending? = null,
         /** Short customer message (scan result, code not valid here, ...). */
         val notice: String? = null,
     )
@@ -207,20 +205,6 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         // Single-bay: Home is never shown mid-session. Dual-bay: buying for a
         // running side adds time (the timer board adds a coin's worth).
         returnHomeJob?.cancel()
-        s.pending?.let { pending ->
-            when (pending) {
-                is Pending.Vip -> _state.update { it.copy(screen = Screen.Confirm(pkg, side, pending, 0)) }
-                is Pending.Coupon -> {
-                    if (pending.applicableProductId != null && pending.applicableProductId != pkg.productId) {
-                        val target = s.packages.firstOrNull { it.productId == pending.applicableProductId }
-                        notice(if (target != null) "This coupon is for the ${formatPrice(target.priceCents)} package" else "This coupon can't be used here")
-                        return
-                    }
-                    _state.update { it.copy(screen = Screen.Confirm(pkg, side, pending, couponPrice(pkg.priceCents, pending))) }
-                }
-            }
-            return
-        }
         // Same as Wash: card or scan on a payment page, unless the operator allows only one
         // (KioskSettings.payment_method_mode); anything else offers both.
         when (ConfigManager.getConfig()?.settings?.payment_method_mode ?: PaymentMethodMode.ALL) {
@@ -413,57 +397,21 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- scanned VIP code / coupon ---------------------------------------------
 
-    private var pendingExpiry: Job? = null
     private var noticeJob: Job? = null
 
-    /**
-     * A code from the scanner. 6 letters/digits = VIP member code, anything
-     * else = coupon -- the same routing wash uses. Nothing is spent here:
-     * the VIP balance and the coupon are only used after the customer picks
-     * a package and confirms.
-     */
     private fun dollars(cents: Int) = "$" + String.format(java.util.Locale.US, "%.2f", cents / 100.0)
 
+    /**
+     * A code from the scanner, opened by the payment page's "Scan Coupon / VIP" (Home has
+     * no scan button since 2026-10-26, owner). 6 letters/digits = VIP member code, anything
+     * else = coupon -- the same routing wash uses.
+     */
     fun onScanned(raw: String) {
         val code = raw.trim()
+        val sc = _state.value.screen as? Screen.ScanToPay ?: return
         if (code.isEmpty()) return
-        (_state.value.screen as? Screen.ScanToPay)?.let { sc ->
-            TtsManager.stop()
-            viewModelScope.launch { payScanned(code, sc) }
-            return
-        }
-        if (_state.value.screen !is Screen.Home) return
-        viewModelScope.launch {
-            if (Regex("^[A-Za-z0-9]{6}$").matches(code)) {
-                val uid = VipRepository.resolveCardUidByQrCode(code)
-                val card = uid?.let { VipRepository.getVipCard(it) }
-                when {
-                    uid == null || card == null -> notice("Member code not recognized")
-                    !card.is_active -> notice("This VIP card is deactivated.")
-                    // Can't cover even the cheapest package: say so now.
-                    _state.value.packages.filter { it.priceCents > 0 }.minOfOrNull { it.priceCents }
-                        ?.let { card.balance_cents < it } == true -> {
-                        // No "top up on the VIP page": Timer has none (it's Wash's).
-                        notice("Insufficient VIP balance: ${dollars(card.balance_cents)}. Please pay by card.")
-                    }
-                    else -> setPending(Pending.Vip(uid, code.uppercase(), card.balance_cents))
-                }
-                return@launch
-            }
-            when (val peek = CouponRepository.peekCoupon(code, deviceSn)) {
-                is CouponPeekResult.Success -> {
-                    val forHere = peek.applicableProductId == null || _state.value.packages.any { it.productId == peek.applicableProductId }
-                    if (forHere) setPending(Pending.Coupon(code, peek.type, peek.value, peek.applicableProductId, peek.expiresAt))
-                    else notice("This coupon can't be used here")
-                }
-                else -> notice("This code can't be used.")
-            }
-        }
-    }
-
-    fun clearPending() {
-        pendingExpiry?.cancel()
-        _state.update { it.copy(pending = null) }
+        TtsManager.stop()
+        viewModelScope.launch { payScanned(code, sc) }
     }
 
     fun cancelConfirm() {
@@ -473,7 +421,6 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     /** The customer confirmed the Confirm screen. */
     fun confirm() {
         val c = _state.value.screen as? Screen.Confirm ?: return
-        clearPending()
         when (val pending = c.pending) {
             is Pending.Vip -> payWithVip(c.pkg, c.bay, pending)
             is Pending.Coupon ->
@@ -571,16 +518,6 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
      * the reason, the card one tap away (Wash does the same) -- not a 5 s line on Home.
      */
     private fun backToPayment(pkg: TimerPackage, bay: Bay?, why: String) = showChoosePay(pkg, bay, why)
-
-    private fun setPending(p: Pending) {
-        pendingExpiry?.cancel()
-        _state.update { it.copy(pending = p, notice = null) }
-        TtsManager.speak(if (p is Pending.Vip) "VIP card recognized. Please choose your time." else "Coupon recognized. Please choose your time.")
-        pendingExpiry = viewModelScope.launch {
-            delay(PENDING_MS)
-            _state.update { if (it.pending == p) it.copy(pending = null) else it }
-        }
-    }
 
     private fun notice(text: String) {
         noticeJob?.cancel()

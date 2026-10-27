@@ -186,8 +186,6 @@ class MainActivity : ComponentActivity() {
                     onSelect = timerVm::select,
                     onCancelPayment = timerVm::cancelPayment,
                     onTechTrigger = { if (timerVm.canEnterTechMode) showPin = true },
-                    onScan = { startScan(vendor) },
-                    onClearPending = timerVm::clearPending,
                     onConfirm = timerVm::confirm,
                     onCancelConfirm = timerVm::cancelConfirm,
                     onChoiceCard = timerVm::choiceCard,
