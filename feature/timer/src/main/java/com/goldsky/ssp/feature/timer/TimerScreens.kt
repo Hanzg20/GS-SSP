@@ -702,7 +702,7 @@ private fun OutputSettingsPanel(s: OutputSettings, onChange: (OutputSettings) ->
         if (s.mode == OutputMode.COIN_PULSES) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("每脉冲", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
-                listOf(25, 100, 200).forEach { c -> Pick("$" + "%.2f".format(c / 100.0), s.centsPerPulse == c) { onChange(s.copy(centsPerPulse = c)) } }
+                listOf(25, 50, 100, 200).forEach { c -> Pick("$" + "%.2f".format(c / 100.0), s.centsPerPulse == c) { onChange(s.copy(centsPerPulse = c)) } }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("脉宽", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
@@ -738,7 +738,7 @@ private fun BayOutputPanel(bay: Bay, s: OutputSettings, onChange: (OutputSetting
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("每脉冲", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
-            listOf(25, 100, 200).forEach { c -> Pick("$" + "%.2f".format(c / 100.0), s.centsPerPulse == c) { onChange(s.copy(centsPerPulse = c)) } }
+            listOf(25, 50, 100, 200).forEach { c -> Pick("$" + "%.2f".format(c / 100.0), s.centsPerPulse == c) { onChange(s.copy(centsPerPulse = c)) } }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("脉宽", color = TextLo, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
