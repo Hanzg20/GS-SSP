@@ -76,7 +76,7 @@ erDiagram
 | Ads → `media` | advertisements, playlists, ad_playback_logs | CMP (ads), apps (playback) |
 | Store back office → `office` | **`office`.checklists, `office`.checklist_items, `office`.checklist_ticks** (§5b); expenses, reminders, notes (still `public`) | Iris / Ourea / Apex; checklists via `office_*` RPCs |
 | AI assistant → `apex` | apex_messages, apex_knowledge | apex-assistant edge function |
-| **Pending (待处理)** | `gp_*` (appointments, order_items, orders, products, profiles, settings, vehicles), `jc_*` (advertisement_logs, advertisements, consumption_records, member_levels, members, membership_cards, points_transactions, system_config, transaction_history, vip_cards), `e_merchants`, `e_transactions` | not read or written by GS-SSP apps. Marked pending 2026-10-13 (`COMMENT ON TABLE ... 'PENDING: ...'`). Don't build on them; to be moved to `legacy` or dropped once their owners are known |
+| **Pending (待处理)** | `gp_*` (appointments, order_items, orders, products, profiles, settings, vehicles), `jc_*` (advertisement_logs, advertisements -- the member tables were dropped 2026-10-27, copies in `backup.jc_*_20261027`), `e_merchants`, `e_transactions` | not read or written by GS-SSP apps. Marked pending 2026-10-13 (`COMMENT ON TABLE ... 'PENDING: ...'`). Don't build on them; to be moved to `legacy` or dropped once their owners are known |
 
 ---
 
