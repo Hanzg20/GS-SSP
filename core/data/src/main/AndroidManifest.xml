@@ -15,6 +15,10 @@
         <!-- Which payment app the terminal has: SettlementManager.onDemoPayments. -->
         <package android:name="com.wizarpos.paywizard.demo" />
         <package android:name="com.smartpos.nuvei.smartpay" />
+        <!-- PAYWizard (OPC): WizarPosAidlClient binds its AIDL service. Without this the bind
+             is "not found" once OPC is reinstalled (TMS update 2026-10-28 on 253/255): the
+             visibility the old install had came only from earlier interaction. -->
+        <package android:name="com.wizarpos.opc" />
     </queries>
 
     <application>
