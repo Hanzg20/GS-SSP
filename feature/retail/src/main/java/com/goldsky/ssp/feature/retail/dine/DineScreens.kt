@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
@@ -108,6 +109,16 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
             com.goldsky.ssp.common.FeedbackManager.vibrate(context, 300)
         }
     }
+    // A different chime when a customer paid online (Ourea Scan).
+    LaunchedEffect(dine.onlinePaidArrivals) {
+        if (dine.onlinePaidArrivals > 0) {
+            runCatching {
+                android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 90)
+                    .startTone(android.media.ToneGenerator.TONE_PROP_BEEP2, 500)
+            }
+            com.goldsky.ssp.common.FeedbackManager.vibrate(context, 300)
+        }
+    }
 
     Column(modifier.fillMaxSize()) {
         if (!dine.online) {
@@ -116,6 +127,26 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
                     Icon(Icons.Default.CloudOff, null, tint = scheme.onErrorContainer, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.dine_err_offline), color = scheme.onErrorContainer)
+                }
+            }
+        }
+        dine.onlinePaidNotices.forEach { n ->
+            val success = com.goldsky.ssp.ui.theme.GsTheme.colors.success
+            Surface(
+                color = success, contentColor = scheme.surface,
+                modifier = Modifier.fillMaxWidth().clickable { dine.dismissOnlinePaid(n.ecr_ref_num) }
+            ) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.QrCode, null)
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        stringResource(R.string.dine_online_paid, n.table_name, money(n.amount_cents)) + " · " +
+                            if (n.check_closed || n.balance_cents == 0) stringResource(R.string.dine_online_paid_settled)
+                            else stringResource(R.string.dine_online_paid_owed, money(n.balance_cents)),
+                        fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(stringResource(R.string.dine_online_paid_ok), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -236,7 +267,13 @@ private fun TableCard(ft: DineRepository.FloorTable, scanPending: Int, onClick: 
                     listOfNotNull(stringResource(R.string.dine_guests, c.guests), minutesSince(c.opened_at)?.let { stringResource(R.string.dine_minutes, it) }).joinToString(" · "),
                     color = fg, style = MaterialTheme.typography.bodySmall
                 )
-                Text(money(ft.totalCents), color = fg, fontWeight = FontWeight.Bold)
+                if (ft.paidCents > 0) {
+                    // Part paid (a split, or a customer paying online): what's still owed counts.
+                    Text(stringResource(R.string.dine_balance_due, money(ft.balanceCents)), color = fg, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.dine_of_total, money(ft.totalCents)), color = fg, style = MaterialTheme.typography.labelSmall)
+                } else {
+                    Text(money(ft.totalCents), color = fg, fontWeight = FontWeight.Bold)
+                }
                 if (c.status == "BILLED") Text(stringResource(R.string.dine_billed), color = fg, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 c.server_name?.let { Text(it, color = fg, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }

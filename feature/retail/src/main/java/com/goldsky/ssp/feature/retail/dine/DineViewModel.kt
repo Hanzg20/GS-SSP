@@ -37,6 +37,14 @@ class DineViewModel : ViewModel() {
     /** Bumped when a new QR order arrives, so the screen can chime once. */
     var scanArrivals by mutableStateOf(0)
         private set
+    /** Online payments (Ourea Scan) that came in while this terminal watched, not yet dismissed. */
+    var onlinePaidNotices by mutableStateOf<List<DineRepository.OnlinePaid>>(emptyList())
+        private set
+    /** Bumped when a customer pays online, so the screen can chime once. */
+    var onlinePaidArrivals by mutableStateOf(0)
+        private set
+    /** Online payments already seen; null until the first floor read (those don't chime). */
+    private var onlineSeen: MutableSet<String>? = null
     /** null = cloud unreachable on the last refresh. */
     var online by mutableStateOf(true)
         private set
@@ -78,6 +86,7 @@ class DineViewModel : ViewModel() {
             if (f.scanPending.any { new -> scanPending.none { it.id == new.id } }) scanArrivals++
             scanPending = f.scanPending
             acceptApproved(f.scanPending)
+            noticeOnlinePaid(f.onlinePaid)
         }
         check?.let { c ->
             DineRepository.check(c.check.id)?.let { fresh ->
@@ -86,6 +95,18 @@ class DineViewModel : ViewModel() {
             }
         }
     }
+
+    /** New online payments become notices (newest first); the first read only learns what was there. */
+    private fun noticeOnlinePaid(recent: List<DineRepository.OnlinePaid>) {
+        val seen = onlineSeen ?: mutableSetOf<String>().also { s -> s += recent.map { it.ecr_ref_num }; onlineSeen = s; return }
+        val fresh = recent.filter { it.ecr_ref_num !in seen }
+        if (fresh.isEmpty()) return
+        seen += fresh.map { it.ecr_ref_num }
+        onlinePaidNotices = fresh + onlinePaidNotices
+        onlinePaidArrivals++
+    }
+
+    fun dismissOnlinePaid(ref: String) { onlinePaidNotices = onlinePaidNotices.filter { it.ecr_ref_num != ref } }
 
     private fun refresh() { viewModelScope.launch { refreshNow() } }
 

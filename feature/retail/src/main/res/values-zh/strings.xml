@@ -208,6 +208,12 @@
     <string name="dine_guests">%1$d 位</string>
     <string name="dine_minutes">%1$d 分钟</string>
     <string name="dine_billed">已打账单</string>
+    <string name="dine_balance_due">待付 %1$s</string>
+    <string name="dine_of_total">共 %1$s</string>
+    <string name="dine_online_paid">%1$s 桌手机买单 %2$s</string>
+    <string name="dine_online_paid_settled">已结清</string>
+    <string name="dine_online_paid_owed">还差 %1$s</string>
+    <string name="dine_online_paid_ok">知道了</string>
     <string name="dine_seat_title">开台：%1$s</string>
     <string name="dine_how_many_guests">几位客人？</string>
     <string name="dine_seat">开台</string>

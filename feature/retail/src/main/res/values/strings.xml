@@ -209,6 +209,12 @@
     <string name="dine_guests">%1$d guests</string>
     <string name="dine_minutes">%1$d min</string>
     <string name="dine_billed">BILL PRINTED</string>
+    <string name="dine_balance_due">Due %1$s</string>
+    <string name="dine_of_total">of %1$s</string>
+    <string name="dine_online_paid">%1$s paid online %2$s</string>
+    <string name="dine_online_paid_settled">table settled</string>
+    <string name="dine_online_paid_owed">%1$s still owed</string>
+    <string name="dine_online_paid_ok">OK</string>
     <string name="dine_seat_title">Seat table %1$s</string>
     <string name="dine_how_many_guests">How many guests?</string>
     <string name="dine_seat">Seat</string>

@@ -61,8 +61,20 @@ object DineRepository {
         val approved_by: String? = null
     )
 
-    /** The floor and the customer orders waiting on it. */
-    data class Floor(val tables: List<FloorTable>, val scanPending: List<ScanOrder>)
+    /** A customer paid online (Ourea Scan) in the last 30 minutes: staff get a chime and a banner. */
+    @Serializable
+    data class OnlinePaid(
+        val ecr_ref_num: String,
+        val table_name: String = "?",
+        val check_no: Int = 0,
+        val amount_cents: Int = 0,
+        val check_closed: Boolean = false,
+        val balance_cents: Int = 0,
+        val created_at: String? = null
+    )
+
+    /** The floor, the customer orders waiting on it, and the recent online payments. */
+    data class Floor(val tables: List<FloorTable>, val scanPending: List<ScanOrder>, val onlinePaid: List<OnlinePaid> = emptyList())
 
     @Serializable
     data class Check(
@@ -111,8 +123,12 @@ object DineRepository {
         val tax_cents: Int = 0,
         val tip_cents: Int = 0,
         val method: String? = null,
-        val paid_by: String? = null
-    )
+        val paid_by: String? = null,
+        /** VOIDED / REFUNDED: the money went back, so it isn't paid any more. */
+        val refund_status: String? = null
+    ) {
+        val isRefunded: Boolean get() = refund_status != null
+    }
 
     /** A check with everything on it, and its money. */
     data class CheckDetail(val check: Check, val table: DiningTable?, val items: List<Item>, val payments: List<Payment>) {
@@ -120,16 +136,18 @@ object DineRepository {
         val subtotalCents: Int get() = liveItems.sumOf { it.lineTotalCents }
         val taxCents: Int get() = SalesTax.cents(liveItems.map { it.lineTotalCents to it.tax_rate_bps })
         val totalCents: Int get() = subtotalCents + taxCents
-        val paidCents: Int get() = payments.sumOf { it.amount_cents }
-        val paidTaxCents: Int get() = payments.sumOf { it.tax_cents }
+        val paidCents: Int get() = payments.filter { !it.isRefunded }.sumOf { it.amount_cents }
+        val paidTaxCents: Int get() = payments.filter { !it.isRefunded }.sumOf { it.tax_cents }
         val balanceCents: Int get() = (totalCents - paidCents).coerceAtLeast(0)
         /** Lines nobody has paid for on their own yet (split by items). */
         val unpaidItems: List<Item> get() = liveItems.filter { it.paid_ecr_ref_num == null }
         val rounds: Int get() = items.maxOfOrNull { it.round } ?: 0
     }
 
-    /** A table on the floor with its live check, if any, and that check's total. */
-    data class FloorTable(val table: DiningTable, val check: Check?, val totalCents: Int)
+    /** A table on the floor with its live check, if any, that check's total and what's paid on it. */
+    data class FloorTable(val table: DiningTable, val check: Check?, val totalCents: Int, val paidCents: Int = 0) {
+        val balanceCents: Int get() = (totalCents - paidCents).coerceAtLeast(0)
+    }
 
     /** A line for the next round (from the device's cart). */
     data class NewLine(
@@ -144,13 +162,14 @@ object DineRepository {
     @Serializable private data class FloorCheck(
         val id: String, val table_id: String, val check_no: Int, val status: String, val guests: Int = 1,
         val server_id: String? = null, val server_name: String? = null, val note: String? = null,
-        val opened_at: String? = null, val total_cents: Int = 0
+        val opened_at: String? = null, val total_cents: Int = 0, val paid_cents: Int = 0
     ) {
         fun check() = Check(id, table_id, check_no, status, guests, server_id, server_name, note, opened_at)
     }
     @Serializable private data class FloorRpc(
         val tables: List<DiningTable> = emptyList(), val checks: List<FloorCheck> = emptyList(),
-        val scan_pending: List<ScanOrder> = emptyList()
+        val scan_pending: List<ScanOrder> = emptyList(),
+        val online_paid: List<OnlinePaid> = emptyList()
     )
     @Serializable private data class CheckRpc(
         val check: Check, val table: DiningTable? = null,
@@ -173,7 +192,8 @@ object DineRepository {
             SupabaseClientProvider.ensureAuthenticated()
             val f = SupabaseClientProvider.client.postgrest.rpc("dine_floor").decodeAs<FloorRpc>()
             val byTable = f.checks.associateBy { it.table_id }
-            Floor(f.tables.map { t -> byTable[t.id].let { c -> FloorTable(t, c?.check(), c?.total_cents ?: 0) } }, f.scan_pending)
+            Floor(f.tables.map { t -> byTable[t.id].let { c -> FloorTable(t, c?.check(), c?.total_cents ?: 0, c?.paid_cents ?: 0) } },
+                f.scan_pending, f.online_paid)
         } catch (e: Exception) {
             Log.w(TAG, "floor failed: ${e.message}"); null
         }
