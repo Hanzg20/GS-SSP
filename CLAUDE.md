@@ -65,6 +65,9 @@ app/ourea      -- Desktop POS, first real build 2026-08-27 (see `docs/system_arc
                   (`<site>/?t=<dine.tables.qr_token>`) through anon `scan_*` RPCs; orders wait in `dine.scan_orders` until staff
                   accept them on the floor (banner + chime), then they become the table's next round. Never show success the
                   server didn't confirm, never invent menu items.
+                  Pay at the table (2026-10-28): the same page's Bill shows the check and takes the card on Nuvei Simply
+                  Connect (`supabase/functions/scan-pay`, `scan-pay-dmn`, `dine.online_payments`); the store's Nuvei account is
+                  its `merchant_acquirer_accounts` row (ACTIVE, env int = sandbox). PAID only on Nuvei's server-side word.
 app/aegis-wash, app/aegis-vend, app/aegis-ev
                -- the Aegis series (see taxonomy below): `com.goldsky.ssp.aegis.wash` (car wash, feature:wash),
                   `com.goldsky.ssp.aegis.vend` (self-service vending, feature:vending), `com.goldsky.ssp.aegis.ev`
@@ -164,7 +167,8 @@ When adding a new cloud-synced feature, follow the existing pattern: a dedicated
 
 ### Database conventions
 New tables follow `docs/database_design.md` (§3 conventions, §2 inventory, §5 dine-in): one schema per business domain (e.g. `dine`), schemas other than
-`public` reached only through `public.<domain>_<verb>` RPCs, shared `sales.*` orders with per-vertical extension tables.
+`public` reached only through `public.<domain>_<verb>` RPCs. Each vertical keeps its own transaction table in its own schema
+(owner, 2026-10-28; e.g. dine-in = `dine.payments`) -- no shared `sales.*`, and never copy a payment into another vertical's table.
 
 ### Data models
 `AppConfig`, `Product`, `DeviceShadow` mirror the Supabase schema described in `docs/database_design.md` (multi-tenant: `organizations` → `locations` → `devices`, generic `products` table with a `vertical_type` discriminator and JSONB `attributes` for industry-specific params).

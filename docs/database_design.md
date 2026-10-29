@@ -55,7 +55,7 @@ erDiagram
   **A transaction has no `org_id` of its own**: reports and RLS find its store through
   `devices.org_id`. So moving a device to another store would carry its whole sales
   history with it -- `cmp_assign_device` refuses to move a device that has transactions
-  (§6.1). Stamping `org_id` on each transaction is the real fix, planned with `sales.*` (§4).
+  (§6.1). Stamping `org_id` on each transaction is the real fix, planned for when each vertical's transactions move to its own table (§4); `dine.payments` already has it through its check.
 
 ---
 
@@ -69,7 +69,7 @@ erDiagram
 | Devices & ops → `ops` | devices, device_auth_map, device_secrets, device_shadows, device_commands, heartbeats, app_error_logs, system_health_logs, maintenance_records, audit_logs, app_configurations | apps (self-reported device columns, heartbeat, logs), CMP (assignment, commands, config -- through RPCs, §6.1) |
 | Staff | staff (PIN hash, role MANAGER / CASHIER / DRIVER) | CMP |
 | Catalog | products | CMP |
-| Sales & payment → `sales` | transactions, transaction_items, qr_payment_sessions, acquirer_settlement_records, merchant_acquirer_accounts, hardware_acquirer_map | apps (sales), back office (settlement) |
+| Sales & payment (each vertical's transactions move to its own schema, §4) | transactions, transaction_items, qr_payment_sessions, acquirer_settlement_records, merchant_acquirer_accounts, hardware_acquirer_map | apps (sales), back office (settlement) |
 | Retail delivery → `retail` | delivery_orders, delivery_order_items | CMP / Apex (create), Iris (collect) |
 | Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders, `dine`.scan_chats** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
 | Members → `member` | vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions | apps, CMP |
@@ -92,7 +92,7 @@ schema and its name does not repeat the domain: `dine.checks`, not
 | `public` | platform core for now, and the RPC functions the apps call | existing |
 | `dine` | dine-in | **done 2026-10-13** |
 | `office` | store back office (the Journal / 手账): checklists; expenses, reminders, notes to move | **checklists 2026-10-16** |
-| `sales` | shared orders / lines / payments (§4) | with the next vertical |
+| `sales` | ~~shared orders / lines / payments~~ -- dropped 2026-10-28: each vertical keeps its own transactions (§4) | not built |
 | `retail`, `wash`, `ev`, `parking`, `vending`, `timer` | each vertical's own extension tables | as each is built or migrated |
 | `member`, `media`, `apex`, `ops` | see §2 | to migrate |
 | `legacy` | the pending `gp_*`, `jc_*`, `e_*` (§2) | pending |
@@ -125,22 +125,32 @@ possible, applied in one transaction. Planned: Supabase CLI migrations
 
 ---
 
-## 4. Shared orders for every vertical (direction)
+## 4. Transactions: each vertical keeps its own (owner, 2026-10-28)
 
-Today each flow has its own copy of "order, lines, payments": `transactions` +
-`transaction_items`, `delivery_orders` + items, dine checks + payments,
-`qr_payment_sessions`. New verticals (parking, EV, appointments) do not add
-another copy:
+Each vertical records its sales and payments in **its own table, in its own schema** --
+not one table shared by every vertical. This replaces the earlier direction (2026-10-13)
+of one shared `sales.orders` / `sales.order_lines` / `sales.payments` for all verticals.
 
-- `sales.orders`: one sale (kind COUNTER / DELIVERY / DINE_IN / WASH / EV ...),
-  status, store, device, staff, totals
-- `sales.order_lines`: product, quantity, unit price, tax rate, options
-- `sales.payments`: one or more per order (split, mixed tender, tip)
+| Vertical | Its transaction table | Written by |
+|---|---|---|
+| Dine-in | `dine.payments` (each payment on a check; Ourea Scan attempts in `dine.online_payments`) | Ourea / Iris (`dine_record_payment`), Ourea Scan (`dine_online_pay_settle`) |
+| Counter sales, delivery (Ourea / Iris) | `public.transactions` + `transaction_items` | the terminals |
+| Unattended (wash, timer, vend, laundry, EV) | `public.transactions` for now | the terminals |
 
-A vertical adds a 1:1 extension table keyed by `order_id` for what only it has
-(`dine.checks`: table, guests, rounds; `ev.sessions`: charger, kWh). Day close,
-HST, Apex and CMP reports read `sales.*` only. The existing flows move onto it
-one at a time, with views keeping old names readable during the move.
+- A new vertical (parking, EV sessions, appointments...) gets its own transaction table in
+  its own schema (`parking.payments`, `ev.payments`...), next to the rest of its tables.
+  The ones still in `public.transactions` move to their own schema one at a time, with a
+  view keeping the old name readable during the move.
+- Every transaction table carries the same core columns, so a store-wide report can add
+  them up: `amount_cents` (food + tax) / `tax_cents` / `tip_cents`, `method`, a unique
+  reference (`ecr_ref_num`), `device_sn` (the terminal it belongs to), `created_at`.
+- A store-wide report (day close, HST, Apex, Cael) reads each vertical's table and adds them
+  up. A payment is never copied into another vertical's table to make a report work: an
+  Ourea Scan online payment is in `dine.payments` under the store's Ourea, never in
+  `public.transactions`.
+- Known overlap, to sort out when dine-in's reports are built: a card payment taken on the
+  Ourea / Iris for a check is today in both `public.transactions` (the terminal's card flow,
+  linked by `transactions.check_id`) and `dine.payments`. Reports must not count it twice.
 
 ---
 
@@ -151,8 +161,9 @@ one at a time, with views keeping old names readable during the move.
 | `dine.tables` | the floor: name, area, seats, sort | name unique per store among active tables; a table with a live check can't be removed |
 | `dine.checks` | a seated table's check: check_no (daily per store), guests, server, OPEN → BILLED → PAID / VOID | one live check per table (partial unique index) |
 | `dine.check_items` | lines sent to the kitchen, by `round`; options JSONB; VOID with `voided_by` | the round being taken stays on the device until sent |
-| `dine.payments` | payments on a check: `amount_cents` (food + tax), `tax_cents`, `tip_cents`, method, `ecr_ref_num` unique | the check closes when payments cover its total; split payments' tax adds up exactly to the check's |
+| `dine.payments` | dine's transactions -- payments on a check: `amount_cents` (food + tax), `tax_cents`, `tip_cents`, method, `ecr_ref_num` unique, `device_sn` (the Ourea / Iris that took it; online: the store's Ourea) | the check closes when payments cover its total; split payments' tax adds up exactly to the check's |
 
+| `dine.online_payments` | pay-at-table attempts from Ourea Scan (Nuvei): amount (food + tax), its tax part, tip, Nuvei session / transaction, OPEN → PAID / FAILED | only the scan-pay edge functions write it; PAID only once Nuvei confirmed it to the server, then it is also a `dine.payments` row (method `ONLINE`, `ecr_ref_num` `NUVEI-<TransactionID>`, `device_sn` the store's Ourea: app_version `*-ourea`, the one that opened the check, else the last seen); never a `public.transactions` row |
 | `dine.scan_orders` | customer QR orders (Ourea Scan, `web/ourea-scan`): server-priced lines, note, PENDING → ACCEPTED / REJECTED, the check and round it became | never reaches the kitchen without staff; ≤ 3 pending and ≤ 8 per 10 min per table; a double tap (same `client_ref`) is one order |
 
 QR ordering: each `dine.tables` row has a secret `qr_token` (128-bit); the table's
@@ -188,6 +199,16 @@ gluten_free, no_pork, no_beef), `spice_level` 0-5, `guide` -- and never beyond t
 against the menu and only reach the cart when the customer taps Add. Every question and answer is kept in
 `dine.scan_chats` (limits: per table per 10 min, per store per day; service role only, via
 `scan_chat_allowed` / `scan_chat_record`). Migration `docs/migrations/2026-10-13_scan_assistant.sql`.
+
+Pay at the table (2026-10-28, `supabase/functions/scan-pay` + `scan-pay-dmn`, no login, the QR secret is the
+credential): `scan_bill(token)` (anon) shows the table's live check, the balance and whether the store takes online
+payment (an ACTIVE `nuvei` row in `merchant_acquirer_accounts`, whose `env` int / prod picks Nuvei's sandbox or live).
+The customer pays all of it, an even share or an amount, plus a tip (`Tipping.kt`: 10 / 12 / 15 % of the amount
+before tax, or custom up to max(that, $20)), on Nuvei's own card form (Simply Connect); the server sets the tax
+part (as `DineRepository.taxOfPayment`) and refuses more than the balance minus what other phones at the table are
+paying (15 min). Service-role RPCs: `dine_online_pay_open` / `_attach` / `_get` / `_settle` / `_fail`. A charge Nuvei
+confirmed is always recorded, even on a check staff closed meanwhile (staff refund the overpayment); a wrong
+amount stays OPEN with a reason for a person to look at. Migrations `docs/migrations/2026-10-28_scan_pay.sql`, `_dine_payments_device.sql`.
 
 RPCs (all `public`): reads `dine_list_tables`, `dine_floor` (also returns pending QR orders), `dine_get_check`;
 writes `dine_save_table`, `dine_open_check`, `dine_send_items` (refuses a dish whose
@@ -291,4 +312,4 @@ Used for non-blocking remote configuration.
 - `distributors`: regional partners above organizations (`organizations.distributor_id`).
 - `alert_rules` / `alert_history`: smart alerts (OFFLINE, HARDWARE_FAULT, LOW_SALES; NEW → ACKNOWLEDGED → RESOLVED).
 - `payout_batches`: settlement batches per organization.
-These belong in `ops` / `sales` under §3 when built.
+These belong in `ops` under §3 when built.

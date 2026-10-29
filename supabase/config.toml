@@ -57,6 +57,17 @@ verify_jwt = false
 # then maps that session to its device and org (device_auth_map) itself.
 verify_jwt = true
 
+[functions.scan-pay]
+# Ourea Scan pay at the table, called by customers' phones without a login --
+# same trust model as scan-assistant below: the table's QR secret is the
+# credential, amounts and limits come from the database (dine_online_pay_*).
+verify_jwt = false
+
+[functions.scan-pay-dmn]
+# Nuvei's payment notification for scan-pay. Authenticity comes from the
+# advanceResponseChecksum signed with the store's Nuvei secret.
+verify_jwt = false
+
 [functions.scan-assistant]
 # Called by customers' phones from the Ourea Scan page (web/ourea-scan), who
 # have no Supabase login: the table's QR secret in the body is the credential

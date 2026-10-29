@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { Plus, Minus, X, Utensils, Edit3, ChevronRight, Clock, CheckCircle2, XCircle, Loader2, Sparkles } from 'lucide-react'
+import { Plus, Minus, X, Utensils, Edit3, ChevronRight, Clock, CheckCircle2, XCircle, Loader2, Sparkles, Receipt } from 'lucide-react'
 import Guide from './Guide.jsx'
+import Bill from './Bill.jsx'
 
 /*
  * Ourea Scan: a customer scans the QR on their table and orders from their
@@ -9,8 +10,10 @@ import Guide from './Guide.jsx'
  * has. Menu, prices, options and tax come from the server (scan_menu); an
  * order goes to the store as PENDING (scan_submit_order) and staff accept it
  * on Ourea / Iris before it reaches the kitchen. The page shows that status
- * (scan_orders) and never claims success it didn't get.
- * docs/database_design.md §5, docs/migrations/2026-10-13_dine_scan_orders.sql.
+ * (scan_orders) and never claims success it didn't get. After the meal the
+ * customer can pay the table's bill here (Bill.jsx, scan-pay) when the store
+ * takes online payment.
+ * docs/database_design.md §5, docs/migrations/2026-10-13_dine_scan_orders.sql, 2026-10-28_scan_pay.sql.
  */
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://ttbtxxpnvkcbyugzdqfw.supabase.co'
@@ -32,6 +35,20 @@ async function askGuide(body) {
   }
 }
 
+/** Pay at the table (supabase/functions/scan-pay); the table's QR secret is the credential. */
+async function callPay(body) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/scan-pay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
+      body: JSON.stringify(body),
+    })
+    return await res.json().catch(() => ({ error: 'failed' }))
+  } catch {
+    return { error: 'offline' }
+  }
+}
+
 const money = (c) => '$' + (c / 100).toFixed(2)
 const zh = (navigator.language || '').toLowerCase().startsWith('zh')
 const T = zh ? {
@@ -39,7 +56,7 @@ const T = zh ? {
   table: '桌', all: '全部', soldOut: '已售完', add: '加入', required: '必选', pickOne: '单选', upTo: (n) => `最多选 ${n} 项`, optional: '可选',
   order: '我的点单', items: (n) => `${n} 件`, subtotal: '小计', tax: '税（估算）', total: '合计', note: '给厨房的备注', notePh: '例如：少辣、走葱',
   itemNote: '这道菜的备注', send: '提交给店员', sending: '提交中…', save: '保存', cancel: '取消',
-  confirmHint: '店员确认后才会送到厨房，付款请在用餐后找服务员。', myOrders: '已提交的点单',
+  confirmHint: '店员确认后才会送到厨房。吃完点「买单」看账单。', myOrders: '已提交的点单',
   pending: '等待店员确认', accepted: '已送厨房', rejected: '未被接受', orderMore: '继续点菜',
   errors: { too_many_orders: '提交太频繁了，请等店员处理后再点', sold_out: '有菜刚刚售完：', item_unavailable: '有菜已下架，请刷新菜单', bad_option: '请重新选择口味：', unknown_table: '这个二维码已失效，请找服务员' },
   failed: '没有提交成功', retry: '重试',
@@ -48,12 +65,23 @@ const T = zh ? {
   guideHint: '例如：我对花生过敏，哪些能吃？', ask: '发送', listening: '正在听…点一下停止', addSuggestion: '加入',
   guideErrors: { busy: '小海狸有点忙，请过半分钟再试', table_limit: '问得有点多，请稍后再试', store_limit: '今天的提问已达上限，请问服务员', no_model: 'AI 向导暂时不可用，请问服务员', offline: '连不上网络，请稍后再试', failed: '没听明白，请换个说法再试', no_speech_service: '语音暂不可用，请打字', too_long: '录音太长了' },
   aiNote: 'AI 回答仅供参考，过敏请务必告诉服务员。',
+  bill: '买单', billTitle: '账单', noBill: '这桌还没有账单', taxActual: '税', alreadyPaid: '已付', balance: '待付',
+  payServer: '请找服务员买单', allPaid: '这桌已经付清了，谢谢！', howMuch: '付多少', payAll: '全部', split: 'AA 平分', customAmount: '自定金额',
+  perPerson: (m) => `每人 ${m}`, tipTitle: '小费', tipBasis: (m) => `按税前 ${m} 计算`, customTip: '自定', noTip: '不加小费',
+  chooseTip: '请先选择小费', payButton: (m) => `付款 ${m}`, payNow: '付款', confirming: '正在确认付款…',
+  paidOk: (m) => `已付款 ${m}，谢谢！`, stillOwed: (m) => `这桌还差 ${m}`, payMore: '再付一份',
+  payFailed: '付款没有成功，没有扣款。', payReview: '付款需要店员核对，请把这个页面给服务员看。',
+  payPending: '还没收到付款确认。请不要重复付款，找服务员确认一下。', nuveiLocale: 'zh',
+  emailLabel: '收据邮箱', emailHint: '只交给支付公司 Nuvei 用于这笔付款，本店不保存。', enterEmail: '请填写邮箱',
+  billErrors: { bad_amount: '金额超过了待付金额，账单已刷新', being_paid: '同桌有人正在付款，请稍后再看', no_open_check: '这桌的账单已经结了',
+    online_pay_off: '这家店暂不支持手机付款，请找服务员', too_many_attempts: '尝试太多次了，请找服务员', bad_tip: '小费金额不对',
+    gateway_error: '付款服务暂时连不上，请稍后再试', offline: '连不上网络，请稍后重试', failed: '没有成功，请稍后再试', bad_email: '邮箱格式不对' },
 } : {
   scanFirst: 'Scan the QR code on your table to order', badCode: 'This QR code is no longer valid. Please ask a server.', loading: 'Loading the menu…', offline: 'No connection. Please try again.',
   table: 'Table', all: 'All', soldOut: 'Sold out', add: 'Add', required: 'Required', pickOne: 'Pick one', upTo: (n) => `Up to ${n}`, optional: 'Optional',
   order: 'Your order', items: (n) => `${n} items`, subtotal: 'Subtotal', tax: 'Tax (est.)', total: 'Total', note: 'Note for the kitchen', notePh: 'e.g. less spicy, no green onion',
   itemNote: 'Note for this dish', send: 'Send to staff', sending: 'Sending…', save: 'Save', cancel: 'Cancel',
-  confirmHint: 'A server confirms your order before it goes to the kitchen. Pay your server after the meal.', myOrders: 'Your orders',
+  confirmHint: 'A server confirms your order before it goes to the kitchen. Tap Bill to see and pay your bill.', myOrders: 'Your orders',
   pending: 'Waiting for a server to confirm', accepted: 'Sent to the kitchen', rejected: 'Not accepted', orderMore: 'Order more',
   errors: { too_many_orders: 'Too many orders at once. Please wait for a server.', sold_out: 'Just sold out: ', item_unavailable: 'An item is no longer available. Please reload the menu.', bad_option: 'Please choose the options again: ', unknown_table: 'This QR code is no longer valid. Please ask a server.' },
   failed: 'Your order was not sent', retry: 'Try again',
@@ -62,6 +90,17 @@ const T = zh ? {
   guideHint: "e.g. I'm allergic to peanuts, what can I eat?", ask: 'Send', listening: 'Listening… tap to stop', addSuggestion: 'Add',
   guideErrors: { busy: 'Beaver is busy, try again in half a minute', table_limit: 'Lots of questions! Please wait a moment', store_limit: "Today's questions are used up, please ask your server", no_model: 'The AI guide is unavailable, please ask your server', offline: 'No connection, try again', failed: "Sorry, I didn't get that, try rephrasing", no_speech_service: 'Voice is unavailable, please type', too_long: 'That recording is too long' },
   aiNote: 'AI answers are a guide only. Always tell your server about allergies.',
+  bill: 'Bill', billTitle: 'Bill', noBill: 'No bill at this table yet', taxActual: 'Tax', alreadyPaid: 'Paid', balance: 'Balance due',
+  payServer: 'Please pay your server', allPaid: 'This table is all paid. Thank you!', howMuch: 'How much', payAll: 'All of it', split: 'Split evenly', customAmount: 'Other amount',
+  perPerson: (m) => `${m} each`, tipTitle: 'Tip', tipBasis: (m) => `Of ${m} before tax`, customTip: 'Custom', noTip: 'No tip',
+  chooseTip: 'Choose a tip first', payButton: (m) => `Pay ${m}`, payNow: 'Pay', confirming: 'Confirming your payment…',
+  paidOk: (m) => `Paid ${m}. Thank you!`, stillOwed: (m) => `${m} still owed at this table`, payMore: 'Pay another share',
+  payFailed: 'The payment did not go through. You were not charged.', payReview: 'A server needs to check this payment. Please show them this screen.',
+  payPending: "We haven't had the confirmation yet. Please don't pay again: ask your server.", nuveiLocale: 'en',
+  emailLabel: 'Email for your receipt', emailHint: 'Goes only to Nuvei, the payment company, for this payment. The store does not keep it.', enterEmail: 'Enter your email',
+  billErrors: { bad_amount: 'That is more than the balance. The bill was refreshed.', being_paid: 'Someone at your table is paying right now. Try again in a moment.', no_open_check: 'This bill is already closed.',
+    online_pay_off: "This store doesn't take payment on the phone. Please pay your server.", too_many_attempts: 'Too many tries. Please pay your server.', bad_tip: 'That tip amount is not allowed.',
+    gateway_error: "Payment isn't available right now. Try again in a moment.", offline: 'No connection. Please try again.', failed: 'That did not work. Please try again.', bad_email: 'That email address does not look right.' },
 }
 
 // Canada's priority allergens (products.attributes.allergens codes).
@@ -187,6 +226,7 @@ export default function App() {
   const [orders, setOrders] = useState([])
   const [clientRef, setClientRef] = useState(newRef)  // kept across retries: one submit = one order
   const [guideOpen, setGuideOpen] = useState(false)
+  const [billOpen, setBillOpen] = useState(false)
 
   const loadMenu = useCallback(async () => {
     setState('loading')
@@ -272,7 +312,12 @@ export default function App() {
           <h1 className="font-black text-lg text-slate-900 truncate">{menu.store.name}</h1>
           <p className="text-xs text-slate-500">{T.confirmHint}</p>
         </div>
-        <div className="ml-3 shrink-0 bg-emerald-100 text-emerald-800 font-black px-3 py-1.5 rounded-full">{T.table} {menu.table.name}</div>
+        <div className="ml-3 shrink-0 flex items-center gap-2">
+          <div className="bg-emerald-100 text-emerald-800 font-black px-3 py-1.5 rounded-full">{T.table} {menu.table.name}</div>
+          <button onClick={() => setBillOpen(true)} className="bg-slate-900 text-white font-bold px-3 py-1.5 rounded-full flex items-center gap-1">
+            <Receipt className="w-4 h-4" />{T.bill}
+          </button>
+        </div>
       </header>
 
       {orders.length > 0 && (
@@ -390,6 +435,8 @@ export default function App() {
             for (let i = 0; i < s.quantity; i++) addLine(p, choice)
           }} />
       )}
+
+      {billOpen && <Bill token={token} T={T} supabase={supabase} callPay={callPay} onClose={() => setBillOpen(false)} />}
 
       {optionsFor && (
         <OptionsSheet product={optionsFor} onClose={() => setOptionsFor(null)}
