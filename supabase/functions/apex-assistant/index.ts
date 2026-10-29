@@ -14,6 +14,10 @@
 //
 // POST { action: "stats" | "brief" | "ask", staffId, language: "zh"|"en",
 //        timezone?, question?, refresh? }
+//   From Cael (2026-10-29): { orgId } instead of staffId. The caller is then a
+//   signed-in Cael user: a sys admin, or a member of that org with the
+//   apex.manage permission (the same rule as reading apex_messages). Logged as
+//   device_sn "cael:<user id>"; no expense / reminder cards there.
 //   stats  the numbers only, no model call (always works, no key needed)
 //   brief  3-5 point summary of the day, cached per store/language for an hour
 //   ask    one question, with the last few turns of this staff member's chat
@@ -83,6 +87,9 @@ const RULES = `底线绝对不能松：
 12. reminders_due 是今天到期或已过期（overdue=true）的待办，for 是交给谁（everyone = 全店），set_by 是谁设的；expenses_this_month 是本月已记的费用（按类别），expenses_last_month_dollars 是上月合计，sales_this_month_dollars 是本月销售额。费用只按这些记录说，没记的就是"系统里还没记"，不要估算。类别名翻译：INVENTORY 进货、RENT 房租、UTILITIES 水电网、PAYROLL 工资、REPAIRS 维修、MARKETING 营销、FEES 手续费、OTHER 其他。
 13. profit_today 是今天全店的粗利：revenue_dollars 是不含税和小费的销售额（已退款的不算），减去今天记的费用（expenses_by_category）就是 rough_profit_dollars。只能叫"粗利"，不能说成"利润"或"净利"；说它时带一句"进货在付款当天算费用，只算已记录的费用"。今天没记费用时就说"今天还没记费用"，不要自己估算成本。
 14. 想记账或设提醒，告诉他直接说出来，比如"今天付了电费 234 块 5"或"明天 9 点提醒我订货"，你会弹出确认卡片。`;
+
+// Asked from the Cael web console, not a terminal: rule 14's confirmation card isn't there.
+const CAEL_NOTE = `这次是在 Cael 网页后台对话，不是在店里的终端上：这里不能记账、设提醒或建送货单。想做这些，告诉他在 Ourea / Iris 上对你说，或者在 Cael 的"门店费用""送货订单"页面里录入。`;
 
 const BRIEF_TASK: Record<"zh" | "en", string> = {
   zh: "请给老板写一份今天的经营简报：3-5 条要点，每条一行、以「• 」开头，先说今天到现在的销售情况（和上周同一天同一时段比），再挑最值得注意的：防损提醒（loss_signals.flags，有就一定写，措辞是「建议核对」）、今天到期或已过期的待办（reminders_due，有就一定写）、今天的粗利（profit_today，今天记了费用才写）、生鲜 3 天没卖出（建议打折）、畅销/滞销商品、高峰时段、终端离线、未完成的送货单。只写有数据支撑的内容；没有值得说的就少写几条。不要开场白和结束语。",
@@ -270,19 +277,39 @@ Deno.serve(async (req) => {
     if (!user) return json({ error: "Not signed in" }, 401);
 
     const db = createClient(SUPABASE_URL, SERVICE_KEY);
-    const { data: link } = await db.from("device_auth_map")
-      .select("device_sn, org_id").eq("auth_user_id", user.id).not("org_id", "is", null)
-      .order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (!link) return json({ error: "This terminal isn't linked to a store" }, 403);
-    const orgId: string = link.org_id;
+    // Who is asking, and which of apex_messages are their conversation.
+    let orgId: string;
+    let who: { deviceSn: string; staffId: string | null; staffName: string };
+    const cael = typeof body.orgId === "string" && body.orgId !== "";
+    if (cael) {
+      orgId = body.orgId;
+      const [{ data: sysAdmin }, { data: canManage }, { data: orgs }] = await Promise.all([
+        caller.rpc("is_sys_admin"),
+        caller.rpc("has_permission", { target_permission: "apex.manage" }),
+        caller.rpc("member_org_ids"),
+      ]);
+      const member = ((orgs ?? []) as unknown[]).some((o) => (typeof o === "string" ? o : Object.values(o as object)[0]) === orgId);
+      if (!sysAdmin && !(canManage && member)) return json({ error: "Not allowed for this store" }, 403);
+      const meta = user.user_metadata ?? {};
+      who = { deviceSn: `cael:${user.id}`, staffId: null, staffName: String(meta.full_name ?? meta.name ?? user.email ?? "Cael") };
+    } else {
+      const { data: link } = await db.from("device_auth_map")
+        .select("device_sn, org_id").eq("auth_user_id", user.id).not("org_id", "is", null)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (!link) return json({ error: "This terminal isn't linked to a store" }, 403);
+      orgId = link.org_id;
 
-    const { data: staff } = await db.from("staff")
-      .select("id, name, role").eq("id", body.staffId ?? "").eq("org_id", orgId).eq("is_active", true).maybeSingle();
-    if (!staff || staff.role !== "MANAGER") return json({ error: "Managers only" }, 403);
+      const { data: staff } = await db.from("staff")
+        .select("id, name, role").eq("id", body.staffId ?? "").eq("org_id", orgId).eq("is_active", true).maybeSingle();
+      if (!staff || staff.role !== "MANAGER") return json({ error: "Managers only" }, 403);
+      who = { deviceSn: link.device_sn, staffId: staff.id, staffName: staff.name };
+    }
+    // deno-lint-ignore no-explicit-any
+    const mine = (q: any) => (who.staffId ? q.eq("staff_id", who.staffId) : q.eq("device_sn", who.deviceSn));
 
     if (action === "history") {
-      const { data: rows } = await db.from("apex_messages")
-        .select("role, content, created_at").eq("org_id", orgId).eq("staff_id", staff.id).eq("kind", "chat")
+      const { data: rows } = await mine(db.from("apex_messages")
+        .select("role, content, created_at").eq("org_id", orgId).eq("kind", "chat"))
         .order("created_at", { ascending: false }).limit(50);
       return json({ messages: (rows ?? []).reverse() });
     }
@@ -314,10 +341,12 @@ Deno.serve(async (req) => {
     const { data: knowledge } = await db.from("apex_knowledge")
       .select("content").eq("is_active", true).or(`org_id.is.null,org_id.eq.${orgId}`)
       .order("sort_order", { ascending: true });
-    const system = systemPrompt(lang, name, stats, (knowledge ?? []).map((k) => k.content));
+    const system = systemPrompt(lang, name, stats, (knowledge ?? []).map((k) => k.content)) + (cael ? `
+
+${CAEL_NOTE}` : "");
     const log = (kind: string, role: string, content: string) =>
       db.from("apex_messages").insert({
-        org_id: orgId, device_sn: link.device_sn, staff_id: staff.id, staff_name: staff.name,
+        org_id: orgId, device_sn: who.deviceSn, staff_id: who.staffId, staff_name: who.staffName,
         kind, role, language: lang, content, model: role === "assistant" ? `${provider.name}/${provider.model}` : null,
       });
 
@@ -348,7 +377,7 @@ Deno.serve(async (req) => {
 
       // An expense to book or a to-do to remember? Then a proposal for the
       // terminal to show on a confirmation card -- nothing is saved here.
-      if (looksLikeCommand(question)) {
+      if (!cael && looksLikeCommand(question)) {
         const raw = await provider.call(parsePrompt(lang, localNow(tz).stamp, calendarLines(tz)), [{ role: "user", content: question }]);
         const match = raw.match(/\{[\s\S]*\}/);
         const proposal = match ? toProposal(JSON.parse(match[0]), tz) : null;
@@ -364,8 +393,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      const { data: history } = await db.from("apex_messages")
-        .select("role, content").eq("org_id", orgId).eq("staff_id", staff.id).eq("kind", "chat")
+      const { data: history } = await mine(db.from("apex_messages")
+        .select("role, content").eq("org_id", orgId).eq("kind", "chat"))
         .gte("created_at", new Date(Date.now() - 86_400_000).toISOString())
         .order("created_at", { ascending: false }).limit(HISTORY_TURNS);
       const turns: Turn[] = [...(history ?? []).reverse(), { role: "user", content: question }] as Turn[];
