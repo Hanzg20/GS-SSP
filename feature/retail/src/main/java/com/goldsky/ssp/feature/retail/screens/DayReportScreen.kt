@@ -333,7 +333,7 @@ private fun ReportRow(
 private fun money(cents: Int) = "$%.2f".format(cents / 100.0)
 
 private fun methodShort(m: String) = when (m) {
-    "CASH" -> "Cash"; "CREDIT_CARD" -> "Credit"; "DEBIT_CARD" -> "Debit"; "VIP_CARD" -> "VIP"; else -> m
+    "CASH" -> "Cash"; "CREDIT_CARD" -> "Credit"; "DEBIT_CARD" -> "Debit"; "VIP_CARD" -> "VIP"; "ONLINE" -> "Online (QR)"; else -> m
 }
 
 private fun localTime(iso: String): String =

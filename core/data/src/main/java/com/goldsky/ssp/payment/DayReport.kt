@@ -153,6 +153,7 @@ object DayReportRepository {
     private const val TAG = "DayReport"
 
     @Serializable private data class ProfitParams(val p_day: String)
+    @Serializable private data class RangeParams(val p_start: String, val p_end: String)
 
     /** [day] "yyyy-MM-dd" (store-local); null offline or when the server refuses. */
     suspend fun profit(day: String): DayProfit? = withContext(Dispatchers.IO) {
@@ -198,6 +199,11 @@ object DayReportRepository {
      * This terminal's transactions created or refunded in [startIso, endIso),
      * plus the lines of the ones created in it. Null when the cloud can't be
      * reached (refund approvers etc. only live there).
+     *
+     * Includes the Ourea Scan online payments that belong to this terminal (the
+     * store's Ourea): they are only in dine.payments, never in transactions
+     * (database_design.md §4), so dine_online_sales hands them over as rows
+     * of the same shape -- method ONLINE, staff "Ourea Scan".
      */
     suspend fun fetch(deviceSn: String, startIso: String, endIso: String): Pair<List<ReportTxn>, List<ReportItemRow>>? =
         withContext(Dispatchers.IO) {
@@ -209,7 +215,9 @@ object DayReportRepository {
                 val refunded = SupabaseClientProvider.client.postgrest["transactions"].select(cols) {
                     filter { eq("device_sn", deviceSn); gte("refunded_at", startIso); lt("refunded_at", endIso) }
                 }.decodeList<ReportTxn>()
-                val rows = (created + refunded).distinctBy { it.ecr_ref_num }
+                val online = SupabaseClientProvider.client.postgrest
+                    .rpc("dine_online_sales", RangeParams(startIso, endIso)).decodeAs<List<ReportTxn>>()
+                val rows = (created + refunded + online).distinctBy { it.ecr_ref_num }
                 val refs = created.map { it.ecr_ref_num }
                 val items = refs.chunked(100).flatMap { chunk ->
                     SupabaseClientProvider.client.postgrest["transaction_items"]

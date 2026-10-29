@@ -148,6 +148,12 @@ of one shared `sales.orders` / `sales.order_lines` / `sales.payments` for all ve
   up. A payment is never copied into another vertical's table to make a report work: an
   Ourea Scan online payment is in `dine.payments` under the store's Ourea, never in
   `public.transactions`.
+- Ourea's day close counts Ourea Scan online payments (owner, 2026-10-28): the day report
+  adds `dine_online_sales(start, end)` (the calling terminal's ONLINE `dine.payments`, as day
+  report rows: method `ONLINE`, staff "Ourea Scan") to its `transactions`; the store's day
+  profit (`office_day_profit_for`, also 小海狸's `profit_today`) adds the day's ONLINE
+  `dine.payments`. Only ONLINE rows, so nothing taken on a terminal is counted twice.
+  Migration `docs/migrations/2026-10-28_day_close_online.sql`.
 - Known overlap, to sort out when dine-in's reports are built: a card payment taken on the
   Ourea / Iris for a check is today in both `public.transactions` (the terminal's card flow,
   linked by `transactions.check_id`) and `dine.payments`. Reports must not count it twice.

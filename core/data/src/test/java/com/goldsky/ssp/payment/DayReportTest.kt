@@ -80,4 +80,21 @@ class DayReportTest {
             java.util.TimeZone.setDefault(tz)
         }
     }
+
+    @Test
+    fun `Ourea Scan online payments count as sales, not as cash or card`() {
+        val rows = listOf(
+            txn("A", 1130, "CASH", tax = 130),
+            txn("NUVEI-1", 2694, "ONLINE", staff = "Ourea Scan", tax = 285, tip = 219)   // dine_online_sales row
+        )
+        val r = DayReport.build(rows, emptyList(), ::inDay)
+
+        assertEquals(DayReport.Totals(2, 3824), r.sales)
+        assertEquals(DayReport.Totals(1, 2694), r.byMethod["ONLINE"])
+        assertEquals(1130, r.expectedCashCents)                           // the drawer doesn't see online money
+        assertEquals(DayReport.StaffTotals(1, 2694, 0, 0, 0), r.byStaff.getValue("Ourea Scan"))
+        assertEquals(415, r.taxCents)
+        assertEquals(219, r.tipCents)
+        assertEquals(1000 + 2190, r.taxableCents)
+    }
 }
