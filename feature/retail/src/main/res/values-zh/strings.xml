@@ -113,6 +113,13 @@
     <string name="retail_method_card">刷卡</string>
     <string name="retail_method_debit">借记卡</string>
     <string name="retail_method_vip">会员卡</string>
+    <string name="retail_method_online">手机买单</string>
+    <string name="retail_refund_online_working">正在退回手机买单 $%1$s…</string>
+    <string name="retail_refund_how_online_voided">手机买单已撤销，顾客不会被扣款</string>
+    <string name="retail_refund_how_online_refunded">已退回到顾客的卡上</string>
+    <string name="retail_refund_online_offline">连不上云端，请联网后再试</string>
+    <string name="retail_refund_online_already">这笔已经退过了</string>
+    <string name="retail_refund_online_in_progress">这笔正在退款中，请一分钟后查看记录</string>
     <string name="retail_gross_sales">总销售额</string>
     <string name="retail_net_sales">净销售额</string>
     <string name="retail_total_tax">税额合计</string>

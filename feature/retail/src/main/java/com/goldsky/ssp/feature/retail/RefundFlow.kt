@@ -33,6 +33,8 @@ import kotlinx.coroutines.withContext
  * refunded in the WizarPOS merchant portal and is only recorded here. Never
  * an automatic Refund that would just park PAYWizard's card screen.
  * Cash: just recorded; the cashier hands the money back.
+ * Ourea Scan online payment: the server voids it at Nuvei, or refunds it once
+ * settled, and records it (scan-pay-refund) -- no card, no PAYWizard.
  * Prints a refund slip either way. All callbacks arrive on the main thread.
  */
 object RefundFlow {
@@ -47,6 +49,10 @@ object RefundFlow {
     private fun amount(o: OrderEntity) = "%.2f".format(o.amountCents / 100.0)
 
     fun start(context: Context, provider: IPaymentProvider, order: OrderEntity, approver: StaffMember, onState: (RefundState) -> Unit) {
+        if (order.paymentMethod == com.goldsky.ssp.payment.OnlinePaymentRepository.METHOD) {
+            online(context, order, approver, onState)
+            return
+        }
         if (order.paymentMethod == "CASH") {
             finish(context, order, approver, "REFUNDED", "Cash handed back: $${amount(order)}", R.string.retail_refund_how_cash, onState)
             return
@@ -85,22 +91,44 @@ object RefundFlow {
     fun refundedInPortal(context: Context, order: OrderEntity, approver: StaffMember, onState: (RefundState) -> Unit) =
         finish(context, order, approver, "REFUNDED", "Refunded in WizarPOS merchant portal", R.string.retail_refund_how_portal, onState)
 
+    private fun online(context: Context, order: OrderEntity, approver: StaffMember, onState: (RefundState) -> Unit) {
+        onState(RefundState.Processing(context.getString(R.string.retail_refund_online_working, amount(order))))
+        CoroutineScope(Dispatchers.IO).launch {
+            val r = com.goldsky.ssp.payment.OnlinePaymentRepository.refund(order.ecrRefNum, approver.id, approver.name)
+            if (r.status == null) {
+                val why = when (r.error) {
+                    "offline" -> context.getString(R.string.retail_refund_online_offline)
+                    "already_voided", "already_refunded" -> context.getString(R.string.retail_refund_online_already)
+                    "refund_in_progress" -> context.getString(R.string.retail_refund_online_in_progress)
+                    else -> r.reason ?: r.error ?: "?"
+                }
+                withContext(Dispatchers.Main) { onState(RefundState.Failed(context.getString(R.string.retail_refund_failed, why))) }
+                return@launch
+            }
+            val (how, howRes) = if (r.status == "VOIDED") "Online payment voided (Nuvei)" to R.string.retail_refund_how_online_voided
+                                else "Online payment refunded to card (Nuvei)" to R.string.retail_refund_how_online_refunded
+            printSlip(context, order, approver, how)
+            withContext(Dispatchers.Main) { onState(RefundState.Done(context.getString(R.string.retail_refund_done, amount(order), context.getString(howRes)))) }
+        }
+    }
+
+    private fun printSlip(context: Context, order: OrderEntity, approver: StaffMember, how: String) =
+        ReceiptPrinterManager.printReceipt(
+            context,
+            ReceiptPrinterManager.ReceiptData(
+                subtotalCents = order.subtotalCents, taxCents = order.taxCents, tipCents = order.tipCents,
+                amountCents = order.amountCents, refNum = order.ecrRefNum, deviceSn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN",
+                banner = "      *** REFUND ***",
+                footer = listOf(how, "Approved by: ${approver.name}")
+            ),
+            vendor = DeviceRepository.getPersistedHardwareVendor()
+        )
+
     /** [how] goes on the printed slip (English for now); [howRes] is what the screen says. */
     private fun finish(context: Context, order: OrderEntity, approver: StaffMember, status: String, how: String, howRes: Int, onState: (RefundState) -> Unit) {
-        val ref = order.ecrRefNum
-        val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
         CoroutineScope(Dispatchers.IO).launch {
-            TransactionRepository.recordRefund(context, ref, status, approver.id, approver.name)
-            ReceiptPrinterManager.printReceipt(
-                context,
-                ReceiptPrinterManager.ReceiptData(
-                    subtotalCents = order.subtotalCents, taxCents = order.taxCents, tipCents = order.tipCents,
-                    amountCents = order.amountCents, refNum = ref, deviceSn = sn,
-                    banner = "      *** REFUND ***",
-                    footer = listOf(how, "Approved by: ${approver.name}")
-                ),
-                vendor = DeviceRepository.getPersistedHardwareVendor()
-            )
+            TransactionRepository.recordRefund(context, order.ecrRefNum, status, approver.id, approver.name)
+            printSlip(context, order, approver, how)
             withContext(Dispatchers.Main) { onState(RefundState.Done(context.getString(R.string.retail_refund_done, amount(order), context.getString(howRes)))) }
         }
     }

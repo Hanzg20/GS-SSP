@@ -40,11 +40,12 @@ private val timeFmt = SimpleDateFormat("MMM d, HH:mm", Locale.US)
 @Composable
 private fun methodLabel(m: String) = when (m) {
     "CASH" -> stringResource(R.string.retail_method_cash); "CREDIT_CARD" -> stringResource(R.string.retail_method_card)
-    "DEBIT_CARD" -> stringResource(R.string.retail_method_debit); "VIP_CARD" -> stringResource(R.string.retail_method_vip); else -> m
+    "DEBIT_CARD" -> stringResource(R.string.retail_method_debit); "VIP_CARD" -> stringResource(R.string.retail_method_vip)
+    com.goldsky.ssp.payment.OnlinePaymentRepository.METHOD -> stringResource(R.string.retail_method_online); else -> m
 }
 
-/** Whole-sale refund is offered for paid card and cash sales. */
-private fun refundable(o: OrderEntity) = o.status == "PAID" && o.paymentMethod in setOf("CASH", "CREDIT_CARD", "DEBIT_CARD")
+/** Whole-sale refund is offered for paid card, cash and Ourea Scan online payments. */
+private fun refundable(o: OrderEntity) = o.status == "PAID" && o.paymentMethod in setOf("CASH", "CREDIT_CARD", "DEBIT_CARD", com.goldsky.ssp.payment.OnlinePaymentRepository.METHOD)
 
 /**
  * Sales recorded on this terminal, newest first. Tap one for its lines (from
@@ -70,8 +71,11 @@ fun TransactionHistoryScreen(
     var loaded by remember { mutableStateOf(false) }
 
     LaunchedEffect(reloadKey) {
-        transactions = TransactionRepository.getAllLocal(context)
+        val local = TransactionRepository.getAllLocal(context)
             .let { all -> if (onlyStaffId == null) all else all.filter { it.staffId == onlyStaffId } }
+        // Managers also see this terminal's Ourea Scan online payments (cloud only; none offline).
+        val online = if (onlyStaffId == null) com.goldsky.ssp.payment.OnlinePaymentRepository.recent().orEmpty() else emptyList()
+        transactions = (local + online).sortedByDescending { it.createdAt }
         selected = selected?.let { s -> transactions.find { it.ecrRefNum == s.ecrRefNum } }
         loaded = true
     }
@@ -156,7 +160,11 @@ fun TransactionHistoryScreen(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    if (tx.paymentMethod == "CASH") Icons.Default.Payments else Icons.Default.CreditCard,
+                                    when (tx.paymentMethod) {
+                                        "CASH" -> Icons.Default.Payments
+                                        com.goldsky.ssp.payment.OnlinePaymentRepository.METHOD -> Icons.Default.QrCode
+                                        else -> Icons.Default.CreditCard
+                                    },
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary
                                 )

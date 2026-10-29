@@ -179,3 +179,60 @@ export async function verifyDmn(p: DmnParams, secret: string): Promise<boolean> 
   );
   return expected === sent;
 }
+
+export type RefundOutcome =
+  | { kind: "VOIDED" | "REFUNDED"; transactionId: string }
+  | { kind: "failed"; reason: string };
+
+/** The checksum Nuvei's /voidTransaction and /refundTransaction share (optional fields we don't send are left out). */
+export function refundChecksumInput(account: NuveiAccount, clientRequestId: string, clientUniqueId: string, amount: string,
+                                    currency: string, relatedTransactionId: string, ts: string): string {
+  return account.merchantId + account.merchantSiteId + clientRequestId + clientUniqueId + amount + currency +
+    relatedTransactionId + ts + account.secret;
+}
+
+async function financialOp(account: NuveiAccount, op: "voidTransaction" | "refundTransaction", attemptId: string,
+                           relatedTransactionId: string, cents: number, currency: string): Promise<RefundOutcome> {
+  const clientRequestId = crypto.randomUUID();
+  const clientUniqueId = `${attemptId}-${op === "voidTransaction" ? "void" : "refund"}`;
+  const amount = toAmount(cents);
+  const ts = timeStamp();
+  const checksum = await sha256Hex(refundChecksumInput(account, clientRequestId, clientUniqueId, amount, currency, relatedTransactionId, ts));
+  const res = await fetch(`${API_BASE[account.env]}/${op}.do`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      merchantId: account.merchantId,
+      merchantSiteId: account.merchantSiteId,
+      clientRequestId,
+      clientUniqueId,
+      amount,
+      currency,
+      relatedTransactionId,
+      timeStamp: ts,
+      checksum,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.ok && data.status === "SUCCESS" && String(data.transactionStatus).toUpperCase() === "APPROVED") {
+    return { kind: op === "voidTransaction" ? "VOIDED" : "REFUNDED", transactionId: String(data.transactionId ?? "") };
+  }
+  return {
+    kind: "failed",
+    reason: `${op} ${res.status}: ${data.transactionStatus ?? data.status ?? ""} ${data.gwErrorReason ?? data.reason ?? ""} ${data.gwErrorCode ?? data.errCode ?? ""}`.trim(),
+  };
+}
+
+/**
+ * Gives a whole online payment back: a void while Nuvei hasn't settled it (no
+ * money moved yet), else a refund of the settled sale -- as the Ourea does for
+ * a card sale. [cents] is what was charged, tip included.
+ */
+export async function voidOrRefund(account: NuveiAccount, attemptId: string, transactionId: string, cents: number,
+                                   currency: string): Promise<RefundOutcome> {
+  const voided = await financialOp(account, "voidTransaction", attemptId, transactionId, cents, currency);
+  if (voided.kind !== "failed") return voided;
+  const refunded = await financialOp(account, "refundTransaction", attemptId, transactionId, cents, currency);
+  if (refunded.kind !== "failed") return refunded;
+  return { kind: "failed", reason: `${voided.reason}; ${refunded.reason}` };
+}

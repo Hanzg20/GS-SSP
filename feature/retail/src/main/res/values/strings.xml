@@ -116,6 +116,13 @@
     <string name="retail_method_card">Card</string>
     <string name="retail_method_debit">Debit</string>
     <string name="retail_method_vip">VIP card</string>
+    <string name="retail_method_online">Online (QR)</string>
+    <string name="retail_refund_online_working">Refunding the online payment of $%1$s…</string>
+    <string name="retail_refund_how_online_voided">Online payment cancelled; the customer is not charged</string>
+    <string name="retail_refund_how_online_refunded">Refunded to the customer\'s card</string>
+    <string name="retail_refund_online_offline">no connection to the cloud. Try again when online.</string>
+    <string name="retail_refund_online_already">it has already been refunded</string>
+    <string name="retail_refund_online_in_progress">a refund of it is already under way. Check the records in a minute.</string>
     <string name="retail_gross_sales">Gross Sales</string>
     <string name="retail_net_sales">Net Sales</string>
     <string name="retail_total_tax">Total Tax</string>

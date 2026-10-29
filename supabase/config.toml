@@ -68,6 +68,17 @@ verify_jwt = false
 # advanceResponseChecksum signed with the store's Nuvei secret.
 verify_jwt = false
 
+[functions.scan-pay-refund]
+# Default (true): only a signed-in terminal may refund. The function maps that
+# session to its device and store (device_auth_map) itself; the manager's PIN is
+# checked on the terminal, as for card refunds.
+verify_jwt = true
+
+[functions.nuvei-online-setup]
+# Default (true): Cael's signed-in users. The function then requires
+# is_sys_admin() as the caller before testing / saving a store's Nuvei account.
+verify_jwt = true
+
 [functions.scan-assistant]
 # Called by customers' phones from the Ourea Scan page (web/ourea-scan), who
 # have no Supabase login: the table's QR secret in the body is the credential

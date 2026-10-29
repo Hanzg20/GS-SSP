@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { DmnParams, isEmail, sha256Hex, timeStamp, toAmount, toCents, verifyDmn } from "./nuvei-checkout.ts";
+import { DmnParams, isEmail, refundChecksumInput, sha256Hex, timeStamp, toAmount, toCents, verifyDmn } from "./nuvei-checkout.ts";
 
 Deno.test("DMN checksum: Nuvei's own worked example", async () => {
   // docs.nuvei.com Payment Page quick start: Secret123 + 115 + USD + 2007-11-13.13:22:34 + 3453459 + APPROVED + YourProduct
@@ -46,4 +46,10 @@ Deno.test("email: what Nuvei gets", () => {
   assert(!isEmail("jane smith@example.com"));
   assert(!isEmail(""));
   assert(!isEmail("x".repeat(95) + "@a.com"));
+});
+
+Deno.test("void / refund checksum: Nuvei's field order, optional fields left out", () => {
+  const account = { id: "a", merchantId: "M", merchantSiteId: "S", secret: "K", env: "int" as const };
+  // merchantId, merchantSiteId, clientRequestId, clientUniqueId, amount, currency, relatedTransactionId, (authCode, comment, urlDetails), timeStamp, secret
+  assertEquals(refundChecksumInput(account, "R1", "U1", "26.94", "CAD", "811", "20261028210000"), "MSR1U126.94CAD81120261028210000K");
 });
