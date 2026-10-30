@@ -1003,6 +1003,16 @@ class MainActivity : BaseAdActivity() {
         val autoHandler = Handler(Looper.getMainLooper())
         var blink: ObjectAnimator? = null
         selectionDialog.setOnDismissListener { autoHandler.removeCallbacksAndMessages(null); blink?.cancel() }
+        // Only the first choice counts. The dismiss listener runs a message later, so the
+        // countdown could still start the card while a tap on Card did too: two sales 59 ms
+        // apart, PAYWizard refused one as busy (253, 2026-10-29 20:26, CARD_READER_FAULT).
+        var chosen = false
+        fun choose(): Boolean {
+            if (chosen) return false
+            chosen = true
+            autoHandler.removeCallbacksAndMessages(null)
+            return true
+        }
         if (autoCard) {
             TtsManager.speak(getString(R.string.tts_card_auto))
             selectionDialog.findViewById<TextView>(R.id.tv_choice_notice).apply { text = getString(R.string.pay_choose_or_card); visibility = View.VISIBLE }
@@ -1019,7 +1029,7 @@ class MainActivity : BaseAdActivity() {
                         sub.text = getString(R.string.pay_card_auto_countdown, ((left + 999) / 1000).toInt())
                         bar.progress = (left * 1000 / AUTO_CARD_MS).toInt()
                         autoHandler.postDelayed(this, 100)
-                    } else {
+                    } else if (choose()) {
                         Log.i("SSP_TEST", "Card started by the payment page countdown")
                         TtsManager.stop()
                         selectionDialog.dismiss()
@@ -1033,6 +1043,7 @@ class MainActivity : BaseAdActivity() {
         }
 
         selectionDialog.findViewById<View>(R.id.btn_choice_card).setOnClickListener {
+            if (!choose()) return@setOnClickListener
             Log.i("SSP_TEST", "Card selected in dialog")
             applyClickFeedback(it)
             selectionDialog.dismiss()
@@ -1040,12 +1051,14 @@ class MainActivity : BaseAdActivity() {
         }
 
         selectionDialog.findViewById<View>(R.id.btn_choice_scan).setOnClickListener {
+            if (!choose()) return@setOnClickListener
             applyClickFeedback(it)
             selectionDialog.dismiss()
             startPaymentFlow(false, priceInCents, startHex, productId, serviceCents, couponCode)
         }
         
         selectionDialog.findViewById<Button>(R.id.btn_cancel_choice).setOnClickListener {
+            if (!choose()) return@setOnClickListener
             applyClickFeedback(it)
             selectionDialog.dismiss()
             resetAdTimer()
@@ -1053,6 +1066,7 @@ class MainActivity : BaseAdActivity() {
         
         // Nobody chose: back to Home, as Cancel does (the dismiss listener clears this).
         autoHandler.postDelayed({
+            if (!choose()) return@postDelayed
             Log.i("SSP_TEST", "Payment page left alone -- back to Home")
             TtsManager.stop()
             selectionDialog.dismiss()
