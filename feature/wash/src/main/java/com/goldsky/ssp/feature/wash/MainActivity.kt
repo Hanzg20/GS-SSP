@@ -150,8 +150,7 @@ class MainActivity : BaseAdActivity() {
     private var pendingCoupon: PendingCoupon? = null
 
     // Technician/Maintenance Variables
-    private var logoClickCount = 0
-    private var lastClickTime = 0L
+    private val techEntry = com.goldsky.ssp.ui.CornerSequence()
     private var isHighBrightness = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -179,7 +178,6 @@ class MainActivity : BaseAdActivity() {
         hardware.registerLifecycle(this, this)
 
         setupClickListeners()
-        setupMaintenanceTrigger()
 
         // Flavor-specific UI logic
         val currentFlavor = BuildConfig.FLAVOR
@@ -2028,26 +2026,20 @@ class MainActivity : BaseAdActivity() {
     }
 
     /**
-     * Hidden trigger for technician menu (7 clicks on logo within 2 seconds).
+     * Technician menu: the four corners in order within 5 s, on Home only, then the PIN
+     * (com.goldsky.ssp.ui.CornerSequence). Only watches touches -- they still reach the
+     * screen. Dialogs have their own window, so taps on them never count.
      */
-    private fun setupMaintenanceTrigger() {
-        // Moved off img_logo, see tv_app_version's own layout comment for why.
-        findViewById<View>(R.id.tv_app_version).setOnClickListener {
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastClickTime > 2000) {
-                logoClickCount = 0
-            }
-            lastClickTime = currentTime
-            logoClickCount++
-            
-            if (logoClickCount >= 3) {
-                logoClickCount = 0
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent?): Boolean {
+        if (ev?.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+            val home = !isWorking && !paymentInFlight && layoutPackageSelection.visibility == View.VISIBLE
+            val root = window.decorView
+            if (!home) techEntry.reset()
+            else if (techEntry.onDown(ev.rawX, ev.rawY, root.width, root.height, android.os.SystemClock.elapsedRealtime())) {
                 showTechPinDialog()
             }
-            
-            // Standard click logic (reset ad timer)
-            resetAdTimer()
         }
+        return super.dispatchTouchEvent(ev)
     }
 
     private fun showTechPinDialog() {
@@ -2058,15 +2050,16 @@ class MainActivity : BaseAdActivity() {
         
         dialog.findViewById<View>(R.id.btn_tech_confirm).setOnClickListener {
             val pin = etPin.text.toString().trim()
-            // Was hardcoded to the literal "1234" -- AppConfig.KioskSettings
-            // already has a cloud-configurable maintenance_pin field (same
-            // "1234" default) that nothing ever actually read.
-            val expectedPin = ConfigManager.getConfig()?.settings?.maintenance_pin ?: "1234"
-            if (pin == expectedPin) {
+            // The store's PIN from Cael (settings.maintenance_pin); one shorter than
+            // 6 digits (the old 1234 default included) opens nothing.
+            val expectedPin = ConfigManager.getConfig()?.settings?.maintenance_pin
+            if (com.goldsky.ssp.ui.TechPin.accepts(pin, expectedPin)) {
                 dialog.dismiss()
                 openTechTools()
             } else {
-                Toast.makeText(this, "Wrong PIN", Toast.LENGTH_SHORT).show()
+                val msg = if (com.goldsky.ssp.ui.TechPin.isValid(expectedPin)) "Wrong PIN"
+                    else "No 6-8 digit technician PIN set for this store -- set it in Cael"
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
                 etPin.setText("")
             }
         }

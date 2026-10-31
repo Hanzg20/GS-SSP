@@ -4,9 +4,8 @@ import com.goldsky.ssp.payment.hardware.IGpioProvider
 
 /**
  * What a paid Timer session switches on. Kept behind an interface so the
- * technician "demo mode" can run the whole customer UI without touching the
- * machine, and so the physical circuit can change once the on-site hold test
- * (HoldTestScreen) settles which line of the coin-acceptor harness we're on.
+ * physical circuit can change once the on-site hold test (HoldTestScreen)
+ * settles which line of the coin-acceptor harness we're on.
  */
 interface TimerOutput {
     /**
@@ -34,19 +33,4 @@ interface TimerOutput {
 class RelayHoldOutput(private val gpio: IGpioProvider, private val port: Int = 0) : TimerOutput {
     override suspend fun start(durationMs: Long, priceCents: Int, onPulse: (Int, Int) -> Unit) = gpio.holdRelayOutput(port, durationMs)
     override fun stop() { gpio.releaseHold(port) }
-}
-
-/**
- * Technician demo mode: runs the customer flow end to end, drives nothing. Plays a short
- * pulse train (one per 50c, 2..12) so the pulse animation can be seen without a machine.
- */
-object DemoOutput : TimerOutput {
-    override suspend fun start(durationMs: Long, priceCents: Int, onPulse: (Int, Int) -> Unit): Boolean {
-        if (priceCents <= 0) return true
-        val n = (priceCents / 50).coerceIn(2, 12)
-        onPulse(0, n)
-        for (i in 1..n) { kotlinx.coroutines.delay(400); onPulse(i, n) }
-        return true
-    }
-    override fun stop() {}
 }

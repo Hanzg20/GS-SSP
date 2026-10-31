@@ -94,7 +94,6 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         val subtitle: String? = null,
         val locked: Boolean = false,
         val healthy: Boolean = true,
-        val demoMode: Boolean = false,
         val now: Long = SystemClock.elapsedRealtime(),
         /** Dual-bay terminal (technician setting): Home shows one column per numbered unit. */
         val dual: Boolean = false,
@@ -137,8 +136,8 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     /** The next card sale was started by the payment page's countdown, not a tap. */
     private var cardAutoStarted = false
 
-    private val output: TimerOutput get() = if (_state.value.demoMode) DemoOutput else realOutput
-    private fun bayOutput(bay: Bay): TimerOutput = if (_state.value.demoMode) DemoOutput else realBayOutput(bay)
+    private val output: TimerOutput get() = realOutput
+    private fun bayOutput(bay: Bay): TimerOutput = realBayOutput(bay)
 
     /**
      * [dual] and [bayOutput] come from the technician's output settings;
@@ -195,11 +194,6 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setLocked(locked: Boolean) = _state.update { it.copy(locked = locked) }
-
-    fun setDemoMode(on: Boolean) {
-        if (_state.value.screen !is Screen.Home || _state.value.bays.isNotEmpty()) return
-        _state.update { it.copy(demoMode = on) }
-    }
 
     val canEnterTechMode: Boolean get() = _state.value.screen is Screen.Home
 
@@ -314,15 +308,6 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun payByCard(pkg: TimerPackage, side: Bay?) {
-        if (_state.value.demoMode) {
-            _state.update { it.copy(screen = Screen.Paying(pkg, "DEMO — no card needed", side)) }
-            viewModelScope.launch {
-                delay(1800)
-                onPaid(pkg, ecrRefNum = "DEMO_${System.currentTimeMillis()}", bankRef = "", entryMode = "DEMO", bay = side)
-            }
-            return
-        }
-
         cardSale(pkg, side, pkg.priceCents)
     }
 
@@ -594,18 +579,6 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         else -> priceCents
     }
 
-    fun cancelPayment() {
-        if (_state.value.screen !is Screen.Paying) return
-        if (_state.value.demoMode) {
-            _state.update { it.copy(screen = Screen.Home) }
-            return
-        }
-        // The provider reports the cancellation through onFailure, which
-        // returns us home; onSuccess can still win a race and start the session.
-        runCatching { payment.cancelCurrentTransaction() }
-            .onFailure { Log.w(TAG, "cancelCurrentTransaction failed: ${it.message}") }
-    }
-
     /**
      * CMP remote start: one free session of [productId] through the same hold
      * path a paid session uses. Refused unless the kiosk is idle on Home.
@@ -635,27 +608,24 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         pkg: TimerPackage, ecrRefNum: String, bankRef: String, entryMode: String,
         bay: Bay? = null, chargeCents: Int = pkg.priceCents, authCode: String? = null,
     ) {
-        val demo = _state.value.demoMode
-        if (!demo) {
-            val card = pendingCardInfo.also { pendingCardInfo = null }
-            TransactionRepository.updatePaymentStatus(
-                getApplication(), ecrRefNum, "PAID", entryMode,
-                paymentMethod = card?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid, it.brand) },
-                cardAid = card?.aid, cardBin = card?.bin, cardBrand = card?.brand,
-                authCode = authCode,
-            )
-        }
+        val card = pendingCardInfo.also { pendingCardInfo = null }
+        TransactionRepository.updatePaymentStatus(
+            getApplication(), ecrRefNum, "PAID", entryMode,
+            paymentMethod = card?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid, it.brand) },
+            cardAid = card?.aid, cardBin = card?.bin, cardBrand = card?.brand,
+            authCode = authCode,
+        )
         if (bay != null) {
             val extended = _state.value.bays.containsKey(bay)
             if (startBay(bay, pkg, ecrRefNum)) {
-                if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "ACK_RECEIVED")
+                TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "ACK_RECEIVED")
                 showThenHome(Screen.BayStarted(bay, pkg, extended), BAY_STARTED_MS)
                 TtsManager.speakRepeated(
                     if (extended) "Payment approved. Time added to ${pkg.name} ${bay.number}."
                     else "Payment approved. ${pkg.name} ${bay.number} is on."
                 )
             } else {
-                onStartFailed(pkg, ecrRefNum, bankRef, demo, chargeCents)
+                onStartFailed(pkg, ecrRefNum, bankRef, chargeCents)
             }
             return
         }
@@ -671,9 +641,9 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             // wash's DigitIo "Confirmed" rests on. COMMAND_SENT_UNCONFIRMED
             // here made CMP flag every vacuum sale "ACK Missing (needs
             // compensation)".
-            if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "ACK_RECEIVED")
+            TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "ACK_RECEIVED")
         } else {
-            onStartFailed(pkg, ecrRefNum, bankRef, demo, chargeCents)
+            onStartFailed(pkg, ecrRefNum, bankRef, chargeCents)
         }
     }
 
@@ -733,17 +703,13 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** [chargeCents]: what the card was actually charged -- the reversal must match it (a test sale charges less than the package). */
-    private suspend fun onStartFailed(pkg: TimerPackage, ecrRefNum: String, bankRef: String, demo: Boolean, chargeCents: Int = pkg.priceCents) {
+    private suspend fun onStartFailed(pkg: TimerPackage, ecrRefNum: String, bankRef: String, chargeCents: Int = pkg.priceCents) {
         val autoReverse = com.goldsky.ssp.payment.RefundPolicy.AUTO_REVERSAL
         _state.update { it.copy(screen = Screen.StartFailed(refunded = if (autoReverse) null else false)) }
         TtsManager.speakRepeated(
             if (autoReverse) "Sorry, the machine could not start. Your payment is being reversed."
             else "Sorry, the machine could not start. Please contact the attendant."
         )
-        if (demo) {
-            showThenHome(Screen.StartFailed(refunded = true), 6000)
-            return
-        }
         DiagnosticManager.reportError(deviceSn, "TIMER_OUTPUT_START_FAIL", severity = "CRITICAL", trace = "product=${pkg.productId}")
         TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "HARDWARE_ERROR")
         if (bankRef.isEmpty()) {
@@ -778,6 +744,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { realOutput.stop() }
             val remaining = saved.endAtWallMs - System.currentTimeMillis()
+            // DEMO_: saved by the demo mode of Timer <= 1.2.9 -- never resume it for free.
             if (remaining < MIN_RESUME_MS || saved.ecrRefNum.startsWith("DEMO_")) {
                 store.clear()
                 return@launch
@@ -923,7 +890,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     private fun refreshHealth() {
         val hwOk = runCatching { hardwareOk() }.getOrDefault(false)
         val configOk = ConfigManager.getConfig() != null
-        val ok = _state.value.demoMode || (hwOk && configOk)
+        val ok = hwOk && configOk
         if (ok != _state.value.healthy) Log.w(TAG, "health -> $ok (hardware=$hwOk config=$configOk)")
         _state.update { it.copy(healthy = ok, locked = DeviceAccessManager.isLocked()) }
     }

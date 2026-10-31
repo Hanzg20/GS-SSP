@@ -78,8 +78,6 @@ fun TimerApp(
     s: TimerViewModel.UiState,
     version: String,
     onSelect: (TimerPackage, Bay?) -> Unit,
-    onCancelPayment: () -> Unit,
-    onTechTrigger: () -> Unit,
     onConfirm: () -> Unit = {},
     onCancelConfirm: () -> Unit = {},
     onChoiceCard: () -> Unit = {},
@@ -96,14 +94,14 @@ fun TimerApp(
         ) { screen ->
             when (screen) {
                 Screen.Home ->
-                    if (s.dual) DualHomeScreen(s, version, onSelect, onTechTrigger)
-                    else HomeScreen(s, version, { onSelect(it, null) }, onTechTrigger)
+                    if (s.dual) DualHomeScreen(s, version, onSelect)
+                    else HomeScreen(s, version, { onSelect(it, null) })
                 is Screen.Confirm -> ConfirmScreen(screen, onConfirm, onCancelConfirm)
                 is Screen.ChoosePay -> ChoosePayScreen(screen, onChoiceCard, onChoiceScan, onChoiceCancel)
                 is Screen.ScanToPay -> ScanToPayScreen(screen, onScanBack)
                 is Screen.Starting -> StartingScreen(screen, s.pulses[screen.bay?.code ?: ""])
                 is Screen.Working -> WorkingScreen(screen.message)
-                is Screen.Paying -> PayingScreen(screen, s.demoMode, onCancelPayment)
+                is Screen.Paying -> PayingScreen(screen)
                 is Screen.BayStarted -> ResultScreen(
                     Emerald, "✓",
                     if (screen.extended) "${screen.pkg.name} ${screen.bay.number}: time added" else "${screen.pkg.name} ${screen.bay.number} is on",
@@ -144,13 +142,6 @@ fun TimerApp(
                 "TEST MODE · next card sale ${TestSale.format(it.cents)}", color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 2.dp)
                     .background(Amber.copy(alpha = 0.85f), RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 1.dp),
-            )
-        }
-        if (s.demoMode) {
-            Text(
-                "DEMO", color = Ink, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp)
-                    .background(Amber, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
             )
         }
     }
@@ -234,7 +225,6 @@ private fun HomeScreen(
     s: TimerViewModel.UiState,
     version: String,
     onSelect: (TimerPackage) -> Unit,
-    onTechTrigger: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp)) {
         HomeHeader(s, gap = 6.dp)
@@ -267,7 +257,7 @@ private fun HomeScreen(
         Spacer(Modifier.height(12.dp))
         // No scan button on Home (owner, 2026-10-26): coupons / VIP codes are scanned on the
         // payment page, after the package is chosen -- as on Wash.
-        Row { Spacer(Modifier.weight(1f)); TripleTapText(version, onTechTrigger) }
+        Row { Spacer(Modifier.weight(1f)); VersionText(version) }
     }
 }
 
@@ -280,7 +270,6 @@ private fun DualHomeScreen(
     s: TimerViewModel.UiState,
     version: String,
     onSelect: (TimerPackage, Bay?) -> Unit,
-    onTechTrigger: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
         HomeHeader(s, gap = 4.dp)
@@ -315,7 +304,7 @@ private fun DualHomeScreen(
         Spacer(Modifier.height(8.dp))
         // No scan button on Home (owner, 2026-10-26): coupons / VIP codes are scanned on the
         // payment page, after the package is chosen -- as on Wash.
-        Row { Spacer(Modifier.weight(1f)); TripleTapText(version, onTechTrigger) }
+        Row { Spacer(Modifier.weight(1f)); VersionText(version) }
     }
 }
 
@@ -478,26 +467,14 @@ private fun PackageCard(pkg: TimerPackage, enabled: Boolean, modifier: Modifier,
 
 /** Hidden technician entry: 3 taps within 2s on the version label (same gesture as wash). */
 @Composable
-private fun TripleTapText(version: String, onTriggered: () -> Unit) {
-    var count by remember { mutableIntStateOf(0) }
-    var last by remember { mutableLongStateOf(0L) }
-    Text(
-        "v$version", color = TextLo, fontSize = 12.sp,
-        modifier = Modifier
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                val now = System.currentTimeMillis()
-                count = if (now - last > 2000) 1 else count + 1
-                last = now
-                if (count >= 3) { count = 0; onTriggered() }
-            }
-            .padding(8.dp),
-    )
+private fun VersionText(version: String) {
+    Text("v$version", color = TextLo, fontSize = 12.sp, modifier = Modifier.padding(8.dp))
 }
 
 // ---- Paying -------------------------------------------------------------
 
 @Composable
-private fun PayingScreen(p: Screen.Paying, demo: Boolean, onCancel: () -> Unit) {
+private fun PayingScreen(p: Screen.Paying) {
     val pulse by rememberInfiniteTransition(label = "tap").animateFloat(
         1f, 1.12f, infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "pulse",
     )
@@ -532,16 +509,11 @@ private fun PayingScreen(p: Screen.Paying, demo: Boolean, onCancel: () -> Unit) 
         Spacer(Modifier.height(16.dp))
         Text(p.message, color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Spacer(Modifier.weight(1f))
-        // A real sale can't be cancelled from here: WizarPOS's
-        // cancelCurrentTransaction is a no-op (the P3 socket is blocked on the
-        // sale), and PAYWizard's own screen -- which has a Cancel -- is in front
-        // during payment anyway. Don't show a button that does nothing, nor
-        // hints about the reader nobody sees under PAYWizard's screen.
-        if (demo) {
-            OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().height(48.dp)) {
-                Text("Cancel", color = TextLo, fontSize = 16.sp)
-            }
-        }
+        // No Cancel here: WizarPOS's cancelCurrentTransaction is a no-op (the
+        // P3 socket is blocked on the sale), and PAYWizard's own screen -- which
+        // has a Cancel -- is in front during payment anyway. Don't show a button
+        // that does nothing, nor hints about the reader nobody sees under
+        // PAYWizard's screen.
     }
 }
 
@@ -811,8 +783,6 @@ fun PinDialog(onDismiss: () -> Unit, onSubmit: (String) -> Boolean) {
 
 @Composable
 fun TechScreen(
-    demoMode: Boolean,
-    onDemoChange: (Boolean) -> Unit,
     onExit: () -> Unit,
     selfTest: PaymentSelfTestViewModel.State,
     onRunSelfTest: () -> Unit,
@@ -836,8 +806,6 @@ fun TechScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("技术员模式", color = TechText, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text("演示模式", color = TechTextLo, fontSize = 13.sp)
-            Switch(checked = demoMode, onCheckedChange = onDemoChange, modifier = Modifier.padding(horizontal = 6.dp).scale(0.8f))
             switchTarget?.let { TextButton(onClick = onSwitchApp) { Text("切换到 $it", color = Amber) } }
             TextButton(onClick = onPaymentTests) { Text("支付用例", color = Amber) }
             TextButton(onClick = onExit) { Text("返回", color = Amber) }
@@ -845,12 +813,6 @@ fun TechScreen(
         // Everything below the bar scrolls as one page: on the Q3mini's ~480x480 screen the
         // panels above used to stay put and left the scrolling part a sliver (owner, 2026-10-20).
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-        Text(
-            if (demoMode) "演示模式开：客户流程跳过刷卡、不驱动输出、不写交易记录。重启应用自动关闭。"
-            else "演示模式关：客户流程真实刷卡、真实驱动输出。",
-            color = if (demoMode) Amber else TechTextLo, fontSize = 11.sp,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-        )
         // System check: network (Wi-Fi / SIM / Ethernet), card service, HOME, overlay, clock, screen, volume.
         val ctx = androidx.compose.ui.platform.LocalContext.current
         Row(

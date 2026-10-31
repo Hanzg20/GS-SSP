@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
     // Hoisted so the idle-ad timer can tell when the technician panel or the
     // PIN pad is open (never cover those with ads).
     private val showPinState = mutableStateOf(false)
+    private val techEntry = com.goldsky.ssp.ui.CornerSequence()
     private val techState = mutableStateOf(false)
     private val adHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val adRunnable = Runnable { launchAdsIfIdle() }
@@ -152,8 +153,6 @@ class MainActivity : ComponentActivity() {
 
             if (tech) {
                 TechScreen(
-                    demoMode = s.demoMode,
-                    onDemoChange = timerVm::setDemoMode,
                     onExit = { holdVm.forceOff(); tech = false; onTechExit() },
                     selfTest = selfTest,
                     onRunSelfTest = { selfTestVm.run(payment, deviceSn) },
@@ -184,8 +183,6 @@ class MainActivity : ComponentActivity() {
                     s = s,
                     version = version,
                     onSelect = timerVm::select,
-                    onCancelPayment = timerVm::cancelPayment,
-                    onTechTrigger = { if (timerVm.canEnterTechMode) showPin = true },
                     onConfirm = timerVm::confirm,
                     onCancelConfirm = timerVm::cancelConfirm,
                     onChoiceCard = timerVm::choiceCard,
@@ -196,8 +193,13 @@ class MainActivity : ComponentActivity() {
             }
             if (showPin) {
                 PinDialog(onDismiss = { showPin = false }) { pin ->
-                    val expected = ConfigManager.getConfig()?.settings?.maintenance_pin ?: "1234"
-                    (pin == expected).also { ok -> if (ok) { showPin = false; tech = true } }
+                    // The store's PIN from Cael; one shorter than 6 digits (the old 1234
+                    // default included) opens nothing.
+                    val expected = ConfigManager.getConfig()?.settings?.maintenance_pin
+                    if (!com.goldsky.ssp.ui.TechPin.isValid(expected)) Toast.makeText(
+                        this@MainActivity, "No 6-8 digit technician PIN set for this store -- set it in Cael", Toast.LENGTH_LONG,
+                    ).show()
+                    com.goldsky.ssp.ui.TechPin.accepts(pin, expected).also { ok -> if (ok) { showPin = false; tech = true } }
                 }
             }
         }
@@ -275,6 +277,15 @@ class MainActivity : ComponentActivity() {
     override fun dispatchTouchEvent(ev: android.view.MotionEvent?): Boolean {
         com.goldsky.ssp.ui.BootFrontGuard.onTouch()
         resetAdTimer()
+        // Technician screen: the four corners in order within 5 s, on Home only, then the
+        // PIN (com.goldsky.ssp.ui.CornerSequence). Only watches -- the touch still lands.
+        if (ev?.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+            val root = window.decorView
+            if (!timerVm.canEnterTechMode || techState.value || showPinState.value) techEntry.reset()
+            else if (techEntry.onDown(ev.rawX, ev.rawY, root.width, root.height, android.os.SystemClock.elapsedRealtime())) {
+                showPinState.value = true
+            }
+        }
         return super.dispatchTouchEvent(ev)
     }
 
