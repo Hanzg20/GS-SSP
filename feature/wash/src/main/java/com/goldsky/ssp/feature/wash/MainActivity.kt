@@ -100,7 +100,6 @@ class MainActivity : BaseAdActivity() {
 
     // State Variables
     private var isWorking = false
-    private var isSimulationMode = false
     private var paymentDialog: Dialog? = null
     private var pollingJob: Job? = null
     private var deviceSn: String = "SIMULATOR_SN"
@@ -271,17 +270,12 @@ class MainActivity : BaseAdActivity() {
      * Extracts hardware serial number and registers device with the cloud.
      */
     private fun extractDeviceIdentity() {
-        if (isSimulationMode) {
-            deviceSn = "MOCK_SN_${System.currentTimeMillis()}"
-            Log.i("SSP_IDENTITY", "Simulated SN: $deviceSn")
-        } else {
-            try {
-                val hardware = com.goldsky.ssp.payment.hardware.HardwareFactory.getHardwareProvider(hardwareVendor)
-                deviceSn = hardware.getSerialNumber(this)
-                Log.i("SSP_IDENTITY", "Hardware SN ($hardwareVendor): $deviceSn")
-            } catch (e: Exception) {
-                Log.e("SSP_IDENTITY", "Failed to get hardware SN: ${e.message}")
-            }
+        try {
+            val hardware = com.goldsky.ssp.payment.hardware.HardwareFactory.getHardwareProvider(hardwareVendor)
+            deviceSn = hardware.getSerialNumber(this)
+            Log.i("SSP_IDENTITY", "Hardware SN ($hardwareVendor): $deviceSn")
+        } catch (e: Exception) {
+            Log.e("SSP_IDENTITY", "Failed to get hardware SN: ${e.message}")
         }
 
         // Persist so background components without DAL access (HeartbeatWorker)
@@ -355,16 +349,10 @@ class MainActivity : BaseAdActivity() {
     }
 
     private fun setupClickListeners() {
-        // Long press the version label (bottom-left corner) to toggle
-        // Simulation Mode -- moved off img_logo, see tv_app_version's own
-        // layout comment for why.
-        findViewById<View>(R.id.tv_app_version).setOnLongClickListener {
-            isSimulationMode = !isSimulationMode
-            val modeMsg = if (isSimulationMode) getString(R.string.toast_mode_demo) else getString(R.string.toast_mode_prod)
-            Toast.makeText(this, modeMsg, Toast.LENGTH_SHORT).show()
-            performHealthCheck()
-            true
-        }
+        // No Simulation Mode any more (removed 2026-10-31): a no-PIN long
+        // press of the version label switched it on at 253 (2026-10-30 15:37)
+        // with nobody meaning to, and 43 customer sales "paid" without a card
+        // or a wash until a reboot the next day.
 
         findViewById<View>(R.id.card_custom).setOnClickListener {
             applyClickFeedback(it)
@@ -760,7 +748,6 @@ class MainActivity : BaseAdActivity() {
             Toast.makeText(this, getString(R.string.tts_remote_start), Toast.LENGTH_LONG).show()
             val outcome = DispenseEngine.dispense(
                 DispenseJob(product.price_cents, serialHexOf(product), deviceSn, "REMOTE_$commandId"),
-                isSimulationMode,
                 HardwareFactory.getSerialProvider(this, hardwareVendor),
                 HardwareFactory.getGpioProvider(this, hardwareVendor)
             )
@@ -1423,62 +1410,56 @@ class MainActivity : BaseAdActivity() {
                 )
             )
 
-            if (isSimulationMode) {
-                delay(3000)
-                redeemPaidCoupon(couponCode)
-                startFinalizationSequence(chargeCents, startHex, "MOCK_REF_123", dialog, txRefNum, entryMode = "SIMULATED", pulseAmountCents = serviceCents)
-            } else {
-                val provider = PaymentProviderFactory.getPaymentProvider(this@MainActivity, hardwareVendor)
-                var cancelled = false
-                provider.startSale(chargeCents, txRefNum, object : com.goldsky.ssp.payment.hardware.IPaymentProvider.PaymentCallback {
-                    override fun onCardInfo(info: com.goldsky.ssp.payment.hardware.IPaymentProvider.CardInfo) {
-                        pendingCardInfo = info
-                    }
-                    override fun onCancelled() { cancelled = true }
-                    override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                        redeemPaidCoupon(couponCode)
-                        startFinalizationSequence(chargeCents, startHex, refNum, dialog, txRefNum, entryMode = entryMode, pulseAmountCents = serviceCents, authCode = authCode)
-                    }
-                    override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
-                        paymentInFlight = false
-                        // Raw provider text ("Payment Error: cancelled by user
-                        // (-139)") stays in the log; the customer gets plain words.
-                        Log.w("MainActivity", "Card sale failed: $errorMsg (hardwareFault=$isHardwareFault)")
-                        val reason = DeclineReason.classify(errorMsg, isHardwareFault)
-                        runOnUiThread {
-                            val msg = getString(
-                                when (reason) {
-                                    DeclineReason.CANCELLED -> R.string.pay_result_cancelled
-                                    DeclineReason.UNAVAILABLE -> R.string.pay_result_unavailable
-                                    DeclineReason.DECLINED -> R.string.pay_result_declined
-                                }
-                            )
-                            dialog.dismiss()
-                            if (reason == DeclineReason.CANCELLED && auto) {
-                                showPaymentDialog(priceInCents, startHex, productId, serviceCents, couponCode, notice = getString(R.string.pay_cancelled_notice))
-                            } else if (reason == DeclineReason.CANCELLED) {
-                                TtsManager.cancelRepeat()
-                                resetAdTimer()
-                            } else {
-                                showPaymentDialog(priceInCents, startHex, productId, serviceCents, couponCode, notice = msg)
+            val provider = PaymentProviderFactory.getPaymentProvider(this@MainActivity, hardwareVendor)
+            var cancelled = false
+            provider.startSale(chargeCents, txRefNum, object : com.goldsky.ssp.payment.hardware.IPaymentProvider.PaymentCallback {
+                override fun onCardInfo(info: com.goldsky.ssp.payment.hardware.IPaymentProvider.CardInfo) {
+                    pendingCardInfo = info
+                }
+                override fun onCancelled() { cancelled = true }
+                override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
+                    redeemPaidCoupon(couponCode)
+                    startFinalizationSequence(chargeCents, startHex, refNum, dialog, txRefNum, entryMode = entryMode, pulseAmountCents = serviceCents, authCode = authCode)
+                }
+                override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
+                    paymentInFlight = false
+                    // Raw provider text ("Payment Error: cancelled by user
+                    // (-139)") stays in the log; the customer gets plain words.
+                    Log.w("MainActivity", "Card sale failed: $errorMsg (hardwareFault=$isHardwareFault)")
+                    val reason = DeclineReason.classify(errorMsg, isHardwareFault)
+                    runOnUiThread {
+                        val msg = getString(
+                            when (reason) {
+                                DeclineReason.CANCELLED -> R.string.pay_result_cancelled
+                                DeclineReason.UNAVAILABLE -> R.string.pay_result_unavailable
+                                DeclineReason.DECLINED -> R.string.pay_result_declined
                             }
-                        }
-                        if (isHardwareFault) {
-                            DiagnosticManager.reportError(deviceSn, "CARD_READER_FAULT", severity = "CRITICAL", trace = errorMsg)
-                        }
-                        CoroutineScope(Dispatchers.Main).launch {
-                            val card = pendingCardInfo.also { pendingCardInfo = null }
-                            TransactionRepository.recordFailedCardSale(this@MainActivity, txRefNum, card, cancelled)
-                        }
-                    }
-                    override fun onProgress(message: String) {
-                        runOnUiThread { 
-                            // Update status msg if available
-                            dialog.findViewById<TextView>(R.id.tv_status_msg)?.text = message
+                        )
+                        dialog.dismiss()
+                        if (reason == DeclineReason.CANCELLED && auto) {
+                            showPaymentDialog(priceInCents, startHex, productId, serviceCents, couponCode, notice = getString(R.string.pay_cancelled_notice))
+                        } else if (reason == DeclineReason.CANCELLED) {
+                            TtsManager.cancelRepeat()
+                            resetAdTimer()
+                        } else {
+                            showPaymentDialog(priceInCents, startHex, productId, serviceCents, couponCode, notice = msg)
                         }
                     }
-                })
-            }
+                    if (isHardwareFault) {
+                        DiagnosticManager.reportError(deviceSn, "CARD_READER_FAULT", severity = "CRITICAL", trace = errorMsg)
+                    }
+                    CoroutineScope(Dispatchers.Main).launch {
+                        val card = pendingCardInfo.also { pendingCardInfo = null }
+                        TransactionRepository.recordFailedCardSale(this@MainActivity, txRefNum, card, cancelled)
+                    }
+                }
+                override fun onProgress(message: String) {
+                    runOnUiThread { 
+                        // Update status msg if available
+                        dialog.findViewById<TextView>(R.id.tv_status_msg)?.text = message
+                    }
+                }
+            })
         }
     }
 
@@ -1768,7 +1749,6 @@ class MainActivity : BaseAdActivity() {
             // 2. Delegate to the protocol/ack-strategy
             val outcome = DispenseEngine.dispense(
                 DispenseJob(pulseAmountCents, startHex, deviceSn, ecrRefNum),
-                isSimulationMode,
                 HardwareFactory.getSerialProvider(this@MainActivity, hardwareVendor),
                 HardwareFactory.getGpioProvider(this@MainActivity, hardwareVendor)
             ) { unitsSent, totalUnits ->
@@ -2024,8 +2004,8 @@ class MainActivity : BaseAdActivity() {
      */
     private fun performHealthCheck() {
         val indicator = findViewById<View>(R.id.view_health_indicator) ?: return
-        val isSerialOk = isSimulationMode || HardwareFactory.getSerialProvider(this, hardwareVendor).isOpened()
-        val isDbOk = isSimulationMode || ConfigManager.isDatabaseOnline()
+        val isSerialOk = HardwareFactory.getSerialProvider(this, hardwareVendor).isOpened()
+        val isDbOk = ConfigManager.isDatabaseOnline()
         val isLocked = DeviceAccessManager.isLocked()
         val isKeyOk = KeyHealthMonitor.isPaymentAllowed()
         // Previously this light only reflected serial/DB/key health -- a card
@@ -2034,16 +2014,15 @@ class MainActivity : BaseAdActivity() {
         // a customer actually tried and it failed. isOperational() is cheap
         // (no I/O, just a connection-state check), safe to call every
         // performHealthCheck() tick.
-        val isReaderOk = isSimulationMode ||
+        val isReaderOk =
             com.goldsky.ssp.payment.hardware.HardwareFactory.getHardwareProvider(hardwareVendor).isOperational()
 
-        // Black: admin/remote locked. Red: hardware/DB/key fault. Yellow: sim mode. Green: operational.
+        // Black: admin/remote locked. Red: hardware/DB/key fault. Green: operational.
         // Uses the app's own palette (not raw Color.RED/GREEN/YELLOW primaries)
         // so this status dot doesn't clash with everything else on screen.
         when {
             isLocked -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.bg_dark))
             !isSerialOk || !isDbOk || !isKeyOk || !isReaderOk -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.coral_red))
-            isSimulationMode -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.gold_accent))
             else -> indicator.setBackgroundColor(ContextCompat.getColor(this, R.color.emerald_green))
         }
     }
@@ -2126,8 +2105,8 @@ class MainActivity : BaseAdActivity() {
         val tvFw = dialog.findViewById<TextView>(R.id.tv_fw_val)
         val tvHals = dialog.findViewById<TextView>(R.id.tv_uptime_val)
         
-        val sn = if (isSimulationMode) "MOCK_SN" else hardware.getSerialNumber(this)
-        val fw = if (isSimulationMode) "MOCK_FW" else hardware.getFirmwareVersion()
+        val sn = hardware.getSerialNumber(this)
+        val fw = hardware.getFirmwareVersion()
         tvId.text = "SN: $sn"
         tvHeaderSn.text = "SN: $sn"
         tvFw.text = "FIRMWARE: $fw"
@@ -2144,7 +2123,7 @@ class MainActivity : BaseAdActivity() {
             dotDb.backgroundTintList = android.content.res.ColorStateList.valueOf(if (dbOk) getColor(R.color.tech_neon_green) else getColor(R.color.tech_pill_bg))
 
             val serialOk = HardwareFactory.getSerialProvider(this, hardwareVendor).isOpened()
-            tvSerial.text = if (isSimulationMode) "MOCK" else if (serialOk) "ACTIVE" else "STANDBY"
+            tvSerial.text = if (serialOk) "ACTIVE" else "STANDBY"
             dotSerial.backgroundTintList = android.content.res.ColorStateList.valueOf(if (serialOk) getColor(R.color.tech_cyan) else getColor(R.color.tech_pill_bg))
             
             val tampered = hardware.getTamperStatus()
@@ -2352,33 +2331,29 @@ class MainActivity : BaseAdActivity() {
 
                 btn.text = "CHECKING: SERIAL..."
                 delay(400)
-                if (!isSimulationMode && !HardwareFactory.getSerialProvider(this@MainActivity, hardwareVendor).isOpened()) {
+                if (!HardwareFactory.getSerialProvider(this@MainActivity, hardwareVendor).isOpened()) {
                     failures += "SERIAL"
                 }
 
                 btn.text = "CHECKING: READER..."
                 delay(400)
-                if (!isSimulationMode && !hardware.isOperational()) failures += "READER"
+                if (!hardware.isOperational()) failures += "READER"
 
                 // PRINTER: init() + hasPaper() only -- a real hardware
                 // round-trip, but no paper burned on every diagnostic run
                 // (startPrint() is deliberately not called here).
                 btn.text = "CHECKING: PRINTER..."
                 delay(400)
-                if (!isSimulationMode) {
-                    val printer = HardwareFactory.getPrinterProvider(this@MainActivity, hardwareVendor)
-                    if (!printer.init() || !printer.hasPaper()) failures += "PRINTER"
-                }
+                val printer = HardwareFactory.getPrinterProvider(this@MainActivity, hardwareVendor)
+                if (!printer.init() || !printer.hasPaper()) failures += "PRINTER"
 
                 // VOICE: a real, audible utterance -- the technician is
                 // standing at the unit pressing this button, so unlike an
                 // unattended background check, actually speaking is the
                 // most honest self-test (silence = fail is obvious to them).
                 btn.text = "CHECKING: VOICE..."
-                if (!isSimulationMode) {
-                    TtsManager.speak("Diagnostic check complete")
-                    if (!TtsManager.isReady()) failures += "VOICE"
-                }
+                TtsManager.speak("Diagnostic check complete")
+                if (!TtsManager.isReady()) failures += "VOICE"
                 delay(400)
 
                 updateHealthUI()
@@ -2402,16 +2377,6 @@ class MainActivity : BaseAdActivity() {
             }
         }
 
-        // 5. Config
-        val swSim = dialog.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switch_sim_v2)
-        swSim.isChecked = isSimulationMode
-        swSim.setOnCheckedChangeListener { _, isChecked ->
-            isSimulationMode = isChecked
-            val serial = HardwareFactory.getSerialProvider(this, hardwareVendor)
-            if (!isSimulationMode) serial.open(this) else serial.close()
-            updateHealthUI()
-        }
-
         dialog.setOnShowListener { applyKioskWindowFlags() }
         dialog.show()
     }
@@ -2422,8 +2387,6 @@ class MainActivity : BaseAdActivity() {
      * Starts the hardware watchdog feeding loop.
      */
     private fun startWatchdog() {
-        if (isSimulationMode) return
-        
         watchdogJob?.cancel()
         watchdogJob = CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -2448,12 +2411,8 @@ class MainActivity : BaseAdActivity() {
     }
 
     private fun sendTestCmd(hex: String) {
-        if (isSimulationMode) {
-            Toast.makeText(this, "Simulating: $hex", Toast.LENGTH_SHORT).show()
-        } else {
-            val sent = HardwareFactory.getSerialProvider(this, hardwareVendor).sendHexString(hex)
-            Toast.makeText(this, if (sent) "Sent: $hex" else "Send FAILED", Toast.LENGTH_SHORT).show()
-        }
+        val sent = HardwareFactory.getSerialProvider(this, hardwareVendor).sendHexString(hex)
+        Toast.makeText(this, if (sent) "Sent: $hex" else "Send FAILED", Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -2483,10 +2442,6 @@ class MainActivity : BaseAdActivity() {
     private fun sendTestPulses(count: Int) {
         if (!isUptDigitIoMachine()) {
             sendTestCmd(if (count >= 8) "AA 01 08 55" else "AA 01 04 55")
-            return
-        }
-        if (isSimulationMode) {
-            Toast.makeText(this, "Simulating: $count pulses on PIN1", Toast.LENGTH_SHORT).show()
             return
         }
         CoroutineScope(Dispatchers.Main).launch {

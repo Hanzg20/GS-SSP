@@ -145,8 +145,6 @@
     <string name="sec_suffix">sec</string>
 
     <string name="toast_payment_success_enjoy">All successful! Enjoy your wash.</string>
-    <string name="toast_mode_demo">Demo Mode Activated</string>
-    <string name="toast_mode_prod">Production Mode Activated</string>
     <string name="toast_serial_fail">Failed to communicate with controller</string>
     <string name="toast_wash_finish">Wash cycle complete. Thank you!</string>
     <string name="toast_pay_timeout">Payment timed out. Please try again.</string>
@@ -229,7 +227,6 @@
     <string name="tech_sync">SYNC</string>
     <string name="tech_telemetry">TERMINAL TELEMETRY</string>
     <string name="tech_watchdog">WATCHDOG HEARTBEAT</string>
-    <string name="tech_sim_mode">HARDWARE SIMULATION MODE</string>
     <string name="tech_version_footer">Industrial Core GS-SSP v2.2.0 • PCI-7 Compliant</string>
 
     <!-- Customer tip screen (CustomerTipPanel): customer-facing, neutral wording -->

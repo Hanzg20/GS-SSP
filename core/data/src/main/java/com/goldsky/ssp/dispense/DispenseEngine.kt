@@ -15,14 +15,11 @@ import com.goldsky.ssp.payment.hardware.ISerialProvider
 object DispenseEngine {
     suspend fun dispense(
         job: DispenseJob,
-        isSimulationMode: Boolean,
         serialProvider: ISerialProvider,
         gpioProvider: IGpioProvider? = null,
         onProgress: (unitsSent: Int, totalUnits: Int) -> Unit = { _, _ -> }
     ): DispenseOutcome {
         val model = DeviceAdapter.getModel()
-        
-        if (isSimulationMode) return MockAdapter().dispense(job, FramedAckStrategy, serialProvider, onProgress = onProgress)
 
         val config = ConfigManager.getConfig()
         val settings = config?.settings

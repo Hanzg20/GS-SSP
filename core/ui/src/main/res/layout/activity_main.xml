@@ -413,8 +413,8 @@
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- Doubles as the technician-mode entry point (3 taps within 2s, see
-         MainActivity.setupMaintenanceTrigger()) and the simulation-mode
-         toggle (long press, see setupClickListeners()); previously both
+         MainActivity.setupMaintenanceTrigger()); no long press here any more
+         (it used to toggle simulation mode without a PIN). Previously it
          lived on img_logo, which went visibility="gone" per a layout change
          ("LOGO REMOVED per user request") and silently stopped receiving any
          touches at all (a GONE view is excluded from hit-testing, not just
