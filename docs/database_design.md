@@ -69,7 +69,7 @@ erDiagram
 | Devices & ops → `ops` | devices, device_auth_map, device_secrets, device_shadows, device_commands, heartbeats, app_error_logs, system_health_logs, maintenance_records, audit_logs, app_configurations | apps (self-reported device columns, heartbeat, logs), CMP (assignment, commands, config -- through RPCs, §6.1) |
 | Staff | staff (PIN hash, role MANAGER / CASHIER / DRIVER) | CMP |
 | Catalog | products | CMP |
-| Sales & payment (each vertical's transactions move to its own schema, §4) | transactions, transaction_items, qr_payment_sessions, acquirer_settlement_records, merchant_acquirer_accounts, hardware_acquirer_map | apps (sales), back office (settlement) |
+| Sales & payment (each vertical's transactions move to its own schema, §4) | transactions, transaction_items, transaction_refunds, qr_payment_sessions, acquirer_settlement_records, merchant_acquirer_accounts, hardware_acquirer_map | apps (sales), back office (settlement) |
 | Retail delivery → `retail` | delivery_orders, delivery_order_items | CMP / Apex (create), Iris (collect) |
 | Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders, `dine`.scan_chats** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
 | Members → `member` | vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions | apps, CMP |
@@ -135,6 +135,8 @@ of one shared `sales.orders` / `sales.order_lines` / `sales.payments` for all ve
 |---|---|---|
 | Dine-in | `dine.payments` (each payment on a check; Ourea Scan attempts in `dine.online_payments`) | Ourea / Iris (`dine_record_payment`), Ourea Scan (`dine_online_pay_settle`) |
 | Counter sales, delivery (Ourea / Iris) | `public.transactions` + `transaction_items` | the terminals |
+
+Partial refunds (Iris / Ourea, 2026-11-01, `docs/migrations/2026-11-01_partial_refunds.sql`): the sale stays PAID and adds up `transactions.refunded_cents` / `refunded_tax_cents` (refunded_at + approver = the latest); one `transaction_refunds` row per refund (keyed by the terminal's refund_ref, so an offline retry never counts twice) and `transaction_items.refunded_qty`; written only through `transactions_partial_refund`. A whole-sale refund is not offered after a partial one. Reports: VOIDED / REFUNDED -> amount back; PAID -> refunded_cents back.
 | Unattended (wash, timer, vend, laundry, EV) | `public.transactions` for now | the terminals |
 
 - A new vertical (parking, EV sessions, appointments...) gets its own transaction table in

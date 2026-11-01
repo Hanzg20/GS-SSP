@@ -253,6 +253,9 @@ class MainActivity : ComponentActivity() {
                                     onRefund = { order, approver ->
                                         com.goldsky.ssp.feature.retail.RefundFlow.start(this@MainActivity, paymentProvider, order, approver, ::onRefundState)
                                     },
+                                    onPartialRefund = { order, approver, refund ->
+                                        com.goldsky.ssp.feature.retail.RefundFlow.partial(this@MainActivity, order, approver, refund, ::onRefundState)
+                                    },
                                     onOpenDayReport = { destination = OureaDestination.DAY_REPORT },
                                     reloadKey = recordsReload
                                 )
@@ -291,14 +294,14 @@ class MainActivity : ComponentActivity() {
 
                     refundNeedsCard?.let { need ->
                         com.goldsky.ssp.feature.retail.RefundNeedsCardDialog(
-                            amountCents = need.order.amountCents,
+                            amountCents = need.amountCents,
                             onCardTapped = {
                                 refundNeedsCard = null
-                                com.goldsky.ssp.feature.retail.RefundFlow.withCard(this@MainActivity, paymentProvider, need.order, need.approver, ::onRefundState)
+                                com.goldsky.ssp.feature.retail.RefundFlow.withCard(this@MainActivity, paymentProvider, need.order, need.approver, ::onRefundState, need.partial)
                             },
                             onRefundedInPortal = {
                                 refundNeedsCard = null
-                                com.goldsky.ssp.feature.retail.RefundFlow.refundedInPortal(this@MainActivity, need.order, need.approver, ::onRefundState)
+                                com.goldsky.ssp.feature.retail.RefundFlow.refundedInPortal(this@MainActivity, need.order, need.approver, ::onRefundState, need.partial)
                             },
                             onCancel = { refundNeedsCard = null }
                         )

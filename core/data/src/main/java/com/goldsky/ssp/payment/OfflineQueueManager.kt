@@ -35,7 +35,11 @@ data class PendingOp(
     val taxCents: Int? = null,
     val tipCents: Int? = null,
     val itemIds: List<String>? = null,
-    val paidBy: String? = null
+    val paidBy: String? = null,
+    // Only on "partial_refund" ops (TransactionRepository.recordPartialRefund): amountCents / taxCents /
+    // approver / refundedAt / ecrRefNum as above, status = how.
+    val refundRef: String? = null,
+    val refundLines: List<RefundLine>? = null
 )
 
 /**

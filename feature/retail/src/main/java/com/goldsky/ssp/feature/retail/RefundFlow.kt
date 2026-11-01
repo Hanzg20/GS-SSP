@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import com.goldsky.ssp.db.OrderEntity
 import com.goldsky.ssp.payment.DeviceRepository
+import com.goldsky.ssp.payment.PartialRefund
 import com.goldsky.ssp.payment.ReceiptPrinterManager
 import com.goldsky.ssp.payment.StaffMember
 import com.goldsky.ssp.payment.TransactionRepository
@@ -36,13 +37,21 @@ import kotlinx.coroutines.withContext
  * Ourea Scan online payment: the server voids it at Nuvei, or refunds it once
  * settled, and records it (scan-pay-refund) -- no card, no PAYWizard.
  * Prints a refund slip either way. All callbacks arrive on the main thread.
+ *
+ * Some items only ([partial], 2026-11-01): cash is recorded; a card can't be
+ * partly reversed, so it goes straight to the customer's card / merchant portal
+ * choice with the partial amount. Not for online payments (the server refunds
+ * those whole).
  */
 object RefundFlow {
     sealed class RefundState {
         data class Processing(val message: String) : RefundState()
         data class Done(val message: String) : RefundState()
         data class Failed(val message: String) : RefundState()
-        data class NeedsCard(val order: OrderEntity, val approver: StaffMember) : RefundState()
+        /** [partial]: some items only -- [amountCents] is what goes back. */
+        data class NeedsCard(val order: OrderEntity, val approver: StaffMember, val partial: PartialRefund? = null) : RefundState() {
+            val amountCents: Int get() = partial?.amountCents ?: order.amountCents
+        }
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -73,12 +82,24 @@ object RefundFlow {
         }
     }
 
+    /** Some items of a paid cash / card sale back. */
+    fun partial(context: Context, order: OrderEntity, approver: StaffMember, refund: PartialRefund, onState: (RefundState) -> Unit) {
+        if (order.paymentMethod == "CASH") {
+            finishPartial(context, order, approver, refund, "CASH", "Cash handed back", R.string.retail_refund_how_cash, onState)
+        } else {
+            onState(RefundState.NeedsCard(order, approver, refund))
+        }
+    }
+
     /** Socket-mode Refund: PAYWizard asks for the customer's card. */
-    fun withCard(context: Context, provider: IPaymentProvider, order: OrderEntity, approver: StaffMember, onState: (RefundState) -> Unit) {
+    fun withCard(context: Context, provider: IPaymentProvider, order: OrderEntity, approver: StaffMember, onState: (RefundState) -> Unit, partial: PartialRefund? = null) {
         onState(RefundState.Processing(context.getString(R.string.retail_refund_tap_card)))
-        provider.refundTransaction(order.ecrRefNum, order.amountCents, object : IPaymentProvider.PaymentCallback {
+        provider.refundTransaction(order.ecrRefNum, partial?.amountCents ?: order.amountCents, object : IPaymentProvider.PaymentCallback {
             override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                main.post { finish(context, order, approver, "REFUNDED", "Refunded to card", R.string.retail_refund_how_card, onState) }
+                main.post {
+                    if (partial != null) finishPartial(context, order, approver, partial, "CARD_REFUND", "Refunded to card", R.string.retail_refund_how_card, onState)
+                    else finish(context, order, approver, "REFUNDED", "Refunded to card", R.string.retail_refund_how_card, onState)
+                }
             }
             override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                 main.post { onState(RefundState.Failed(context.getString(R.string.retail_refund_failed, errorMsg))) }
@@ -88,8 +109,9 @@ object RefundFlow {
     }
 
     /** Refunded in the WizarPOS merchant portal: record it, no PAYWizard call. */
-    fun refundedInPortal(context: Context, order: OrderEntity, approver: StaffMember, onState: (RefundState) -> Unit) =
-        finish(context, order, approver, "REFUNDED", "Refunded in WizarPOS merchant portal", R.string.retail_refund_how_portal, onState)
+    fun refundedInPortal(context: Context, order: OrderEntity, approver: StaffMember, onState: (RefundState) -> Unit, partial: PartialRefund? = null) =
+        if (partial != null) finishPartial(context, order, approver, partial, "PORTAL", "Refunded in WizarPOS merchant portal", R.string.retail_refund_how_portal, onState)
+        else finish(context, order, approver, "REFUNDED", "Refunded in WizarPOS merchant portal", R.string.retail_refund_how_portal, onState)
 
     private fun online(context: Context, order: OrderEntity, approver: StaffMember, onState: (RefundState) -> Unit) {
         onState(RefundState.Processing(context.getString(R.string.retail_refund_online_working, amount(order))))
@@ -112,17 +134,27 @@ object RefundFlow {
         }
     }
 
-    private fun printSlip(context: Context, order: OrderEntity, approver: StaffMember, how: String) =
+    private fun printSlip(context: Context, order: OrderEntity, approver: StaffMember, how: String, partial: PartialRefund? = null) =
         ReceiptPrinterManager.printReceipt(
             context,
             ReceiptPrinterManager.ReceiptData(
-                subtotalCents = order.subtotalCents, taxCents = order.taxCents, tipCents = order.tipCents,
-                amountCents = order.amountCents, refNum = order.ecrRefNum, deviceSn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN",
-                banner = "      *** REFUND ***",
+                subtotalCents = partial?.let { it.amountCents - it.taxCents } ?: order.subtotalCents,
+                taxCents = partial?.taxCents ?: order.taxCents, tipCents = if (partial != null) 0 else order.tipCents,
+                amountCents = partial?.amountCents ?: order.amountCents, refNum = order.ecrRefNum, deviceSn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN",
+                banner = if (partial != null) "  *** PARTIAL REFUND ***" else "      *** REFUND ***",
                 footer = listOf(how, "Approved by: ${approver.name}")
             ),
             vendor = DeviceRepository.getPersistedHardwareVendor()
         )
+
+    private fun finishPartial(context: Context, order: OrderEntity, approver: StaffMember, refund: PartialRefund, how: String, slip: String, howRes: Int, onState: (RefundState) -> Unit) {
+        CoroutineScope(Dispatchers.IO).launch {
+            TransactionRepository.recordPartialRefund(context, order.ecrRefNum, refund, how, approver.id, approver.name)
+            printSlip(context, order, approver, slip, refund)
+            val amt = "%.2f".format(refund.amountCents / 100.0)
+            withContext(Dispatchers.Main) { onState(RefundState.Done(context.getString(R.string.retail_refund_done, amt, context.getString(howRes)))) }
+        }
+    }
 
     /** [how] goes on the printed slip (English for now); [howRes] is what the screen says. */
     private fun finish(context: Context, order: OrderEntity, approver: StaffMember, status: String, how: String, howRes: Int, onState: (RefundState) -> Unit) {

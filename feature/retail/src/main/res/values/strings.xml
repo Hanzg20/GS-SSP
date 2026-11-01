@@ -390,4 +390,13 @@
     <string name="receipt_frame_ready">Framed: take the photo</string>
     <string name="receipt_focusing">Focusing…</string>
     <string name="receipt_flag_unreadable">Hardly anything could be read: the photo is blurred or too far. Retake it closer, holding still. A full-page bill: photograph just the part with the total.</string>
+    <string name="retail_refund_items">REFUND ITEMS</string>
+    <string name="retail_refund_items_title">Which items come back?</string>
+    <string name="retail_refund_items_amount">Refund %1$s</string>
+    <string name="retail_refund_items_none">Pick the items coming back</string>
+    <string name="retail_refunded_so_far">Refunded so far</string>
+    <string name="retail_back_qty">%1$d back</string>
+    <string name="retail_part_refunded">Part refunded</string>
+    <string name="retail_refund_items_cash_action">Refund some items: hand back %1$s in cash.</string>
+    <string name="retail_refund_items_card_action">Refund some items: %1$s back to the card (the customer taps it, or refund it in the merchant portal).</string>
 </resources>

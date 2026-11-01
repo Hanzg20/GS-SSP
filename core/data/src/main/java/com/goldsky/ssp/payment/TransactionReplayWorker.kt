@@ -39,6 +39,13 @@ class TransactionReplayWorker(appContext: Context, params: WorkerParameters) : C
                             true // malformed entry, drop it rather than retry forever
                         }
                     }
+                    "partial_refund" -> {
+                        val ref = op.ecrRefNum; val rr = op.refundRef; val amt = op.amountCents
+                        if (ref != null && rr != null && amt != null) {
+                            TransactionRepository.recordPartialRefundRemote(ref, PartialRefund(rr, op.refundLines.orEmpty(), amt, op.taxCents ?: 0),
+                                op.status, op.approverId, op.approverName, op.refundedAt) != null
+                        } else true
+                    }
                     "refund" -> {
                         val ref = op.ecrRefNum
                         val status = op.status

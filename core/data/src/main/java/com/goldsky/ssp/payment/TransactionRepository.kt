@@ -6,6 +6,7 @@ import com.goldsky.ssp.common.CoreConfig
 import com.goldsky.ssp.db.LocalDatabase
 import com.goldsky.ssp.db.OrderEntity
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.rpc
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -80,7 +81,9 @@ data class TransactionItem(
     val line_total_cents: Int,
     val tax_rate_bps: Int,
     // Left out when 0 (encodeDefaults off), so a database without the column still takes the row.
-    val discount_cents: Int = 0
+    val discount_cents: Int = 0,
+    // Read only (partial refunds); 0 is left out of inserts like discount_cents.
+    val refunded_qty: Int = 0
 )
 
 /**
@@ -192,6 +195,59 @@ object TransactionRepository {
                 Log.w(TAG, "Refund queued offline: $ecrRefNum -> $status")
             }
             ok
+        }
+
+    /**
+     * Some items of a sale back; the sale stays PAID (docs/migrations/2026-11-01_partial_refunds.sql).
+     * [how]: CASH / CARD_REFUND / PORTAL. Queued offline like a whole refund.
+     */
+    suspend fun recordPartialRefund(context: Context, ecrRefNum: String, refund: PartialRefund, how: String, approverId: String?, approverName: String?): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val db = LocalDatabase.getInstance(context)
+                db.orderDao().getAll().find { it.ecrRefNum == ecrRefNum }
+                    ?.let { db.orderDao().update(it.copy(refundedCents = it.refundedCents + refund.amountCents)) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Local partial refund update failed: ${e.message}")
+            }
+            val at = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+                .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date())
+            val result = recordPartialRefundRemote(ecrRefNum, refund, how, approverId, approverName, at)
+            if (result == null) {
+                OfflineQueueManager.enqueue(
+                    context.filesDir,
+                    PendingOp(type = "partial_refund", ecrRefNum = ecrRefNum, status = how, approverId = approverId,
+                        approverName = approverName, refundedAt = at, amountCents = refund.amountCents, taxCents = refund.taxCents,
+                        refundRef = refund.refundRef, refundLines = refund.lines)
+                )
+                Log.w(TAG, "Partial refund queued offline: $ecrRefNum ${refund.refundRef}")
+            } else if (result != "ok") Log.e(TAG, "Partial refund refused: $ecrRefNum ${refund.refundRef} -> $result")
+            result == null || result == "ok"
+        }
+
+    /** transactions_partial_refund's answer ("ok" / not_found / not_paid / too_much / bad_items); null when unreachable. */
+    suspend fun recordPartialRefundRemote(ecrRefNum: String, refund: PartialRefund, how: String?, approverId: String?, approverName: String?, refundedAt: String?): String? =
+        withContext(Dispatchers.IO) {
+            if (CoreConfig.isMock) return@withContext "ok"
+            try {
+                val params = kotlinx.serialization.json.buildJsonObject {
+                    put("p_refund_ref", kotlinx.serialization.json.JsonPrimitive(refund.refundRef))
+                    put("p_ecr_ref_num", kotlinx.serialization.json.JsonPrimitive(ecrRefNum))
+                    put("p_amount_cents", kotlinx.serialization.json.JsonPrimitive(refund.amountCents))
+                    put("p_tax_cents", kotlinx.serialization.json.JsonPrimitive(refund.taxCents))
+                    put("p_items", kotlinx.serialization.json.Json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(RefundLine.serializer()), refund.lines))
+                    put("p_how", kotlinx.serialization.json.JsonPrimitive(how))
+                    put("p_approver_id", kotlinx.serialization.json.JsonPrimitive(approverId))
+                    put("p_approver_name", kotlinx.serialization.json.JsonPrimitive(approverName))
+                    refundedAt?.let { put("p_refunded_at", kotlinx.serialization.json.JsonPrimitive(it)) }
+                }
+                val r = SupabaseClientProvider.client.postgrest.rpc("transactions_partial_refund", params).data.trim().trim('"')
+                Log.i(TAG, "Partial refund $ecrRefNum ${refund.refundRef}: $r")
+                r
+            } catch (e: Exception) {
+                Log.e(TAG, "Error recording partial refund: ${e.message}")
+                null
+            }
         }
 
     suspend fun recordRefundRemote(ecrRefNum: String, status: String, approverId: String?, approverName: String?, refundedAt: String?): Boolean =

@@ -21,7 +21,9 @@ data class ReportTxn(
     val staff_name: String? = null,
     val created_at: String,
     val refunded_at: String? = null,
-    val refund_approved_by_name: String? = null
+    val refund_approved_by_name: String? = null,
+    // Partial refunds so far; the sale stays PAID (2026-11-01).
+    val refunded_cents: Int = 0
 )
 
 @Serializable
@@ -34,7 +36,9 @@ data class ReportItemRow(val ecr_ref_num: String, val line_total_cents: Int, val
  * later -- the money was collected). Refunds = refunds made that day, whatever
  * day the sale was. Net = sales - refunds; expected cash = cash sales - cash
  * refunds, the figure to count the drawer / a driver's cash against. A refund
- * counts against the staff member who took the original sale.
+ * counts against the staff member who took the original sale. A partially
+ * refunded sale (still PAID) counts what went back, on the day of its latest
+ * partial refund.
  */
 data class DayReport(
     val sales: Totals,
@@ -63,6 +67,9 @@ data class DayReport(
     companion object {
         private val COLLECTED = setOf("PAID", "VOIDED", "REFUNDED")
         private val REFUNDED = setOf("VOIDED", "REFUNDED")
+        private fun ReportTxn.isRefund() = payment_status in REFUNDED || (payment_status == "PAID" && refunded_cents > 0)
+        /** What went back: the whole sale, or the partial refunds so far. */
+        private fun ReportTxn.backCents() = if (payment_status in REFUNDED) amount else refunded_cents
         const val NO_STAFF = "(none)"
 
         fun isCard(method: String?) = method == "CREDIT_CARD" || method == "DEBIT_CARD"
@@ -76,8 +83,8 @@ data class DayReport(
         fun build(rows: List<ReportTxn>, items: List<ReportItemRow>, inDay: (String) -> Boolean, basis: Basis = Basis.REFUND_DATE): DayReport {
             val sales = rows.filter { inDay(it.created_at) && it.payment_status in COLLECTED }
             val refunds = when (basis) {
-                Basis.REFUND_DATE -> rows.filter { it.payment_status in REFUNDED && it.refunded_at?.let(inDay) == true }
-                Basis.SALE_DATE -> sales.filter { it.payment_status in REFUNDED }
+                Basis.REFUND_DATE -> rows.filter { it.isRefund() && it.refunded_at?.let(inDay) == true }
+                Basis.SALE_DATE -> sales.filter { it.isRefund() }
             }
 
             val byMethod = sales.groupBy { it.payment_method ?: "UNKNOWN" }
@@ -91,7 +98,7 @@ data class DayReport(
                     cents = mine.sumOf { it.amount },
                     cashCents = mine.filter { it.payment_method == "CASH" }.sumOf { it.amount },
                     cardCents = mine.filter { isCard(it.payment_method) }.sumOf { it.amount },
-                    refundCents = refunds.filter { (it.staff_name ?: NO_STAFF) == name }.sumOf { it.amount }
+                    refundCents = refunds.filter { (it.staff_name ?: NO_STAFF) == name }.sumOf { it.backCents() }
                 )
             }
 
@@ -109,7 +116,7 @@ data class DayReport(
             }
 
             val salesTotal = sales.sumOf { it.amount }
-            val refundTotal = refunds.sumOf { it.amount }
+            val refundTotal = refunds.sumOf { it.backCents() }
             return DayReport(
                 sales = Totals(sales.size, salesTotal),
                 byMethod = byMethod,
@@ -119,12 +126,12 @@ data class DayReport(
                 taxableCents = taxable,
                 exemptCents = exempt,
                 refunds = refunds.sortedBy { it.refunded_at }.map {
-                    Refund(it.ecr_ref_num, it.refunded_at!!, it.amount, it.payment_method ?: "UNKNOWN",
-                        it.payment_status!!, it.refund_approved_by_name, it.staff_name)
+                    Refund(it.ecr_ref_num, it.refunded_at!!, it.backCents(), it.payment_method ?: "UNKNOWN",
+                        if (it.payment_status == "PAID") "PARTIAL" else it.payment_status!!, it.refund_approved_by_name, it.staff_name)
                 },
                 refundCents = refundTotal,
                 netCents = salesTotal - refundTotal,
-                expectedCashCents = (byMethod["CASH"]?.cents ?: 0) - refunds.filter { it.payment_method == "CASH" }.sumOf { it.amount }
+                expectedCashCents = (byMethod["CASH"]?.cents ?: 0) - refunds.filter { it.payment_method == "CASH" }.sumOf { it.backCents() }
             )
         }
     }
@@ -208,7 +215,7 @@ object DayReportRepository {
     suspend fun fetch(deviceSn: String, startIso: String, endIso: String): Pair<List<ReportTxn>, List<ReportItemRow>>? =
         withContext(Dispatchers.IO) {
             try {
-                val cols = Columns.raw("ecr_ref_num, amount, subtotal_cents, tax_cents, tip_cents, payment_status, payment_method, staff_name, created_at, refunded_at, refund_approved_by_name")
+                val cols = Columns.raw("ecr_ref_num, amount, subtotal_cents, tax_cents, tip_cents, payment_status, payment_method, staff_name, created_at, refunded_at, refund_approved_by_name, refunded_cents")
                 val created = SupabaseClientProvider.client.postgrest["transactions"].select(cols) {
                     filter { eq("device_sn", deviceSn); gte("created_at", startIso); lt("created_at", endIso) }
                 }.decodeList<ReportTxn>()

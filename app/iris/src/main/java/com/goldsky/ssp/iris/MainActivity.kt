@@ -289,6 +289,13 @@ class MainActivity : ComponentActivity() {
                                                 if (state !is PaymentUiState.Processing) recordsReload++
                                             }
                                         },
+                                        onPartialRefund = { order, approver, refund ->
+                                            RefundFlow.partial(this@MainActivity, order, approver, refund) { r ->
+                                                val state = r.toUi()
+                                                paymentStatus = state
+                                                if (state !is PaymentUiState.Processing) recordsReload++
+                                            }
+                                        },
                                         onOpenDayReport = { navController.navigate("day_report") },
                                         reloadKey = recordsReload
                                     )
@@ -370,16 +377,16 @@ class MainActivity : ComponentActivity() {
                             is PaymentUiState.Success -> PaymentResultDialog(true, state.message ?: stringResource(R.string.iris_approved_code, state.authCode), state.orderNumber) { paymentStatus = PaymentUiState.Idle }
                             is PaymentUiState.Done -> PaymentResultDialog(true, state.message, title = stringResource(R.string.iris_refund_done)) { paymentStatus = PaymentUiState.Idle }
                             is PaymentUiState.RefundNeedsCard -> com.goldsky.ssp.feature.retail.RefundNeedsCardDialog(
-                                amountCents = state.order.amountCents,
+                                amountCents = state.partial?.amountCents ?: state.order.amountCents,
                                 onCardTapped = {
-                                    RefundFlow.withCard(this@MainActivity, paymentProvider, state.order, state.approver) {
+                                    RefundFlow.withCard(this@MainActivity, paymentProvider, state.order, state.approver, onState = {
                                         paymentStatus = it.toUi(); if (it !is RefundFlow.RefundState.Processing) recordsReload++
-                                    }
+                                    }, partial = state.partial)
                                 },
                                 onRefundedInPortal = {
-                                    RefundFlow.refundedInPortal(this@MainActivity, state.order, state.approver) {
+                                    RefundFlow.refundedInPortal(this@MainActivity, state.order, state.approver, onState = {
                                         paymentStatus = it.toUi(); recordsReload++
-                                    }
+                                    }, partial = state.partial)
                                 },
                                 onCancel = { paymentStatus = PaymentUiState.Idle }
                             )
@@ -829,7 +836,7 @@ private fun RefundFlow.RefundState.toUi(): PaymentUiState = when (this) {
     is RefundFlow.RefundState.Processing -> PaymentUiState.Processing(message)
     is RefundFlow.RefundState.Done -> PaymentUiState.Done(message)
     is RefundFlow.RefundState.Failed -> PaymentUiState.Error(message, refund = true)
-    is RefundFlow.RefundState.NeedsCard -> PaymentUiState.RefundNeedsCard(order, approver)
+    is RefundFlow.RefundState.NeedsCard -> PaymentUiState.RefundNeedsCard(order, approver, partial)
 }
 
 /** What a payment on a table's check adds: the receipt banner, and recording it on the check. */
@@ -849,7 +856,7 @@ sealed class PaymentUiState {
     // The card sale couldn't be reversed (usually: already settled). Socket-mode
     // Refund needs the customer's card; otherwise it's refunded in the WizarPOS
     // merchant portal and only recorded here.
-    data class RefundNeedsCard(val order: com.goldsky.ssp.db.OrderEntity, val approver: StaffMember) : PaymentUiState()
+    data class RefundNeedsCard(val order: com.goldsky.ssp.db.OrderEntity, val approver: StaffMember, val partial: PartialRefund? = null) : PaymentUiState()
 }
 
 @Composable
