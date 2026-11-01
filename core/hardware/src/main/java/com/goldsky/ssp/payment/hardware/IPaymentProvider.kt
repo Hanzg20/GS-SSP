@@ -83,6 +83,32 @@ interface IPaymentProvider {
     fun startSale(amountInCents: Int, ecrRefNum: String, callback: PaymentCallback)
 
     /**
+     * A sale that may be approved without the bank when the terminal has no network
+     * ([offline] = true): the payment app keeps it and sends it later
+     * ([uploadOffline]). Only a provider that [supportsOffline] does anything
+     * different; the others take a normal sale.
+     */
+    fun startSale(amountInCents: Int, ecrRefNum: String, callback: PaymentCallback, offline: Boolean) =
+        startSale(amountInCents, ecrRefNum, callback)
+
+    /** Whether this provider can take offline (deferred) sales at all. */
+    fun supportsOffline(): Boolean = false
+
+    /** What became of the offline sales sent to the bank by [uploadOffline]. */
+    sealed class OfflineUpload {
+        /**
+         * The payment app answered: refs it reports sent ([uploaded]) or refused by the bank
+         * ([declined]); [allSent] = it reported no failures at all (its answer may not list
+         * each sale). [raw] = its answer, for the record.
+         */
+        data class Done(val uploaded: List<String>, val declined: List<String>, val allSent: Boolean, val raw: String) : OfflineUpload()
+        data class Failed(val message: String) : OfflineUpload()
+        object Unsupported : OfflineUpload()
+    }
+
+    fun uploadOffline(onDone: (OfflineUpload) -> Unit) = onDone(OfflineUpload.Unsupported)
+
+    /**
      * Voids a previous transaction.
      */
     fun voidTransaction(refNum: String, callback: PaymentCallback)

@@ -491,4 +491,12 @@
     <string name="stock_err_note">Give a reason for the adjustment.</string>
     <string name="stock_err_not_tracked">Stock isn\'t tracked yet: count it or receive goods first.</string>
     <string name="stock_err_qty">That quantity doesn\'t work.</string>
+    <string name="offline_card_title">OFFLINE CARD PAYMENTS</string>
+    <string name="offline_card_switch">Take cards when the internet is down</string>
+    <string name="offline_card_desc">The card terminal approves without the bank and sends the sale when the internet is back.</string>
+    <string name="offline_card_risk">Your risk: if the bank refuses a card when the sale is sent, that sale was never paid (the customer already has the goods). Check with Nuvei that offline sales are allowed on your account before turning this on.</string>
+    <string name="offline_card_limit">Up to per sale</string>
+    <string name="offline_card_max">Most sales waiting</string>
+    <string name="offline_card_waiting">%1$d offline sale(s) waiting to be sent ($%2$s).</string>
+    <string name="offline_card_refused">%1$d offline card sale(s) REFUSED by the bank: %2$s. They were not paid.</string>
 </resources>

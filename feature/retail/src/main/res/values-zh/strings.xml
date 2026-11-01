@@ -490,4 +490,12 @@
     <string name="stock_err_note">请填写调整原因。</string>
     <string name="stock_err_not_tracked">还没管理库存：先盘点或进货。</string>
     <string name="stock_err_qty">数量不对。</string>
+    <string name="offline_card_title">离线刷卡</string>
+    <string name="offline_card_switch">断网时也能刷卡</string>
+    <string name="offline_card_desc">刷卡机先在本机批准，联网后再把交易发给银行。</string>
+    <string name="offline_card_risk">风险由门店承担：如果补发时银行拒绝这张卡，这笔就收不到钱（顾客已经拿走商品）。开启前请先向 Nuvei 确认您的账户允许离线交易。</string>
+    <string name="offline_card_limit">每笔不超过</string>
+    <string name="offline_card_max">最多等待笔数</string>
+    <string name="offline_card_waiting">有 %1$d 笔离线交易等待补发（$%2$s）。</string>
+    <string name="offline_card_refused">%1$d 笔离线刷卡被银行拒绝：%2$s。这些交易没有收到钱。</string>
 </resources>

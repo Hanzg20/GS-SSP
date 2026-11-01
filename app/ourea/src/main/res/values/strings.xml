@@ -125,4 +125,5 @@
     <string name="ourea_refund_failed">Refund failed</string>
     <string name="ourea_pay_card">Card  %1$s</string>
     <string name="ourea_card">Card</string>
+    <string name="ourea_approved_offline">Approved OFFLINE -- sent to the bank when the internet is back.</string>
 </resources>

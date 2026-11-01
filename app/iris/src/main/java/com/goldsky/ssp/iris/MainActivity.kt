@@ -240,6 +240,8 @@ class MainActivity : ComponentActivity() {
                     com.goldsky.ssp.feature.retail.screens.SignInTodos(signedIn)
                     // Not on the clock yet today: offer to clock in (once a day).
                     com.goldsky.ssp.feature.retail.screens.ClockInPrompt(signedIn)
+                    // Offline-approved card sales go to the bank once the internet is back.
+                    com.goldsky.ssp.feature.retail.screens.OfflineCardUploader(paymentProvider)
                     key(themeVersion) { Surface(modifier = Modifier.fillMaxSize(), color = surfaceBg) {
                         Scaffold(
                             topBar = { StaffBar(signedIn, onLock = { lock() }) },
@@ -531,15 +533,23 @@ class MainActivity : ComponentActivity() {
 
         var card: IPaymentProvider.CardInfo? = null
         var cancelled = false
-        paymentProvider.startSale(total, ref, object : IPaymentProvider.PaymentCallback {
+        // No internet, and the store allows offline card sales within its limits: the
+        // card terminal may approve without the bank and send the sale later.
+        val offline = OfflineCardManager.shouldAllowOffline(this, paymentProvider, total)
+        paymentProvider.startSale(total, ref, offline = offline, callback = object : IPaymentProvider.PaymentCallback {
             override fun onCardInfo(info: IPaymentProvider.CardInfo) { card = info }
             override fun onCancelled() { cancelled = true }
 
             override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
+                // Offline-allowed goes online whenever the network is up, so it's only
+                // an offline approval if the network is still down now.
+                val wentOffline = offline && !isNetworkAvailable(this@MainActivity)
+                if (wentOffline) OfflineCardManager.approved(this@MainActivity, ref, total)
                 CoroutineScope(Dispatchers.IO).launch {
                     // Same as Wash/Timer: the real card type, AID/BIN/brand and auth
                     // code replace the provisional CREDIT_CARD.
                     val c = card
+                    if (wentOffline) TransactionRepository.updateOfflineStatus(this@MainActivity, ref, "PENDING_UPLOAD")
                     TransactionRepository.updatePaymentStatus(
                         this@MainActivity, ref, "PAID", entryMode,
                         paymentMethod = c?.let { CardTypeClassifier.paymentMethod(it.scheme, it.aid, it.brand) },
@@ -560,7 +570,8 @@ class MainActivity : ComponentActivity() {
                         banner = extras?.banner
                     ), DeviceRepository.getPersistedHardwareVendor())
                 }
-                onStateChange(PaymentUiState.Success(authCode))
+                onStateChange(if (wentOffline) PaymentUiState.Success(authCode, message = getString(R.string.iris_approved_offline))
+                              else PaymentUiState.Success(authCode))
             }
             override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                 CoroutineScope(Dispatchers.IO).launch {

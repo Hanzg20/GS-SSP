@@ -78,6 +78,9 @@ object SettlementManager {
         // flight and even a minute-old PENDING can be resolved.
         runCatching { PendingResolver.resolve(context, minAgeMs = if (trigger == "MANUAL") 0L else 5 * 60_000L) }
             .onFailure { Log.e(TAG, "Pending resolve before settle failed: ${it.message}") }
+        // Offline-approved sales go to the bank before the batch closes (no-op when there are none).
+        runCatching { OfflineCardManager.upload(context, provider) }
+            .onFailure { Log.e(TAG, "Offline upload before settle failed: ${it.message}") }
         provider.closeBatch(object : IPaymentProvider.PaymentCallback {
             override fun onRawResponse(json: String) {
                 raw = json

@@ -126,4 +126,5 @@
     <string name="ourea_refund_failed">退款失败</string>
     <string name="ourea_pay_card">刷卡  %1$s</string>
     <string name="ourea_card">刷卡</string>
+    <string name="ourea_approved_offline">离线批准——联网后发给银行。</string>
 </resources>

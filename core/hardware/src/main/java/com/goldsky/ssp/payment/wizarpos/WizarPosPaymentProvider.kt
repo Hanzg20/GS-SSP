@@ -75,7 +75,12 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         val OriTransId: String? = null,
         val OriRrn: String? = null,
         val EnableReceipt: Boolean = false,
-        val isPrint: String = "false"
+        val isPrint: String = "false",
+        // Deferred authorization (protocol 2.3.6+): Deferred = may be approved offline
+        // and sent later; DeferredForceOffline = false -> online whenever the network
+        // is up, offline only when it isn't. Null = left out (a normal online sale).
+        val Deferred: Boolean? = null,
+        val DeferredForceOffline: Boolean? = null
     )
 
     /** ISO 4217 numeric code for this terminal's region (CA -> CAD 124, else USD 840). */
@@ -140,8 +145,13 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         (send(body.toString()) as? Reply.Answer)?.json
     }
 
-    override fun startSale(amountInCents: Int, ecrRefNum: String, callback: IPaymentProvider.PaymentCallback) {
-        Log.i(TAG, "Starting PAYWizard SALE: $amountInCents cents")
+    override fun startSale(amountInCents: Int, ecrRefNum: String, callback: IPaymentProvider.PaymentCallback) =
+        startSale(amountInCents, ecrRefNum, callback, offline = false)
+
+    override fun supportsOffline(): Boolean = true
+
+    override fun startSale(amountInCents: Int, ecrRefNum: String, callback: IPaymentProvider.PaymentCallback, offline: Boolean) {
+        Log.i(TAG, "Starting PAYWizard SALE: $amountInCents cents" + if (offline) " (offline allowed)" else "")
         saleAmounts[ecrRefNum] = amountInCents
         
         CoroutineScope(Dispatchers.Main).launch {
@@ -152,7 +162,9 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                 TransType = "Purchase",
                 TransAmount = amountInCents.toString(),
                 TransIndexCode = ecrRefNum,
-                CurrencyCode = currencyCode()
+                CurrencyCode = currencyCode(),
+                Deferred = if (offline) true else null,
+                DeferredForceOffline = if (offline) false else null
             )
 
             executeRequest(request, ecrRefNum, callback)
@@ -443,6 +455,29 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
 
     override fun cancelCurrentTransaction() {
         Log.w(TAG, "Cancellation not supported via synchronous P3 socket integration")
+    }
+
+    /**
+     * Sends the deferred (offline-approved) sales to the bank: TransType "Deferred",
+     * "Upload Deferred transactions via network" (protocol A1.1). The answer's
+     * DeferredSummaryInfo is read by [OfflineUploadParser].
+     */
+    override fun uploadOffline(onDone: (IPaymentProvider.OfflineUpload) -> Unit) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val reply = try {
+                send(json.encodeToString(GlobalRequest(TransType = "Deferred", CurrencyCode = currencyCode())))
+            } catch (e: Exception) {
+                onDone(IPaymentProvider.OfflineUpload.Failed("Internal Error: ${e.message}")); return@launch
+            }
+            when (reply) {
+                is Reply.Answer -> {
+                    Log.i(TAG, "Deferred upload answer: ${reply.json}")
+                    onDone(OfflineUploadParser.parse(reply.json))
+                }
+                Reply.NoAnswer -> onDone(IPaymentProvider.OfflineUpload.Failed("No answer from PAYWizard"))
+                Reply.NotSent -> onDone(IPaymentProvider.OfflineUpload.Failed("Payment service busy"))
+            }
+        }
     }
 
     override fun closeBatch(callback: IPaymentProvider.PaymentCallback) {

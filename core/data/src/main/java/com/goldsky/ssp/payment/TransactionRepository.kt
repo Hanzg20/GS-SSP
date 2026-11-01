@@ -47,6 +47,10 @@ data class TransactionRecord(
     // null on unattended ones, and then left out of the insert.
     val staff_id: String? = null,
     val staff_name: String? = null,
+    // Offline card sale (docs/migrations/2026-11-01_offline_card.sql): approved by the
+    // terminal without the bank, PENDING_UPLOAD until OfflineCardManager uploads it. Null = left out.
+    val offline_auth: Boolean? = null,
+    val offline_status: String? = null,
     // Quick-service counter only (docs/migrations/2026-10-13_quick_service_orders.sql):
     // the call number, DINE_IN / TAKEOUT, and the order note. Null = left out.
     val order_number: Int? = null,
@@ -483,7 +487,38 @@ object TransactionRepository {
         return false
     }
 
-    suspend fun updateHardwareStatusRemote(ecrRefNum: String, status: String): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * An offline sale: PENDING_UPLOAD when approved offline (also sets offline_auth),
+     * then its upload outcome -- UPLOADED, or DECLINED, and then the sale is DECLINED
+     * too (the bank refused the card; no money came). Queued offline.
+     */
+    suspend fun updateOfflineStatus(context: Context, ecrRefNum: String, status: String) = withContext(Dispatchers.IO) {
+        if (status == "DECLINED") try {
+            val db = LocalDatabase.getInstance(context)
+            db.orderDao().getAll().find { it.ecrRefNum == ecrRefNum }?.let { db.orderDao().update(it.copy(status = "DECLINED")) }
+        } catch (e: Exception) {
+            Log.e(TAG, "Local offline status update failed: ${e.message}")
+        }
+        if (!updateOfflineStatusRemote(ecrRefNum, status)) {
+            OfflineQueueManager.enqueue(context.filesDir, PendingOp(type = "offline_status", ecrRefNum = ecrRefNum, status = status))
+            Log.w(TAG, "Offline status update queued: $ecrRefNum -> $status")
+        }
+    }
+
+    suspend fun updateOfflineStatusRemote(ecrRefNum: String, status: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            updateRows("offline_status", ecrRefNum) {
+                set("offline_status", status)
+                if (status == "PENDING_UPLOAD") set("offline_auth", true)
+                if (status == "DECLINED") set("payment_status", "DECLINED")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating offline status: ${e.message}")
+            false
+        }
+    }
+
+        suspend fun updateHardwareStatusRemote(ecrRefNum: String, status: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val updated = updateRows("hardware_status", ecrRefNum) { set("hardware_status", status) }
             if (!updated) return@withContext false

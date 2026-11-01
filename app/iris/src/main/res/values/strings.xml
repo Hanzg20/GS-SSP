@@ -33,4 +33,5 @@
     <string name="iris_cash_exact">Exact</string>
     <string name="iris_cash_take">Take cash</string>
     <string name="iris_cash_done">Cash received %1$s\nChange due %2$s</string>
+    <string name="iris_approved_offline">Approved OFFLINE -- sent to the bank when the internet is back.</string>
 </resources>

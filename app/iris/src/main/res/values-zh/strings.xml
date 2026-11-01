@@ -34,4 +34,5 @@
     <string name="iris_cash_exact">刚好</string>
     <string name="iris_cash_take">收款</string>
     <string name="iris_cash_done">实收 %1$s\n找零 %2$s</string>
+    <string name="iris_approved_offline">离线批准——联网后发给银行。</string>
 </resources>

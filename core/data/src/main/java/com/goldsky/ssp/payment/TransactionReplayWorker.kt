@@ -39,6 +39,10 @@ class TransactionReplayWorker(appContext: Context, params: WorkerParameters) : C
                             true // malformed entry, drop it rather than retry forever
                         }
                     }
+                    "offline_status" -> {
+                        val ref = op.ecrRefNum; val st = op.status
+                        if (ref != null && st != null) TransactionRepository.updateOfflineStatusRemote(ref, st) else true
+                    }
                     "clock_in", "clock_out" -> {
                         val id = op.staffId; val ref = op.punchRef
                         if (id != null && ref != null) TimeClockRepository.punchRemote(op.type == "clock_in", id, ref, op.punchAt) != null

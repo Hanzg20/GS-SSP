@@ -138,6 +138,8 @@ of one shared `sales.orders` / `sales.order_lines` / `sales.payments` for all ve
 | Dine-in | `dine.payments` (each payment on a check; Ourea Scan attempts in `dine.online_payments`) | Ourea / Iris (`dine_record_payment`), Ourea Scan (`dine_online_pay_settle`) |
 | Counter sales, delivery (Ourea / Iris) | `public.transactions` + `transaction_items` | the terminals |
 
+Offline card sales (Iris / Ourea, 2026-11-01, `docs/migrations/2026-11-01_offline_card.sql`, opt-in per terminal with a per-sale and a count limit): with no internet a card sale goes to PAYWizard as "Deferred" and may be approved without the bank; `transactions.offline_auth` + `offline_status` PENDING_UPLOAD -> UPLOADED, or DECLINED (and `payment_status` DECLINED: no money came). The terminal uploads (TransType "Deferred") when the network is back and before a batch close.
+
 Partial refunds (Iris / Ourea, 2026-11-01, `docs/migrations/2026-11-01_partial_refunds.sql`): the sale stays PAID and adds up `transactions.refunded_cents` / `refunded_tax_cents` (refunded_at + approver = the latest); one `transaction_refunds` row per refund (keyed by the terminal's refund_ref, so an offline retry never counts twice) and `transaction_items.refunded_qty`; written only through `transactions_partial_refund`. A whole-sale refund is not offered after a partial one. Reports: VOIDED / REFUNDED -> amount back; PAID -> refunded_cents back.
 | Unattended (wash, timer, vend, laundry, EV) | `public.transactions` for now | the terminals |
 
