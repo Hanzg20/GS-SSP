@@ -58,7 +58,7 @@ fun JournalScreen(onScanReceipt: () -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TabRow(
-            // Row order: Notes, To-dos, Checklists (3, added later), Expenses (2).
+            // Row order: Notes, To-dos, Checklists (3, added later), Expenses (2), Stock (4).
             selectedTabIndex = when (tab) { 3 -> 2; 2 -> 3; else -> tab },
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary
@@ -67,12 +67,14 @@ fun JournalScreen(onScanReceipt: () -> Unit) {
             PosTab(tab == 1, stringResource(R.string.journal_tab_todo)) { tab = 1 }
             PosTab(tab == 3, stringResource(R.string.journal_tab_checklists)) { tab = 3 }
             PosTab(tab == 2, stringResource(R.string.journal_tab_expenses)) { tab = 2 }
+            PosTab(tab == 4, stringResource(R.string.journal_tab_stock)) { tab = 4 }
         }
         Box(Modifier.weight(1f)) {
             when (tab) {
                 0 -> NotesPane()
                 1 -> TodoPane()
                 3 -> ChecklistsPane()
+                4 -> InventoryPane()
                 else -> ExpensesPane(onScanReceipt)
             }
         }

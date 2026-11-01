@@ -594,8 +594,9 @@ private fun OureaCategoryChip(label: String, isSelected: Boolean, modifier: Modi
 }
 
 /**
- * Read-only product/inventory browsing (reference screenshots' "产品管理"
- * screen). Deliberately NOT add/edit/delete: `public.products`' RLS only
+ * Product/inventory browsing (reference screenshots' "产品管理" screen); tapping
+ * a product opens its stock (shared StockDialog: receive, count, adjust, history --
+ * through the retail_stock_* RPCs, 2026-11-01). Deliberately NOT add/edit/delete: `public.products`' RLS only
  * grants INSERT/UPDATE to `authenticated` users with `catalog.manage`
  * permission (a real human CMP login) -- Ourea's device authenticates
  * anonymously and has no write policy at all, by design (a POS terminal
@@ -617,7 +618,12 @@ fun OureaProductsScreen() {
                 (selectedCategory == null || product.category == selectedCategory)
         }
     }
-    val outOfStockCount = remember(catalog) { catalog.count { it.stockQty == 0 } }
+    val outOfStockCount = remember(catalog) { catalog.count { (it.stockQty ?: 1) <= 0 } }
+    // The stock list (low levels, 7-day sales) for the dialog; reloaded after a change.
+    var stockTick by remember { mutableStateOf(0) }
+    var stock by remember { mutableStateOf<Map<String, com.goldsky.ssp.payment.InventoryRepository.Item>>(emptyMap()) }
+    LaunchedEffect(stockTick) { com.goldsky.ssp.payment.InventoryRepository.list()?.let { l -> stock = l.associateBy { it.id } } }
+    var stockFor by remember { mutableStateOf<Product?>(null) }
     val lowStockCount = remember(catalog) { catalog.count { (it.stockQty ?: Int.MAX_VALUE) in 1..5 } }
 
     Row(modifier = Modifier.fillMaxSize()) {
@@ -663,7 +669,7 @@ fun OureaProductsScreen() {
                 }
             } else {
                 LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 160.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(filtered) { product -> ProductCard(product) }
+                    items(filtered) { product -> ProductCard(product, onOpen = { stockFor = product }) }
                 }
             }
         }
@@ -671,6 +677,14 @@ fun OureaProductsScreen() {
         if (categories.isNotEmpty()) {
             OureaCategoryRail(categories = categories, selected = selectedCategory, onSelect = { selectedCategory = it })
         }
+    }
+
+    stockFor?.let { p ->
+        com.goldsky.ssp.feature.retail.screens.StockDialog(
+            item = stock[p.id] ?: com.goldsky.ssp.payment.InventoryRepository.Item(p.id, p.name, p.barcode, p.category, p.price_cents, p.stockQty),
+            onChanged = { stockTick++ },
+            onDismiss = { stockFor = null }
+        )
     }
 }
 
@@ -772,8 +786,8 @@ private fun CartRow(number: Int, item: CartItem, lineDiscountCents: Int = 0, onI
 }
 
 @Composable
-private fun ProductCard(product: Product, onAdd: ((from: Rect?) -> Unit)? = null) {
-    val outOfStock = product.stockQty == 0
+private fun ProductCard(product: Product, onOpen: (() -> Unit)? = null, onAdd: ((from: Rect?) -> Unit)? = null) {
+    val outOfStock = (product.stockQty ?: 1) <= 0
     // Where this card is, for the fly-to-cart pill.
     var bounds by remember { mutableStateOf<Rect?>(null) }
     Column(
@@ -781,7 +795,7 @@ private fun ProductCard(product: Product, onAdd: ((from: Rect?) -> Unit)? = null
             .onGloballyPositioned { bounds = it.boundsInRoot() }
             .glassCard(RoundedCornerShape(16.dp), elevation = 2.dp)
             // The whole card adds to the cart, not just the "+".
-            .let { if (onAdd != null && !outOfStock) it.clickable { onAdd(bounds) } else it }
+            .let { if (onAdd != null && !outOfStock) it.clickable { onAdd(bounds) } else if (onOpen != null) it.clickable { onOpen() } else it }
             .padding(12.dp)
             .let { if (outOfStock) it.alpha(0.5f) else it }
     ) {

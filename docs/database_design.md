@@ -68,8 +68,9 @@ erDiagram
 | Tenancy & access | organizations, locations, org_members, invited_emails, profiles, permissions, capability_permissions, platform_settings | CMP |
 | Devices & ops → `ops` | devices, device_auth_map, device_secrets, device_shadows, device_commands, heartbeats, app_error_logs, system_health_logs, maintenance_records, audit_logs, app_configurations | apps (self-reported device columns, heartbeat, logs), CMP (assignment, commands, config -- through RPCs, §6.1) |
 | Staff | staff (PIN hash, role MANAGER / CASHIER / DRIVER) | CMP |
-| Catalog | products | CMP |
+| Catalog | products (`stock_qty` / `low_stock_qty` columns since 2026-11-01, mirrored into `attributes.stock_qty`) | CMP |
 | Sales & payment (each vertical's transactions move to its own schema, §4) | transactions, transaction_items, transaction_refunds, qr_payment_sessions, acquirer_settlement_records, merchant_acquirer_accounts, hardware_acquirer_map | apps (sales), back office (settlement) |
+| Retail inventory | **`retail`.stock_moves** -- every stock change (SALE / RETURN by triggers on PAID / refunded `transaction_items`, RECEIVE / COUNT / ADJUST by staff) | triggers; Iris / Ourea via `retail_stock_*`, Cael via `cmp_retail_stock_*` |
 | Retail delivery → `retail` | delivery_orders (status = money OPEN / PAID / CANCELLED; delivery_stage = trip WAITING / OUT / DELIVERED, an OUT order is listed only on the driver's terminal), delivery_order_items | CMP / Apex (create), Iris (take out via `delivery_order_out` / `delivery_order_back`, collect = delivered) |
 | Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders, `dine`.scan_chats** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
 | Members → `member` | vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions | apps, CMP |
@@ -93,7 +94,8 @@ schema and its name does not repeat the domain: `dine.checks`, not
 | `dine` | dine-in | **done 2026-10-13** |
 | `office` | store back office (the Journal / 手账): checklists; expenses, reminders, notes to move | **checklists 2026-10-16** |
 | `sales` | ~~shared orders / lines / payments~~ -- dropped 2026-10-28: each vertical keeps its own transactions (§4) | not built |
-| `retail`, `wash`, `ev`, `parking`, `vending`, `timer` | each vertical's own extension tables | as each is built or migrated |
+| `retail` | retail extension tables: stock_moves (2026-11-01, `docs/migrations/2026-11-01_inventory.sql`) | **started 2026-11-01** |
+| `wash`, `ev`, `parking`, `vending`, `timer` | each vertical's own extension tables | as each is built or migrated |
 | `member`, `media`, `apex`, `ops` | see §2 | to migrate |
 | `legacy` | the pending `gp_*`, `jc_*`, `e_*` (§2) | pending |
 
@@ -116,7 +118,7 @@ schema and its name does not repeat the domain: `dine.checks`, not
 ### 3.4 JSONB or a column
 `attributes` / options JSONB for what is only displayed or configured (dish
 options). Once something is filtered, summed, constrained or reported on, it
-becomes a column. To promote: `products.attributes.tax_rate_bps`, `category`, `stock_qty`.
+becomes a column. To promote: `products.attributes.tax_rate_bps`, `category` (`stock_qty` promoted 2026-11-01; the attributes key is a trigger-kept mirror for old readers).
 
 ### 3.5 Migrations
 One file per change in `docs/migrations/YYYY-MM-DD_<what>.sql`, idempotent where
