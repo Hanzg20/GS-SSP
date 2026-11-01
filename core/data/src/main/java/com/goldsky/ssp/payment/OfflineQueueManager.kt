@@ -10,7 +10,7 @@ import java.io.File
 
 @Serializable
 data class PendingOp(
-    val type: String, // "insert" | "insert_items" | "update_hw" | "update_status" | "delivery_paid" | "dine_payment"
+    val type: String, // "insert" | "insert_items" | "update_hw" | "update_status" | "delivery_paid" | "dine_payment" | "partial_refund" | "clock_in" | "clock_out"
     val record: TransactionRecord? = null,
     // Only on "insert_items" ops (see TransactionRepository.recordItems).
     val items: List<TransactionItem>? = null,
@@ -39,7 +39,11 @@ data class PendingOp(
     // Only on "partial_refund" ops (TransactionRepository.recordPartialRefund): amountCents / taxCents /
     // approver / refundedAt / ecrRefNum as above, status = how.
     val refundRef: String? = null,
-    val refundLines: List<RefundLine>? = null
+    val refundLines: List<RefundLine>? = null,
+    // Only on "clock_in" / "clock_out" ops (TimeClockRepository): the person, the terminal's punch id, when.
+    val staffId: String? = null,
+    val punchRef: String? = null,
+    val punchAt: String? = null
 )
 
 /**

@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
         // started in a cold process without this Activity still find them.
         DeviceRepository.init(this)
         StaffRepository.init(this)
+        TimeClockRepository.init(this)
         DiscountPresetRepository.init(this)
         DeliveryOrderRepository.init(this)
         onBackPressedDispatcher.addCallback(this, stopScanOnBack)
@@ -237,6 +238,8 @@ class MainActivity : ComponentActivity() {
                 } else {
                     // Their to-dos and handover notes for today, first thing after signing in.
                     com.goldsky.ssp.feature.retail.screens.SignInTodos(signedIn)
+                    // Not on the clock yet today: offer to clock in (once a day).
+                    com.goldsky.ssp.feature.retail.screens.ClockInPrompt(signedIn)
                     key(themeVersion) { Surface(modifier = Modifier.fillMaxSize(), color = surfaceBg) {
                         Scaffold(
                             topBar = { StaffBar(signedIn, onLock = { lock() }) },
@@ -761,6 +764,8 @@ fun IrisSystemHeader(staff: StaffMember, onLock: () -> Unit) {
                 IconButton(onClick = onLock, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Default.Lock, contentDescription = stringResource(R.string.iris_lock), modifier = Modifier.size(16.dp), tint = GsTheme.colors.danger)
                 }
+                Spacer(Modifier.width(4.dp))
+                com.goldsky.ssp.feature.retail.screens.ClockButton(staff)
             }
 
             Spacer(Modifier.weight(1f))

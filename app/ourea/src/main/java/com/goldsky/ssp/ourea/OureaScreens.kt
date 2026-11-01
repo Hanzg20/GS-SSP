@@ -86,7 +86,8 @@ enum class OureaDestination { TABLES, CHECKOUT, INSIGHTS, APEX, PRODUCTS, TRANSA
  * deliberately left out rather than built as dead UI.
  */
 @Composable
-fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit, onLock: () -> Unit, isManager: Boolean = true) {
+fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit, onLock: () -> Unit, isManager: Boolean = true,
+                 staff: com.goldsky.ssp.payment.StaffMember? = null) {
     Column(
         modifier = Modifier
             .fillMaxHeight()
@@ -122,6 +123,11 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
         }
         SidebarIcon(Icons.Default.History, current == OureaDestination.TRANSACTIONS || current == OureaDestination.DAY_REPORT) { onSelect(OureaDestination.TRANSACTIONS) }
         Spacer(modifier = Modifier.weight(1f))
+        // The signed-in person's time clock.
+        staff?.let {
+            com.goldsky.ssp.feature.retail.screens.ClockButton(it, compact = true)
+            Spacer(modifier = Modifier.height(20.dp))
+        }
         if (isManager) SidebarIcon(Icons.Default.Settings, current == OureaDestination.SETTINGS) { onSelect(OureaDestination.SETTINGS) }
         Spacer(modifier = Modifier.height(20.dp))
         SidebarIcon(Icons.Default.Lock, false, onLock)

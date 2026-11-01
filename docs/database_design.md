@@ -74,7 +74,7 @@ erDiagram
 | Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders, `dine`.scan_chats** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
 | Members → `member` | vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions | apps, CMP |
 | Ads → `media` | advertisements, playlists, ad_playback_logs | CMP (ads), apps (playback) |
-| Store back office → `office` | **`office`.checklists, `office`.checklist_items, `office`.checklist_ticks** (§5b); expenses, reminders, notes (still `public`) | Iris / Ourea / Apex; checklists via `office_*` RPCs |
+| Store back office → `office` | **`office`.checklists, `office`.checklist_items, `office`.checklist_ticks, `office`.shifts, `office`.settings** (§5b); expenses, reminders, notes (still `public`) | Iris / Ourea / Apex via `office_*` RPCs; Cael via `cmp_office_*` (time clock) |
 | AI assistant → `apex` | apex_messages, apex_knowledge | apex-assistant edge function |
 | **Pending (待处理)** | `gp_*` (appointments, order_items, orders, products, profiles, settings, vehicles), `jc_*` (advertisement_logs, advertisements -- the member tables were dropped 2026-10-27, copies in `backup.jc_*_20261027`), `e_merchants`, `e_transactions` | not read or written by GS-SSP apps. Marked pending 2026-10-13 (`COMMENT ON TABLE ... 'PENDING: ...'`). Don't build on them; to be moved to `legacy` or dropped once their owners are known |
 
@@ -248,6 +248,15 @@ RPCs (all `public`, store from the calling device): reads `office_checklists` (t
 `office_save_checklist` (create / edit / remove, steps sent in order with their ids),
 `office_tick` (tick or untick a step for today). Editing is managers-only in the app;
 any signed-in staff member ticks. Migration `docs/migrations/2026-10-16_office_checklists.sql`.
+
+Time clock and tips (2026-11-01, `docs/migrations/2026-11-01_time_clock_tips.sql`): `office.shifts` -- one row per shift
+(clock in / out, NULL out = on the clock; one open shift per person), punched on Iris / Ourea with the terminal's own time
+and ref (`office_clock_in` / `office_clock_out`, idempotent on the ref, so an offline punch lands once at its time; up to 7
+days back); a manager fixes or adds a shift with a required reason (`office_fix_shift`, Cael `cmp_office_fix_shift`).
+`office.settings.tip_split` OWN / POOL_HOURS / POOL_EQUAL: a business day's tips (PAID transactions' tip_cents on the
+store's terminals + Ourea Scan online tips) kept by whoever took them, or pooled and shared by minutes worked / equally,
+largest remainder so shares add up to the cent (`office_tips(day)`, Cael `cmp_office_timesheet(org, from, to)`). A report
+for payroll; nothing moves money.
 
 Day profit (functions only, no tables): `office_day_profit(p_day)` -- the whole store's rough profit for a
 business day: sales kept (PAID) before tax and tips minus that day's `expenses`, by category. The Day report

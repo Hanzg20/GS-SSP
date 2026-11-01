@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
         // Config and hardware/payment providers: OureaApplication.
         DeviceRepository.init(this)
         StaffRepository.init(this)
+        TimeClockRepository.init(this)
         DiscountPresetRepository.init(this)
         RetailRepository.init(this)
 
@@ -101,6 +102,7 @@ class MainActivity : ComponentActivity() {
                 if (signedIn == null) {
                     StaffPinLockScreen(onSignedIn = { staff = it })
                 } else {
+                    com.goldsky.ssp.feature.retail.screens.ClockInPrompt(signedIn)
                     val retailViewModel: RetailViewModel = viewModel()
                     // The cart in progress comes back after a restart.
                     LaunchedEffect(Unit) { retailViewModel.restoreCart(this@MainActivity) }
@@ -198,7 +200,8 @@ class MainActivity : ComponentActivity() {
                             current = destination,
                             onSelect = { destination = it },
                             onLock = { StaffRepository.signOut(); staff = null; destination = OureaDestination.CHECKOUT },
-                            isManager = signedIn.isManager
+                            isManager = signedIn.isManager,
+                            staff = signedIn
                         )
                         Box(modifier = Modifier.weight(1f).background(OureaBackground)) {
                             when (destination) {

@@ -206,6 +206,9 @@ fun DayReportScreen(
                 // The whole store's rough profit: sales before tax and tips minus the day's expenses.
                 profit?.let { p -> ProfitCard(p) }
 
+                // Who worked how long, and the day's tips by the store's rule (whole store).
+                StaffHoursCard(dayMillis)
+
                 // Payment Method Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),

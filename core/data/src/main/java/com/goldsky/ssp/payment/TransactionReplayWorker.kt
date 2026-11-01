@@ -39,6 +39,11 @@ class TransactionReplayWorker(appContext: Context, params: WorkerParameters) : C
                             true // malformed entry, drop it rather than retry forever
                         }
                     }
+                    "clock_in", "clock_out" -> {
+                        val id = op.staffId; val ref = op.punchRef
+                        if (id != null && ref != null) TimeClockRepository.punchRemote(op.type == "clock_in", id, ref, op.punchAt) != null
+                        else true
+                    }
                     "partial_refund" -> {
                         val ref = op.ecrRefNum; val rr = op.refundRef; val amt = op.amountCents
                         if (ref != null && rr != null && amt != null) {
