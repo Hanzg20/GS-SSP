@@ -48,8 +48,6 @@
     <string name="retail_scan_receipt">Scan Receipt</string>
     <string name="retail_can_t_reach_the_server">Can\'t reach the server -- showing the last list</string>
     <string name="retail_no_open_delivery_orders">No open delivery orders</string>
-    <string name="retail_cash_received">Cash received?</string>
-    <string name="retail_cash_received_2">CASH RECEIVED</string>
     <string name="retail_cancel_2">Cancel</string>
     <string name="retail_card">CARD</string>
     <string name="retail_cash">CASH</string>
@@ -87,7 +85,6 @@
     <string name="retail_not_a_manager">%1$s is not a manager</string>
     <string name="retail_pin_shared">PIN shared by several staff -- reset it in CMP</string>
     <string name="retail_delivery_orders">Delivery orders</string>
-    <string name="retail_collect_cash">Order D%1$s: collect %2$s in cash from %3$s.</string>
     <string name="retail_items_tap_details">%1$d item(s) · tap for details</string>
     <string name="retail_scan_added">Added: %1$s</string>
     <string name="retail_unknown_barcode">Unknown barcode</string>
@@ -399,4 +396,24 @@
     <string name="retail_part_refunded">Part refunded</string>
     <string name="retail_refund_items_cash_action">Refund some items: hand back %1$s in cash.</string>
     <string name="retail_refund_items_card_action">Refund some items: %1$s back to the card (the customer taps it, or refund it in the merchant portal).</string>
+    <string name="retail_delivery_mine">On my run (%1$d)</string>
+    <string name="retail_delivery_waiting">Waiting in the store (%1$d)</string>
+    <string name="retail_delivery_out">OUT FOR DELIVERY</string>
+    <string name="retail_delivery_tried">Tried %1$d×</string>
+    <string name="retail_delivery_take_out">TAKE OUT FOR DELIVERY</string>
+    <string name="retail_delivery_bring_back">Couldn\'t deliver -- bring it back</string>
+    <string name="retail_delivery_out_done">D%1$s is on your run. Collect at the door.</string>
+    <string name="retail_delivery_back_done">D%1$s is back in the store.</string>
+    <string name="retail_delivery_taken">D%1$s was just taken out by another terminal.</string>
+    <string name="retail_delivery_gone">D%1$s is no longer open (paid, cancelled or moved). The list is refreshed.</string>
+    <string name="retail_delivery_back_title">Bring back D%1$s</string>
+    <string name="retail_delivery_back_why">Why couldn\'t it be delivered?</string>
+    <string name="retail_delivery_back_note">Reason</string>
+    <string name="retail_delivery_back_confirm">BRING BACK</string>
+    <string name="retail_delivery_reason_nobody">Nobody home</string>
+    <string name="retail_delivery_reason_address">Wrong address</string>
+    <string name="retail_delivery_reason_refused">Customer refused</string>
+    <string name="retail_delivery_call">Call</string>
+    <string name="retail_delivery_map">Map</string>
+    <string name="retail_delivery_no_app">No app on this terminal for that.</string>
 </resources>

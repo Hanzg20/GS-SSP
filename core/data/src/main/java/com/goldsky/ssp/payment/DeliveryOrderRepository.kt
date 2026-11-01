@@ -33,8 +33,17 @@ data class DeliveryOrder(
     val note: String? = null,
     val status: String,
     val assigned_device_sn: String? = null,
+    // WAITING (in the store) / OUT (a driver took it; only that terminal sees it) / DELIVERED.
+    val delivery_stage: String = "WAITING",
+    val out_staff_name: String? = null,
+    val out_at: String? = null,
+    // Trips brought back undelivered, and why the last one was.
+    val attempts: Int = 0,
+    val last_attempt_note: String? = null,
     val delivery_order_items: List<DeliveryOrderItem> = emptyList()
 ) {
+    val isOut: Boolean get() = delivery_stage == "OUT"
+
     val lines: List<SaleLine>
         get() = delivery_order_items.sortedBy { it.line_no }.map {
             SaleLine(it.name, it.quantity, it.unit_price_cents, it.tax_rate_bps, it.product_id, it.barcode)
@@ -86,6 +95,9 @@ object DeliveryOrderRepository {
         val openIds = cloudOpen.map { it.id }.toSet()
         return cloudOpen.filter { it.id !in collectedIds } to collectedIds.filter { it in openIds }.toSet()
     }
+
+    /** The driver's own trips first (already in the bag), then the waiting ones; oldest first within each. */
+    internal fun listOrder(orders: List<DeliveryOrder>): List<DeliveryOrder> = orders.sortedBy { if (it.isOut) 0 else 1 }
 
     @Serializable
     private data class MarkPaidParams(val p_order_id: String, val p_ecr_ref_num: String, val p_payment_method: String)
@@ -146,18 +158,19 @@ object DeliveryOrderRepository {
         val message: String? = null
     )
 
-    /** Open orders, oldest first, minus ones collected here; null when the cloud can't be reached. */
+    /** Open orders, oldest first, minus ones collected here; null when the cloud can't be reached. (Out with this terminal first: [listOrder].) */
     suspend fun fetchOpen(): List<DeliveryOrder>? = withContext(Dispatchers.IO) {
         try {
             val cloud = SupabaseClientProvider.client.postgrest["delivery_orders"]
-                .select(Columns.raw("id, order_no, customer_name, customer_phone, address, note, status, assigned_device_sn, delivery_order_items(*)")) {
+                .select(Columns.raw("id, order_no, customer_name, customer_phone, address, note, status, assigned_device_sn, " +
+                    "delivery_stage, out_staff_name, out_at, attempts, last_attempt_note, delivery_order_items(*)")) {
                     filter { eq("status", "OPEN") }
                     order("order_no", Order.ASCENDING)
                 }
                 .decodeList<DeliveryOrder>()
             val (visible, stillPending) = visibleOpen(cloud, collected())
             saveCollected(stillPending)
-            visible
+            listOrder(visible)
         } catch (e: Exception) {
             Log.e(TAG, "Fetch open orders failed: ${e.message}")
             null
@@ -216,6 +229,41 @@ object DeliveryOrderRepository {
         } catch (e: Exception) {
             Log.e(TAG, "create_delivery_order failed: ${e.message}")
             CreateDeliveryOrderResult(false, message = "Not saved -- check the connection and try again")
+        }
+    }
+
+    @Serializable
+    private data class OutParams(val p_order_id: String, val p_staff_name: String? = null)
+
+    @Serializable
+    private data class BackParams(val p_order_id: String, val p_note: String? = null)
+
+    /**
+     * A driver takes [orderId] out (delivery_order_out): from then on only this
+     * terminal lists it. The server's answer -- "ok", "taken" (out with another
+     * terminal), "not_open", "not_found" -- or null when unreachable. Not queued:
+     * claiming an order offline could send two drivers to the same door.
+     */
+    suspend fun takeOut(orderId: String, staffName: String?): String? = withContext(Dispatchers.IO) {
+        try {
+            SupabaseClientProvider.client.postgrest
+                .rpc("delivery_order_out", OutParams(orderId, staffName))
+                .data.trim().trim('"')
+        } catch (e: Exception) {
+            Log.e(TAG, "Take out failed for $orderId: ${e.message}")
+            null
+        }
+    }
+
+    /** Brought back undelivered (delivery_order_back): "ok", "not_out", "not_found", or null when unreachable. */
+    suspend fun bringBack(orderId: String, note: String?): String? = withContext(Dispatchers.IO) {
+        try {
+            SupabaseClientProvider.client.postgrest
+                .rpc("delivery_order_back", BackParams(orderId, note?.trim()?.ifBlank { null }))
+                .data.trim().trim('"')
+        } catch (e: Exception) {
+            Log.e(TAG, "Bring back failed for $orderId: ${e.message}")
+            null
         }
     }
 

@@ -49,8 +49,6 @@
     <string name="retail_scan_receipt">扫描小票</string>
     <string name="retail_can_t_reach_the_server">连不上服务器，显示的是上次的列表</string>
     <string name="retail_no_open_delivery_orders">没有待处理的送货单</string>
-    <string name="retail_cash_received">已收到现金？</string>
-    <string name="retail_cash_received_2">已收现金</string>
     <string name="retail_cancel_2">取消</string>
     <string name="retail_card">刷卡</string>
     <string name="retail_cash">现金</string>
@@ -88,7 +86,6 @@
     <string name="retail_not_a_manager">%1$s 不是经理</string>
     <string name="retail_pin_shared">这个 PIN 有多名员工在用，请在 CMP 里重置</string>
     <string name="retail_delivery_orders">送货单</string>
-    <string name="retail_collect_cash">送货单 D%1$s：向 %3$s 收取现金 %2$s。</string>
     <string name="retail_items_tap_details">%1$d 件商品 · 点开看明细</string>
     <string name="retail_scan_added">已加入：%1$s</string>
     <string name="retail_unknown_barcode">未知条码</string>
@@ -398,4 +395,24 @@
     <string name="retail_part_refunded">部分已退</string>
     <string name="retail_refund_items_cash_action">部分退款：退还现金 %1$s。</string>
     <string name="retail_refund_items_card_action">部分退款：退 %1$s 到卡上（顾客刷卡，或在商户后台退）。</string>
+    <string name="retail_delivery_mine">我在送 (%1$d)</string>
+    <string name="retail_delivery_waiting">店里待送 (%1$d)</string>
+    <string name="retail_delivery_out">配送中</string>
+    <string name="retail_delivery_tried">已送 %1$d 次未成</string>
+    <string name="retail_delivery_take_out">出发配送</string>
+    <string name="retail_delivery_bring_back">送不到，带回店里</string>
+    <string name="retail_delivery_out_done">D%1$s 已在你的配送单上，到门口收款。</string>
+    <string name="retail_delivery_back_done">D%1$s 已退回店里。</string>
+    <string name="retail_delivery_taken">D%1$s 刚被另一台终端取走配送。</string>
+    <string name="retail_delivery_gone">D%1$s 已不是待处理（已付、已取消或已改派），列表已刷新。</string>
+    <string name="retail_delivery_back_title">退回 D%1$s</string>
+    <string name="retail_delivery_back_why">为什么没送到？</string>
+    <string name="retail_delivery_back_note">原因</string>
+    <string name="retail_delivery_back_confirm">退回</string>
+    <string name="retail_delivery_reason_nobody">无人在家</string>
+    <string name="retail_delivery_reason_address">地址不对</string>
+    <string name="retail_delivery_reason_refused">顾客拒收</string>
+    <string name="retail_delivery_call">打电话</string>
+    <string name="retail_delivery_map">地图</string>
+    <string name="retail_delivery_no_app">这台终端没有能打开的应用。</string>
 </resources>

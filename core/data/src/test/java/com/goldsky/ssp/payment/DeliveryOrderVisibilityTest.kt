@@ -5,7 +5,8 @@ import org.junit.Test
 
 class DeliveryOrderVisibilityTest {
 
-    private fun order(id: String) = DeliveryOrder(id = id, order_no = 1, customer_name = "c", address = "a", status = "OPEN")
+    private fun order(id: String, stage: String = "WAITING") =
+        DeliveryOrder(id = id, order_no = 1, customer_name = "c", address = "a", status = "OPEN", delivery_stage = stage)
 
     @Test
     fun `an order collected here stays hidden while the cloud still lists it open`() {
@@ -19,5 +20,11 @@ class DeliveryOrderVisibilityTest {
         val (visible, pending) = DeliveryOrderRepository.visibleOpen(listOf(order("B")), setOf("A"))
         assertEquals(listOf("B"), visible.map { it.id })
         assertEquals(emptySet<String>(), pending)
+    }
+
+    @Test
+    fun `orders out with this driver come first, the rest keep their order`() {
+        val list = listOf(order("A"), order("B", "OUT"), order("C"), order("D", "OUT"))
+        assertEquals(listOf("B", "D", "A", "C"), DeliveryOrderRepository.listOrder(list).map { it.id })
     }
 }

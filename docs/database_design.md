@@ -70,7 +70,7 @@ erDiagram
 | Staff | staff (PIN hash, role MANAGER / CASHIER / DRIVER) | CMP |
 | Catalog | products | CMP |
 | Sales & payment (each vertical's transactions move to its own schema, §4) | transactions, transaction_items, transaction_refunds, qr_payment_sessions, acquirer_settlement_records, merchant_acquirer_accounts, hardware_acquirer_map | apps (sales), back office (settlement) |
-| Retail delivery → `retail` | delivery_orders, delivery_order_items | CMP / Apex (create), Iris (collect) |
+| Retail delivery → `retail` | delivery_orders (status = money OPEN / PAID / CANCELLED; delivery_stage = trip WAITING / OUT / DELIVERED, an OUT order is listed only on the driver's terminal), delivery_order_items | CMP / Apex (create), Iris (take out via `delivery_order_out` / `delivery_order_back`, collect = delivered) |
 | Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders, `dine`.scan_chats** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
 | Members → `member` | vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions | apps, CMP |
 | Ads → `media` | advertisements, playlists, ad_playback_logs | CMP (ads), apps (playback) |
@@ -263,7 +263,7 @@ Business data is isolated per **organization**.
   (`permissions` / `capability_permissions`).
 - **Devices**: `org_id = (SELECT org_id FROM device_auth_map WHERE auth_user_id = auth.uid())`;
   device writes that need checks go through SECURITY DEFINER RPCs
-  (`create_delivery_order`, `mark_delivery_order_paid`, `dine_*`, `office_*`).
+  (`create_delivery_order`, `mark_delivery_order_paid`, `delivery_order_out` / `_back`, `dine_*`, `office_*`).
 - **System admin**: `is_sys_admin()` bypasses the org filter for maintenance.
 - Known gap: anonymous device sessions may read every org's active `products`
   (pre-launch policy); apps filter by their own `org_id`.

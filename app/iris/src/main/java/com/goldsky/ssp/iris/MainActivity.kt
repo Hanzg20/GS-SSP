@@ -267,15 +267,8 @@ class MainActivity : ComponentActivity() {
                                         staffId = signedIn.id,
                                         staffName = signedIn.name,
                                         onCheckPay = { choosingCheckPay = true },
-                                        onCollectCash = { order ->
-                                            withOpenOrder(order) {
-                                                DeliveryOrderRepository.markCollectedLocally(order.id)
-                                                recordCashCollection(saleOf(order), order.order_no)
-                                                paymentStatus = PaymentUiState.Success("", message = getString(R.string.iris_cash_received_for, order.order_no.toString()))
-                                                deliveryReload++
-                                                FeedbackManager.success(this@MainActivity)
-                                            }
-                                        }
+                                        // The cash count (change due); recordCashSale marks the order paid and delivered.
+                                        onCollectCash = { order -> withOpenOrder(order) { checkout(saleOf(order), method = "CASH") } }
                                     )
                                 }
                                 composable("insights") { ApexScreen(signedIn) }
@@ -474,41 +467,9 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Cash taken at the door for a delivery order: a PAID CASH transaction with
-     * its lines, the order marked paid, and a receipt. Every write goes through
-     * the offline queue, in that order, if the cloud can't be reached.
-     */
-    private fun recordCashCollection(sale: CheckoutSale, orderNo: Long) {
-        val ref = "RET-" + System.currentTimeMillis()
-        val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
-        val total = sale.subtotalCents + sale.taxCents
-        CoroutineScope(Dispatchers.IO).launch {
-            TransactionRepository.recordTransaction(
-                this@MainActivity,
-                TransactionRecord(
-                    device_sn = sn, amount = total, subtotal_cents = sale.subtotalCents, tax_cents = sale.taxCents,
-                    tip_cents = 0, payment_status = "PAID", ecr_ref_num = ref, payment_method = "CASH",
-                    staff_id = StaffRepository.current?.id, staff_name = StaffRepository.current?.name
-                ).withDiscounts(sale)
-            )
-            TransactionRepository.recordItems(this@MainActivity, ref, sn, sale.lines)
-            sale.deliveryOrderId?.let { DeliveryOrderRepository.markPaid(this@MainActivity, it, ref, "CASH") }
-            ReceiptPrinterManager.printReceipt(
-                this@MainActivity,
-                ReceiptPrinterManager.ReceiptData(
-                    subtotalCents = sale.subtotalCents, taxCents = sale.taxCents, tipCents = 0, amountCents = total,
-                    refNum = ref, deviceSn = sn, lines = sale.lines
-                ),
-                vendor = DeviceRepository.getPersistedHardwareVendor()
-            )
-            android.util.Log.i("IrisDelivery", "Cash collected for D$orderNo: $ref")
-        }
-    }
-
-    /**
      * Cash at the counter or a table: staff has the money in hand, so PAID now
-     * (no PENDING -- nothing to confirm), like Ourea's cash and the delivery
-     * collection above. Uploads go through the offline queue; then the receipt.
+     * (no PENDING -- nothing to confirm), like Ourea's cash; a delivery order's
+     * cash at the door comes here too. Uploads go through the offline queue; then the receipt.
      */
     private fun recordCashSale(sale: CheckoutSale, tip: Int, receivedCents: Int, ticket: com.goldsky.ssp.model.KitchenTicket?, extras: PayExtras?, onStateChange: (PaymentUiState) -> Unit) {
         val subtotal = sale.subtotalCents
@@ -678,7 +639,7 @@ fun CheckoutContainer(
                 if (dine.check == null) com.goldsky.ssp.feature.retail.dine.DineFloor(dine, staffId, staffName, minCell = 100.dp)
                 else com.goldsky.ssp.feature.retail.dine.HandheldCheck(dine, roundViewModel, staffName, onPay = onCheckPay, onScan = onScan, isScanning = isScanning)
             } else if (selectedTab == 2) {
-                DeliveryScreen(reloadKey = deliveryReload, onCollectCard = onCollectCard, onCollectCash = onCollectCash)
+                DeliveryScreen(reloadKey = deliveryReload, staffName = staffName, onCollectCard = onCollectCard, onCollectCash = onCollectCash)
             } else if (selectedTab == 0) {
                 ManualAmountScreen(onInitiatePayment = { amountStr ->
                     val cents = amountStr.replace(".", "").toIntOrNull() ?: 0
