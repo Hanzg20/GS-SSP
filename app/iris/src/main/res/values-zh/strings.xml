@@ -25,4 +25,14 @@
     <string name="iris_refund_done">退款完成</string>
     <string name="iris_refund_failed">退款失败</string>
     <string name="iris_pay_card">刷卡</string>
+    <string name="iris_cancel">取消</string>
+    <string name="iris_pay_cash">现金</string>
+    <string name="iris_pay_how">%1$s 怎么付</string>
+    <string name="iris_cash_title">现金</string>
+    <string name="iris_cash_due">应收 %1$s</string>
+    <string name="iris_cash_change">找零 %1$s</string>
+    <string name="iris_cash_short">还差 %1$s</string>
+    <string name="iris_cash_exact">刚好</string>
+    <string name="iris_cash_take">收款</string>
+    <string name="iris_cash_done">实收 %1$s\n找零 %2$s</string>
 </resources>

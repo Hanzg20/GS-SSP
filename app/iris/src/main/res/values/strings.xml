@@ -24,4 +24,14 @@
     <string name="iris_refund_done">Refund done</string>
     <string name="iris_refund_failed">Refund failed</string>
     <string name="iris_pay_card">Card</string>
+    <string name="iris_cancel">Cancel</string>
+    <string name="iris_pay_cash">Cash</string>
+    <string name="iris_pay_how">Pay %1$s by</string>
+    <string name="iris_cash_title">Cash</string>
+    <string name="iris_cash_due">Total due %1$s</string>
+    <string name="iris_cash_change">Change %1$s</string>
+    <string name="iris_cash_short">%1$s short</string>
+    <string name="iris_cash_exact">Exact</string>
+    <string name="iris_cash_take">Take cash</string>
+    <string name="iris_cash_done">Cash received %1$s\nChange due %2$s</string>
 </resources>

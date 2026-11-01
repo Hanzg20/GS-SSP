@@ -157,7 +157,19 @@ class MainActivity : ComponentActivity() {
                 var recordsReload by remember { mutableStateOf(0) }
                 val scope = rememberCoroutineScope()
 
-                fun pay(sale: CheckoutSale, tip: Int) {
+                // "CARD" / "CASH" once chosen; null = ask after the tip (a counter sale).
+                var saleMethod by remember { mutableStateOf<String?>(null) }
+                // (sale, tip) waiting on the card-or-cash choice / the cash count.
+                var choosingMethod by remember { mutableStateOf<Pair<CheckoutSale, Int>?>(null) }
+                var countingCash by remember { mutableStateOf<Pair<CheckoutSale, Int>?>(null) }
+
+                fun pay(sale: CheckoutSale, tip: Int, cashReceivedCents: Int? = null) {
+                    when {
+                        cashReceivedCents != null -> {}
+                        saleMethod == null -> { choosingMethod = sale to tip; return }
+                        saleMethod == "CASH" -> { countingCash = sale to tip; return }
+                    }
+                    saleMethod = null
                     val ticket = orderTicket
                     val forCheck = checkPay
                     val extras = forCheck?.let { cp ->
@@ -166,7 +178,7 @@ class MainActivity : ComponentActivity() {
                             onPaid = { ref, method, t -> dine.paymentDone(this@MainActivity, cp, ref, t, method, signedInName()) }
                         )
                     }
-                    triggerPaymentFlow(sale, tip, ticket, extras) {
+                    val onState: (PaymentUiState) -> Unit = {
                         paymentStatus = if (it is PaymentUiState.Success) it.copy(orderNumber = ticket?.number) else it
                         if (it is PaymentUiState.Success && forCheck != null) {
                             checkPay = null
@@ -180,10 +192,16 @@ class MainActivity : ComponentActivity() {
                             FeedbackManager.success(this@MainActivity)
                         }
                     }
+                    if (cashReceivedCents != null) recordCashSale(sale, tip, cashReceivedCents, ticket, extras, onState)
+                    else triggerPaymentFlow(sale, tip, ticket, extras, onState)
                 }
 
-                fun checkout(sale: CheckoutSale, ticket: com.goldsky.ssp.model.KitchenTicket? = null) {
+                // Backed out of the tip / method / cash step: the next sale must not pay that check.
+                fun abandonSale() { saleMethod = null; checkPay = null }
+
+                fun checkout(sale: CheckoutSale, ticket: com.goldsky.ssp.model.KitchenTicket? = null, method: String? = null) {
                     orderTicket = ticket
+                    saleMethod = method
                     // No tip step unless the store asks for tips (off for retail); paying a
                     // table, the customer still checks the bill first.
                     if (DeviceRepository.isTipsEnabled() || checkPay != null) activeSaleData = sale else pay(sale, 0)
@@ -243,7 +261,7 @@ class MainActivity : ComponentActivity() {
                                             checkout(retailViewModel.checkoutSale(), ticket)
                                         },
                                         deliveryReload = deliveryReload,
-                                        onCollectCard = { order -> withOpenOrder(order) { checkout(saleOf(order)) } },
+                                        onCollectCard = { order -> withOpenOrder(order) { checkout(saleOf(order), method = "CARD") } },
                                         dine = dine,
                                         roundViewModel = roundViewModel,
                                         staffId = signedIn.id,
@@ -253,7 +271,7 @@ class MainActivity : ComponentActivity() {
                                             withOpenOrder(order) {
                                                 DeliveryOrderRepository.markCollectedLocally(order.id)
                                                 recordCashCollection(saleOf(order), order.order_no)
-                                                paymentStatus = PaymentUiState.Success(getString(R.string.iris_cash_received_for, order.order_no.toString()))
+                                                paymentStatus = PaymentUiState.Success("", message = getString(R.string.iris_cash_received_for, order.order_no.toString()))
                                                 deliveryReload++
                                                 FeedbackManager.success(this@MainActivity)
                                             }
@@ -307,7 +325,22 @@ class MainActivity : ComponentActivity() {
                                     pay(sale, tip)
                                 },
                                 // A table's payment backed out of: the next sale must not pay that check.
-                                onCancel = { activeSaleData = null; checkPay = null }
+                                onCancel = { activeSaleData = null; abandonSale() }
+                            )
+                        }
+                        choosingMethod?.let { (sale, tip) ->
+                            PayMethodDialog(
+                                totalCents = sale.subtotalCents + sale.taxCents + tip,
+                                onCard = { choosingMethod = null; saleMethod = "CARD"; pay(sale, tip) },
+                                onCash = { choosingMethod = null; countingCash = sale to tip },
+                                onDismiss = { choosingMethod = null; abandonSale() }
+                            )
+                        }
+                        countingCash?.let { (sale, tip) ->
+                            CashTenderDialog(
+                                totalCents = sale.subtotalCents + sale.taxCents + tip,
+                                onConfirm = { received -> countingCash = null; pay(sale, tip, cashReceivedCents = received) },
+                                onDismiss = { countingCash = null; abandonSale() }
                             )
                         }
 
@@ -315,12 +348,11 @@ class MainActivity : ComponentActivity() {
                         if (choosingCheckPay && payingCheck != null) {
                             com.goldsky.ssp.feature.retail.dine.CheckPayDialog(
                                 detail = payingCheck,
-                                // Iris takes cards only (the handheld at the table).
-                                methods = listOf("CARD" to stringResource(R.string.iris_pay_card)),
-                                onPay = { cp, _ ->
+                                methods = listOf("CARD" to stringResource(R.string.iris_pay_card), "CASH" to stringResource(R.string.iris_pay_cash)),
+                                onPay = { cp, method ->
                                     choosingCheckPay = false
                                     checkPay = cp
-                                    checkout(CheckoutSale(cp.amountCents - cp.taxCents, cp.taxCents, cp.lines))
+                                    checkout(CheckoutSale(cp.amountCents - cp.taxCents, cp.taxCents, cp.lines), method = method)
                                 },
                                 onDismiss = { choosingCheckPay = false }
                             )
@@ -335,7 +367,7 @@ class MainActivity : ComponentActivity() {
 
                         when (val state = paymentStatus) {
                             is PaymentUiState.Processing -> PaymentProcessingDialog(state.message)
-                            is PaymentUiState.Success -> PaymentResultDialog(true, stringResource(R.string.iris_approved_code, state.authCode), state.orderNumber) { paymentStatus = PaymentUiState.Idle }
+                            is PaymentUiState.Success -> PaymentResultDialog(true, state.message ?: stringResource(R.string.iris_approved_code, state.authCode), state.orderNumber) { paymentStatus = PaymentUiState.Idle }
                             is PaymentUiState.Done -> PaymentResultDialog(true, state.message, title = stringResource(R.string.iris_refund_done)) { paymentStatus = PaymentUiState.Idle }
                             is PaymentUiState.RefundNeedsCard -> com.goldsky.ssp.feature.retail.RefundNeedsCardDialog(
                                 amountCents = state.order.amountCents,
@@ -463,6 +495,38 @@ class MainActivity : ComponentActivity() {
                 vendor = DeviceRepository.getPersistedHardwareVendor()
             )
             android.util.Log.i("IrisDelivery", "Cash collected for D$orderNo: $ref")
+        }
+    }
+
+    /**
+     * Cash at the counter or a table: staff has the money in hand, so PAID now
+     * (no PENDING -- nothing to confirm), like Ourea's cash and the delivery
+     * collection above. Uploads go through the offline queue; then the receipt.
+     */
+    private fun recordCashSale(sale: CheckoutSale, tip: Int, receivedCents: Int, ticket: com.goldsky.ssp.model.KitchenTicket?, extras: PayExtras?, onStateChange: (PaymentUiState) -> Unit) {
+        val subtotal = sale.subtotalCents
+        val tax = sale.taxCents
+        val total = subtotal + tax + tip
+        val ref = "RET-CASH-" + System.currentTimeMillis()
+        val sn = DeviceRepository.getPersistedDeviceSn() ?: "MOCK_SN"
+        fun m(c: Int) = "$" + "%.2f".format(c / 100.0)
+        onStateChange(PaymentUiState.Success("", message = getString(R.string.iris_cash_done, m(receivedCents), m(receivedCents - total))))
+        CoroutineScope(Dispatchers.IO).launch {
+            TransactionRepository.recordTransaction(
+                this@MainActivity,
+                TransactionRecord(
+                    device_sn = sn, amount = total, subtotal_cents = subtotal, tax_cents = tax, tip_cents = tip,
+                    payment_status = "PAID", ecr_ref_num = ref, payment_method = "CASH", entry_mode = "CASH",
+                    staff_id = StaffRepository.current?.id, staff_name = StaffRepository.current?.name
+                ).withOrder(ticket).withDiscounts(sale)
+            )
+            TransactionRepository.recordItems(this@MainActivity, ref, sn, sale.lines)
+            sale.deliveryOrderId?.let { DeliveryOrderRepository.markPaid(this@MainActivity, it, ref, "CASH") }
+            extras?.onPaid?.invoke(ref, "CASH", tip)
+            ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
+                subtotalCents = subtotal, taxCents = tax, tipCents = tip, amountCents = total,
+                refNum = ref, deviceSn = sn, lines = sale.lines, banner = extras?.banner
+            ), DeviceRepository.getPersistedHardwareVendor())
         }
     }
 
@@ -775,7 +839,8 @@ private fun signedInName(): String? = StaffRepository.current?.name
 
 sealed class PaymentUiState {
     object Idle : PaymentUiState()
-    data class Success(val authCode: String, val orderNumber: Int? = null) : PaymentUiState()
+    /** [message]: shown instead of "Approved: <authCode>" (cash). */
+    data class Success(val authCode: String, val orderNumber: Int? = null, val message: String? = null) : PaymentUiState()
     /** [refund]: a refund that failed -- titled as one, not as a failed payment. */
     data class Error(val message: String, val refund: Boolean = false) : PaymentUiState()
     data class Processing(val message: String) : PaymentUiState()
