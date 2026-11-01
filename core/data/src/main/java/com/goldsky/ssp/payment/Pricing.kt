@@ -55,7 +55,8 @@ data class AppliedDiscount(
  * proportion to what each still costs, then tax on what is left -- per rate,
  * rounded once (SalesTax). A tax-exempt line takes its share of an order discount
  * like any other, so the exempt part shrinks too and no tax is charged on money
- * the customer didn't pay.
+ * the customer didn't pay. A loyalty reward (points used, 2026-11-01) is a store
+ * discount too: taken after the order discount, spread the same way.
  */
 object Pricing {
 
@@ -65,7 +66,7 @@ object Pricing {
         val grossCents: Int,
         val taxRateBps: Int,
         val lineDiscountCents: Int,
-        /** This line's part of the order discount. */
+        /** This line's part of the order discount (and of a loyalty reward). */
         val orderShareCents: Int,
     ) {
         val discountCents: Int get() = lineDiscountCents + orderShareCents
@@ -75,6 +76,8 @@ object Pricing {
     data class Result(
         val lines: List<PricedLine>,
         val orderDiscountCents: Int,
+        /** What a loyalty reward took off. */
+        val rewardCents: Int = 0,
     ) {
         val grossCents: Int get() = lines.sumOf { it.grossCents }
         val lineDiscountCents: Int get() = lines.sumOf { it.lineDiscountCents }
@@ -85,16 +88,20 @@ object Pricing {
         val totalCents: Int get() = netCents + taxCents
     }
 
-    fun price(lines: List<Line>, orderDiscount: Discount? = null): Result {
+    fun price(lines: List<Line>, orderDiscount: Discount? = null, reward: Discount? = null): Result {
         val afterLine = lines.map { it.grossCents - (it.discount?.offCents(it.grossCents) ?: 0) }
         val base = afterLine.sum()
         val orderOff = orderDiscount?.offCents(base) ?: 0
         val shares = allocate(orderOff, afterLine)
+        val afterOrder = afterLine.mapIndexed { i, c -> c - shares[i] }
+        val rewardOff = reward?.offCents(afterOrder.sum()) ?: 0
+        val rewardShares = allocate(rewardOff, afterOrder)
         return Result(
             lines = lines.mapIndexed { i, l ->
-                PricedLine(l.grossCents, l.taxRateBps, l.grossCents - afterLine[i], shares[i])
+                PricedLine(l.grossCents, l.taxRateBps, l.grossCents - afterLine[i], shares[i] + rewardShares[i])
             },
             orderDiscountCents = orderOff,
+            rewardCents = rewardOff,
         )
     }
 

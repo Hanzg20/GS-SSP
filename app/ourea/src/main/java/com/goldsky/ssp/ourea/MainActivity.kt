@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
         // Config and hardware/payment providers: OureaApplication.
         DeviceRepository.init(this)
         StaffRepository.init(this)
+        LoyaltyRepository.init(this)
         TimeClockRepository.init(this)
         DiscountPresetRepository.init(this)
         RetailRepository.init(this)
@@ -457,6 +458,22 @@ class MainActivity : ComponentActivity() {
     // their discount share, so lines equal to the sale's are that sale.
     private fun discountSaleFor(lines: List<com.goldsky.ssp.model.SaleLine>) = discountSale?.takeIf { it.lines == lines }
 
+    /**
+     * A PAID sale with a loyalty member: its points (and the reward's points taken) on the
+     * server -- queued if it can't be reached -- and what they earned on screen.
+     */
+    private suspend fun recordLoyalty(memberId: String?, ref: String, redeemPoints: Int) {
+        memberId ?: return
+        val r = LoyaltyRepository.recordSale(this, memberId, ref, redeemPoints) ?: return
+        val m = r.member ?: return
+        if (!r.success || r.message != "ok") return
+        withContext(Dispatchers.Main) {
+            android.widget.Toast.makeText(this@MainActivity,
+                getString(com.goldsky.ssp.feature.retail.R.string.loyalty_earned, m.label, r.earned, m.points),
+                android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun triggerPaymentFlow(subtotal: Int, tax: Int, tip: Int, lines: List<com.goldsky.ssp.model.SaleLine>, ticket: com.goldsky.ssp.model.KitchenTicket?, onStateChange: (OureaPaymentUiState) -> Unit, extras: PayExtras? = null) {
         val total = subtotal + tax + tip
         val ref = "OUR-" + System.currentTimeMillis()
@@ -507,6 +524,7 @@ class MainActivity : ComponentActivity() {
                         authCode = authCode
                     )
                     extras?.onPaid?.invoke(ref, "CARD", tip)
+                    discountSaleFor(lines)?.let { recordLoyalty(it.memberId, ref, it.redeemPoints) }
                     ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                         subtotalCents = subtotal,
                         taxCents = tax,
@@ -578,6 +596,7 @@ class MainActivity : ComponentActivity() {
             )
             TransactionRepository.recordItems(this@MainActivity, ref, sn, lines)
             extras?.onPaid?.invoke(ref, "CASH", tip)
+            discountSaleFor(lines)?.let { recordLoyalty(it.memberId, ref, it.redeemPoints) }
             ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                 subtotalCents = subtotal,
                 taxCents = tax,

@@ -304,6 +304,8 @@ fun OureaCheckoutScreen(viewModel: RetailViewModel, onPay: (method: String) -> U
                     Text("−$${"%.2f".format(priced.orderDiscountCents / 100.0)}", color = OureaGreen, fontWeight = FontWeight.Bold)
                 }
             }
+            // The customer's loyalty points (shows only when the store has loyalty on).
+            if (cart.isNotEmpty()) com.goldsky.ssp.feature.retail.ui.LoyaltyMemberBar(viewModel)
             if (quickService && cart.isNotEmpty()) OureaOrderOptions(viewModel)
             Divider(color = OureaSurfaceVariant)
             Spacer(modifier = Modifier.height(12.dp))

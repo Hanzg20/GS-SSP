@@ -155,6 +155,11 @@ fun RetailStoreScreen(
             }
         }
 
+        // Counter sales only (a dine-in round has checkoutLabel): the customer's loyalty points.
+        if (cart.isNotEmpty() && checkoutLabel == null) Surface(color = scheme.surface) {
+            com.goldsky.ssp.feature.retail.ui.LoyaltyMemberBar(viewModel, Modifier.padding(horizontal = 8.dp))
+        }
+
         if (bottomBar != null) {
             if (cart.isNotEmpty()) Surface(color = scheme.surface) { Box(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) { bottomBar() } }
         } else if (quickService && cart.isNotEmpty() && checkoutLabel == null) {

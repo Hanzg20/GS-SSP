@@ -498,4 +498,18 @@
     <string name="offline_card_max">最多等待笔数</string>
     <string name="offline_card_waiting">有 %1$d 笔离线交易等待补发（$%2$s）。</string>
     <string name="offline_card_refused">%1$d 笔离线刷卡被银行拒绝：%2$s。这些交易没有收到钱。</string>
+    <string name="loyalty_add_member">会员积分</string>
+    <string name="loyalty_points">%1$d 分</string>
+    <string name="loyalty_use">用 %1$d 分抵 %2$s</string>
+    <string name="loyalty_need">%1$d 分抵 %2$s</string>
+    <string name="loyalty_remove">移除会员</string>
+    <string name="loyalty_find_title">积分会员</string>
+    <string name="loyalty_phone">手机号</string>
+    <string name="loyalty_name">姓名（可不填）</string>
+    <string name="loyalty_not_found">没有这个号码的会员。现在注册吗？</string>
+    <string name="loyalty_find">查找</string>
+    <string name="loyalty_join">注册</string>
+    <string name="loyalty_bad_phone">手机号好像不对。</string>
+    <string name="loyalty_off">这家店没有开启会员积分（在 Cael 设置）。</string>
+    <string name="loyalty_earned">%1$s 获得 %2$d 积分（现有 %3$d）。</string>
 </resources>

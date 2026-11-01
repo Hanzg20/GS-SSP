@@ -73,7 +73,7 @@ erDiagram
 | Retail inventory | **`retail`.stock_moves** -- every stock change (SALE / RETURN by triggers on PAID / refunded `transaction_items`, RECEIVE / COUNT / ADJUST by staff) | triggers; Iris / Ourea via `retail_stock_*`, Cael via `cmp_retail_stock_*` |
 | Retail delivery → `retail` | delivery_orders (status = money OPEN / PAID / CANCELLED; delivery_stage = trip WAITING / OUT / DELIVERED, an OUT order is listed only on the driver's terminal), delivery_order_items | CMP / Apex (create), Iris (take out via `delivery_order_out` / `delivery_order_back`, collect = delivered) |
 | Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders, `dine`.scan_chats** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
-| Members → `member` | vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions | apps, CMP |
+| Members → `member` | **`member`.settings, `member`.members, `member`.points_ledger** (retail loyalty, 2026-11-01, `docs/migrations/2026-11-01_loyalty.sql`: member by phone per store; points earned on a PAID sale's subtotal through `member_record_sale`, a reward = an order discount; a whole refund undoes them by trigger; `transactions.member_id`); vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions (still `public`) | Iris / Ourea via `member_*`, Cael via `cmp_member_*`; apps, CMP |
 | Ads → `media` | advertisements, playlists, ad_playback_logs | CMP (ads), apps (playback) |
 | Store back office → `office` | **`office`.checklists, `office`.checklist_items, `office`.checklist_ticks, `office`.shifts, `office`.settings** (§5b); expenses, reminders, notes (still `public`) | Iris / Ourea / Apex via `office_*` RPCs; Cael via `cmp_office_*` (time clock) |
 | AI assistant → `apex` | apex_messages, apex_knowledge | apex-assistant edge function |
@@ -96,7 +96,8 @@ schema and its name does not repeat the domain: `dine.checks`, not
 | `sales` | ~~shared orders / lines / payments~~ -- dropped 2026-10-28: each vertical keeps its own transactions (§4) | not built |
 | `retail` | retail extension tables: stock_moves (2026-11-01, `docs/migrations/2026-11-01_inventory.sql`) | **started 2026-11-01** |
 | `wash`, `ev`, `parking`, `vending`, `timer` | each vertical's own extension tables | as each is built or migrated |
-| `member`, `media`, `apex`, `ops` | see §2 | to migrate |
+| `member` | loyalty (2026-11-01); VIP tables to move | **started 2026-11-01** |
+| `media`, `apex`, `ops` | see §2 | to migrate |
 | `legacy` | the pending `gp_*`, `jc_*`, `e_*` (§2) | pending |
 
 ### 3.2 Access

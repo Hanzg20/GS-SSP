@@ -288,20 +288,55 @@ class RetailViewModel : ViewModel() {
         updateTotals()
     }
 
-    /** The cart priced: what each line costs after discounts, the discount, tax and total. */
-    fun pricing(): com.goldsky.ssp.payment.Pricing.Result {
+    // ---- Loyalty (LoyaltyRepository): the member of this sale, and whether their points pay a reward ----
+
+    var member by androidx.compose.runtime.mutableStateOf<com.goldsky.ssp.payment.LoyaltyRepository.Member?>(null)
+        private set
+    var usePoints by androidx.compose.runtime.mutableStateOf(false)
+        private set
+
+    fun chooseMember(m: com.goldsky.ssp.payment.LoyaltyRepository.Member?) {
+        member = m
+        if (m == null) usePoints = false
+        updateTotals()
+    }
+
+    fun useMemberPoints(on: Boolean) {
+        usePoints = on
+        updateTotals()
+    }
+
+    /** (points, cents) the member's reward takes on this cart, before it's applied; (0, 0) when none fits. */
+    fun availableReward(): Pair<Int, Int> {
+        val m = member ?: return 0 to 0
+        return com.goldsky.ssp.payment.LoyaltyRepository.reward(m.points, priceWith(null).netCents)
+    }
+
+    private fun appliedReward(): Pair<Int, Int> = if (usePoints) availableReward() else 0 to 0
+
+    private fun priceWith(reward: com.goldsky.ssp.payment.Discount?): com.goldsky.ssp.payment.Pricing.Result {
         val fallback = com.goldsky.ssp.payment.SalesTax.deviceRateBps()
         return com.goldsky.ssp.payment.Pricing.price(
             _cart.map { com.goldsky.ssp.payment.Pricing.Line(it.totalPriceCents, it.product.taxRateBps ?: fallback, it.discount) },
-            orderDiscount
+            orderDiscount, reward
         )
     }
+
+    private fun rewardDiscount(): com.goldsky.ssp.payment.Discount? =
+        appliedReward().takeIf { it.second > 0 }?.let { (pts, cents) ->
+            com.goldsky.ssp.payment.Discount("Points $pts", amountCents = cents, reason = "LOYALTY")
+        }
+
+    /** The cart priced: what each line costs after discounts (a points reward included), tax and total. */
+    fun pricing(): com.goldsky.ssp.payment.Pricing.Result = priceWith(rewardDiscount())
 
     fun clearCart() {
         orderNote = ""
         takeout = false
         orderDiscount = null
         reservedNumber = null
+        member = null
+        usePoints = false
         _cart.clear()
         updateTotals()
         _lastScan.value = null
@@ -333,13 +368,18 @@ class RetailViewModel : ViewModel() {
         }
         val applied = _cart.mapIndexedNotNull { i, item ->
             item.discount?.let { com.goldsky.ssp.payment.AppliedDiscount.of(it, "LINE", priced.lines[i].lineDiscountCents, lineNo = i + 1) }
-        } + listOfNotNull(orderDiscount?.let { com.goldsky.ssp.payment.AppliedDiscount.of(it, "ORDER", priced.orderDiscountCents) })
+        } + listOfNotNull(
+            orderDiscount?.let { com.goldsky.ssp.payment.AppliedDiscount.of(it, "ORDER", priced.orderDiscountCents) },
+            rewardDiscount()?.let { com.goldsky.ssp.payment.AppliedDiscount.of(it, "ORDER", priced.rewardCents) }
+        )
         return com.goldsky.ssp.model.CheckoutSale(
             subtotalCents = lines.sumOf { it.lineTotalCents },
             taxCents = com.goldsky.ssp.payment.SalesTax.cents(lines.map { it.lineTotalCents to it.taxRateBps }),
             lines = lines,
             discountCents = priced.discountCents,
-            discounts = applied.filter { it.amount_cents > 0 }
+            discounts = applied.filter { it.amount_cents > 0 },
+            memberId = member?.id,
+            redeemPoints = if (priced.rewardCents > 0) appliedReward().first else 0
         )
     }
 

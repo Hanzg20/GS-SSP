@@ -39,6 +39,11 @@ class TransactionReplayWorker(appContext: Context, params: WorkerParameters) : C
                             true // malformed entry, drop it rather than retry forever
                         }
                     }
+                    // orderId = the member, amountCents = points used, approverName = the cashier.
+                    "member_sale" -> {
+                        val m = op.orderId; val ref = op.ecrRefNum
+                        if (m != null && ref != null) LoyaltyRepository.recordSaleRemote(m, ref, op.amountCents ?: 0, op.approverName) != null else true
+                    }
                     "offline_status" -> {
                         val ref = op.ecrRefNum; val st = op.status
                         if (ref != null && st != null) TransactionRepository.updateOfflineStatusRemote(ref, st) else true

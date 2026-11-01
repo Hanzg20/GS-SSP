@@ -499,4 +499,18 @@
     <string name="offline_card_max">Most sales waiting</string>
     <string name="offline_card_waiting">%1$d offline sale(s) waiting to be sent ($%2$s).</string>
     <string name="offline_card_refused">%1$d offline card sale(s) REFUSED by the bank: %2$s. They were not paid.</string>
+    <string name="loyalty_add_member">Member (points)</string>
+    <string name="loyalty_points">%1$d pts</string>
+    <string name="loyalty_use">Use %1$d pts: %2$s off</string>
+    <string name="loyalty_need">%1$d pts = %2$s off</string>
+    <string name="loyalty_remove">Remove member</string>
+    <string name="loyalty_find_title">Loyalty member</string>
+    <string name="loyalty_phone">Phone number</string>
+    <string name="loyalty_name">Name (optional)</string>
+    <string name="loyalty_not_found">No member with this number. Sign them up?</string>
+    <string name="loyalty_find">FIND</string>
+    <string name="loyalty_join">SIGN UP</string>
+    <string name="loyalty_bad_phone">That phone number doesn\'t look right.</string>
+    <string name="loyalty_off">Loyalty is turned off for this store (Cael).</string>
+    <string name="loyalty_earned">%1$s earned %2$d points (now %3$d).</string>
 </resources>

@@ -30,5 +30,8 @@ data class CheckoutSale(
     val discountCents: Int = 0,
     val discounts: List<com.goldsky.ssp.payment.AppliedDiscount> = emptyList(),
     // Set when this sale collects a delivery order (marked paid once it goes through).
-    val deliveryOrderId: String? = null
+    val deliveryOrderId: String? = null,
+    // Loyalty member of the sale and the points used for its reward (LoyaltyRepository.recordSale once PAID).
+    val memberId: String? = null,
+    val redeemPoints: Int = 0
 )

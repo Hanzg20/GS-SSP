@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
         // started in a cold process without this Activity still find them.
         DeviceRepository.init(this)
         StaffRepository.init(this)
+        LoyaltyRepository.init(this)
         TimeClockRepository.init(this)
         DiscountPresetRepository.init(this)
         DeliveryOrderRepository.init(this)
@@ -496,10 +497,27 @@ class MainActivity : ComponentActivity() {
             TransactionRepository.recordItems(this@MainActivity, ref, sn, sale.lines)
             sale.deliveryOrderId?.let { DeliveryOrderRepository.markPaid(this@MainActivity, it, ref, "CASH") }
             extras?.onPaid?.invoke(ref, "CASH", tip)
+            recordLoyalty(sale.memberId, ref, sale.redeemPoints)
             ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                 subtotalCents = subtotal, taxCents = tax, tipCents = tip, amountCents = total,
                 refNum = ref, deviceSn = sn, lines = sale.lines, banner = extras?.banner
             ), DeviceRepository.getPersistedHardwareVendor())
+        }
+    }
+
+    /**
+     * A PAID sale with a loyalty member: its points (and the reward's points taken) on the
+     * server -- queued if it can't be reached -- and what they earned on screen.
+     */
+    private suspend fun recordLoyalty(memberId: String?, ref: String, redeemPoints: Int) {
+        memberId ?: return
+        val r = LoyaltyRepository.recordSale(this, memberId, ref, redeemPoints) ?: return
+        val m = r.member ?: return
+        if (!r.success || r.message != "ok") return
+        withContext(Dispatchers.Main) {
+            android.widget.Toast.makeText(this@MainActivity,
+                getString(com.goldsky.ssp.feature.retail.R.string.loyalty_earned, m.label, r.earned, m.points),
+                android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
@@ -558,6 +576,7 @@ class MainActivity : ComponentActivity() {
                     )
                     sale.deliveryOrderId?.let { DeliveryOrderRepository.markPaid(this@MainActivity, it, ref, "CARD") }
                     extras?.onPaid?.invoke(ref, "CARD", tip)
+                    recordLoyalty(sale.memberId, ref, sale.redeemPoints)
                     // Quick-service: the kitchen ticket first, then the receipt with the call number.
                     ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                         subtotalCents = subtotal,
