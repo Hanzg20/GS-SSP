@@ -35,6 +35,10 @@
     <string name="ourea_goldsky">GoldSky</string>
     <string name="ourea_payment_qr_code">付款二维码</string>
     <string name="ourea_ok">确定</string>
+    <string name="ourea_checking_order">正在核对送货单 D%1$s…</string>
+    <string name="ourea_order_unreachable">连不上服务器，无法核对送货单 D%1$s，请重试。</string>
+    <string name="ourea_order_already_collected">送货单 D%1$s 已在本终端收过款。</string>
+    <string name="ourea_order_not_open">送货单 D%1$s 状态是 %2$s，不能收款。</string>
     <string name="ourea_held">挂单 (%1$d)</string>
     <string name="ourea_products_count">%1$d 个商品</string>
     <string name="ourea_low_stock_count">%1$d 个库存不足</string>

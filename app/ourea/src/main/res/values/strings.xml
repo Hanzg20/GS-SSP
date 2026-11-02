@@ -34,6 +34,10 @@
     <string name="ourea_goldsky">GoldSky</string>
     <string name="ourea_payment_qr_code">Payment QR code</string>
     <string name="ourea_ok">OK</string>
+    <string name="ourea_checking_order">Checking order D%1$s...</string>
+    <string name="ourea_order_unreachable">Can\'t reach the server to check order D%1$s. Try again.</string>
+    <string name="ourea_order_already_collected">Order D%1$s was already collected on this terminal.</string>
+    <string name="ourea_order_not_open">Order D%1$s is %2$s, not collected.</string>
     <string name="ourea_held">Held (%1$d)</string>
     <string name="ourea_products_count">%1$d products</string>
     <string name="ourea_low_stock_count">%1$d low stock</string>

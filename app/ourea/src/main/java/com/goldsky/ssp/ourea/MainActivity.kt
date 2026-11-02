@@ -68,6 +68,8 @@ class MainActivity : ComponentActivity() {
         LoyaltyRepository.init(this)
         TimeClockRepository.init(this)
         DiscountPresetRepository.init(this)
+        // Remembers orders collected here, so a paid one leaves the list before the server says so.
+        DeliveryOrderRepository.init(this)
         RetailRepository.init(this)
 
         val deviceSn = try {
@@ -149,6 +151,10 @@ class MainActivity : ComponentActivity() {
                     val cartNet by retailViewModel.totalCents.collectAsState()
                     // Bumped when a payment is backed out of: the Eye left the cart for the tip / amount due.
                     var eyeCartAgain by remember { mutableStateOf(0) }
+                    // A delivery order being collected (card or cash), and a bump so its list reloads after.
+                    var deliveryPay by remember { mutableStateOf<DeliveryOrder?>(null) }
+                    var deliveryReload by remember { mutableStateOf(0) }
+                    val scope = rememberCoroutineScope()
                     LaunchedEffect(cartList.map { Triple(it.id, it.quantity, it.unitPriceCents) }, cartNet, eyeCartAgain) {
                         if (cartList.isEmpty()) {
                             paymentProvider.showIdleScreen()
@@ -167,12 +173,21 @@ class MainActivity : ComponentActivity() {
                         if (state is OureaPaymentUiState.Success) {
                             paymentProvider.showThankYouScreen(number)
                             orderTicket = null
-                            if (checkPay != null) checkPay = null else retailViewModel.clearCart()
+                            val collected = deliveryPay
+                            // A delivery collection leaves whatever is in the cart alone.
+                            when {
+                                checkPay != null -> checkPay = null
+                                collected != null -> { deliveryPay = null; DeliveryOrderRepository.markCollectedLocally(collected.id); deliveryReload++ }
+                                else -> retailViewModel.clearCart()
+                            }
                             FeedbackManager.success(this@MainActivity)
+                        } else if (state is OureaPaymentUiState.Error) {
+                            // Not collected: the next sale must not be marked as this delivery order's money.
+                            deliveryPay = null
                         }
                     }
                     fun payWith(method: String, subtotal: Int, tax: Int, tip: Int) {
-                        val extras = checkExtras(checkPay, dine, signedIn.name)
+                        val extras = checkExtras(checkPay, dine, signedIn.name) ?: deliveryExtras(deliveryPay)
                         when (method) {
                             "CARD" -> { confirmingPayment = null; triggerPaymentFlow(subtotal, tax, tip, saleLines, orderTicket, ::onPaymentSettled, extras) }
                             "QR" -> { confirmingPayment = null; startQrPayment(subtotal, tax, tip, saleLines, orderTicket, onQrStateChange = { qrState = it }, onSettled = ::onPaymentSettled, extras = extras) }
@@ -195,7 +210,32 @@ class MainActivity : ComponentActivity() {
                     }
                     // Backed out of a payment (cash / member dialog, the Eye's tip or bill): back to the cart or check.
                     fun abandonPay() {
-                        confirmingPayment = null; checkPay = null; tipFor = null; activeSaleData = null; eyeCartAgain++
+                        confirmingPayment = null; checkPay = null; deliveryPay = null; tipFor = null; activeSaleData = null; eyeCartAgain++
+                    }
+                    // Collecting a delivery order: re-check it right before taking money (another
+                    // terminal may have collected it, or the store cancelled it, since the list loaded).
+                    fun collectDelivery(order: DeliveryOrder, method: String) {
+                        paymentStatus = OureaPaymentUiState.Processing(getString(R.string.ourea_checking_order, order.order_no.toString()))
+                        scope.launch {
+                            when (val status = DeliveryOrderRepository.fetchStatus(order.id)) {
+                                "OPEN" -> {
+                                    paymentStatus = OureaPaymentUiState.Idle
+                                    checkPay = null
+                                    deliveryPay = order
+                                    saleLines = order.lines
+                                    orderTicket = null
+                                    startPay(method, order.subtotalCents, order.taxCents)
+                                }
+                                null -> paymentStatus = OureaPaymentUiState.Error(getString(R.string.ourea_order_unreachable, order.order_no.toString()))
+                                else -> {
+                                    paymentStatus = OureaPaymentUiState.Error(
+                                        if (status == "COLLECTED") getString(R.string.ourea_order_already_collected, order.order_no.toString())
+                                        else getString(R.string.ourea_order_not_open, order.order_no.toString(), status.lowercase())
+                                    )
+                                    deliveryReload++
+                                }
+                            }
+                        }
                     }
 
                     Row(modifier = Modifier.fillMaxSize()) {
@@ -267,6 +307,20 @@ class MainActivity : ComponentActivity() {
                                     reloadKey = recordsReload
                                 )
                                 OureaDestination.DAY_REPORT -> if (signedIn.isManager) com.goldsky.ssp.feature.retail.screens.DayReportScreen(onBack = { destination = OureaDestination.TRANSACTIONS })
+                                OureaDestination.DELIVERY -> com.goldsky.ssp.feature.retail.screens.DeliveryScreen(
+                                    reloadKey = deliveryReload,
+                                    staffName = signedIn.name,
+                                    onCollectCard = { collectDelivery(it, "CARD") },
+                                    onCollectCash = { collectDelivery(it, "CASH") }
+                                )
+                                // The journal (notes, to-dos, checklists, expenses, stock), managers only as on Iris.
+                                OureaDestination.JOURNAL -> if (signedIn.isManager)
+                                    com.goldsky.ssp.feature.retail.screens.JournalScreen(onScanReceipt = { destination = OureaDestination.SCAN_RECEIPT })
+                                OureaDestination.SCAN_RECEIPT -> if (signedIn.isManager)
+                                    com.goldsky.ssp.feature.retail.screens.ReceiptScannerScreen(
+                                        onDone = { destination = OureaDestination.JOURNAL },
+                                        onBack = { destination = OureaDestination.JOURNAL }
+                                    )
                                 OureaDestination.SETTINGS -> if (signedIn.isManager) SettingsScreen(showBusinessType = true, manageTables = true)
                             }
                         }
@@ -397,7 +451,7 @@ class MainActivity : ComponentActivity() {
                             onConfirm = { cashReceivedCents ->
                                 showCashDialog = false
                                 confirmingPayment = null
-                                triggerCashPayment(subtotal, tax, tip, cashReceivedCents, saleLines, orderTicket, ::onPaymentSettled, checkExtras(checkPay, dine, signedIn.name))
+                                triggerCashPayment(subtotal, tax, tip, cashReceivedCents, saleLines, orderTicket, ::onPaymentSettled, checkExtras(checkPay, dine, signedIn.name) ?: deliveryExtras(deliveryPay))
                             },
                             onDismiss = { showCashDialog = false; abandonPay() }
                         )
@@ -802,6 +856,11 @@ class MainActivity : ComponentActivity() {
 
 /** What a payment on a table's check adds: the receipt's banner, and recording it on the check. */
 class PayExtras(val banner: String?, val onPaid: suspend (ref: String, method: String, tip: Int) -> Unit, val memberId: String? = null)
+
+/** Collecting a delivery order: the slip says which, and the order is marked paid with the sale's reference. */
+private fun MainActivity.deliveryExtras(order: DeliveryOrder?): PayExtras? = order?.let { o ->
+    PayExtras(banner = "DELIVERY  D${o.order_no}", onPaid = { ref, method, _ -> DeliveryOrderRepository.markPaid(this, o.id, ref, method) })
+}
 
 private fun MainActivity.checkExtras(pay: com.goldsky.ssp.feature.retail.dine.CheckPay?, dine: com.goldsky.ssp.feature.retail.dine.DineViewModel, staffName: String?): PayExtras? =
     pay?.let {
