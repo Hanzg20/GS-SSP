@@ -56,9 +56,9 @@ private fun minutesSince(since: Long?): Long? {
  */
 @Composable
 fun ClockButton(staff: StaffMember, compact: Boolean = false) {
-    var version by remember { mutableStateOf(0) }
     var open by remember { mutableStateOf(false) }
-    LaunchedEffect(staff.id) { TimeClockRepository.refresh(); version++ }
+    val version by TimeClockRepository.version.collectAsState()
+    LaunchedEffect(staff.id) { TimeClockRepository.refresh() }
     val since = remember(staff.id, version) { TimeClockRepository.clockedInAt(staff.id) }
     val minutes = minutesSince(since)
     val color = if (since != null) GsTheme.colors.success else MaterialTheme.colorScheme.onSurfaceVariant
@@ -82,7 +82,7 @@ fun ClockButton(staff: StaffMember, compact: Boolean = false) {
                 fontWeight = FontWeight.Bold, color = color, style = MaterialTheme.typography.labelMedium)
         }
     }
-    if (open) ClockDialog(staff, onDone = { version++ }, onDismiss = { open = false })
+    if (open) ClockDialog(staff, onDone = {}, onDismiss = { open = false })
 }
 
 /** Clock in or out, with what the terminal knows (since when, punches waiting for the network). */

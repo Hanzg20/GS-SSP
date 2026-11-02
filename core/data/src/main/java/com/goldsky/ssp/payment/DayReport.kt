@@ -77,8 +77,9 @@ data class DayReport(
         /**
          * [rows]: the terminal's transactions created in the day or refunded in
          * it; [inDay]: whether an ISO timestamp falls in the day; [items]: lines
-         * of the day's sales (taxable vs. exempt split; sales without lines
-         * count their subtotal as taxable when they carried tax, else exempt).
+         * of the day's sales (taxable vs. exempt split of each sale's subtotal, in the
+         * proportion of its lines; sales without lines count their subtotal as taxable
+         * when they carried tax, else exempt).
          */
         fun build(rows: List<ReportTxn>, items: List<ReportItemRow>, inDay: (String) -> Boolean, basis: Basis = Basis.REFUND_DATE): DayReport {
             val sales = rows.filter { inDay(it.created_at) && it.payment_status in COLLECTED }
@@ -107,11 +108,18 @@ data class DayReport(
             var exempt = 0
             for (s in sales) {
                 val lines = itemsByRef[s.ecr_ref_num]
+                val sub = s.subtotal_cents ?: (s.amount - (s.tax_cents ?: 0) - (s.tip_cents ?: 0))
                 if (lines.isNullOrEmpty()) {
-                    val sub = s.subtotal_cents ?: (s.amount - (s.tax_cents ?: 0) - (s.tip_cents ?: 0))
                     if ((s.tax_cents ?: 0) > 0) taxable += sub else exempt += sub
                 } else {
-                    lines.forEach { if (it.tax_rate_bps > 0) taxable += it.line_total_cents else exempt += it.line_total_cents }
+                    // The lines' split, applied to what this sale took: a table's last share carries
+                    // the whole check's dishes but pays only its part (lines = the sale: same numbers).
+                    val linesTaxable = lines.filter { it.tax_rate_bps > 0 }.sumOf { it.line_total_cents }
+                    val linesTotal = lines.sumOf { it.line_total_cents }
+                    val t = if (linesTotal <= 0 || linesTotal == sub) linesTaxable
+                            else Math.round(sub.toDouble() * linesTaxable / linesTotal).toInt()
+                    taxable += t
+                    exempt += (if (linesTotal == sub) linesTotal else sub) - t
                 }
             }
 

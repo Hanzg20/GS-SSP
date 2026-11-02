@@ -53,13 +53,18 @@ fun DeliveryScreen(
     var refreshTick by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
 
+    // A collection elsewhere (reloadKey) ends the run's notice.
+    LaunchedEffect(reloadKey) { notice = null }
     LaunchedEffect(reloadKey, refreshTick) {
         loading = true
         val result = DeliveryOrderRepository.fetchOpen()
         failed = result == null
         if (result != null) orders = result
         loading = false
+        // Orders move between "my run" and "waiting": start from the top, headers included.
+        listState.scrollToItem(0)
     }
 
     fun answer(order: DeliveryOrder, r: String?): String = when (r) {
@@ -131,6 +136,7 @@ fun DeliveryScreen(
         val mine = list.filter { it.isOut }
         val waiting = list.filterNot { it.isOut }
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)

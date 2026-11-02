@@ -360,7 +360,8 @@ class MainActivity : ComponentActivity() {
                                     checkPay = cp
                                     checkout(CheckoutSale(cp.amountCents - cp.taxCents, cp.taxCents, cp.lines, memberId = cp.memberId), method = method)
                                 },
-                                onDismiss = { choosingCheckPay = false }
+                                onDismiss = { choosingCheckPay = false },
+                                split = dine.splits[payingCheck.check.id]
                             )
                         }
                         dine.message?.let { code ->

@@ -332,7 +332,8 @@ class MainActivity : ComponentActivity() {
                                 val sub = pay.amountCents - tax
                                 startPay(method, sub, tax)
                             },
-                            onDismiss = { choosingCheckPay = false }
+                            onDismiss = { choosingCheckPay = false },
+                            split = dine.splits[payingCheck.check.id]
                         )
                     }
                     if (leavingWithRound) {

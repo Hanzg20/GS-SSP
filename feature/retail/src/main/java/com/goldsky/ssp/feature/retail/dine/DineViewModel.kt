@@ -56,6 +56,15 @@ class DineViewModel : ViewModel() {
     var message by mutableStateOf<String?>(null)
         private set
 
+    /**
+     * Even splits in progress on this terminal, by check id: the next time the check is
+     * paid it carries on ("2/2" of the same balance) instead of starting a new split.
+     */
+    val splits = androidx.compose.runtime.mutableStateMapOf<String, Split>()
+
+    /** [ways] shares of [startBalance]; [paid] of them paid so far. */
+    data class Split(val ways: Int, val startBalance: Int, val paid: Int)
+
     private var poller: Job? = null
     /** For the kitchen tickets of orders approved in Cael (accepted here without a tap). */
     private var appContext: Context? = null
@@ -265,6 +274,11 @@ class DineViewModel : ViewModel() {
     /** After a payment on the check went through (call off the main thread is fine). */
     suspend fun paymentDone(context: Context, pay: CheckPay, ecrRefNum: String, tipCents: Int, method: String, paidBy: String?) {
         DineRepository.recordPayment(context, pay.checkId, ecrRefNum, pay.amountCents, pay.taxCents, tipCents, method, paidBy, pay.itemIds)
+        pay.share?.let { s ->
+            withContext(Dispatchers.Main) {
+                if (s.paid + 1 >= s.ways) splits.remove(pay.checkId) else splits[pay.checkId] = s.copy(paid = s.paid + 1)
+            }
+        }
         withContext(Dispatchers.Main) { refreshNow() }
     }
 
@@ -320,7 +334,9 @@ data class CheckPay(
     /** The amount's tax part (transaction row, HST report); see [taxOf]. */
     val taxCents: Int = 0,
     /** Loyalty member this payment earns points for (LoyaltyRepository.recordSale once PAID). */
-    val memberId: String? = null
+    val memberId: String? = null,
+    /** An even share: the split it belongs to, before this payment. */
+    val share: DineViewModel.Split? = null
 ) {
     companion object {
         /**

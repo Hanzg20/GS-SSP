@@ -43,7 +43,7 @@ class DayReportTest {
     @Test
     fun `taxable and exempt come from the lines, falling back to the sale`() {
         val rows = listOf(
-            txn("A", 1626, "CASH", tax = 39),      // lines: 1299 exempt + 299 taxable (+ tax)
+            txn("A", 1637, "CASH", tax = 39),      // lines: 1299 exempt + 299 taxable (+ tax)
             txn("B", 1130, "CASH", tax = 130),     // no lines, taxed -> taxable 1000
             txn("C", 500, "CASH")                  // no lines, untaxed -> exempt 500
         )
@@ -51,6 +51,22 @@ class DayReportTest {
         val r = DayReport.build(rows, items, ::inDay)
         assertEquals(299 + 1000, r.taxableCents)
         assertEquals(1299 + 500, r.exemptCents)
+    }
+
+    @Test
+    fun `a table's last share carries the whole check's lines but splits only what it took`() {
+        // Check: 699 exempt + 200 taxed (+26 tax) = 925, paid 463 + 231 (no lines) + 231 (all the lines).
+        val rows = listOf(
+            txn("S1", 463, "CASH", tax = 13),
+            txn("S2", 231, "CASH", tax = 7),
+            txn("S3", 231, "CASH", tax = 6)
+        )
+        val items = listOf(ReportItemRow("S3", 699, 0), ReportItemRow("S3", 100, 1300), ReportItemRow("S3", 100, 1300))
+        val r = DayReport.build(rows, items, ::inDay)
+        // S3: 225 before tax, 200/899 of it taxable = 50; the shares without lines count as taxed.
+        assertEquals(450 + 224 + 50, r.taxableCents)
+        assertEquals(175, r.exemptCents)
+        assertEquals(899, r.taxableCents + r.exemptCents)
     }
 
     @Test

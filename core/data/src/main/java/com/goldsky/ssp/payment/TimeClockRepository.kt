@@ -49,8 +49,13 @@ object TimeClockRepository {
     fun onClock(): Map<String, Long> =
         prefs()?.getString(KEY_ON, null)?.let { runCatching { json.decodeFromString(mapSerializer, it) }.getOrNull() } ?: emptyMap()
 
+    private val _version = kotlinx.coroutines.flow.MutableStateFlow(0)
+    /** Bumps whenever who's on the clock changes, so every clock button shows it (the sign-in prompt clocks in too). */
+    val version: kotlinx.coroutines.flow.StateFlow<Int> = _version
+
     private fun saveOnClock(m: Map<String, Long>) {
         prefs()?.edit()?.putString(KEY_ON, json.encodeToString(mapSerializer, m))?.apply()
+        _version.value++
     }
 
     fun clockedInAt(staffId: String): Long? = onClock()[staffId]

@@ -4,6 +4,7 @@ import com.goldsky.ssp.feature.retail.ui.breathingBorder
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -386,11 +387,14 @@ fun CheckPayDialog(
     // pressed is the choice: no separate "how to pay" screen after this (owner, 2026-10-16).
     methods: List<Pair<String, String>>,
     onPay: (CheckPay, method: String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    // An even split already under way on this check (DineViewModel.splits): carry on with it.
+    split: DineViewModel.Split? = null
 ) {
-    var mode by remember { mutableStateOf(0) }       // 0 all, 1 by items, 2 equal shares
+    val going = split?.takeIf { it.paid < it.ways }
+    var mode by remember { mutableStateOf(if (going != null) 2 else 0) }       // 0 all, 1 by items, 2 equal shares
     val picked = remember { mutableStateListOf<String>() }
-    var ways by remember { mutableStateOf(detail.check.guests.coerceIn(2, 20)) }
+    var ways by remember { mutableStateOf(going?.ways ?: detail.check.guests.coerceIn(2, 20)) }
     val table = detail.table?.name ?: "?"
     var member by remember { mutableStateOf<com.goldsky.ssp.payment.LoyaltyRepository.Member?>(null) }
     val unpaidLines = detail.unpaidItems.map { SaleLine(it.displayName, it.quantity, it.unit_price_cents, it.tax_rate_bps, it.product_id) }
@@ -404,9 +408,13 @@ fun CheckPayDialog(
         }
         // A share carries no lines, except the one that settles the check: it carries what's
         // left, so the dishes (stock, item sales) are counted once the check is paid.
-        else -> DineRepository.equalShare(detail.balanceCents, detail.balanceCents, ways, ways).let { amount ->
-            CheckPay(detail.check.id, amount, null, if (amount >= detail.balanceCents) unpaidLines else emptyList(),
-                "1/$ways", table, detail.check.check_no)
+        else -> {
+            // The same number of ways carries on the split under way; another number starts a new one.
+            val s = going?.takeIf { it.ways == ways } ?: DineViewModel.Split(ways, detail.balanceCents, 0)
+            DineRepository.equalShare(detail.balanceCents, s.startBalance, s.ways, s.ways - s.paid).let { amount ->
+                CheckPay(detail.check.id, amount, null, if (amount >= detail.balanceCents) unpaidLines else emptyList(),
+                    "${s.paid + 1}/${s.ways}", table, detail.check.check_no, share = s)
+            }
         }
     }?.takeIf { it.amountCents > 0 }
     val pay = chosen?.let { it.copy(taxCents = CheckPay.taxOf(detail, it.amountCents, if (mode == 1) it.lines else null), memberId = member?.id) }
@@ -416,9 +424,10 @@ fun CheckPayDialog(
         title = { Text(stringResource(R.string.dine_pay_title, table, money(detail.balanceCents))) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // One line, scrolling sideways on a narrow screen (Q2) rather than wrapping a label.
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(R.string.dine_pay_all, R.string.dine_pay_items, R.string.dine_pay_equal).forEachIndexed { i, label ->
-                        FilterChip(selected = mode == i, onClick = { mode = i }, label = { Text(stringResource(label)) })
+                        FilterChip(selected = mode == i, onClick = { mode = i }, label = { Text(stringResource(label), maxLines = 1, softWrap = false) })
                     }
                 }
                 when (mode) {
