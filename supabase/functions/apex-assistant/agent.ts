@@ -150,7 +150,16 @@ export const TOOLS: ToolDef[] = [
     name: "money",
     description: "Money in and out over a range of local days: sales before tax and tips, recorded expenses by category and the largest ones, and the rough profit (sales before tax and tips minus recorded expenses). `category` = one of INVENTORY, RENT, UTILITIES, PAYROLL, REPAIRS, MARKETING, FEES, OTHER.",
     parameters: { type: "object", properties: { from: DATE, to: DATE, category: { type: "string" } }, required: ["from", "to"] },
-    run: (a, c) => rpc(c, "apex_tool_money", { p_org: c.orgId, p_from: str(a.from), p_to: str(a.to) ?? str(a.from), p_category: str(a.category) }),
+    run: async (a, c) => {
+      const out = await rpc(c, "apex_tool_money", { p_org: c.orgId, p_from: str(a.from), p_to: str(a.to) ?? str(a.from), p_category: str(a.category) }) as Record<string, unknown>;
+      // An expense card from this same answer isn't saved yet; the model added it to the
+      // month's total anyway (Q2, 11-02: "Utilities: $383" before the card was confirmed).
+      const pending = (c.cards ?? []).filter((p) => p.kind === "expense");
+      if (pending.length) {
+        out.not_included = pending.map((p) => ({ category: p.category, amount: p.amount, status: "card waiting for confirmation, NOT saved, NOT in these totals" }));
+      }
+      return out;
+    },
     label: (a, zh) => (zh ? "收支 " : "Money ") + range(a),
   },
   {
@@ -418,7 +427,8 @@ ${facts.map((f) => `- ${f}`).join("\n")}
 - 回答简短（一般 2-6 句），先给结论再给关键数字；列多项时用短列表。不要出现工具名或英文字段名。
 - 要办的事（记账、设提醒、完成待办、勾清单、记笔记、进货/盘点/调整库存、建送货单、记住门店的长期习惯）用对应的 propose_* 工具生成确认卡片。卡片要经理在下面点确认才会保存：回答里说"请在下面确认"，绝不说"已经记好了/已完成"。
 - 完成待办、勾清单前先调用 journal 拿到 id；改库存前先调用 stock 拿到 product_id；对不上就问清楚，不要乱选。
-- 一句话里可以既有问题又有要办的事（比如"记一下电费 234.5，再看看本月水电一共多少"）：都做，查到的照实说（还没确认的卡片不算在已记录的数里）。
+- 一句话里可以既有问题又有要办的事（比如"记一下电费 234.5，再看看本月水电一共多少"）：都做，查到的照实说（还没确认的卡片不算在已记录的数里）。查到的数据里 not_included 是还没确认的卡片：已记录的合计照原样报，不要把它加进去，也不要说它"已记"；可以另外说"确认后会是多少"（用 calc 算）。
+- "本月"是日历上本月 1 号到今天，"上个月"是上个日历月；不要跨月。
 
 ${rules}
 
