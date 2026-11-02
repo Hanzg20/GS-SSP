@@ -103,4 +103,18 @@
     <string name="apex_card_done_note">Note saved in the journal.</string>
     <string name="apex_card_done_stock">Stock updated: %1$s</string>
     <string name="apex_card_done_remember">Got it -- I\'ll remember that.</string>
+    <string name="apex_alert_low_stock">%1$d low on stock: %2$s</string>
+    <string name="apex_alert_long_shift">Still clocked in after 12 h: %1$s</string>
+    <string name="apex_alert_delivery_out">Out over 2 h, not collected: %1$s</string>
+    <string name="apex_alert_offline_card">%1$d offline card sales not sent yet</string>
+    <string name="apex_alert_checklist_late">Past due, not finished: %1$s</string>
+    <string name="apex_alert_todo_overdue">%1$d to-dos overdue</string>
+    <string name="apex_alert_loss_check">Loss prevention: %1$d worth checking</string>
+    <string name="apex_ask_low_stock">Which products are running low, and how many should I order?</string>
+    <string name="apex_ask_long_shift">Who is still clocked in?</string>
+    <string name="apex_ask_delivery_out">Which delivery orders have been out a long time without being collected?</string>
+    <string name="apex_ask_offline_card">Which card sales approved offline haven\'t been sent yet?</string>
+    <string name="apex_ask_checklist_late">What\'s left on today\'s checklists?</string>
+    <string name="apex_ask_todo_overdue">Which to-dos are overdue?</string>
+    <string name="apex_ask_loss_check">What should I check for loss prevention?</string>
 </resources>

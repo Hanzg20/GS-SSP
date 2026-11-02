@@ -1,5 +1,6 @@
 package com.goldsky.ssp.feature.apex
 
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -140,7 +141,7 @@ fun ApexScreen(staff: StaffMember) {
             loading = false
         }
     }
-    LaunchedEffect(lang) { load(refresh = false) }
+    LaunchedEffect(lang) { load(refresh = false); ApexMascot.refreshAlerts() }
 
     // Earlier conversation (kept in the cloud per staff member), like a messenger: the
     // latest page on opening, scrolled to the newest; earlier pages as they scroll up.
@@ -260,6 +261,21 @@ fun ApexScreen(staff: StaffMember) {
             }
         }
 
+        // Things worth a look (P3): tap one and 小海狸 looks into it (and offers cards to act).
+        val alerts = ApexMascot.alerts
+        if (alerts.isNotEmpty()) LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(alerts) { a ->
+                Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, Color(0xFFF97316)),
+                    modifier = Modifier.clickable(enabled = !asking) { send(alertQuestion(context, a)) }) {
+                    Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("! ", fontWeight = FontWeight.Bold, color = Color(0xFFF97316))
+                        Text(alertText(context, a), maxLines = 1, style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+        }
+
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -322,7 +338,7 @@ fun ApexScreen(staff: StaffMember) {
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (p["kind"]?.jsonPrimitive?.contentOrNull in ActionKinds) ActionCard(p, staff,
                 onCancel = { chat.add(false to str(R.string.apex_ok_cancelled)); nextCard() },
-                onSaved = { message -> chat.add(false to message); ApexMascot.done(); nextCard(); load(refresh = false) })
+                onSaved = { message -> chat.add(false to message); ApexMascot.done(); nextCard(); load(refresh = false); scope.launch { ApexMascot.refreshAlerts() } })
             else ProposalCard(p,
                 onCancel = { chat.add(false to str(R.string.apex_ok_cancelled)); nextCard() },
                 onSaved = { message -> chat.add(false to message); ApexMascot.done(); nextCard(); load(refresh = false) },
@@ -952,3 +968,29 @@ private fun ActionCard(p: JsonObject, staff: StaffMember, onCancel: () -> Unit, 
         }
     }
 }
+
+
+private fun alertNames(a: com.goldsky.ssp.payment.ApexRepository.Alert) = a.names.take(3).joinToString("、") + if (a.count > 3) "…" else ""
+
+/** One alert as a short line ("2 products low: 王老吉、生抽"). */
+fun alertText(context: android.content.Context, a: com.goldsky.ssp.payment.ApexRepository.Alert): String = when (a.kind) {
+    "low_stock" -> context.getString(R.string.apex_alert_low_stock, a.count, alertNames(a))
+    "long_shift" -> context.getString(R.string.apex_alert_long_shift, alertNames(a))
+    "delivery_out" -> context.getString(R.string.apex_alert_delivery_out, alertNames(a))
+    "offline_card" -> context.getString(R.string.apex_alert_offline_card, a.count)
+    "checklist_late" -> context.getString(R.string.apex_alert_checklist_late, alertNames(a))
+    "todo_overdue" -> context.getString(R.string.apex_alert_todo_overdue, a.count)
+    "loss_check" -> context.getString(R.string.apex_alert_loss_check, a.count)
+    else -> a.kind
+}
+
+/** What tapping an alert asks 小海狸. */
+fun alertQuestion(context: android.content.Context, a: com.goldsky.ssp.payment.ApexRepository.Alert): String = context.getString(when (a.kind) {
+    "low_stock" -> R.string.apex_ask_low_stock
+    "long_shift" -> R.string.apex_ask_long_shift
+    "delivery_out" -> R.string.apex_ask_delivery_out
+    "offline_card" -> R.string.apex_ask_offline_card
+    "checklist_late" -> R.string.apex_ask_checklist_late
+    "todo_overdue" -> R.string.apex_ask_todo_overdue
+    else -> R.string.apex_ask_loss_check
+})

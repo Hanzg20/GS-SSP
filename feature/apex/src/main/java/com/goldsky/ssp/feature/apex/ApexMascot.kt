@@ -48,6 +48,14 @@ object ApexMascot {
     fun done() { mood = Mood.DONE; doneSeq++ }
 
     internal val doneTick: Int get() = doneSeq
+
+    /** Things worth a look (P3), polled by the mascot in the tab bar / sidebar. */
+    var alerts by mutableStateOf<List<com.goldsky.ssp.payment.ApexRepository.Alert>>(emptyList())
+        private set
+
+    suspend fun refreshAlerts() {
+        com.goldsky.ssp.payment.ApexRepository.alerts()?.let { alerts = it }
+    }
 }
 
 private val Cyan = Color(0xFF00E5FF)
@@ -61,10 +69,14 @@ private fun picture(name: String): Int {
 }
 
 @Composable
-fun BeaverMascot(size: Dp, modifier: Modifier = Modifier, animate: Boolean = true, selected: Boolean = false) {
+fun BeaverMascot(size: Dp, modifier: Modifier = Modifier, animate: Boolean = true, selected: Boolean = false, pollAlerts: Boolean = false) {
     val context = LocalContext.current
     val on = animate && remember { ApexMascotPrefs.animated(context) }
     val mood = if (on) ApexMascot.mood else ApexMascot.Mood.IDLE
+
+    // The one that polls (tab bar / sidebar): every 5 minutes while it is on screen.
+    if (pollAlerts) LaunchedEffect(Unit) { while (true) { ApexMascot.refreshAlerts(); delay(5 * 60_000L) } }
+    val alertCount = ApexMascot.alerts.size
 
     // Done: back to idle after a moment.
     val tick = ApexMascot.doneTick
@@ -81,7 +93,9 @@ fun BeaverMascot(size: Dp, modifier: Modifier = Modifier, animate: Boolean = tru
         while (on && blinkPic != 0) { delay(4200 + (0..2500).random().toLong()); blink = true; delay(160); blink = false }
     }
 
+    val alertPic = picture("alert")
     val pic = when {
+        mood == ApexMascot.Mood.IDLE && alertCount > 0 && alertPic != 0 -> alertPic
         mood == ApexMascot.Mood.IDLE && blink && blinkPic != 0 -> blinkPic
         else -> picture(mood.name.lowercase()).takeIf { it != 0 } ?: picture("idle").takeIf { it != 0 } ?: R.drawable.apex_beaver
     }
@@ -113,6 +127,16 @@ fun BeaverMascot(size: Dp, modifier: Modifier = Modifier, animate: Boolean = tru
                 }
                 .then(if (legacy) Modifier.clip(CircleShape).background(Color.White) else Modifier)
         )
+        // Something worth a look: how many, on his sign's corner.
+        if (alertCount > 0 && mood == ApexMascot.Mood.IDLE) {
+            Box(
+                Modifier.align(Alignment.TopEnd).size(size * 0.38f).clip(CircleShape).background(Color(0xFFF97316)),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.material3.Text(alertCount.toString(), color = Color.White,
+                    fontSize = with(LocalDensity.current) { (size * 0.24f).toSp() }, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            }
+        }
         if (mood == ApexMascot.Mood.DONE) {
             Box(
                 Modifier.align(Alignment.BottomEnd).size(size * 0.36f).clip(CircleShape).background(Green),

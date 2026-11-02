@@ -721,7 +721,7 @@ fun MainBottomNavigation(navController: NavHostController, isManager: Boolean, m
             onClick = { navController.navigate("insights") { launchSingleTop = true } },
             icon = {
                 // 小海狸 itself (still while a payment is on screen).
-                com.goldsky.ssp.feature.apex.BeaverMascot(30.dp, animate = mascotMoves, selected = currentRoute == "insights")
+                com.goldsky.ssp.feature.apex.BeaverMascot(30.dp, animate = mascotMoves, selected = currentRoute == "insights", pollAlerts = true)
             },
             label = {
                 Text(

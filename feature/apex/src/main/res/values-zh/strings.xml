@@ -103,4 +103,18 @@
     <string name="apex_card_done_note">笔记已存到手账。</string>
     <string name="apex_card_done_stock">库存已更新：%1$s</string>
     <string name="apex_card_done_remember">好的，我记住了。</string>
+    <string name="apex_alert_low_stock">%1$d 种商品库存不够：%2$s</string>
+    <string name="apex_alert_long_shift">打卡超过 12 小时还没下班：%1$s</string>
+    <string name="apex_alert_delivery_out">送出超过 2 小时还没收款：%1$s</string>
+    <string name="apex_alert_offline_card">%1$d 笔离线刷卡还没上传</string>
+    <string name="apex_alert_checklist_late">过了时间还没做完：%1$s</string>
+    <string name="apex_alert_todo_overdue">%1$d 个待办过期了</string>
+    <string name="apex_alert_loss_check">防损：%1$d 处建议核对</string>
+    <string name="apex_ask_low_stock">哪些商品库存不够了？大概要进多少？</string>
+    <string name="apex_ask_long_shift">谁还没下班打卡？</string>
+    <string name="apex_ask_delivery_out">哪些送货单送出很久还没收款？</string>
+    <string name="apex_ask_offline_card">离线刷卡还有哪些没上传？</string>
+    <string name="apex_ask_checklist_late">今天的清单还有哪些没做？</string>
+    <string name="apex_ask_todo_overdue">有哪些过期的待办？</string>
+    <string name="apex_ask_loss_check">防损方面有哪些要核对的？</string>
 </resources>

@@ -108,7 +108,7 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
             Spacer(modifier = Modifier.height(20.dp))
             // Apex (小海狸 / Beaver): the AI assistant, as the mascot itself (still while a payment is on screen).
             Box(Modifier.size(52.dp).clip(CircleShape).clickable { onSelect(OureaDestination.APEX) }, contentAlignment = Alignment.Center) {
-                com.goldsky.ssp.feature.apex.BeaverMascot(48.dp, animate = mascotMoves, selected = current == OureaDestination.APEX)
+                com.goldsky.ssp.feature.apex.BeaverMascot(48.dp, animate = mascotMoves, selected = current == OureaDestination.APEX, pollAlerts = true)
             }
             Spacer(modifier = Modifier.height(20.dp))
         }

@@ -1,5 +1,7 @@
 package com.goldsky.ssp.payment
 
+import io.github.jan.supabase.postgrest.rpc
+import io.github.jan.supabase.postgrest.postgrest
 import android.content.Context
 import com.goldsky.ssp.core.data.R
 import android.util.Log
@@ -140,6 +142,20 @@ object ApexRepository {
             // An older function returns the last 50 with no has_more: then there is nothing more to page.
             Result.History(turns, body["has_more"]?.jsonPrimitive?.booleanOrNull ?: false)
         }
+
+    /** One kind of thing worth a look (apex_alerts: low_stock, long_shift, delivery_out, offline_card, checklist_late, todo_overdue, loss_check). */
+    @Serializable data class Alert(val kind: String, val count: Int = 0, val names: List<String> = emptyList())
+    @Serializable private data class TzParams(val p_tz: String)
+
+    /** The store's alerts now (fixed rules, no model); null = couldn't reach the server. */
+    suspend fun alerts(): List<Alert>? = withContext(Dispatchers.IO) {
+        try {
+            SupabaseClientProvider.ensureAuthenticated()
+            SupabaseClientProvider.client.postgrest.rpc("apex_alerts", TzParams(timezone())).decodeAs<List<Alert>>()
+        } catch (e: Exception) {
+            Log.w(TAG, "alerts failed: ${e.message}"); null
+        }
+    }
 
     /** Keeps a lasting fact about the store the manager confirmed, for later answers. */
     suspend fun remember(context: Context, staffId: String, text: String): Boolean =
