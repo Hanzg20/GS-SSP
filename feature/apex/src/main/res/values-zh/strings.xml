@@ -57,6 +57,8 @@
         <item>哪些商品卖不动？</item>
         <item>高峰期是几点？</item>
         <item>最近有哪些退款？</item>
+        <item>上个月的结账报告</item>
+        <item>手账里今天还有什么没做？</item>
     </string-array>
     <string name="apex_flag_high_refund_rate">%1$s 经手的销售退款/撤销 %2$d 笔（%3$s%%，全店 %4$s%%），共 %5$s</string>
     <string name="apex_flag_self_approved">%1$s 批准了自己经手的销售退款 %2$d 笔</string>

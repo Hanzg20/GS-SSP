@@ -70,3 +70,10 @@ Deno.test("Cael gets no card tools", () => {
   assertEquals(toolsFor(false).some((t) => t.name.startsWith("propose_")), false);
   assertEquals(toolsFor(true).some((t) => t.name === "propose_note"), true);
 });
+
+Deno.test("store comparison only for several stores; a month must be YYYY-MM", async () => {
+  assertEquals(toolsFor(false, false).some((t) => t.name === "compare_stores"), false);
+  assertEquals(toolsFor(false, true).some((t) => t.name === "compare_stores"), true);
+  const bad = await tool("month_report").run({ month: "last month" }, ctx()) as { error?: string };
+  assertEquals(typeof bad.error, "string");
+});

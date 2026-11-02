@@ -291,6 +291,8 @@ Deno.serve(async (req) => {
     // Who is asking, and which of apex_messages are their conversation.
     let orgId: string;
     let who: { deviceSn: string; staffId: string | null; staffName: string };
+    // Cael: the caller's stores (compare_stores); a terminal: just its own.
+    let stores: { id: string; name: string }[] = [];
     const cael = typeof body.orgId === "string" && body.orgId !== "";
     if (cael) {
       orgId = body.orgId;
@@ -301,6 +303,10 @@ Deno.serve(async (req) => {
       ]);
       const member = ((orgs ?? []) as unknown[]).some((o) => (typeof o === "string" ? o : Object.values(o as object)[0]) === orgId);
       if (!sysAdmin && !(canManage && member)) return json({ error: "Not allowed for this store" }, 403);
+      const ids = ((orgs ?? []) as unknown[]).map((o) => (typeof o === "string" ? o : String(Object.values(o as object)[0])));
+      if (!ids.includes(orgId)) ids.push(orgId);
+      const { data: named } = await db.from("organizations").select("id, name").in("id", ids.slice(0, 20));
+      stores = (named ?? []) as { id: string; name: string }[];
       const meta = user.user_metadata ?? {};
       who = { deviceSn: `cael:${user.id}`, staffId: null, staffName: String(meta.full_name ?? meta.name ?? user.email ?? "Cael") };
     } else {
@@ -434,7 +440,7 @@ ${CAEL_NOTE}` : "");
 ${CAEL_NOTE}` : "");
       const result = await runAgent({
         provider: provider.name, model: provider.model, key: provider.key,
-        system: agentPrompt, history: turns.slice(0, -1), question, ctx: { db, orgId, tz, lang }, tools: toolsFor(!cael),
+        system: agentPrompt, history: turns.slice(0, -1), question, ctx: { db, orgId, tz, lang, stores }, tools: toolsFor(!cael, stores.length > 1),
       });
       console.log("[apex-assistant] tools", JSON.stringify(result.calls), "checked", result.checked);
       await log("chat", "assistant", result.reply);

@@ -57,6 +57,8 @@
         <item>What isn\'t selling?</item>
         <item>When are we busiest?</item>
         <item>Any recent refunds?</item>
+        <item>Last month's month-end report</item>
+        <item>What's left in today's journal?</item>
     </string-array>
     <string name="apex_flag_high_refund_rate">%1$s: %2$d refunds/voids on their sales (%3$s%% vs store %4$s%%), %5$s</string>
     <string name="apex_flag_self_approved">%1$s approved refunds of their own sales: %2$d</string>

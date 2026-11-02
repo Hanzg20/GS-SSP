@@ -29,7 +29,8 @@ const MAX_ROUNDS = 6;
 
 // ---- tools -------------------------------------------------------------------
 
-type Ctx = { db: Db; orgId: string; tz: string; lang: string; cards?: Card[] };
+// stores: the caller's stores, for compare_stores (Cael, someone with more than one).
+type Ctx = { db: Db; orgId: string; tz: string; lang: string; cards?: Card[]; stores?: { id: string; name: string }[] };
 type ToolDef = {
   name: string;
   description: string;
@@ -166,6 +167,31 @@ export const TOOLS: ToolDef[] = [
     run: (_a, c) => rpc(c, "apex_tool_journal", { p_org: c.orgId, p_tz: c.tz }),
     label: (_a, zh) => (zh ? "手账" : "Journal"),
   },
+  {
+    name: "month_report",
+    description: "A month closed out (month-end report): sales by payment method and by day, tax collected and tips, refunds, expenses by category and the largest, rough profit, stock in / out by reason and what was received, best sellers and categories, hours and tips per person, loyalty points, delivery orders, offline card sales. `complete` = false while the month is still going. Write it as a short report with headings.",
+    parameters: { type: "object", properties: { month: { type: "string", description: "YYYY-MM" } }, required: ["month"] },
+    run: (a, c) => {
+      const m = /^(\d{4})-(\d{2})$/.exec(str(a.month) ?? "");
+      if (!m) return Promise.resolve({ error: "month must be YYYY-MM" });
+      return rpc(c, "apex_tool_month", { p_org: c.orgId, p_month: `${m[1]}-${m[2]}-01`, p_tz: c.tz });
+    },
+    label: (a, zh) => (zh ? "月报 " : "Month report ") + (str(a.month) ?? ""),
+  },
+  {
+    name: "compare_stores",
+    description: "Sales of each of the caller's stores over a range of local days, side by side (best first). Only for someone with several stores.",
+    parameters: { type: "object", properties: { from: DATE, to: DATE }, required: ["from", "to"] },
+    run: async (a, c) => {
+      const stores = (c.stores ?? []).slice(0, 20);
+      const rows = await Promise.all(stores.map(async (s) => {
+        const r = await rpc(c, "apex_tool_sales", { p_org: s.id, p_from: str(a.from), p_to: str(a.to) ?? str(a.from), p_group: "none", p_tz: c.tz }) as Record<string, unknown>;
+        return { store: s.name, sales: r.sales, total_cents: r.total_cents, before_tax_and_tips_cents: r.before_tax_and_tips_cents, avg_basket_cents: r.avg_basket_cents, refunds: r.refunds };
+      }));
+      return { from: str(a.from), to: str(a.to), stores: rows.sort((x, y) => Number(y.total_cents) - Number(x.total_cents)) };
+    },
+    label: (a, zh) => (zh ? "各店对比 " : "Stores ") + range(a),
+  },
   // ---- proposals: cards the manager confirms on the terminal (never saved here) ----
   {
     name: "propose_expense",
@@ -290,9 +316,9 @@ async function refs(c: Ctx, kind: string, ids: unknown): Promise<{ id: string; t
   return (await rpc(c, "apex_tool_refs", { p_org: c.orgId, p_kind: kind, p_ids: list })) as { id: string; text: string }[];
 }
 
-/** The tools for a caller: no cards from Cael (nothing there to confirm them on). */
-export function toolsFor(cards: boolean): ToolDef[] {
-  return cards ? TOOLS : TOOLS.filter((t) => !t.name.startsWith("propose_"));
+/** The tools for a caller: no cards from Cael (nothing there to confirm them on); store comparison only with several stores. */
+export function toolsFor(cards: boolean, manyStores = false): ToolDef[] {
+  return TOOLS.filter((t) => (cards || !t.name.startsWith("propose_")) && (manyStores || t.name !== "compare_stores"));
 }
 
 // ---- calc --------------------------------------------------------------------
