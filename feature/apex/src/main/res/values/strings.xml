@@ -78,4 +78,5 @@
     <string name="apex_quick_new_delivery">📦 New Delivery Order</string>
     <string name="apex_item_needs_price">Every item needs a price</string>
     <string name="apex_sources">Looked up:</string>
+    <string name="apex_welcome">Hi, I\'m %1$s! Ask me about sales, a sale or a refund, stock, members, staff hours and tips, money in and out, or what\'s in the journal. Or just tell me an expense or a reminder to save.</string>
 </resources>

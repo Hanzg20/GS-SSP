@@ -140,8 +140,10 @@ fun ApexScreen(staff: StaffMember) {
     LaunchedEffect(lang) { load(refresh = false) }
 
     // Earlier conversation (kept in the cloud per staff member), shown above anything new.
+    var historyLoaded by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val r = ApexRepository.history(context, staff.id)
+        historyLoaded = true
         if (r is ApexRepository.Result.History && r.turns.isNotEmpty()) {
             chat.addAll(0, r.turns.map { it.fromUser to it.text })
             // After the list has laid the new items out: stats + brief come first, then the chat.
@@ -241,12 +243,22 @@ fun ApexScreen(staff: StaffMember) {
                         Text(str(R.string.apex_s_brief, apexName(context)), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(8.dp))
                         when {
-                            loading && brief == null -> Text(str(R.string.apex_beaver_is_looking_over_today), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            modelOff -> Text(str(R.string.apex_the_ai_brief_isn_t), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            loading && brief == null -> Scene(R.drawable.apex_scene_calculator, 110.dp, str(R.string.apex_beaver_is_looking_over_today))
+                            modelOff -> Scene(R.drawable.apex_scene_clipboard, 96.dp, str(R.string.apex_the_ai_brief_isn_t))
                             brief != null -> MarkdownText(markdown = brief!!, color = MaterialTheme.colorScheme.onSurface, lineHeight = 22.sp)
-                            loadError != null -> Text("⚠ $loadError", color = GsTheme.colors.danger)
+                            loadError != null -> Scene(R.drawable.apex_scene_clipboard, 96.dp, "⚠ $loadError", GsTheme.colors.danger)
                         }
                     }
+                }
+            }
+            // Nothing said yet: 小海狸 waves from the counter and says what to ask.
+            if (historyLoaded && chat.isEmpty() && !asking) item {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Image(painterResource(R.drawable.apex_scene_counter), contentDescription = null,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp), contentScale = androidx.compose.ui.layout.ContentScale.Fit)
+                    Spacer(Modifier.height(8.dp))
+                    Text(str(R.string.apex_welcome, apexName(context)), style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
             }
             itemsIndexed(chat) { i, (fromUser, text) ->
@@ -355,6 +367,16 @@ private fun ChatBubble(fromUser: Boolean, text: String, lang: String) {
                 lineHeight = 21.sp
             )
         }
+    }
+}
+
+/** One of 小海狸's scene pictures with a line under it (waiting, nothing to show, a problem). */
+@Composable
+private fun Scene(picture: Int, height: androidx.compose.ui.unit.Dp, text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Image(painterResource(picture), contentDescription = null, modifier = Modifier.height(height).widthIn(max = height * 1.5f))
+        Spacer(Modifier.width(12.dp))
+        Text(text, Modifier.weight(1f), color = color, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
