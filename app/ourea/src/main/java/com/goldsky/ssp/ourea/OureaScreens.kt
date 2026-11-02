@@ -101,37 +101,37 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
             contentDescription = stringResource(R.string.ourea_goldsky),
             modifier = Modifier.size(40.dp)
         )
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(20.dp))
         // Cashiers: checkout and their own transactions; managers also insights, products, Settings.
         if (isManager) {
             SidebarIcon(Icons.Default.Dashboard, current == OureaDestination.INSIGHTS) { onSelect(OureaDestination.INSIGHTS) }
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             // Apex (小海狸 / Beaver): the AI assistant, as the mascot itself (still while a payment is on screen).
             Box(Modifier.size(52.dp).clip(CircleShape).clickable { onSelect(OureaDestination.APEX) }, contentAlignment = Alignment.Center) {
                 com.goldsky.ssp.feature.apex.BeaverMascot(48.dp, animate = mascotMoves, selected = current == OureaDestination.APEX, pollAlerts = true)
             }
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
         }
         // Dine-in: the floor first; the cart stays for take-out at the counter.
         if (com.goldsky.ssp.feature.retail.ui.isDineIn()) {
             SidebarIcon(Icons.Default.TableRestaurant, current == OureaDestination.TABLES) { onSelect(OureaDestination.TABLES) }
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
         }
         SidebarIcon(Icons.Default.ShoppingCart, current == OureaDestination.CHECKOUT) { onSelect(OureaDestination.CHECKOUT) }
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         if (isManager) {
             SidebarIcon(Icons.Default.Inventory2, current == OureaDestination.PRODUCTS) { onSelect(OureaDestination.PRODUCTS) }
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
         }
         SidebarIcon(Icons.Default.History, current == OureaDestination.TRANSACTIONS || current == OureaDestination.DAY_REPORT) { onSelect(OureaDestination.TRANSACTIONS) }
         Spacer(modifier = Modifier.weight(1f))
         // The signed-in person's time clock.
         staff?.let {
             com.goldsky.ssp.feature.retail.screens.ClockButton(it, compact = true)
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
         }
         if (isManager) SidebarIcon(Icons.Default.Settings, current == OureaDestination.SETTINGS) { onSelect(OureaDestination.SETTINGS) }
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         SidebarIcon(Icons.Default.Lock, false, onLock)
     }
 }
