@@ -139,16 +139,46 @@ fun ApexScreen(staff: StaffMember) {
     }
     LaunchedEffect(lang) { load(refresh = false) }
 
-    // Earlier conversation (kept in the cloud per staff member), shown above anything new.
+    // Earlier conversation (kept in the cloud per staff member), like a messenger: the
+    // latest page on opening, scrolled to the newest; earlier pages as they scroll up.
     var historyLoaded by remember { mutableStateOf(false) }
+    var hasEarlier by remember { mutableStateOf(false) }
+    var loadingEarlier by remember { mutableStateOf(false) }
+    var oldestAt by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         val r = ApexRepository.history(context, staff.id)
         historyLoaded = true
         if (r is ApexRepository.Result.History && r.turns.isNotEmpty()) {
             chat.addAll(0, r.turns.map { it.fromUser to it.text })
+            oldestAt = r.turns.first().at
+            hasEarlier = r.hasMore
             // After the list has laid the new items out: stats + brief come first, then the chat.
             kotlinx.coroutines.delay(300)
-            listState.scrollToItem(2 + chat.size - 1)
+            listState.scrollToItem(listState.layoutInfo.totalItemsCount - 1)
+        }
+    }
+    // The "earlier" row at the top of the chat came into view: fetch the page before the
+    // oldest message and put it above, keeping what's on screen where it is.
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.any { it.key == "earlier" } }.collect { seen ->
+            val before = oldestAt
+            if (!seen || !hasEarlier || loadingEarlier || before == null) return@collect
+            loadingEarlier = true
+            val r = ApexRepository.history(context, staff.id, before = before)
+            if (r is ApexRepository.Result.History && r.turns.isNotEmpty()) {
+                val first = listState.firstVisibleItemIndex
+                val offset = listState.firstVisibleItemScrollOffset
+                val n = r.turns.size
+                val shifted = sourcesAt.mapKeys { it.key + n }
+                sourcesAt.clear(); sourcesAt.putAll(shifted)
+                chat.addAll(0, r.turns.map { it.fromUser to it.text })
+                oldestAt = r.turns.first().at
+                hasEarlier = r.hasMore
+                listState.scrollToItem(first + n, offset)
+            } else {
+                hasEarlier = false
+            }
+            loadingEarlier = false
         }
     }
 
@@ -259,6 +289,12 @@ fun ApexScreen(staff: StaffMember) {
                     Spacer(Modifier.height(8.dp))
                     Text(str(R.string.apex_welcome, apexName(context)), style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+            }
+            if (hasEarlier) item(key = "earlier") {
+                Box(Modifier.fillMaxWidth().padding(4.dp), contentAlignment = Alignment.Center) {
+                    if (loadingEarlier) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    else Text(str(R.string.apex_earlier), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             itemsIndexed(chat) { i, (fromUser, text) ->

@@ -12,6 +12,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -37,7 +38,9 @@ object ApexRepository {
         val timezone: String,
         val question: String? = null,
         val name: String? = null, // the mascot's name in this language (res apex_name)
-        val refresh: Boolean = false
+        val refresh: Boolean = false,
+        val before: String? = null,   // history: messages older than this (ISO)
+        val limit: Int? = null        // history: page size
     )
 
     // No default values here: kotlinx.serialization leaves defaults out of the
@@ -79,8 +82,8 @@ object ApexRepository {
         data class Transcript(val text: String) : Result()
         /** A receipt read by the model; every amount was found printed in the text (apex-assistant toReceipt). */
         data class Receipt(val vendor: String?, val date: String?, val totalCents: Int?, val taxCents: Int?, val hstNumber: String?) : Result()
-        /** Oldest first; [Turn.at] is the server's ISO timestamp. */
-        data class History(val turns: List<Turn>) : Result()
+        /** Oldest first; [Turn.at] is the server's ISO timestamp; [hasMore] = earlier messages to load. */
+        data class History(val turns: List<Turn>, val hasMore: Boolean = false) : Result()
         data class Failed(val message: String) : Result()
     }
 
@@ -111,15 +114,20 @@ object ApexRepository {
             }
         }
 
-    /** This staff member's earlier chat with 小海狸 (last 50 messages), to show on reopening. */
-    suspend fun history(context: Context, staffId: String): Result =
-        call(context, Request("history", staffId, UiLanguage.current(context), timezone(), name = context.getString(R.string.apex_name))) { body ->
+    /**
+     * A page of this staff member's chat with 小海狸, like a messenger: the newest [limit]
+     * messages before [before] (null = the latest). The screen asks for more as they scroll up.
+     */
+    suspend fun history(context: Context, staffId: String, before: String? = null, limit: Int = 20): Result =
+        call(context, Request("history", staffId, UiLanguage.current(context), timezone(), name = context.getString(R.string.apex_name),
+            before = before, limit = limit)) { body ->
             val turns = (body["messages"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { m ->
                 val o = m as? JsonObject ?: return@mapNotNull null
                 val text = o["content"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
                 Turn(o["role"]?.jsonPrimitive?.contentOrNull == "user", text, o["created_at"]?.jsonPrimitive?.contentOrNull ?: "")
             }
-            Result.History(turns)
+            // An older function returns the last 50 with no has_more: then there is nothing more to page.
+            Result.History(turns, body["has_more"]?.jsonPrimitive?.booleanOrNull ?: false)
         }
 
     /** Speech to text for the hold-to-talk button; the caller shows the text for editing before sending. */

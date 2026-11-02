@@ -21,9 +21,9 @@
 //   stats  the numbers only, no model call (always works, no key needed)
 //   brief  3-5 point summary of the day, cached per store/language for an hour
 //   ask    one question, with the last few turns of this staff member's chat
-//   history  this staff member's last 50 chat messages, oldest first, so the
-//          conversation is still there when the page is reopened (the model
-//          itself only gets the last 24 h / 10 turns of it)
+//   history  { before?, limit? } a page of this staff member's chat (newest 20
+//          before `before`), oldest first, + has_more -- the screen loads more as
+//          the manager scrolls up (the model itself only gets the last 24 h / 10 turns)
 //   transcribe  { audio: base64, mime } -> { text }: speech to text for the
 //          mic button (Whisper on Groq, or OpenAI's whisper-1 if only
 //          OPENAI_API_KEY is set). The Q2's keyboard has no Chinese and it has
@@ -318,11 +318,15 @@ Deno.serve(async (req) => {
     // deno-lint-ignore no-explicit-any
     const mine = (q: any) => (who.staffId ? q.eq("staff_id", who.staffId) : q.eq("device_sn", who.deviceSn));
 
+    // A page of this person's chat, like a messenger: the newest [limit] messages before
+    // [before] (ISO; none = now), oldest first, and whether there are earlier ones.
     if (action === "history") {
-      const { data: rows } = await mine(db.from("apex_messages")
-        .select("role, content, created_at").eq("org_id", orgId).eq("kind", "chat"))
-        .order("created_at", { ascending: false }).limit(50);
-      return json({ messages: (rows ?? []).reverse() });
+      const limit = Math.min(Math.max(Number(body.limit) || 20, 1), 50);
+      let q = mine(db.from("apex_messages").select("role, content, created_at").eq("org_id", orgId).eq("kind", "chat"));
+      if (typeof body.before === "string" && body.before) q = q.lt("created_at", body.before);
+      const { data: rows } = await q.order("created_at", { ascending: false }).limit(limit + 1);
+      const page = (rows ?? []).slice(0, limit);
+      return json({ messages: page.reverse(), has_more: (rows ?? []).length > limit });
     }
 
     if (action === "transcribe") {
