@@ -246,7 +246,7 @@ class MainActivity : ComponentActivity() {
                     key(themeVersion) { Surface(modifier = Modifier.fillMaxSize(), color = surfaceBg) {
                         Scaffold(
                             topBar = { StaffBar(signedIn, onLock = { lock() }) },
-                            bottomBar = { MainBottomNavigation(navController, isManager = signedIn.isManager) }
+                            bottomBar = { MainBottomNavigation(navController, isManager = signedIn.isManager, mascotMoves = paymentStatus is PaymentUiState.Idle) }
                         ) { padding ->
                             NavHost(
                                 navController = navController,
@@ -697,7 +697,7 @@ fun CheckoutContainer(
 @Composable
 // Cashiers and drivers: Quick + Records (their own). Managers also get AI
 // insights, the Journal (notes, to-dos, expenses) and Settings.
-fun MainBottomNavigation(navController: NavHostController, isManager: Boolean) {
+fun MainBottomNavigation(navController: NavHostController, isManager: Boolean, mascotMoves: Boolean = true) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
@@ -720,25 +720,12 @@ fun MainBottomNavigation(navController: NavHostController, isManager: Boolean) {
             selected = currentRoute == "insights",
             onClick = { navController.navigate("insights") { launchSingleTop = true } },
             icon = {
-                Box(
-                    modifier = Modifier
-                        .padding(2.dp)
-                        .apexPulseGlow(
-                            enabled = currentRoute == "insights",
-                            shape = androidx.compose.foundation.shape.CircleShape,
-                            strokeWidth = 1.5.dp
-                        )
-                ) {
-                    Icon(
-                        Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = if (currentRoute == "insights") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                }
+                // 小海狸 itself (still while a payment is on screen).
+                com.goldsky.ssp.feature.apex.BeaverMascot(30.dp, animate = mascotMoves, selected = currentRoute == "insights")
             },
             label = {
                 Text(
-                    text = "AI",
+                    text = com.goldsky.ssp.feature.apex.apexName(androidx.compose.ui.platform.LocalContext.current),
                     color = if (currentRoute == "insights") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     fontWeight = if (currentRoute == "insights") FontWeight.Bold else FontWeight.Normal
                 )

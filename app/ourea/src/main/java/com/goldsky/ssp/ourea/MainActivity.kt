@@ -204,7 +204,8 @@ class MainActivity : ComponentActivity() {
                             onSelect = { destination = it },
                             onLock = { StaffRepository.signOut(); staff = null; destination = OureaDestination.CHECKOUT },
                             isManager = signedIn.isManager,
-                            staff = signedIn
+                            staff = signedIn,
+                            mascotMoves = paymentStatus is OureaPaymentUiState.Idle && confirmingPayment == null
                         )
                         Box(modifier = Modifier.weight(1f).background(OureaBackground)) {
                             when (destination) {

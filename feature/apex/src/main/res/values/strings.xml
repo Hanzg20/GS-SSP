@@ -77,4 +77,5 @@
     <string name="apex_at_least_one_item">Please add at least one item with valid quantity</string>
     <string name="apex_quick_new_delivery">📦 New Delivery Order</string>
     <string name="apex_item_needs_price">Every item needs a price</string>
+    <string name="apex_sources">Looked up:</string>
 </resources>

@@ -172,6 +172,8 @@ fun SettingsScreen(showBusinessType: Boolean = false, manageTables: Boolean = fa
 
             OfflineCardSettings()
 
+            MascotSettings()
+
             Text(stringResource(R.string.retail_hardware_payment_terminal), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             
             Surface(

@@ -77,4 +77,5 @@
     <string name="apex_at_least_one_item">请至少添加一件有效商品</string>
     <string name="apex_quick_new_delivery">📦 生成送货单</string>
     <string name="apex_item_needs_price">每件商品都要填价格</string>
+    <string name="apex_sources">依据：</string>
 </resources>

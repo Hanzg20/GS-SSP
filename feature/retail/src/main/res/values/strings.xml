@@ -513,4 +513,7 @@
     <string name="loyalty_bad_phone">That phone number doesn\'t look right.</string>
     <string name="loyalty_off">Loyalty is turned off for this store (Cael).</string>
     <string name="loyalty_earned">%1$s earned %2$d points (now %3$d).</string>
+    <string name="mascot_title">ASSISTANT</string>
+    <string name="mascot_switch">Animated Beaver</string>
+    <string name="mascot_desc">Beaver blinks and moves while listening and looking things up. Still during payments. Takes effect next time the screen opens.</string>
 </resources>

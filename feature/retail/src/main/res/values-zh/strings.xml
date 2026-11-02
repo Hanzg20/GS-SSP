@@ -512,4 +512,7 @@
     <string name="loyalty_bad_phone">手机号好像不对。</string>
     <string name="loyalty_off">这家店没有开启会员积分（在 Cael 设置）。</string>
     <string name="loyalty_earned">%1$s 获得 %2$d 积分（现有 %3$d）。</string>
+    <string name="mascot_title">小助手</string>
+    <string name="mascot_switch">小海狸动画</string>
+    <string name="mascot_desc">听你说话、查数据时小海狸会动起来；付款时保持静止。重新打开页面后生效。</string>
 </resources>

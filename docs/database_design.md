@@ -268,6 +268,11 @@ business day: sales kept (PAID) before tax and tips minus that day's `expenses`,
 (Iris / Ourea) shows it; `apex_store_stats.profit_today` is the same figure for 小海狸 (both through
 `office_day_profit_for(org, day)`, not callable from the API). Migration `docs/migrations/2026-10-16_office_day_profit.sql`.
 
+小海狸's read tools (functions only, 2026-11-02, `docs/migrations/2026-11-02_apex_tools.sql`): `apex_tool_sales / products /
+find_transactions / transaction / stock / members / staff / money / deliveries / journal(p_org, ...)`. EXECUTE for
+`service_role` only -- the apex-assistant Edge Function calls them for the caller's store (never a store the model
+names); amounts in cents, sales = PAID less partial refunds, local days, ranges capped at 400 days.
+
 ---
 
 ## 6. Row Level Security & multi-tenancy

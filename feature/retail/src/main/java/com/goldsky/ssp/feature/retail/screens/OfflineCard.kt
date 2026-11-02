@@ -88,3 +88,26 @@ fun OfflineCardSettings() {
         }
     }
 }
+
+
+/** Settings: whether 小海狸 moves on this terminal (still pictures when off). */
+@Composable
+fun MascotSettings() {
+    val context = LocalContext.current
+    var on by remember { mutableStateOf(com.goldsky.ssp.payment.ApexMascotPrefs.animated(context)) }
+    Text(stringResource(R.string.mascot_title), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.mascot_switch), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.mascot_desc), style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(checked = on, onCheckedChange = { on = it; com.goldsky.ssp.payment.ApexMascotPrefs.setAnimated(context, it) })
+        }
+    }
+}

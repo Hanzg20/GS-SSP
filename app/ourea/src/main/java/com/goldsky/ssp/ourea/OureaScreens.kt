@@ -87,7 +87,7 @@ enum class OureaDestination { TABLES, CHECKOUT, INSIGHTS, APEX, PRODUCTS, TRANSA
  */
 @Composable
 fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit, onLock: () -> Unit, isManager: Boolean = true,
-                 staff: com.goldsky.ssp.payment.StaffMember? = null) {
+                 staff: com.goldsky.ssp.payment.StaffMember? = null, mascotMoves: Boolean = true) {
     Column(
         modifier = Modifier
             .fillMaxHeight()
@@ -106,8 +106,10 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
         if (isManager) {
             SidebarIcon(Icons.Default.Dashboard, current == OureaDestination.INSIGHTS) { onSelect(OureaDestination.INSIGHTS) }
             Spacer(modifier = Modifier.height(20.dp))
-            // Apex (小海狸 / Beaver): the AI assistant.
-            SidebarIcon(Icons.Default.AutoAwesome, current == OureaDestination.APEX) { onSelect(OureaDestination.APEX) }
+            // Apex (小海狸 / Beaver): the AI assistant, as the mascot itself (still while a payment is on screen).
+            Box(Modifier.size(52.dp).clip(CircleShape).clickable { onSelect(OureaDestination.APEX) }, contentAlignment = Alignment.Center) {
+                com.goldsky.ssp.feature.apex.BeaverMascot(48.dp, animate = mascotMoves, selected = current == OureaDestination.APEX)
+            }
             Spacer(modifier = Modifier.height(20.dp))
         }
         // Dine-in: the floor first; the cart stays for take-out at the counter.

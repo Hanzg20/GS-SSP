@@ -1,5 +1,9 @@
 package com.goldsky.ssp.feature.apex
 
+import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -69,6 +73,9 @@ fun ApexScreen(staff: StaffMember) {
     var loadError by remember { mutableStateOf<String?>(null) }
 
     val chat = remember { mutableStateListOf<Pair<Boolean, String>>() } // (fromUser, text)
+    // What 小海狸 looked up for an answer, by its place in [chat].
+    val sourcesAt = remember { mutableStateMapOf<Int, List<String>>() }
+    DisposableEffect(Unit) { onDispose { ApexMascot.idle() } }
     // An expense / reminder 小海狸 understood, waiting for the manager's OK.
     var proposal by remember { mutableStateOf<JsonObject?>(null) }
     var notifyAllowed by remember {
@@ -99,6 +106,7 @@ fun ApexScreen(staff: StaffMember) {
     fun stopAndTranscribe() {
         if (!recording) return
         recording = false
+        ApexMascot.idle()
         val audio = recorder.stop() ?: run {
             voiceNote = if (recorder.lastProblem == VoiceRecorder.Problem.SILENT) str(R.string.apex_didn_t_hear_anything_speak)
                         else str(R.string.apex_hold_to_talk_release_when)
@@ -106,6 +114,7 @@ fun ApexScreen(staff: StaffMember) {
         }
         transcribing = true
         voiceNote = null
+        ApexMascot.thinking()
         scope.launch {
             when (val r = ApexRepository.transcribe(context, staff.id, audio)) {
                 is ApexRepository.Result.Transcript -> question = (if (question.isBlank()) "" else "$question ") + r.text
@@ -113,6 +122,7 @@ fun ApexScreen(staff: StaffMember) {
                 else -> {}
             }
             transcribing = false
+            ApexMascot.idle()
         }
     }
 
@@ -154,6 +164,7 @@ fun ApexScreen(staff: StaffMember) {
         chat.add(true to q)
         question = ""
         asking = true
+        ApexMascot.thinking()
         scope.launch {
             val answer = when (val r = ApexRepository.ask(context, staff.id, q)) {
                 is ApexRepository.Result.Reply -> {
@@ -161,6 +172,7 @@ fun ApexScreen(staff: StaffMember) {
                         proposal = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { DeliveryOrderParser.parseFromText(q, context) }
                         str(R.string.apex_please_check_the_card_below)
                     } else {
+                        if (r.sources.isNotEmpty()) sourcesAt[chat.size] = r.sources
                         r.text
                     }
                 }
@@ -182,6 +194,7 @@ fun ApexScreen(staff: StaffMember) {
             }
             chat.add(false to answer)
             asking = false
+            if (answer.startsWith("⚠")) ApexMascot.idle() else ApexMascot.done()
             listState.animateScrollToItem(listState.layoutInfo.totalItemsCount)
         }
     }
@@ -191,7 +204,7 @@ fun ApexScreen(staff: StaffMember) {
         // Header: one slim row (mascot, name, what it is, refresh). Was two lines
         // with a 44dp avatar -- too much of the Q2's portrait screen.
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            ApexAvatar(28.dp)
+            BeaverMascot(32.dp)
             Spacer(Modifier.width(8.dp))
             Text(apexName(context), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(8.dp))
@@ -236,14 +249,17 @@ fun ApexScreen(staff: StaffMember) {
                     }
                 }
             }
-            items(chat) { (fromUser, text) -> ChatBubble(fromUser, text, lang) }
+            itemsIndexed(chat) { i, (fromUser, text) ->
+                ChatBubble(fromUser, text, lang)
+                sourcesAt[i]?.let { SourceTags(it) }
+            }
             if (asking) item { ChatBubble(false, "…", lang) }
         }
 
         proposal?.let { p ->
             ProposalCard(p,
                 onCancel = { proposal = null; chat.add(false to str(R.string.apex_ok_cancelled)) },
-                onSaved = { message -> proposal = null; chat.add(false to message); load(refresh = false) },
+                onSaved = { message -> proposal = null; chat.add(false to message); ApexMascot.done(); load(refresh = false) },
                 staff = staff)
         }
 
@@ -283,6 +299,7 @@ fun ApexScreen(staff: StaffMember) {
                         if (asking || transcribing) return@detectTapGestures
                         hideKeyboard()
                         recording = recorder.start()
+                        if (recording) ApexMascot.listening()
                         if (!recording) voiceNote = str(R.string.apex_couldn_t_open_the_microphone)
                         tryAwaitRelease()
                         stopAndTranscribe()
@@ -317,8 +334,8 @@ fun ApexScreen(staff: StaffMember) {
 @Composable
 fun ApexAvatar(size: androidx.compose.ui.unit.Dp) {
     Image(
-        painterResource(R.drawable.apex_beaver), contentDescription = null,
-        modifier = Modifier.size(size).clip(CircleShape).background(Color.White)
+        painterResource(R.drawable.apex_beaver_idle), contentDescription = null,
+        modifier = Modifier.size(size)
     )
 }
 
@@ -337,6 +354,22 @@ private fun ChatBubble(fromUser: Boolean, text: String, lang: String) {
                 color = if (fromUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                 lineHeight = 21.sp
             )
+        }
+    }
+}
+
+/** "依据": what the answer was looked up from, so the manager can check it in the reports. */
+@Composable
+private fun SourceTags(sources: List<String>) {
+    Row(Modifier.fillMaxWidth().padding(start = 34.dp, top = 4.dp).horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(stringResource(R.string.apex_sources), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        sources.forEach { s ->
+            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)) {
+                Text(s, Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
         }
     }
 }

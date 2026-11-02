@@ -67,7 +67,8 @@ object ApexRepository {
     sealed class Result {
         /** [stats] is apex_store_stats()'s JSON (amounts in cents). */
         data class Brief(val text: String?, val stats: JsonObject?, val modelOff: Boolean) : Result()
-        data class Reply(val text: String) : Result()
+        /** [sources]: what 小海狸 looked up for it ("销售 2026-11-01 – 2026-11-07"), shown under the answer. */
+        data class Reply(val text: String, val sources: List<String> = emptyList()) : Result()
         /**
          * An expense or a reminder to confirm (apex-assistant's parse; amounts re-read
          * from the spoken words, dates range-checked). Keys: kind = "expense" (vendor,
@@ -101,7 +102,11 @@ object ApexRepository {
                     context.getString(R.string.apex_model_off)
                 )
                 body["proposal"] is JsonObject -> Result.Proposal(body["proposal"] as JsonObject)
-                else -> body["reply"]?.jsonPrimitive?.contentOrNull?.let { Result.Reply(it) }
+                else -> body["reply"]?.jsonPrimitive?.contentOrNull?.let { text ->
+                    val sources = (body["sources"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+                        .mapNotNull { (it as? JsonObject)?.get("label")?.jsonPrimitive?.contentOrNull }
+                    Result.Reply(text, sources)
+                }
                     ?: Result.Failed("Empty reply")
             }
         }

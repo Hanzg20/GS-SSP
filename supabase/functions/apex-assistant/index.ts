@@ -39,6 +39,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { calendarLines, localNow, looksLikeCommand, parsePrompt, toProposal, RECEIPT_PROMPT, toReceipt } from "./parse.ts";
+import { agentSystem, BusyError as AgentBusyError, runAgent } from "./agent.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -87,6 +88,16 @@ const RULES = `底线绝对不能松：
 12. reminders_due 是今天到期或已过期（overdue=true）的待办，for 是交给谁（everyone = 全店），set_by 是谁设的；expenses_this_month 是本月已记的费用（按类别），expenses_last_month_dollars 是上月合计，sales_this_month_dollars 是本月销售额。费用只按这些记录说，没记的就是"系统里还没记"，不要估算。类别名翻译：INVENTORY 进货、RENT 房租、UTILITIES 水电网、PAYROLL 工资、REPAIRS 维修、MARKETING 营销、FEES 手续费、OTHER 其他。
 13. profit_today 是今天全店的粗利：revenue_dollars 是不含税和小费的销售额（已退款的不算），减去今天记的费用（expenses_by_category）就是 rough_profit_dollars。只能叫"粗利"，不能说成"利润"或"净利"；说它时带一句"进货在付款当天算费用，只算已记录的费用"。今天没记费用时就说"今天还没记费用"，不要自己估算成本。
 14. 想记账或设提醒，告诉他直接说出来，比如"今天付了电费 234 块 5"或"明天 9 点提醒我订货"，你会弹出确认卡片。`;
+
+// For "ask" (小海狸 2.0, agent.ts): the model looks the numbers up itself through the
+// read tools, so the snapshot rules above (field names, sales_comparison) don't apply.
+const AGENT_RULES = `底线：
+1. 你只能看和说，不能替人操作：退款、改价、加员工等，告诉他在哪里操作。想记账、设提醒或建送货单，告诉他直接说出来（比如"今天付了电费 234 块 5""明天 9 点提醒我订货"），会弹出确认卡片。
+2. 操作方法、政策只按"操作知识"里写的说；没写的就说不确定，建议联系 GoldSky 支持。
+3. 样本很少时（几笔交易），提醒"数据还少，参考意义有限"。不要猜原因或背景（天气、刚开门等），只说数据显示了什么。
+4. 防损只说"建议核对一下"，绝不说谁偷了、谁有问题。
+5. 粗利只能叫"粗利"，说它时带一句"进货在付款当天算费用，只算已记录的费用"。费用类别：INVENTORY 进货、RENT 房租、UTILITIES 水电网、PAYROLL 工资、REPAIRS 维修、MARKETING 营销、FEES 手续费、OTHER 其他。
+6. 顾客只说名字或手机尾号，不要说完整手机号。`;
 
 // Asked from the Cael web console, not a terminal: rule 14's confirmation card isn't there.
 const CAEL_NOTE = `这次是在 Cael 网页后台对话，不是在店里的终端上：这里不能记账、设提醒或建送货单。想做这些，告诉他在 Ourea / Iris 上对你说，或者在 Cael 的"门店费用""送货订单"页面里录入。`;
@@ -139,7 +150,7 @@ function systemPrompt(lang: Lang, name: string, stats: unknown, facts: string[])
 
 // ---- model providers -------------------------------------------------------
 
-type Provider = { name: string; model: string; call: (system: string, turns: Turn[]) => Promise<string> };
+type Provider = { name: "anthropic" | "groq"; model: string; key: string; call: (system: string, turns: Turn[]) => Promise<string> };
 
 function pickProvider(): Provider | null {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
@@ -148,7 +159,7 @@ function pickProvider(): Provider | null {
   if (wanted === "anthropic" && anthropicKey) {
     const model = Deno.env.get("APEX_ANTHROPIC_MODEL") ?? "claude-haiku-5-5";
     return {
-      name: "anthropic", model,
+      name: "anthropic", model, key: anthropicKey,
       call: async (system, turns) => {
         const res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -165,7 +176,7 @@ function pickProvider(): Provider | null {
   if (wanted === "groq" && groqKey) {
     const model = Deno.env.get("APEX_GROQ_MODEL") ?? "openai/gpt-oss-120b";
     return {
-      name: "groq", model,
+      name: "groq", model, key: groqKey,
       call: async (system, turns) => {
         const send = () => fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
@@ -331,7 +342,8 @@ Deno.serve(async (req) => {
       return json({ receipt: toReceipt(out, text, localNow(tz).date) });
     }
 
-    const { data: stats, error: statsError } = await db.rpc("apex_store_stats", { p_org: orgId, p_tz: tz });
+    // The snapshot is for "stats" and "brief"; "ask" looks things up through the tools.
+    const { data: stats, error: statsError } = action === "ask" ? { data: null, error: null } : await db.rpc("apex_store_stats", { p_org: orgId, p_tz: tz });
     if (statsError) throw new Error(statsError.message);
     if (action === "stats") return json({ stats });
 
@@ -400,15 +412,24 @@ ${CAEL_NOTE}` : "");
       const turns: Turn[] = [...(history ?? []).reverse(), { role: "user", content: question }] as Turn[];
 
       await log("chat", "user", question);
-      const reply = (await provider.call(system, turns)).trim();
-      await log("chat", "assistant", reply);
-      return json({ reply });
+      const { data: org } = await db.from("organizations").select("name").eq("id", orgId).maybeSingle();
+      const agentPrompt = agentSystem(PERSONA, AGENT_RULES, (knowledge ?? []).map((k) => k.content), `${REPLY_IN[lang]} 你的名字：${name}。`,
+        localNow(tz).stamp, calendarLines(tz), org?.name ?? "") + (cael ? `
+
+${CAEL_NOTE}` : "");
+      const result = await runAgent({
+        provider: provider.name, model: provider.model, key: provider.key,
+        system: agentPrompt, history: turns.slice(0, -1), question, ctx: { db, orgId, tz, lang },
+      });
+      console.log("[apex-assistant] tools", JSON.stringify(result.calls), "checked", result.checked);
+      await log("chat", "assistant", result.reply);
+      return json({ reply: result.reply, sources: result.sources, checked: result.checked });
     }
 
     return json({ error: "Unknown action" }, 400);
   } catch (e) {
     console.error("[apex-assistant]", e);
-    if (e instanceof BusyError) {
+    if (e instanceof BusyError || e instanceof AgentBusyError) {
       return json({ reply: "小海狸这会儿有点忙（问的人多），请过半分钟再试～ / Beaver is busy right now -- try again in half a minute.", busy: true });
     }
     return json({ error: (e as Error).message }, 500);
