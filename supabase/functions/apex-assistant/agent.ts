@@ -520,7 +520,10 @@ async function groqSend(key: string, body: Record<string, unknown>): Promise<any
   // Free tier: 8000 tokens a minute for the whole account. Wait out a short limit once.
   if (res.status === 429) {
     const wait = Number(res.headers.get("retry-after") ?? "") || 6;
-    if (wait <= 15) { await new Promise((ok) => setTimeout(ok, wait * 1000 + 300)); res = await send(); }
+    // A round is ~5k tokens, so the second round of nearly every question waits ~20 s
+    // on the free tier (log 11-02: "Used 5718, Requested 4857, try again in 19.3s").
+    // The terminal waits 60 s.
+    if (wait <= 25) { await new Promise((ok) => setTimeout(ok, wait * 1000 + 300)); res = await send(); }
     if (res.status === 429) {
       // Which limit (tokens a minute / a day) -- the terminal only says "busy".
       console.warn("[apex-agent] groq 429", res.headers.get("retry-after"), (await res.text()).slice(0, 300));
