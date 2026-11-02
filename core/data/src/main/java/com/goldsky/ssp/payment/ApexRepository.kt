@@ -40,7 +40,8 @@ object ApexRepository {
         val name: String? = null, // the mascot's name in this language (res apex_name)
         val refresh: Boolean = false,
         val before: String? = null,   // history: messages older than this (ISO)
-        val limit: Int? = null        // history: page size
+        val limit: Int? = null,       // history: page size
+        val text: String? = null      // remember: the fact to keep
     )
 
     // No default values here: kotlinx.serialization leaves defaults out of the
@@ -79,6 +80,12 @@ object ApexRepository {
          * "reminder" (text, dueAt [ISO, may be null], whenWords); check = fields to look at.
          */
         data class Proposal(val data: JsonObject) : Result()
+        /**
+         * 小海狸 2.0: an answer with cards to confirm, one after another (expense, reminder,
+         * delivery_order, todo_done, checklist_tick, note, stock_change, remember). [text] may
+         * also answer a question asked in the same sentence.
+         */
+        data class Cards(val text: String, val cards: List<JsonObject>, val sources: List<String> = emptyList()) : Result()
         data class Transcript(val text: String) : Result()
         /** A receipt read by the model; every amount was found printed in the text (apex-assistant toReceipt). */
         data class Receipt(val vendor: String?, val date: String?, val totalCents: Int?, val taxCents: Int?, val hstNumber: String?) : Result()
@@ -104,6 +111,10 @@ object ApexRepository {
                 body["skipped"] != null -> Result.Failed(
                     context.getString(R.string.apex_model_off)
                 )
+                (body["proposals"] as? kotlinx.serialization.json.JsonArray)?.isNotEmpty() == true -> Result.Cards(
+                    body["reply"]?.jsonPrimitive?.contentOrNull ?: "",
+                    (body["proposals"] as kotlinx.serialization.json.JsonArray).mapNotNull { it as? JsonObject },
+                    (body["sources"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.get("label")?.jsonPrimitive?.contentOrNull })
                 body["proposal"] is JsonObject -> Result.Proposal(body["proposal"] as JsonObject)
                 else -> body["reply"]?.jsonPrimitive?.contentOrNull?.let { text ->
                     val sources = (body["sources"] as? kotlinx.serialization.json.JsonArray).orEmpty()
@@ -129,6 +140,12 @@ object ApexRepository {
             // An older function returns the last 50 with no has_more: then there is nothing more to page.
             Result.History(turns, body["has_more"]?.jsonPrimitive?.booleanOrNull ?: false)
         }
+
+    /** Keeps a lasting fact about the store the manager confirmed, for later answers. */
+    suspend fun remember(context: Context, staffId: String, text: String): Boolean =
+        call(context, Request("remember", staffId, UiLanguage.current(context), timezone(), text = text)) { body ->
+            if (body["ok"]?.jsonPrimitive?.booleanOrNull == true) Result.Reply("ok") else Result.Failed("not saved")
+        } is Result.Reply
 
     /** Speech to text for the hold-to-talk button; the caller shows the text for editing before sending. */
     suspend fun transcribe(context: Context, staffId: String, audio: java.io.File): Result {

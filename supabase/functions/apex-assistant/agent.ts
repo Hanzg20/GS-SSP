@@ -1,4 +1,7 @@
-// 小海狸 2.0 (docs/apex_agent_design.md, P1): the model answers by calling read tools.
+// 小海狸 2.0 (docs/apex_agent_design.md): the model answers by calling read tools (P1)
+// and proposes what to do through propose_* tools (P2) -- like Muse: work out what is
+// needed, look it up, then act. A proposal is only a card for the terminal: nothing is
+// saved until the manager confirms it there (through the same repositories as by hand).
 //
 // The tools are SQL functions (docs/migrations/2026-11-02_apex_tools.sql) run with the
 // service role for the caller's store -- the store id never comes from the model. Money
@@ -11,18 +14,22 @@
 // tier while developing) and Claude (Anthropic SDK, at go-live).
 
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
+import { toProposal } from "./parse.ts";
 // deno-lint-ignore no-explicit-any
 type Db = any;
 
 export type Turn = { role: "user" | "assistant"; content: string };
 export type Source = { tool: string; label: string };
-export type AgentResult = { reply: string; sources: Source[]; checked: boolean; calls: { tool: string; args: unknown }[] };
+export type AgentResult = { reply: string; sources: Source[]; checked: boolean; calls: { tool: string; args: unknown }[]; proposals: Card[] };
+// deno-lint-ignore no-explicit-any
+export type Card = Record<string, any> & { kind: string };
+const MAX_CARDS = 5;
 
 const MAX_ROUNDS = 6;
 
 // ---- tools -------------------------------------------------------------------
 
-type Ctx = { db: Db; orgId: string; tz: string; lang: string };
+type Ctx = { db: Db; orgId: string; tz: string; lang: string; cards?: Card[] };
 type ToolDef = {
   name: string;
   description: string;
@@ -159,6 +166,101 @@ export const TOOLS: ToolDef[] = [
     run: (_a, c) => rpc(c, "apex_tool_journal", { p_org: c.orgId, p_tz: c.tz }),
     label: (_a, zh) => (zh ? "手账" : "Journal"),
   },
+  // ---- proposals: cards the manager confirms on the terminal (never saved here) ----
+  {
+    name: "propose_expense",
+    description: "Propose recording an expense the store paid (shows a card; saved only when the manager confirms). amount in dollars; amount_text = the amount exactly as they said it; date = the day it was paid (today if not said).",
+    parameters: {
+      type: "object",
+      properties: {
+        vendor: { type: "string" }, category: { type: "string", enum: ["INVENTORY", "RENT", "UTILITIES", "PAYROLL", "REPAIRS", "MARKETING", "FEES", "OTHER"] },
+        amount: { type: "number" }, amount_text: { type: "string" }, date: DATE, date_text: { type: "string" }, note: { type: "string" },
+      },
+      required: ["category", "amount", "amount_text", "date"],
+    },
+    run: (a, c) => card(c, toProposal({ ...a, kind: "expense" }, c.tz)),
+    label: () => "",
+  },
+  {
+    name: "propose_reminder",
+    description: "Propose a to-do with a reminder time (card; saved when confirmed). due = YYYY-MM-DDTHH:mm store local time; when_text = the time words as said.",
+    parameters: { type: "object", properties: { text: { type: "string" }, due: { type: "string" }, when_text: { type: "string" } }, required: ["text", "due"] },
+    run: (a, c) => card(c, toProposal({ ...a, kind: "reminder" }, c.tz)),
+    label: () => "",
+  },
+  {
+    name: "propose_delivery_order",
+    description: "Propose a delivery order (card; created when confirmed): customer, phone, address, note, items with quantity (and price in dollars if said).",
+    parameters: {
+      type: "object",
+      properties: {
+        customer_name: { type: "string" }, customer_phone: { type: "string" }, address: { type: "string" }, note: { type: "string" },
+        items: { type: "array", items: { type: "object", properties: { name: { type: "string" }, quantity: { type: "integer" }, price: { type: "number" } }, required: ["name"] } },
+      },
+      required: ["customer_name", "address", "items"],
+    },
+    run: (a, c) => card(c, toProposal({ ...a, kind: "delivery_order" }, c.tz)),
+    label: () => "",
+  },
+  {
+    name: "propose_todo_done",
+    description: "Propose marking open to-dos done (card). todo_ids come from the journal tool -- look them up first.",
+    parameters: { type: "object", properties: { todo_ids: { type: "array", items: { type: "string" } } }, required: ["todo_ids"] },
+    run: async (a, c) => {
+      const items = await refs(c, "todo", a.todo_ids);
+      return items.length ? card(c, { kind: "todo_done", items }) : { error: "no such open to-do in this store -- call journal for the ids" };
+    },
+    label: () => "",
+  },
+  {
+    name: "propose_checklist_tick",
+    description: "Propose ticking checklist steps as done today (card). step_ids come from the journal tool (checklists_today[].steps[].id).",
+    parameters: { type: "object", properties: { step_ids: { type: "array", items: { type: "string" } } }, required: ["step_ids"] },
+    run: async (a, c) => {
+      const items = await refs(c, "step", a.step_ids);
+      return items.length ? card(c, { kind: "checklist_tick", items }) : { error: "no such checklist step in this store -- call journal for the ids" };
+    },
+    label: () => "",
+  },
+  {
+    name: "propose_note",
+    description: "Propose saving a note in the store journal (card).",
+    parameters: { type: "object", properties: { title: { type: "string" }, content: { type: "string" } }, required: ["content"] },
+    run: (a, c) => {
+      const content = str(a.content);
+      return Promise.resolve(content ? card(c, { kind: "note", title: (str(a.title) ?? "").slice(0, 60), content: content.slice(0, 2000) }) : { error: "empty note" });
+    },
+    label: () => "",
+  },
+  {
+    name: "propose_stock_change",
+    description: "Propose a stock change (card): RECEIVE = goods arrived (+qty), COUNT = counted, stock is now qty, ADJUST = +/- qty with a reason (note required: damaged, expired...). product_id comes from the stock tool -- look it up first.",
+    parameters: {
+      type: "object",
+      properties: { product_id: { type: "string" }, change: { type: "string", enum: ["RECEIVE", "COUNT", "ADJUST"] }, qty: { type: "integer" }, note: { type: "string" } },
+      required: ["product_id", "change", "qty"],
+    },
+    run: async (a, c) => {
+      const [p] = await refs(c, "product", [a.product_id]);
+      const change = ["RECEIVE", "COUNT", "ADJUST"].includes(String(a.change)) ? String(a.change) : null;
+      const qty = int(a.qty);
+      if (!p) return { error: "no such product in this store -- call stock for the product_id" };
+      if (!change || qty === null || (change !== "ADJUST" && qty < 0) || (change === "RECEIVE" && qty === 0) || Math.abs(qty) > 100000) return { error: "bad change or quantity" };
+      const note = (str(a.note) ?? "").slice(0, 200);
+      return card(c, { kind: "stock_change", product_id: p.id, name: p.text, stock_now: p.stock ?? null, change, qty, note, check: change === "ADJUST" && !note ? ["note"] : [] });
+    },
+    label: () => "",
+  },
+  {
+    name: "propose_remember",
+    description: "Propose remembering a lasting fact about this store for later answers (e.g. \"closed on Mondays\", \"rent is due on the 1st\") (card). Not for one-off tasks (use propose_reminder).",
+    parameters: { type: "object", properties: { fact: { type: "string" } }, required: ["fact"] },
+    run: (a, c) => {
+      const fact = str(a.fact);
+      return Promise.resolve(fact ? card(c, { kind: "remember", text: fact.slice(0, 300) }) : { error: "empty fact" });
+    },
+    label: () => "",
+  },
   {
     name: "calc",
     description: "Arithmetic on numbers you already have (+ - * / and parentheses), e.g. \"(1234.5-987)/987*100\". Use it for every sum, difference or percentage you give; never work numbers out in your head.",
@@ -171,6 +273,27 @@ export const TOOLS: ToolDef[] = [
     label: () => "",
   },
 ];
+
+/** A card for the terminal; what the model is told back. */
+function card(c: Ctx, p: Card | null): Promise<unknown> {
+  if (!p) return Promise.resolve({ error: "that can't be put on a card -- ask the manager for what is missing" });
+  c.cards ??= [];
+  if (c.cards.length >= MAX_CARDS) return Promise.resolve({ error: `at most ${MAX_CARDS} cards per answer` });
+  c.cards.push(p);
+  return Promise.resolve({ card_shown: true, saved: false, note: "the manager confirms it on the terminal; it is not saved yet", card: p });
+}
+
+/** Ids from the model, kept only if they are this store's (apex_tool_refs). */
+async function refs(c: Ctx, kind: string, ids: unknown): Promise<{ id: string; text: string; checklist?: string; stock?: number }[]> {
+  const list = (Array.isArray(ids) ? ids : [ids]).map(String).filter((s) => /^[0-9a-f-]{36}$/i.test(s)).slice(0, 20);
+  if (!list.length) return [];
+  return (await rpc(c, "apex_tool_refs", { p_org: c.orgId, p_kind: kind, p_ids: list })) as { id: string; text: string }[];
+}
+
+/** The tools for a caller: no cards from Cael (nothing there to confirm them on). */
+export function toolsFor(cards: boolean): ToolDef[] {
+  return cards ? TOOLS : TOOLS.filter((t) => !t.name.startsWith("propose_"));
+}
 
 // ---- calc --------------------------------------------------------------------
 
@@ -267,6 +390,9 @@ ${facts.map((f) => `- ${f}`).join("\n")}
 - 金额工具已换算成元（*_dollars），原样引用；要加减、算差额或百分比，一定调用 calc，不要心算。
 - 只回答查到的内容；工具里没有的（成本、毛利率、顾客个人信息、其他门店），老实说系统里还没有这个数据。
 - 回答简短（一般 2-6 句），先给结论再给关键数字；列多项时用短列表。不要出现工具名或英文字段名。
+- 要办的事（记账、设提醒、完成待办、勾清单、记笔记、进货/盘点/调整库存、建送货单、记住门店的长期习惯）用对应的 propose_* 工具生成确认卡片。卡片要经理在下面点确认才会保存：回答里说"请在下面确认"，绝不说"已经记好了/已完成"。
+- 完成待办、勾清单前先调用 journal 拿到 id；改库存前先调用 stock 拿到 product_id；对不上就问清楚，不要乱选。
+- 一句话里可以既有问题又有要办的事（比如"记一下电费 234.5，再看看本月水电一共多少"）：都做，查到的照实说（还没确认的卡片不算在已记录的数里）。
 
 ${rules}
 
@@ -279,15 +405,16 @@ type Provider = "groq" | "anthropic";
 
 export async function runAgent(opts: {
   provider: Provider; model: string; key: string;
-  system: string; history: Turn[]; question: string; ctx: Ctx;
+  system: string; history: Turn[]; question: string; ctx: Ctx; tools: ToolDef[];
 }): Promise<AgentResult> {
   const zh = opts.ctx.lang === "zh";
   const sources: Source[] = [];
   const calls: { tool: string; args: unknown }[] = [];
   const known: string[] = [opts.question, opts.system.slice(0, 600)]; // the date lines and the question's own numbers
+  opts.ctx.cards = [];
 
   async function exec(name: string, rawArgs: unknown): Promise<string> {
-    const tool = TOOLS.find((t) => t.name === name);
+    const tool = opts.tools.find((t) => t.name === name);
     let args: Record<string, unknown> = {};
     try { args = typeof rawArgs === "string" ? JSON.parse(rawArgs || "{}") : (rawArgs as Record<string, unknown>) ?? {}; } catch { /* bad JSON -> {} */ }
     calls.push({ tool: name, args });
@@ -312,13 +439,15 @@ export async function runAgent(opts: {
     const fix = zh
       ? `你的回答里这些数字在查到的数据里找不到：${bad.join("、")}。请重写：只用工具返回的数字，需要计算就调用 calc。`
       : `These numbers in your answer aren't in the data you looked up: ${bad.join(", ")}. Rewrite it using only numbers the tools returned; call calc for any arithmetic.`;
+    const firstCards = [...(opts.ctx.cards ?? [])];
     const second = (await ask(opts, exec, { draft: reply, fix })).trim();
+    opts.ctx.cards = firstCards; // the rewrite is about wording; the cards stay as first proposed
     const bad2 = checkNumbers(second, known);
     reply = second || reply;
     checked = bad2.length === 0;
     if (!checked) reply += zh ? "\n\n（有个别数字没能和系统数据核对上，请以报表为准。）" : "\n\n(Some figures couldn't be checked against the system -- go by the reports.)";
   }
-  return { reply, sources: sources.slice(0, 5), checked, calls };
+  return { reply, sources: sources.slice(0, 5), checked, calls, proposals: opts.ctx.cards ?? [] };
 }
 
 type Exec = (name: string, args: unknown) => Promise<string>;
@@ -329,7 +458,7 @@ async function groqLoop(o: Parameters<typeof runAgent>[0], exec: Exec, retry: Re
   // deno-lint-ignore no-explicit-any
   const messages: any[] = [{ role: "system", content: o.system }, ...o.history, { role: "user", content: o.question }];
   if (retry) messages.push({ role: "assistant", content: retry.draft }, { role: "user", content: retry.fix });
-  const tools = TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } }));
+  const tools = o.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } }));
   for (let round = 0; round <= MAX_ROUNDS; round++) {
     const last = round === MAX_ROUNDS;
     const res = await groqSend(o.key, { model: o.model, messages, reasoning_effort: "low", ...(last ? {} : { tools, tool_choice: "auto" }) });
@@ -368,7 +497,7 @@ async function anthropicLoop(o: Parameters<typeof runAgent>[0], exec: Exec, retr
   const client = new Anthropic({ apiKey: o.key });
   const messages: Anthropic.MessageParam[] = [...alternate(o.history), { role: "user", content: o.question }];
   if (retry) messages.push({ role: "assistant", content: retry.draft }, { role: "user", content: retry.fix });
-  const tools: Anthropic.Tool[] = TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters as Anthropic.Tool.InputSchema }));
+  const tools: Anthropic.Tool[] = o.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters as Anthropic.Tool.InputSchema }));
   for (let round = 0; round <= MAX_ROUNDS; round++) {
     const last = round === MAX_ROUNDS;
     const res = await client.messages.create({

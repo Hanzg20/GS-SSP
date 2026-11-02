@@ -80,4 +80,27 @@
     <string name="apex_sources">Looked up:</string>
     <string name="apex_welcome">Hi, I\'m %1$s! Ask me about sales, a sale or a refund, stock, members, staff hours and tips, money in and out, or what\'s in the journal. Or just tell me an expense or a reminder to save.</string>
     <string name="apex_earlier">Scroll up for earlier messages</string>
+    <string name="apex_cards_left">%1$d cards to confirm</string>
+    <string name="apex_card_todo_done">Mark done</string>
+    <string name="apex_card_checklist">Tick checklist steps</string>
+    <string name="apex_card_note">Save a note</string>
+    <string name="apex_card_note_title">Title (optional)</string>
+    <string name="apex_card_stock">Stock: %1$s</string>
+    <string name="apex_card_stock_now">In stock now: %1$s</string>
+    <string name="apex_card_stock_receive">Goods received (added to stock)</string>
+    <string name="apex_card_stock_count">Counted (stock becomes this number)</string>
+    <string name="apex_card_stock_adjust">Adjust (+/-, reason required)</string>
+    <string name="apex_card_qty">Quantity</string>
+    <string name="apex_card_reason">Reason</string>
+    <string name="apex_card_stock_check">Check the quantity (and give a reason for an adjustment).</string>
+    <string name="apex_card_remember">Remember about the store</string>
+    <string name="apex_card_remember_what">What to remember</string>
+    <string name="apex_card_empty">It\'s empty.</string>
+    <string name="apex_card_confirm">CONFIRM</string>
+    <string name="apex_card_not_saved">Not saved -- check the connection and try again.</string>
+    <string name="apex_card_done_todo">Done: %1$s</string>
+    <string name="apex_card_done_checklist">Ticked: %1$s</string>
+    <string name="apex_card_done_note">Note saved in the journal.</string>
+    <string name="apex_card_done_stock">Stock updated: %1$s</string>
+    <string name="apex_card_done_remember">Got it -- I\'ll remember that.</string>
 </resources>

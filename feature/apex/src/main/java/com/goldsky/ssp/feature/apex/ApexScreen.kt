@@ -78,6 +78,9 @@ fun ApexScreen(staff: StaffMember) {
     DisposableEffect(Unit) { onDispose { ApexMascot.idle() } }
     // An expense / reminder 小海狸 understood, waiting for the manager's OK.
     var proposal by remember { mutableStateOf<JsonObject?>(null) }
+    // More cards from the same answer, shown one after another as each is confirmed or cancelled.
+    val moreCards = remember { mutableStateListOf<JsonObject>() }
+    fun nextCard() { proposal = moreCards.removeFirstOrNull() }
     var notifyAllowed by remember {
         mutableStateOf(android.os.Build.VERSION.SDK_INT < 33 || androidx.core.content.ContextCompat.checkSelfPermission(
             context, "android.permission.POST_NOTIFICATIONS") == android.content.pm.PackageManager.PERMISSION_GRANTED)
@@ -208,6 +211,16 @@ fun ApexScreen(staff: StaffMember) {
                         r.text
                     }
                 }
+                is ApexRepository.Result.Cards -> {
+                    if (r.sources.isNotEmpty()) sourcesAt[chat.size] = r.sources
+                    val cards = r.cards.map { c ->
+                        if (c["kind"]?.jsonPrimitive?.contentOrNull == "delivery_order")
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { DeliveryOrderParser.withCatalogPrices(c, context) } else c
+                    }
+                    moreCards.clear(); moreCards.addAll(cards.drop(1)); proposal = cards.first()
+                    if (cards.any { it["kind"]?.jsonPrimitive?.contentOrNull == "reminder" } && !notifyAllowed) askNotify.launch("android.permission.POST_NOTIFICATIONS")
+                    r.text.ifBlank { str(R.string.apex_please_check_the_card_below) }
+                }
                 is ApexRepository.Result.Proposal -> {
                     proposal = if (r.data["kind"]?.jsonPrimitive?.contentOrNull == "delivery_order")
                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { DeliveryOrderParser.withCatalogPrices(r.data, context) } else r.data
@@ -305,9 +318,14 @@ fun ApexScreen(staff: StaffMember) {
         }
 
         proposal?.let { p ->
-            ProposalCard(p,
-                onCancel = { proposal = null; chat.add(false to str(R.string.apex_ok_cancelled)) },
-                onSaved = { message -> proposal = null; chat.add(false to message); ApexMascot.done(); load(refresh = false) },
+            if (moreCards.isNotEmpty()) Text(str(R.string.apex_cards_left, moreCards.size + 1), Modifier.padding(start = 16.dp),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (p["kind"]?.jsonPrimitive?.contentOrNull in ActionKinds) ActionCard(p, staff,
+                onCancel = { chat.add(false to str(R.string.apex_ok_cancelled)); nextCard() },
+                onSaved = { message -> chat.add(false to message); ApexMascot.done(); nextCard(); load(refresh = false) })
+            else ProposalCard(p,
+                onCancel = { chat.add(false to str(R.string.apex_ok_cancelled)); nextCard() },
+                onSaved = { message -> chat.add(false to message); ApexMascot.done(); nextCard(); load(refresh = false) },
                 staff = staff)
         }
 
@@ -841,3 +859,96 @@ private fun ProposalCard(p: JsonObject, staff: StaffMember, onCancel: () -> Unit
     }
 }
 
+
+
+/** Cards from 小海狸 2.0 beyond expense / reminder / delivery order. */
+private val ActionKinds = setOf("todo_done", "checklist_tick", "note", "stock_change", "remember")
+
+/**
+ * A to-do done, checklist steps ticked, a note, a stock change or a fact to remember:
+ * what 小海狸 understood, editable, saved only on Confirm -- through the same
+ * repositories as doing it by hand (offline queue, stock rules, the journal).
+ */
+@Composable
+private fun ActionCard(p: JsonObject, staff: StaffMember, onCancel: () -> Unit, onSaved: (String) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    fun str(id: Int, vararg args: Any): String = context.getString(id, *args)
+    fun field(k: String) = p[k]?.jsonPrimitive?.contentOrNull ?: ""
+    val kind = field("kind")
+    val items = (p["items"] as? JsonArray)?.mapNotNull { it as? JsonObject }.orEmpty()
+    fun itemText(o: JsonObject) = listOfNotNull(o["checklist"]?.jsonPrimitive?.contentOrNull, o["text"]?.jsonPrimitive?.contentOrNull).joinToString(" · ")
+    var saving by remember(p) { mutableStateOf(false) }
+    var error by remember(p) { mutableStateOf<String?>(null) }
+    var title by remember(p) { mutableStateOf(field("title")) }
+    var body by remember(p) { mutableStateOf(field(if (kind == "note") "content" else "text")) }
+    var qty by remember(p) { mutableStateOf(field("qty")) }
+    var note by remember(p) { mutableStateOf(field("note")) }
+    val change = field("change")
+
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(when (kind) {
+                "todo_done" -> str(R.string.apex_card_todo_done)
+                "checklist_tick" -> str(R.string.apex_card_checklist)
+                "note" -> str(R.string.apex_card_note)
+                "stock_change" -> str(R.string.apex_card_stock, field("name"))
+                else -> str(R.string.apex_card_remember)
+            }, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            when (kind) {
+                "todo_done", "checklist_tick" -> items.forEach { Text("✓ " + itemText(it)) }
+                "note" -> {
+                    OutlinedTextField(title, { title = it.take(60) }, Modifier.fillMaxWidth(), label = { Text(str(R.string.apex_card_note_title)) }, singleLine = true)
+                    OutlinedTextField(body, { body = it.take(2000) }, Modifier.fillMaxWidth(), label = { Text(str(R.string.apex_note)) }, maxLines = 6)
+                }
+                "stock_change" -> {
+                    Text(str(R.string.apex_card_stock_now, field("stock_now").ifBlank { "—" }), style = MaterialTheme.typography.bodySmall)
+                    Text(when (change) { "RECEIVE" -> str(R.string.apex_card_stock_receive); "COUNT" -> str(R.string.apex_card_stock_count); else -> str(R.string.apex_card_stock_adjust) })
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(qty, { qty = it.filter { c -> c.isDigit() || (c == '-' && change == "ADJUST") }.take(7) }, Modifier.weight(1f),
+                            label = { Text(str(R.string.apex_card_qty)) }, singleLine = true)
+                        OutlinedTextField(note, { note = it.take(200) }, Modifier.weight(2f), singleLine = true,
+                            label = { Text(if (change == "ADJUST") str(R.string.apex_card_reason) else str(R.string.apex_note),
+                                color = if (change == "ADJUST" && note.isBlank()) GsTheme.colors.warning else Color.Unspecified) })
+                    }
+                }
+                else -> OutlinedTextField(body, { body = it.take(300) }, Modifier.fillMaxWidth(), label = { Text(str(R.string.apex_card_remember_what)) })
+            }
+            error?.let { Text(it, color = GsTheme.colors.danger, style = MaterialTheme.typography.bodySmall) }
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onCancel, enabled = !saving) { Text(str(R.string.apex_cancel)) }
+                Spacer(Modifier.width(8.dp))
+                Button(enabled = !saving, onClick = {
+                    error = null
+                    val n = qty.toIntOrNull()
+                    if (kind == "stock_change" && (n == null || (change != "ADJUST" && n < 0) || (change == "ADJUST" && note.isBlank()))) {
+                        error = str(R.string.apex_card_stock_check); return@Button
+                    }
+                    if ((kind == "note" || kind == "remember") && body.isBlank()) { error = str(R.string.apex_card_empty); return@Button }
+                    saving = true
+                    scope.launch {
+                        val ok = when (kind) {
+                            "todo_done" -> items.all { com.goldsky.ssp.payment.ReminderRepository.markDone(it["id"]!!.jsonPrimitive.content, context, staff) }
+                            "checklist_tick" -> items.all { com.goldsky.ssp.payment.ChecklistRepository.tick(it["id"]!!.jsonPrimitive.content, true, staff).ok }
+                            "note" -> com.goldsky.ssp.payment.NoteRepository.create(context, title, body, staff = staff)
+                            "stock_change" -> com.goldsky.ssp.payment.InventoryRepository.change(field("product_id"), change, n, note,
+                                staff, com.goldsky.ssp.payment.InventoryRepository.newRef()).ok
+                            else -> ApexRepository.remember(context, staff.id, body.trim())
+                        }
+                        saving = false
+                        if (!ok) { error = str(R.string.apex_card_not_saved); return@launch }
+                        onSaved(when (kind) {
+                            "todo_done" -> str(R.string.apex_card_done_todo, items.joinToString("、") { itemText(it) })
+                            "checklist_tick" -> str(R.string.apex_card_done_checklist, items.joinToString("、") { itemText(it) })
+                            "note" -> str(R.string.apex_card_done_note)
+                            "stock_change" -> str(R.string.apex_card_done_stock, field("name"))
+                            else -> str(R.string.apex_card_done_remember)
+                        })
+                    }
+                }) { Text(str(R.string.apex_card_confirm), fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+}

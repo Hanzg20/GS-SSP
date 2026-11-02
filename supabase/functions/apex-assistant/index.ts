@@ -39,7 +39,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { calendarLines, localNow, looksLikeCommand, parsePrompt, toProposal, RECEIPT_PROMPT, toReceipt } from "./parse.ts";
-import { agentSystem, BusyError as AgentBusyError, runAgent } from "./agent.ts";
+import { agentSystem, BusyError as AgentBusyError, runAgent, toolsFor } from "./agent.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -92,7 +92,7 @@ const RULES = `底线绝对不能松：
 // For "ask" (小海狸 2.0, agent.ts): the model looks the numbers up itself through the
 // read tools, so the snapshot rules above (field names, sales_comparison) don't apply.
 const AGENT_RULES = `底线：
-1. 你只能看和说，不能替人操作：退款、改价、加员工等，告诉他在哪里操作。想记账、设提醒或建送货单，告诉他直接说出来（比如"今天付了电费 234 块 5""明天 9 点提醒我订货"），会弹出确认卡片。
+1. 退款、改价、加员工、删记录、改收款设置这些你不能做，告诉他在哪里操作。手账和库存的事可以用确认卡片帮他办。
 2. 操作方法、政策只按"操作知识"里写的说；没写的就说不确定，建议联系 GoldSky 支持。
 3. 样本很少时（几笔交易），提醒"数据还少，参考意义有限"。不要猜原因或背景（天气、刚开门等），只说数据显示了什么。
 4. 防损只说"建议核对一下"，绝不说谁偷了、谁有问题。
@@ -329,6 +329,15 @@ Deno.serve(async (req) => {
       return json({ messages: page.reverse(), has_more: (rows ?? []).length > limit });
     }
 
+    // A lasting fact about the store the manager confirmed ("closed on Mondays"): kept in
+    // apex_knowledge for this store, so later answers know it (Cael can edit or remove it).
+    if (action === "remember") {
+      const text = String(body.text ?? "").trim().slice(0, 300);
+      if (!text || cael) return json({ error: "Nothing to remember" }, 400);
+      const { error } = await db.from("apex_knowledge").insert({ org_id: orgId, content: `${text}（${who.staffName} 记）`, sort_order: 200 });
+      return error ? json({ error: error.message }, 500) : json({ ok: true });
+    }
+
     if (action === "transcribe") {
       if (typeof body.audio !== "string" || !body.audio) return json({ error: "No audio" }, 400);
       const text = await transcribe(body.audio, typeof body.mime === "string" ? body.mime : "audio/mp4", lang);
@@ -391,9 +400,11 @@ ${CAEL_NOTE}` : "");
         return json({ reply: lang === "zh" ? "今天问得有点多啦，小海狸要去筑会儿坝，明天再来吧～" : "That's a lot of questions for one day — Beaver needs a break. Try again tomorrow!" });
       }
 
-      // An expense to book or a to-do to remember? Then a proposal for the
-      // terminal to show on a confirmation card -- nothing is saved here.
-      if (!cael && looksLikeCommand(question)) {
+      // Cards (expense, reminder, delivery order, to-do done, checklist step, note, stock,
+      // a fact to remember) come from the agent's propose_* tools now, together with any
+      // question in the same sentence. The old one-shot parse stays only as a fallback
+      // when the agent is turned off (APEX_AGENT=off).
+      if (!cael && Deno.env.get("APEX_AGENT") === "off" && looksLikeCommand(question)) {
         const raw = await provider.call(parsePrompt(lang, localNow(tz).stamp, calendarLines(tz)), [{ role: "user", content: question }]);
         const match = raw.match(/\{[\s\S]*\}/);
         const proposal = match ? toProposal(JSON.parse(match[0]), tz) : null;
@@ -423,11 +434,13 @@ ${CAEL_NOTE}` : "");
 ${CAEL_NOTE}` : "");
       const result = await runAgent({
         provider: provider.name, model: provider.model, key: provider.key,
-        system: agentPrompt, history: turns.slice(0, -1), question, ctx: { db, orgId, tz, lang },
+        system: agentPrompt, history: turns.slice(0, -1), question, ctx: { db, orgId, tz, lang }, tools: toolsFor(!cael),
       });
       console.log("[apex-assistant] tools", JSON.stringify(result.calls), "checked", result.checked);
       await log("chat", "assistant", result.reply);
-      return json({ reply: result.reply, sources: result.sources, checked: result.checked });
+      // `proposal`: the first card in the shape older terminals know (expense / reminder / delivery).
+      const legacy = result.proposals.find((p) => ["expense", "reminder", "delivery_order"].includes(p.kind));
+      return json({ reply: result.reply, sources: result.sources, checked: result.checked, proposals: result.proposals, ...(legacy ? { proposal: legacy } : {}) });
     }
 
     return json({ error: "Unknown action" }, 400);

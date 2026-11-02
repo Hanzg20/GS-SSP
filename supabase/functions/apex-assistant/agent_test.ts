@@ -28,3 +28,45 @@ Deno.test("history alternates and ends before the new question", () => {
   assertEquals(out.map((m) => m.role), ["user", "assistant"]);
   assertEquals(out[0].content, "a\nb");
 });
+
+import { TOOLS, toolsFor, type Card } from "./agent.ts";
+const tool = (n: string) => TOOLS.find((t) => t.name === n)!;
+// A fake database: apex_tool_refs knows one product and one to-do of this store.
+const fakeDb = { rpc: (fn: string, p: Record<string, unknown>) => Promise.resolve(fn === "apex_tool_refs"
+  ? { data: (p.p_ids as string[]).filter((id) => id === "11111111-1111-1111-1111-111111111111")
+      .map((id) => ({ id, text: p.p_kind === "product" ? "王老吉" : "订货", stock: 130 })), error: null }
+  : { data: null, error: null }) };
+const ctx = () => ({ db: fakeDb, orgId: "o", tz: "America/Toronto", lang: "zh", cards: [] as Card[] });
+const P = "11111111-1111-1111-1111-111111111111", OTHER = "22222222-2222-2222-2222-222222222222";
+
+Deno.test("an expense card re-reads the amount from the words", async () => {
+  const c = ctx();
+  await tool("propose_expense").run({ category: "UTILITIES", amount: 234.5, amount_text: "234 块 5", date: "2026-11-01", vendor: "Hydro" }, c);
+  assertEquals(c.cards.length, 1);
+  assertEquals(c.cards[0].kind, "expense");
+  assertEquals(c.cards[0].amount, 234.5);
+});
+
+Deno.test("stock cards only for this store's products, adjustments need a reason", async () => {
+  const c = ctx();
+  const bad = await tool("propose_stock_change").run({ product_id: OTHER, change: "RECEIVE", qty: 12 }, c) as { error?: string };
+  assertEquals(typeof bad.error, "string");
+  await tool("propose_stock_change").run({ product_id: P, change: "ADJUST", qty: -2 }, c);
+  assertEquals(c.cards.length, 1);
+  assertEquals(c.cards[0].check, ["note"]);
+  const neg = await tool("propose_stock_change").run({ product_id: P, change: "RECEIVE", qty: -5 }, c) as { error?: string };
+  assertEquals(typeof neg.error, "string");
+});
+
+Deno.test("to-do cards only for real open to-dos; at most five cards", async () => {
+  const c = ctx();
+  const none = await tool("propose_todo_done").run({ todo_ids: [OTHER] }, c) as { error?: string };
+  assertEquals(typeof none.error, "string");
+  for (let i = 0; i < 6; i++) await tool("propose_note").run({ content: "n" + i }, c);
+  assertEquals(c.cards.length, 5);
+});
+
+Deno.test("Cael gets no card tools", () => {
+  assertEquals(toolsFor(false).some((t) => t.name.startsWith("propose_")), false);
+  assertEquals(toolsFor(true).some((t) => t.name === "propose_note"), true);
+});
