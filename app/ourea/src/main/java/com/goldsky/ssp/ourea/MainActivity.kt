@@ -462,6 +462,11 @@ class MainActivity : ComponentActivity() {
      * A PAID sale with a loyalty member: its points (and the reward's points taken) on the
      * server -- queued if it can't be reached -- and what they earned on screen.
      */
+    private suspend fun recordLoyalty(lines: List<com.goldsky.ssp.model.SaleLine>, extras: PayExtras?, ref: String) {
+        val sale = discountSaleFor(lines)
+        if (sale != null) recordLoyalty(sale.memberId, ref, sale.redeemPoints) else recordLoyalty(extras?.memberId, ref, 0)
+    }
+
     private suspend fun recordLoyalty(memberId: String?, ref: String, redeemPoints: Int) {
         memberId ?: return
         val r = LoyaltyRepository.recordSale(this, memberId, ref, redeemPoints) ?: return
@@ -524,7 +529,7 @@ class MainActivity : ComponentActivity() {
                         authCode = authCode
                     )
                     extras?.onPaid?.invoke(ref, "CARD", tip)
-                    discountSaleFor(lines)?.let { recordLoyalty(it.memberId, ref, it.redeemPoints) }
+                    recordLoyalty(lines, extras, ref)
                     ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                         subtotalCents = subtotal,
                         taxCents = tax,
@@ -596,7 +601,7 @@ class MainActivity : ComponentActivity() {
             )
             TransactionRepository.recordItems(this@MainActivity, ref, sn, lines)
             extras?.onPaid?.invoke(ref, "CASH", tip)
-            discountSaleFor(lines)?.let { recordLoyalty(it.memberId, ref, it.redeemPoints) }
+            recordLoyalty(lines, extras, ref)
             ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                 subtotalCents = subtotal,
                 taxCents = tax,
@@ -677,6 +682,7 @@ class MainActivity : ComponentActivity() {
             if (paid) {
                 TransactionRepository.updatePaymentStatus(this@MainActivity, txId, "PAID")
                 extras?.onPaid?.invoke(txId, "QR_CODE", tip)
+                recordLoyalty(lines, extras, txId)
                 withContext(Dispatchers.Main) { onSettled(OureaPaymentUiState.Success("QR payment received", amountCents = total)) }
                 ReceiptPrinterManager.printOrder(this@MainActivity, ticket, ReceiptPrinterManager.ReceiptData(
                     subtotalCents = subtotal,
@@ -793,13 +799,14 @@ class MainActivity : ComponentActivity() {
 }
 
 /** What a payment on a table's check adds: the receipt's banner, and recording it on the check. */
-class PayExtras(val banner: String?, val onPaid: suspend (ref: String, method: String, tip: Int) -> Unit)
+class PayExtras(val banner: String?, val onPaid: suspend (ref: String, method: String, tip: Int) -> Unit, val memberId: String? = null)
 
 private fun MainActivity.checkExtras(pay: com.goldsky.ssp.feature.retail.dine.CheckPay?, dine: com.goldsky.ssp.feature.retail.dine.DineViewModel, staffName: String?): PayExtras? =
     pay?.let {
         PayExtras(
             banner = "TABLE ${it.tableName}  #${it.checkNo}" + (if (it.label.isNotEmpty()) "  ${it.label}" else ""),
-            onPaid = { ref, method, tip -> dine.paymentDone(this, it, ref, tip, method, staffName) }
+            onPaid = { ref, method, tip -> dine.paymentDone(this, it, ref, tip, method, staffName) },
+            memberId = it.memberId
         )
     }
 

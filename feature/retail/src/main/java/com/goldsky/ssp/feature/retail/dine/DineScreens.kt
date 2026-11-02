@@ -392,20 +392,24 @@ fun CheckPayDialog(
     val picked = remember { mutableStateListOf<String>() }
     var ways by remember { mutableStateOf(detail.check.guests.coerceIn(2, 20)) }
     val table = detail.table?.name ?: "?"
+    var member by remember { mutableStateOf<com.goldsky.ssp.payment.LoyaltyRepository.Member?>(null) }
+    val unpaidLines = detail.unpaidItems.map { SaleLine(it.displayName, it.quantity, it.unit_price_cents, it.tax_rate_bps, it.product_id) }
     val chosen: CheckPay? = when (mode) {
-        0 -> CheckPay(detail.check.id, detail.balanceCents, null,
-            detail.unpaidItems.map { SaleLine(it.displayName, it.quantity, it.unit_price_cents, it.tax_rate_bps, it.product_id) },
-            "", table, detail.check.check_no)
+        0 -> CheckPay(detail.check.id, detail.balanceCents, null, unpaidLines, "", table, detail.check.check_no)
         1 -> DineRepository.amountForItems(detail, picked).takeIf { it > 0 }?.let { amount ->
             val lines = detail.unpaidItems.filter { it.id in picked }
             CheckPay(detail.check.id, amount, picked.toList(),
                 lines.map { SaleLine(it.displayName, it.quantity, it.unit_price_cents, it.tax_rate_bps, it.product_id) },
                 "", table, detail.check.check_no)
         }
-        else -> CheckPay(detail.check.id, DineRepository.equalShare(detail.balanceCents, detail.balanceCents, ways, ways),
-            null, emptyList(), "1/$ways", table, detail.check.check_no)
+        // A share carries no lines, except the one that settles the check: it carries what's
+        // left, so the dishes (stock, item sales) are counted once the check is paid.
+        else -> DineRepository.equalShare(detail.balanceCents, detail.balanceCents, ways, ways).let { amount ->
+            CheckPay(detail.check.id, amount, null, if (amount >= detail.balanceCents) unpaidLines else emptyList(),
+                "1/$ways", table, detail.check.check_no)
+        }
     }?.takeIf { it.amountCents > 0 }
-    val pay = chosen?.let { it.copy(taxCents = CheckPay.taxOf(detail, it.amountCents, if (mode == 1) it.lines else null)) }
+    val pay = chosen?.let { it.copy(taxCents = CheckPay.taxOf(detail, it.amountCents, if (mode == 1) it.lines else null), memberId = member?.id) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -438,6 +442,7 @@ fun CheckPayDialog(
                         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { GuestsStepper(ways) { ways = it.coerceIn(2, 20) } }
                     }
                 }
+                com.goldsky.ssp.feature.retail.ui.LoyaltyEarnRow(member, onChange = { member = it })
                 pay?.let {
                     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.dine_pay_this, money(it.amountCents)), fontWeight = FontWeight.Bold,

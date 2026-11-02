@@ -358,7 +358,7 @@ class MainActivity : ComponentActivity() {
                                 onPay = { cp, method ->
                                     choosingCheckPay = false
                                     checkPay = cp
-                                    checkout(CheckoutSale(cp.amountCents - cp.taxCents, cp.taxCents, cp.lines), method = method)
+                                    checkout(CheckoutSale(cp.amountCents - cp.taxCents, cp.taxCents, cp.lines, memberId = cp.memberId), method = method)
                                 },
                                 onDismiss = { choosingCheckPay = false }
                             )

@@ -57,6 +57,32 @@ fun LoyaltyMemberBar(viewModel: RetailViewModel, modifier: Modifier = Modifier) 
     if (finding) FindMemberDialog(onPicked = { viewModel.chooseMember(it); finding = false }, onDismiss = { finding = false })
 }
 
+/**
+ * A table payment's loyalty member (when the store has loyalty on): the payment earns
+ * points for them. No reward here -- it would change what the check's payments add up to.
+ */
+@Composable
+fun LoyaltyEarnRow(member: LoyaltyRepository.Member?, onChange: (LoyaltyRepository.Member?) -> Unit, modifier: Modifier = Modifier) {
+    var settings by remember { mutableStateOf(LoyaltyRepository.settings()) }
+    LaunchedEffect(Unit) { settings = LoyaltyRepository.refreshSettings() }
+    if (!settings.enabled) return
+    var finding by remember { mutableStateOf(false) }
+
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Default.Loyalty, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        if (member == null) {
+            TextButton(onClick = { finding = true }) { Text(stringResource(R.string.loyalty_add_member), fontWeight = FontWeight.Bold) }
+        } else {
+            Text(member.label + " · " + stringResource(R.string.loyalty_points, member.points), fontWeight = FontWeight.Bold,
+                maxLines = 1, modifier = Modifier.weight(1f))
+            IconButton(onClick = { onChange(null) }) { Icon(Icons.Default.Close, stringResource(R.string.loyalty_remove)) }
+        }
+    }
+
+    if (finding) FindMemberDialog(onPicked = { onChange(it); finding = false }, onDismiss = { finding = false })
+}
+
 /** Phone -> the member, or sign them up (name optional). */
 @Composable
 fun FindMemberDialog(onPicked: (LoyaltyRepository.Member) -> Unit, onDismiss: () -> Unit) {

@@ -318,7 +318,9 @@ data class CheckPay(
     val tableName: String,
     val checkNo: Int,
     /** The amount's tax part (transaction row, HST report); see [taxOf]. */
-    val taxCents: Int = 0
+    val taxCents: Int = 0,
+    /** Loyalty member this payment earns points for (LoyaltyRepository.recordSale once PAID). */
+    val memberId: String? = null
 ) {
     companion object {
         /**
