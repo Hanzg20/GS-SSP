@@ -55,6 +55,7 @@ object DeviceRepository {
     private const val KEY_TIPS_ENABLED = "tips_enabled"
     private const val KEY_BUSINESS_TYPE = "business_type"
     private const val KEY_KITCHEN_PRINTER = "kitchen_printer"
+    private const val KEY_DRAWER_PRINTER = "drawer_printer"
     private const val KEY_SCAN_SITE = "scan_site_url"
     private const val KEY_NUVEI_APP_ID = "nuvei_app_id"
     private const val KEY_REGION = "region"
@@ -214,6 +215,14 @@ object DeviceRepository {
 
     fun persistKitchenPrinter(value: String) {
         prefs()?.edit()?.putString(KEY_KITCHEN_PRINTER, value.trim())?.apply()
+    }
+
+    /** "host" or "host:port" of the receipt printer the cash drawer is plugged into (ESC/POS); null = no drawer. */
+    fun getDrawerPrinter(): String? = prefs()?.getString(KEY_DRAWER_PRINTER, null)?.trim()?.ifBlank { null }
+    fun getDrawerPrinterHost(): String? = getDrawerPrinter()?.substringBefore(':')?.ifBlank { null }
+    fun getDrawerPrinterPort(): Int = getDrawerPrinter()?.substringAfter(':', "")?.toIntOrNull() ?: NetworkKitchenPrinter.DEFAULT_PORT
+    fun persistDrawerPrinter(value: String) {
+        prefs()?.edit()?.putString(KEY_DRAWER_PRINTER, value.trim())?.apply()
     }
 
     fun persistTipsEnabled(enabled: Boolean) {

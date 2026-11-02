@@ -313,6 +313,7 @@ class MainActivity : ComponentActivity() {
                                     onCollectCard = { collectDelivery(it, "CARD") },
                                     onCollectCash = { collectDelivery(it, "CASH") }
                                 )
+                                OureaDestination.DRAWER -> OureaDrawerScreen(signedIn)
                                 // The journal (notes, to-dos, checklists, expenses, stock), managers only as on Iris.
                                 OureaDestination.JOURNAL -> if (signedIn.isManager)
                                     com.goldsky.ssp.feature.retail.screens.JournalScreen(onScanReceipt = { destination = OureaDestination.SCAN_RECEIPT })
@@ -636,6 +637,8 @@ class MainActivity : ComponentActivity() {
         // network is down) and printing follow in the background -- waiting on two
         // cloud writes kept the dialog away 6-9 s.
         val change = cashReceivedCents - total
+        // The change comes out of the drawer (on the receipt printer, if one is set).
+        CoroutineScope(Dispatchers.IO).launch { CashDrawerRepository.kick() }
         onStateChange(OureaPaymentUiState.Success("Cash received. Change due: $${"%.2f".format(change / 100.0)}", amountCents = total))
 
         CoroutineScope(Dispatchers.IO).launch {

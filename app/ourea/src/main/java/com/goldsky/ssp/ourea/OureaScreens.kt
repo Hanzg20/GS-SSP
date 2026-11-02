@@ -76,7 +76,7 @@ import java.util.Calendar
 import java.util.Locale
 
 /** Which of the sidebar's wired-up destinations is currently showing. */
-enum class OureaDestination { TABLES, CHECKOUT, INSIGHTS, APEX, PRODUCTS, TRANSACTIONS, DAY_REPORT, DELIVERY, JOURNAL, SCAN_RECEIPT, SETTINGS }
+enum class OureaDestination { TABLES, CHECKOUT, INSIGHTS, APEX, PRODUCTS, TRANSACTIONS, DAY_REPORT, DELIVERY, JOURNAL, SCAN_RECEIPT, DRAWER, SETTINGS }
 
 /**
  * Left icon rail modeled on the reference screenshots' sidebar. Only wired
@@ -108,40 +108,43 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
         // products, the journal (as on Iris) and Settings.
         if (isManager) {
             SidebarIcon(Icons.Default.Dashboard, current == OureaDestination.INSIGHTS) { onSelect(OureaDestination.INSIGHTS) }
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             // Apex (小海狸 / Beaver): the AI assistant, as the mascot itself (still while a payment is on screen).
-            Box(Modifier.size(52.dp).clip(CircleShape).clickable { onSelect(OureaDestination.APEX) }, contentAlignment = Alignment.Center) {
-                com.goldsky.ssp.feature.apex.BeaverMascot(48.dp, animate = mascotMoves, selected = current == OureaDestination.APEX, pollAlerts = true)
+            Box(Modifier.size(48.dp).clip(CircleShape).clickable { onSelect(OureaDestination.APEX) }, contentAlignment = Alignment.Center) {
+                com.goldsky.ssp.feature.apex.BeaverMascot(44.dp, animate = mascotMoves, selected = current == OureaDestination.APEX, pollAlerts = true)
             }
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(2.dp))
         }
         // Dine-in: the floor first; the cart stays for take-out at the counter.
         if (com.goldsky.ssp.feature.retail.ui.isDineIn()) {
             SidebarIcon(Icons.Default.TableRestaurant, current == OureaDestination.TABLES) { onSelect(OureaDestination.TABLES) }
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(2.dp))
         }
         SidebarIcon(Icons.Default.ShoppingCart, current == OureaDestination.CHECKOUT) { onSelect(OureaDestination.CHECKOUT) }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(2.dp))
         if (isManager) {
             SidebarIcon(Icons.Default.Inventory2, current == OureaDestination.PRODUCTS) { onSelect(OureaDestination.PRODUCTS) }
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(2.dp))
         }
         SidebarIcon(Icons.Default.History, current == OureaDestination.TRANSACTIONS || current == OureaDestination.DAY_REPORT) { onSelect(OureaDestination.TRANSACTIONS) }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(2.dp))
         SidebarIcon(Icons.Default.LocalShipping, current == OureaDestination.DELIVERY) { onSelect(OureaDestination.DELIVERY) }
+        Spacer(modifier = Modifier.height(2.dp))
+        // The cash drawer: whoever runs the till opens and closes it.
+        SidebarIcon(Icons.Default.PointOfSale, current == OureaDestination.DRAWER) { onSelect(OureaDestination.DRAWER) }
         if (isManager) {
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             SidebarIcon(Icons.Default.MenuBook, current == OureaDestination.JOURNAL || current == OureaDestination.SCAN_RECEIPT) { onSelect(OureaDestination.JOURNAL) }
         }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(2.dp))
         }
         // The signed-in person's time clock.
         staff?.let {
             com.goldsky.ssp.feature.retail.screens.ClockButton(it, compact = true)
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(2.dp))
         }
         if (isManager) SidebarIcon(Icons.Default.Settings, current == OureaDestination.SETTINGS) { onSelect(OureaDestination.SETTINGS) }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(2.dp))
         SidebarIcon(Icons.Default.Lock, false, onLock)
     }
 }
@@ -154,7 +157,7 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
 private fun SidebarIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(46.dp)
+            .size(44.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(if (selected) OureaSurfaceVariant else Color.Transparent),
         contentAlignment = Alignment.Center

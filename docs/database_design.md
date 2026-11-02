@@ -94,7 +94,7 @@ schema and its name does not repeat the domain: `dine.checks`, not
 | `dine` | dine-in | **done 2026-10-13** |
 | `office` | store back office (the Journal / 手账): checklists; expenses, reminders, notes to move | **checklists 2026-10-16** |
 | `sales` | ~~shared orders / lines / payments~~ -- dropped 2026-10-28: each vertical keeps its own transactions (§4) | not built |
-| `retail` | retail extension tables: stock_moves (2026-11-01, `docs/migrations/2026-11-01_inventory.sql`) | **started 2026-11-01** |
+| `retail` | retail extension tables: stock_moves (2026-11-01, `docs/migrations/2026-11-01_inventory.sql`); drawer_sessions / drawer_moves (cash drawer, 2026-11-02, `docs/migrations/2026-11-02_cash_drawer.sql`) | **started 2026-11-01** |
 | `wash`, `ev`, `parking`, `vending`, `timer` | each vertical's own extension tables | as each is built or migrated |
 | `member` | loyalty (2026-11-01); VIP tables to move | **started 2026-11-01** |
 | `media`, `apex`, `ops` | see §2 | to migrate |
