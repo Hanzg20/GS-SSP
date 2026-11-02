@@ -12,7 +12,7 @@
 -- wasn't paid), Cael adjustments, and a trigger that undoes a sale's points
 -- when it is voided / refunded whole (earned taken back, redeemed given back).
 -- Every move is a row in member.points_ledger, keyed by the sale so a replayed
--- call never counts twice. Partial refunds keep the points (known gap).
+-- call never counts twice. Partial refunds: see 2026-11-01_loyalty_partial_refunds.sql.
 --
 -- Separate from vip_cards (stored value, wash / laundry).
 
