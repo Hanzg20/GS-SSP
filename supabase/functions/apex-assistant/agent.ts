@@ -511,7 +511,11 @@ async function groqSend(key: string, body: Record<string, unknown>): Promise<any
   if (res.status === 429) {
     const wait = Number(res.headers.get("retry-after") ?? "") || 6;
     if (wait <= 15) { await new Promise((ok) => setTimeout(ok, wait * 1000 + 300)); res = await send(); }
-    if (res.status === 429) throw new BusyError();
+    if (res.status === 429) {
+      // Which limit (tokens a minute / a day) -- the terminal only says "busy".
+      console.warn("[apex-agent] groq 429", res.headers.get("retry-after"), (await res.text()).slice(0, 300));
+      throw new BusyError();
+    }
   }
   const data = await res.json();
   if (!res.ok) throw new Error(`groq ${res.status}: ${JSON.stringify(data).slice(0, 300)}`);

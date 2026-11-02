@@ -70,6 +70,9 @@ object SupabaseClientProvider {
         engine {
             config {
                 connectionPool(industrialPool)
+                // 小海狸 looks things up several times before answering (apex-assistant
+                // tool loop): OkHttp's default 10 s read timeout cut it off.
+                readTimeout(60, TimeUnit.SECONDS)
             }
         }
         install(ContentNegotiation) {
