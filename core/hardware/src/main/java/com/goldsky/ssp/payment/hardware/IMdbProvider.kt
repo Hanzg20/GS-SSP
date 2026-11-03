@@ -35,4 +35,16 @@ interface IMdbProvider {
      * Denies a pending vend request.
      */
     fun denyVend(): Boolean
+
+    /** The MDB board could be opened (polling is running). */
+    fun isOpen(): Boolean = true
+
+    /** A vending machine (VMC) is talking on the bus; null = can't tell. */
+    fun busOnline(): Boolean? = null
+
+    /** Cashless "Begin Session": a card is good for up to [funds] (dollars). False = not supported / failed. */
+    fun beginSession(funds: Float): Boolean = false
+
+    /** Ends the current cashless session. */
+    fun endSession(): Boolean = false
 }

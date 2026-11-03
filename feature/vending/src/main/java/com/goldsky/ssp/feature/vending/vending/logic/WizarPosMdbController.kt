@@ -48,6 +48,10 @@ class WizarPosMdbController(context: Context) : IMdbController {
         mdbProvider = hardware.getMdbProvider()
     }
 
+    override val ready: Boolean get() = mdbProvider.isOpen()
+
+    override fun machineOnline(): Boolean? = mdbProvider.busOnline()
+
     override fun initialize() {
         mdbProvider.startPolling(object : IMdbProvider.MdbEventListener {
             override fun onVendRequest(amount: Float, item: Int) {
@@ -86,6 +90,14 @@ class WizarPosMdbController(context: Context) : IMdbController {
         if (!mdbProvider.denyVend()) {
             Log.e(TAG, "denyVend() failed -- no pending request or ExtBoard error")
         }
+    }
+
+    override fun beginSession(fundsCents: Int) {
+        if (!mdbProvider.beginSession(fundsCents / 100f)) Log.e(TAG, "beginSession($fundsCents) failed")
+    }
+
+    override fun endSession() {
+        if (!mdbProvider.endSession()) Log.w(TAG, "endSession() failed")
     }
 
     override fun setFailNext(fail: Boolean) {

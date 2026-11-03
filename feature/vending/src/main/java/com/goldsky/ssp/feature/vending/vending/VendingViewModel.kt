@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.goldsky.ssp.DeviceAdapter
+import com.goldsky.ssp.payment.PaymentProviderFactory
 import com.goldsky.ssp.vending.db.VendingOrder
 import com.goldsky.ssp.vending.logic.*
 import kotlinx.coroutines.Job
@@ -20,12 +21,12 @@ import kotlinx.coroutines.launch
 /**
  * The vend loop (see [VendingState] for the two flows: card first / item first).
  *
- * Card payment is NOT wired to a real acquirer yet. Until it is:
- *  - on real hardware every terminal shows [VendingState.Unavailable] and denies
- *    each vend request -- never a free item, never a fake sale;
- *  - payment is simulated only off the Q3mini in a debuggable build (emulator, to
- *    work on the screens), driven by adb (see MainActivity), and a simulated
- *    vend records nothing: no order, no inventory change, no sync.
+ * Money ([VendPayment]): on the Q3mini UPT (real MDB) the terminal's payment app --
+ * card first = a hold settled at the item's price after the machine reports the
+ * vend, item first = a sale. Anything that ends without an item releases the hold
+ * or reverses the sale (never charged-but-unfulfilled). Off the Q3mini there is no
+ * vending machine to talk to: a debuggable build simulates (emulator, driven by adb
+ * from MainActivity) and records nothing; any other build shows Unavailable.
  */
 class VendingViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -35,29 +36,35 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     private val _french = MutableStateFlow(false)
     val french: StateFlow<Boolean> = _french.asStateFlow()
 
-    // Real hardware only on Q3mini UPT (per docs/wizarpos_upt_integration_spec.md's
-    // own "机型检测" guidance); every other model/dev-off-device path keeps using
-    // the simulator, same as before this switch existed.
-    private val mdbController: IMdbController =
-        if (DeviceAdapter.getModel() == DeviceAdapter.HardwareModel.WIZARPOS_Q3MINI) {
-            WizarPosMdbController(application)
-        } else {
-            MockMdbController()
-        }
+    private val onQ3mini = DeviceAdapter.getModel() == DeviceAdapter.HardwareModel.WIZARPOS_Q3MINI
 
-    val simulated = mdbController is MockMdbController &&
+    // Real hardware only on Q3mini UPT (per docs/wizarpos_upt_integration_spec.md's
+    // own "机型检测" guidance); everything else uses the simulator.
+    private val mdbController: IMdbController =
+        if (onQ3mini) WizarPosMdbController(application) else MockMdbController()
+
+    val simulated = !onQ3mini &&
         (application.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+    private val payment: VendPayment? = when {
+        onQ3mini -> runCatching { VendPayment.Real(PaymentProviderFactory.getPaymentProvider(application, "WIZARPOS")) }
+            .onFailure { Log.e(TAG, "No WIZARPOS payment provider: ${it.message}") }.getOrNull()
+        simulated -> VendPayment.Simulated()
+        else -> null
+    }
+
+    /** The open card-first hold, if any: its ref is what gets completed or released. */
+    private var holdRef: String? = null
 
     private var timerJob: Job? = null
     private var resultJob: Job? = null
-    private var declineNext = false
 
     companion object {
         private const val TAG = "VendingVM"
         private const val DISPENSE_TIMEOUT_MS = 30_000L
-        /** How long a card-first customer has to choose on the machine. */
+        /** How long a card-first customer has to choose on the machine (owner, 2026-11-02). */
         const val SESSION_MS = 60_000L
-        /** The card-first hold; an item above it is refused. */
+        /** The card-first hold; an item above it is refused (owner, 2026-11-02). */
         const val SESSION_LIMIT_CENTS = 1000
         private const val RESULT_MS = 6_000L
     }
@@ -68,10 +75,31 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
         OrderRepository.init(application)
 
         setupMdbListeners()
-        if (!simulated) {
+        if (payment == null || !mdbController.ready) {
+            Log.e(TAG, "Unavailable: payment ${if (payment == null) "missing" else "ok"}, MDB ${if (mdbController.ready) "open" else "not open"}")
             _uiState.value = VendingState.Unavailable
         } else {
-            triggerSync()
+            if (!simulated) triggerSync()
+            watchMachine()
+        }
+    }
+
+    /**
+     * No vending machine on the bus = nothing to sell: START would only put a hold on a
+     * card. Idle <-> Unavailable follows the bus every 10 s; a sale in progress is left alone.
+     */
+    private fun watchMachine() {
+        viewModelScope.launch {
+            var lastOnline: Boolean? = null
+            while (true) {
+                val online = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { mdbController.machineOnline() } != false
+                if (online != lastOnline) Log.i(TAG, "Vending machine ${if (online) "online" else "OFFLINE"}")
+                lastOnline = online
+                val s = _uiState.value
+                if (!online && s == VendingState.Idle) _uiState.value = VendingState.Unavailable
+                else if (online && s == VendingState.Unavailable) _uiState.value = VendingState.Idle
+                delay(10_000)
+            }
         }
     }
 
@@ -84,17 +112,19 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
         _french.value = !_french.value
     }
 
+    private fun newRef() = "VND-${System.currentTimeMillis()}"
+
     private fun setupMdbListeners() {
         mdbController.initialize()
 
         mdbController.onVendRequest { amount, slot ->
+            Log.i(TAG, "Vend request: item $slot, $amount cents, state ${_uiState.value}")
             when (val s = _uiState.value) {
-                VendingState.Unavailable -> mdbController.denyVend()
                 is VendingState.SessionOpen -> when {
-                    InventoryManager.isSoldOut(slot) -> deny(VendingState.Reason.SOLD_OUT, voidHold = false)
-                    amount > s.limitCents -> deny(VendingState.Reason.OVER_LIMIT, voidHold = false)
-                    // Already authorized: the hold covers it, dispense now.
-                    else -> dispense("SIM-${System.currentTimeMillis()}", amount, slot)
+                    InventoryManager.isSoldOut(slot) -> endSession(VendingState.Reason.SOLD_OUT)
+                    amount > s.limitCents -> endSession(VendingState.Reason.OVER_LIMIT)
+                    // The hold covers it: dispense now, settle at the price once it dropped.
+                    else -> dispense(holdRef ?: newRef(), amount, slot)
                 }
                 VendingState.Idle, is VendingState.NotCharged, is VendingState.Success -> {
                     resultJob?.cancel()
@@ -105,93 +135,128 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                         _uiState.value = VendingState.VendRequestReceived(amount, slot)
                     }
                 }
+                // Unavailable, or busy with a payment: the machine gets a no.
                 else -> mdbController.denyVend()
             }
         }
 
         mdbController.onVendSuccess {
-            val currentState = _uiState.value
-            if (currentState is VendingState.Dispensing) {
+            val s = _uiState.value
+            if (s is VendingState.Dispensing) {
                 timerJob?.cancel()
-                // Capture the hold / keep the sale at the item's price here once payment is real.
-                if (!simulated) {
-                    InventoryManager.decrement(getApplication(), currentState.itemSlot)
-                    updateOrderStatus(currentState.transactionId, "SUCCESS", "PAID")
-                    triggerSync()
+                InventoryManager.decrement(getApplication(), s.itemSlot)
+                val hold = holdRef
+                holdRef = null
+                if (hold != null) {
+                    mdbController.endSession()
+                    // Card first: the customer has the item; now take the price from the hold.
+                    payment?.complete(hold, s.amountCents) { ok ->
+                        if (!ok) Log.e(TAG, "Completion of $hold failed: item given, money not settled -- check PAYWizard")
+                        record(s.transactionId, if (ok) "PAID" else "PENDING", "SUCCESS")
+                    }
+                } else {
+                    record(s.transactionId, "PAID", "SUCCESS")
                 }
-                showResult(VendingState.Success(currentState.transactionId, currentState.amountCents, currentState.itemSlot))
+                showResult(VendingState.Success(s.transactionId, s.amountCents, s.itemSlot))
             }
         }
 
         mdbController.onVendFailure { code ->
-            val currentState = _uiState.value
-            if (currentState is VendingState.Dispensing) {
+            val s = _uiState.value
+            if (s is VendingState.Dispensing) {
                 timerJob?.cancel()
-                performAutoVoid(currentState.transactionId, "MDB_FAILURE_$code")
+                giveBack(s.transactionId, s.amountCents, "MDB_FAILURE_$code")
             }
         }
     }
 
     /** Card first: START touched on the idle screen. */
     fun startSession() {
-        if (_uiState.value != VendingState.Idle || !simulated) return
+        val pay = payment ?: return
+        if (_uiState.value != VendingState.Idle) return
+        val ref = newRef()
         _uiState.value = VendingState.Authorizing(null)
-        viewModelScope.launch {
-            delay(1800)
-            if (_uiState.value != VendingState.Authorizing(null)) return@launch
-            if (takeDecline()) {
-                showResult(VendingState.NotCharged(VendingState.Reason.DECLINED))
-                return@launch
+        pay.hold(SESSION_LIMIT_CENTS, ref) { r ->
+            if (_uiState.value != VendingState.Authorizing(null)) {
+                // The screen moved on meanwhile; never leave a hold behind.
+                if (r is VendPayment.Result.Approved) pay.release(ref) {}
+                return@hold
             }
-            val deadline = System.currentTimeMillis() + SESSION_MS
-            _uiState.value = VendingState.SessionOpen(SESSION_LIMIT_CENTS, deadline)
-            timerJob?.cancel()
-            timerJob = viewModelScope.launch {
-                delay(SESSION_MS)
-                if (_uiState.value is VendingState.SessionOpen) {
-                    // Void the hold here once payment is real.
-                    showResult(VendingState.NotCharged(VendingState.Reason.NO_SELECTION))
+            when (r) {
+                is VendPayment.Result.Approved -> {
+                    holdRef = ref
+                    mdbController.beginSession(SESSION_LIMIT_CENTS)
+                    val deadline = System.currentTimeMillis() + SESSION_MS
+                    _uiState.value = VendingState.SessionOpen(SESSION_LIMIT_CENTS, deadline)
+                    timerJob?.cancel()
+                    timerJob = viewModelScope.launch {
+                        delay(SESSION_MS)
+                        if (_uiState.value is VendingState.SessionOpen) endSession(VendingState.Reason.NO_SELECTION)
+                    }
+                }
+                VendPayment.Result.Declined -> showResult(VendingState.NotCharged(VendingState.Reason.DECLINED))
+                is VendPayment.Result.Failed -> {
+                    // No clear answer: a hold may exist -- release it to be sure.
+                    pay.release(ref) {}
+                    showResult(VendingState.NotCharged(VendingState.Reason.DECLINED))
                 }
             }
         }
     }
 
+    /**
+     * Ends a card-first session without an item: the machine's session is closed (and a
+     * pending selection refused), the hold released.
+     */
+    private fun endSession(reason: VendingState.Reason) {
+        timerJob?.cancel()
+        if (reason == VendingState.Reason.SOLD_OUT || reason == VendingState.Reason.OVER_LIMIT) mdbController.denyVend()
+        mdbController.endSession()
+        holdRef?.let { ref ->
+            payment?.release(ref) { ok -> if (!ok) Log.e(TAG, "Release of hold $ref failed -- it expires on its own") }
+        }
+        holdRef = null
+        showResult(VendingState.NotCharged(reason))
+    }
+
     /** Item first: PAY touched on the price screen. */
     fun startPayment() {
-        val currentState = _uiState.value
-        if (currentState !is VendingState.VendRequestReceived || !simulated) return
-        _uiState.value = VendingState.Authorizing(currentState.amountCents)
-        viewModelScope.launch {
-            delay(1800)
-            if (_uiState.value !is VendingState.Authorizing) return@launch
-            if (takeDecline()) {
-                deny(VendingState.Reason.DECLINED, voidHold = false)
-                return@launch
+        val pay = payment ?: return
+        val s = _uiState.value
+        if (s !is VendingState.VendRequestReceived) return
+        val ref = newRef()
+        _uiState.value = VendingState.Authorizing(s.amountCents)
+        pay.sale(s.amountCents, ref) { r ->
+            when (r) {
+                is VendPayment.Result.Approved -> {
+                    if (_uiState.value is VendingState.Authorizing) dispense(ref, s.amountCents, s.itemSlot)
+                    else pay.reverse(ref, s.amountCents) {} // the screen moved on: give it back
+                }
+                VendPayment.Result.Declined -> declineVend()
+                is VendPayment.Result.Failed -> declineVend()
             }
-            dispense("SIM-${System.currentTimeMillis()}", currentState.amountCents, currentState.itemSlot)
         }
+    }
+
+    private fun declineVend() {
+        mdbController.denyVend()
+        showResult(VendingState.NotCharged(VendingState.Reason.DECLINED))
     }
 
     /** CANCEL on the session or price screen. */
     fun cancel() {
         when (_uiState.value) {
-            is VendingState.SessionOpen -> deny(VendingState.Reason.CANCELLED, voidHold = true)
-            is VendingState.VendRequestReceived -> deny(VendingState.Reason.CANCELLED, voidHold = false)
+            is VendingState.SessionOpen -> endSession(VendingState.Reason.CANCELLED)
+            is VendingState.VendRequestReceived -> {
+                mdbController.denyVend()
+                showResult(VendingState.NotCharged(VendingState.Reason.CANCELLED))
+            }
             else -> {}
         }
     }
 
-    private fun deny(reason: VendingState.Reason, voidHold: Boolean) {
-        timerJob?.cancel()
-        mdbController.denyVend()
-        // Void the hold here once payment is real (voidHold).
-        Log.i(TAG, "Vend denied: $reason (void hold: $voidHold)")
-        showResult(VendingState.NotCharged(reason))
-    }
-
     private fun dispense(txnId: String, amount: Int, slot: String) {
         if (!simulated) {
-            // 1. Write PENDING record to local repository
             OrderRepository.saveOrder(getApplication(), VendingOrder(
                 orderId = txnId,
                 amountCents = amount,
@@ -200,8 +265,6 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                 dispenseStatus = "PENDING"
             ))
         }
-
-        // 2. Tell MDB to dispense
         mdbController.approveVend()
         _uiState.value = VendingState.Dispensing(
             transactionId = txnId,
@@ -209,26 +272,37 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
             itemSlot = slot,
             deadline = System.currentTimeMillis() + DISPENSE_TIMEOUT_MS
         )
-
-        // 3. Start Auto-Void timer
         timerJob?.cancel()
         timerJob = viewModelScope.launch {
             delay(DISPENSE_TIMEOUT_MS)
-            val currentState = _uiState.value
-            if (currentState is VendingState.Dispensing && currentState.transactionId == txnId) {
-                performAutoVoid(txnId, "TIMEOUT")
-            }
+            val s = _uiState.value
+            if (s is VendingState.Dispensing && s.transactionId == txnId) giveBack(txnId, amount, "TIMEOUT")
         }
     }
 
-    private fun performAutoVoid(txnId: String, reason: String) {
-        // Void the sale / hold here once payment is real.
-        Log.w(TAG, "Auto-void $txnId: $reason")
-        if (!simulated) {
-            updateOrderStatus(txnId, "FAILED", "VOIDED")
-            triggerSync()
+    /** No item came out: release the hold / reverse the sale. */
+    private fun giveBack(txnId: String, amount: Int, reason: String) {
+        Log.w(TAG, "Vend $txnId failed ($reason): giving the money back")
+        val hold = holdRef
+        holdRef = null
+        val done = { ok: Boolean ->
+            if (!ok) Log.e(TAG, "Give-back of $txnId failed -- refund it by hand")
+            record(txnId, if (ok) "VOIDED" else "PAID", "FAILED")
+        }
+        if (hold != null) {
+            mdbController.endSession()
+            payment?.release(hold, done)
+        } else {
+            payment?.reverse(txnId, amount, done)
         }
         showResult(VendingState.NotCharged(VendingState.Reason.VEND_FAILED))
+    }
+
+    /** Final state of a real vend; the sync worker sends it to the cloud. Simulated vends record nothing. */
+    private fun record(txnId: String, paymentStatus: String, dispenseStatus: String) {
+        if (simulated) return
+        OrderRepository.updateOrder(getApplication(), txnId, dispenseStatus, paymentStatus)
+        triggerSync()
     }
 
     private fun showResult(state: VendingState) {
@@ -243,12 +317,6 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun takeDecline(): Boolean = declineNext.also { declineNext = false }
-
-    private fun updateOrderStatus(txnId: String, dispenseStatus: String, paymentStatus: String) {
-        OrderRepository.updateOrder(getApplication(), txnId, dispenseStatus, paymentStatus)
-    }
-
     /**
      * Simulator commands from adb (debuggable build, off the Q3mini only -- see
      * MainActivity): "select:<cents>:<item>" = the machine asks for a price,
@@ -261,7 +329,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
             "select" -> (mdbController as MockMdbController).simulateMachineSelection(
                 parts.getOrNull(1)?.toIntOrNull() ?: 175, parts.getOrNull(2) ?: "14")
             "fail" -> mdbController.setFailNext(true)
-            "decline" -> declineNext = true
+            "decline" -> (payment as? VendPayment.Simulated)?.declineNext = true
             "start" -> startSession()
             "pay" -> startPayment()
         }

@@ -119,6 +119,22 @@ interface IPaymentProvider {
     fun refundTransaction(refNum: String, amountInCents: Int, callback: PaymentCallback)
 
     /**
+     * Pre-authorization (a hold) for up to [amountInCents] -- card-first vending, where the
+     * price is only known after the customer chooses. Settled with [completeAuth] at the
+     * real price, or released with [voidAuth]. Vendors without it fail at once.
+     */
+    fun startPreAuth(amountInCents: Int, ecrRefNum: String, callback: PaymentCallback) =
+        callback.onFailure("Pre-authorization not supported on this terminal", isHardwareFault = true)
+
+    /** Settles the hold [refNum] (a [startPreAuth] ecrRefNum) at [amountInCents]. */
+    fun completeAuth(refNum: String, amountInCents: Int, callback: PaymentCallback) =
+        callback.onFailure("Pre-authorization not supported on this terminal", isHardwareFault = true)
+
+    /** Releases the hold [refNum] without charging. */
+    fun voidAuth(refNum: String, callback: PaymentCallback) =
+        callback.onFailure("Pre-authorization not supported on this terminal", isHardwareFault = true)
+
+    /**
      * MainActivity calls this before [startSale], expecting a cheap
      * presence-only check (e.g. "is any card there") separate from actually
      * running the transaction. Not every vendor SDK has such a check: if

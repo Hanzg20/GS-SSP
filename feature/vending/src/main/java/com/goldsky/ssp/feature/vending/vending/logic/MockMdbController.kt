@@ -51,6 +51,14 @@ class MockMdbController : IMdbController {
         }
     }
 
+    override fun beginSession(fundsCents: Int) {
+        Log.d("MockMdb", "VMC: session open, funds $fundsCents cents")
+    }
+
+    override fun endSession() {
+        Log.d("MockMdb", "VMC: session closed")
+    }
+
     override fun denyVend() {
         Log.d("MockMdb", "VMC: Received Deny. Transaction cancelled.")
     }

@@ -11,6 +11,8 @@ if (localPropertiesFile.exists()) {
     localProperties.load(new FileInputStream(localPropertiesFile))
 }
 
+ext.appVersion = "0.1.0"
+
 android {
     namespace 'com.goldsky.ssp.aegis.vend'
     compileSdk 34
@@ -19,12 +21,13 @@ android {
         applicationId "com.goldsky.ssp.aegis.vend"
         minSdk 25
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0-aegis-vend"
+        // versionCode/versionName come from ext.appVersion, see gradle/release-signing.gradle
 
         buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
         buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
-        buildConfigField "boolean", "IS_MOCK", "true"
+        // false, as on Wash / Timer: IS_MOCK=true on a real-hardware shell silently
+        // skipped every Supabase transaction write at a live site (2026-09-19).
+        buildConfigField "boolean", "IS_MOCK", "false"
     }
 
     buildFeatures {
@@ -40,19 +43,21 @@ android {
     kotlinOptions {
         jvmTarget = '11'
     }
+}
 
-    buildTypes {
-        debug {
-            // See app/aegis-wash/build.gradle's identical block for why -- cloudpos_sdk.aar
-            // is arm64-v8a only, blocking install on an x86_64 dev emulator entirely.
-            packagingOptions {
-                jniLibs {
-                    excludes += ["**/*.so"]
-                }
-            }
-        }
+// cloudpos_sdk.aar is arm64/armeabi only, so the x86_64 dev emulator refuses an APK that
+// carries its .so files: the DEBUG variant drops them (debug = emulator: screens and the
+// simulator). Done per variant on purpose -- a packagingOptions block inside
+// buildTypes { debug { } } is the android-wide one, and stripped the release too (2026-11-02:
+// libjni_cloudpos_ext_board.so missing on 255, MDB open crashed). The signed release that
+// terminals get keeps them.
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.packaging.jniLibs.excludes.add("**/*.so")
     }
 }
+
+apply from: rootProject.file('gradle/release-signing.gradle')
 
 dependencies {
     implementation 'androidx.core:core-ktx:1.9.0'

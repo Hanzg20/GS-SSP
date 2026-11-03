@@ -211,6 +211,48 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         }
     }
 
+    // Pre-authorization (protocol V2.3.13 A1.1: PreAuth / AuthCompletion / AuthVoid). The
+    // completion and void find the hold the same way a Reversal finds a sale: its
+    // TransIndexCode plus the identifiers PAYWizard returned for it. Not yet run against
+    // Nuvei -- whether the acquirer (and Interac) accepts pre-auth is still to be confirmed.
+    override fun startPreAuth(amountInCents: Int, ecrRefNum: String, callback: IPaymentProvider.PaymentCallback) {
+        Log.i(TAG, "Starting PAYWizard PREAUTH: $amountInCents cents")
+        saleAmounts[ecrRefNum] = amountInCents
+        CoroutineScope(Dispatchers.Main).launch {
+            callback.onProgress("CONNECTING TO TERMINAL...")
+            executeRequest(GlobalRequest(
+                TransType = "PreAuth",
+                TransAmount = amountInCents.toString(),
+                TransIndexCode = ecrRefNum,
+                CurrencyCode = currencyCode()
+            ), ecrRefNum, callback)
+        }
+    }
+
+    override fun completeAuth(refNum: String, amountInCents: Int, callback: IPaymentProvider.PaymentCallback) =
+        authFollowUp("AuthCompletion", "C-", refNum, amountInCents, callback)
+
+    override fun voidAuth(refNum: String, callback: IPaymentProvider.PaymentCallback) =
+        authFollowUp("AuthVoid", "AV-", refNum, saleAmounts[refNum], callback)
+
+    private fun authFollowUp(type: String, prefix: String, refNum: String, amountInCents: Int?, callback: IPaymentProvider.PaymentCallback) {
+        Log.i(TAG, "Requesting PAYWizard $type for $refNum ($amountInCents cents)")
+        CoroutineScope(Dispatchers.Main).launch {
+            callback.onProgress("CONNECTING TO TERMINAL...")
+            executeRequest(GlobalRequest(
+                TransType = type,
+                CurrencyCode = currencyCode(),
+                TransAmount = amountInCents?.toString(),
+                OriTransIndexCode = refNum,
+                OriTraceNum = saleIds[refNum]?.traceNum,
+                OriInvoiceNum = saleIds[refNum]?.invoiceNum,
+                OriTransId = saleIds[refNum]?.transId,
+                OriRrn = saleIds[refNum]?.rrn,
+                TransIndexCode = prefix + java.lang.System.currentTimeMillis()
+            ), refNum, callback)
+        }
+    }
+
     /**
      * PAYWizard QueryTransaction by OriTransIndexCode. Measured on the Q3mini
      * (2026-09-25): an approved sale answers TransResult=true with the
@@ -298,7 +340,7 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                     val authNo = root["AuthCode"]?.jsonPrimitive?.content ?: "OK"
                     val rrn = root["RRN"]?.jsonPrimitive?.content
                     Log.i(TAG, "Approved: TransIndexCode=$originalRef RRN=$rrn")
-                    if (request.TransType == "Purchase") {
+                    if (request.TransType == "Purchase" || request.TransType == "PreAuth") {
                         saleIds[originalRef] = SaleIds(field("TraceNum"), field("InvoiceNum"), field("TransID"), rrn)
                     }
                     callback.onCardInfo(info)

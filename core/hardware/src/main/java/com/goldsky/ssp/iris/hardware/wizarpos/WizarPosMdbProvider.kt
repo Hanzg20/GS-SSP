@@ -27,12 +27,36 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
                 extBoardDevice = terminal?.getDevice("com.cloudpos.device.extboard") as? ExtBoardDevice
                 extBoardDevice?.open()
                 Log.i(TAG, "ExtBoard opened for MDB")
-            } catch (e: Exception) {
+                logBoardState()
+            } catch (e: Throwable) {
+                // Throwable: a missing native lib is an UnsatisfiedLinkError, not an Exception.
                 Log.e(TAG, "MDB Open failed: ${e.message}")
+                extBoardDevice = null
                 return false
             }
         }
         return extBoardDevice != null
+    }
+
+    /**
+     * What the board is set to and whether a vending machine is on the bus -- read only,
+     * for the log: the amount scale (decimalPlace / scaleFactor) and Always Idle decide how
+     * a VMC's prices and sessions look to us, and haven't been checked on a real machine.
+     */
+    private fun logBoardState() {
+        val d = extBoardDevice ?: return
+        runCatching { Log.i(TAG, "Board version: ${d.boardVersion}") }.onFailure { Log.w(TAG, "getBoardVersion: ${it.message}") }
+        runCatching {
+            val c = d.config
+            Log.i(TAG, "MDB config: level=${c.level} currency=${c.currencyCode} decimals=${c.decimalPlace} scale=${c.scaleFactor}")
+        }.onFailure { Log.w(TAG, "getConfig: ${it.message}") }
+        runCatching {
+            val o = d.option
+            Log.i(TAG, "MDB options: alwaysIdle=${o.enableAlwaysIdle} expandedCurrency=${o.enableExpandedCurrency} " +
+                "remoteVend=${o.enableRemoteVend} negativeVend=${o.enableNegativeVend}")
+        }.onFailure { Log.w(TAG, "getOption: ${it.message}") }
+        runCatching { Log.i(TAG, "MDB bus: ${if (d.mdbConnStatus == 1) "online (VMC present)" else "offline (no VMC)"}") }
+            .onFailure { Log.w(TAG, "getMDBConnStatus: ${it.message}") }
     }
 
     /**
@@ -41,6 +65,14 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
     override fun startPolling(listener: IMdbProvider.MdbEventListener) {
         if (!ensureOpened()) return
         
+        // pollEvent answers "-1 Operation not permitted" at once until the board's MDB
+        // loop runs (seen on 255, 2026-11-02, before this call existed).
+        try {
+            extBoardDevice?.startLoop()
+            Log.i(TAG, "MDB loop started")
+        } catch (e: Exception) {
+            Log.e(TAG, "startLoop failed: ${e.message}")
+        }
         pollJob?.cancel()
         pollJob = CoroutineScope(Dispatchers.IO).launch {
             Log.i(TAG, "MDB Poll Loop Started")
@@ -51,14 +83,18 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
                         handleEvent(event, listener)
                     }
                 } catch (e: Exception) {
+                    // -110 = the 5 s wait ended with no event: normal, poll again.
+                    if (e.message?.contains("-110") == true) continue
+                    // Any other error returns at once: back off, or the loop spins a core.
                     Log.w(TAG, "Poll error: ${e.message}")
+                    delay(2000)
                 }
             }
         }
     }
 
     private fun handleEvent(event: MDBEvent, listener: IMdbProvider.MdbEventListener) {
-        Log.d(TAG, "MDB Event received: type=${event.eventType}")
+        Log.i(TAG, "MDB event: type=${event.eventType} result=${event.eventResult} amount=${event.eventAmount} item=${event.eventItem} count=${event.eventItemCount}")
         when (event.eventType) {
             MDBEvent.TYPE_VEND_REQUEST -> {
                 pendingVendEvent = event
@@ -100,8 +136,40 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
         }
     }
 
+    override fun isOpen(): Boolean = extBoardDevice != null
+
+    override fun busOnline(): Boolean? = try {
+        extBoardDevice?.mdbConnStatus?.let { it == 1 }
+    } catch (e: Exception) {
+        Log.w(TAG, "getMDBConnStatus: ${e.message}")
+        null
+    }
+
+    // Begin / end session: host-sent events, by the SDK's event types (MDBEvent.TYPE_BEGIN_SESSION /
+    // TYPE_VEND_CANCEL). The javadoc names them but doesn't describe this exchange -- unverified
+    // until a real VMC is on the bus; ask WizarPOS for the cashless session sequence.
+    override fun beginSession(funds: Float): Boolean = send(MDBEvent().apply {
+        eventType = MDBEvent.TYPE_BEGIN_SESSION
+        eventAmount = funds
+    })
+
+    override fun endSession(): Boolean = send(MDBEvent().apply { eventType = MDBEvent.TYPE_VEND_CANCEL })
+
+    private fun send(event: MDBEvent): Boolean {
+        if (!ensureOpened()) return false
+        return try {
+            extBoardDevice?.respondEvent(event)
+            Log.i(TAG, "Sent MDB event type=${event.eventType} amount=${event.eventAmount}")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "respondEvent(type=${event.eventType}) failed: ${e.message}")
+            false
+        }
+    }
+
     override fun stopPolling() {
         pollJob?.cancel()
+        runCatching { extBoardDevice?.stopLoop() }
         pendingVendEvent = null
         try {
             extBoardDevice?.close()

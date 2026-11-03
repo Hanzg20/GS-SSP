@@ -49,10 +49,18 @@ sealed class VendingState {
  */
 interface IMdbController {
     fun initialize()
+    /** False when the MDB board couldn't be opened: no machine to sell for. */
+    val ready: Boolean get() = true
+    /** A vending machine is on the bus (false = nothing to sell for; null = can't tell). */
+    fun machineOnline(): Boolean? = true
     fun onVendRequest(callback: (amount: Int, slot: String) -> Unit)
     fun onVendSuccess(callback: () -> Unit)
     fun onVendFailure(callback: (errorCode: Int) -> Unit)
     fun approveVend()
     fun denyVend()
+    /** Card first: tell the machine a card is good for up to [fundsCents] (MDB Begin Session). */
+    fun beginSession(fundsCents: Int)
+    /** Close the machine's session (no more selections on this card). */
+    fun endSession()
     fun setFailNext(fail: Boolean)
 }

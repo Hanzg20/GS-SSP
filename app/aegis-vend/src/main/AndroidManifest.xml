@@ -3,7 +3,21 @@
     package="com.goldsky.ssp.aegis.vend">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- WizarPOS: card payment + ext board (MDB on the Q3mini UPT's serial ext port); same set as aegis-timer -->
+    <uses-permission android:name="android.permission.CLOUDPOS_MSR" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SMARTCARD" />
+    <uses-permission android:name="android.permission.CLOUDPOS_CONTACTLESS_CARD" />
+    <uses-permission android:name="android.permission.CLOUDPOS_LED" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PIN_GET_PIN_BLOCK" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PIN_MAC" />
+    <uses-permission android:name="android.permission.CLOUDPOS_PIN_ENCRYPT_DATA" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SAFE_MODULE" />
+    <uses-permission android:name="android.permission.CLOUDPOS_INNER_GPIO" />
+    <uses-permission android:name="android.permission.CLOUDPOS_MCUCTL" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SERIAL" />
+    <uses-permission android:name="android.permission.CLOUDPOS_VIRTUAL_SERIAL_PORT" />
 
     <application
         android:name=".AegisVendApplication"
