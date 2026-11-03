@@ -15,6 +15,8 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
     
     companion object {
         private const val TAG = "WizarPosMdb"
+        /** ISO 4217 numeric (ExtBoardDevice MDB guide: "840 for USD"); the board reads it back as 0x1124. */
+        private const val CURRENCY_CAD = 124
     }
     
     private var extBoardDevice: ExtBoardDevice? = null
@@ -27,6 +29,7 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
                 extBoardDevice = terminal?.getDevice("com.cloudpos.device.extboard") as? ExtBoardDevice
                 extBoardDevice?.open()
                 Log.i(TAG, "ExtBoard opened for MDB")
+                setCurrencyCad()
                 logBoardState()
             } catch (e: Throwable) {
                 // Throwable: a missing native lib is an UnsatisfiedLinkError, not an Exception.
@@ -36,6 +39,22 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
             }
         }
         return extBoardDevice != null
+    }
+
+    /**
+     * The board came set to USD (reads 0x1840); the machines here are Canadian. Everything
+     * else in the config (level, decimals, scale) is kept as the board has it.
+     */
+    private fun setCurrencyCad() {
+        val d = extBoardDevice ?: return
+        runCatching {
+            val c = d.config
+            if (c.currencyCode != CURRENCY_CAD && c.currencyCode != 0x1124) {
+                Log.i(TAG, "MDB currency 0x${Integer.toHexString(c.currencyCode)} -> CAD")
+                c.currencyCode = CURRENCY_CAD
+                d.setConfig(c)
+            }
+        }.onFailure { Log.w(TAG, "Set currency CAD: ${it.message}") }
     }
 
     /**
@@ -108,18 +127,28 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
                 pendingVendEvent = null
                 listener.onVendFailure()
             }
+            // The machine cancelled: answer it the way WizarPOS's demo does (VEND_CANCEL, result 0).
+            MDBEvent.TYPE_VEND_CANCEL -> {
+                pendingVendEvent = null
+                send(MDBEvent().apply { eventType = MDBEvent.TYPE_VEND_CANCEL; eventResult = 0 })
+                listener.onVendCancel()
+            }
+            // The board asks for Begin Session when the machine isn't Always Idle; our card-first
+            // flow sends it once the hold is approved, so nothing to do here yet.
+            MDBEvent.TYPE_TRANSACTION_START -> Log.i(TAG, "Transaction start from the board")
         }
     }
 
     /**
      * Approves the pending vend request.
      */
-    override fun approveVend(): Boolean = respondToPendingVend(MDBEvent.TYPE_VEND_APPROVED)
+    override fun approveVend(): Boolean = respondToPendingVend(MDBEvent.TYPE_VEND_APPROVED, 1)
 
     /** Denies the pending vend request. */
-    override fun denyVend(): Boolean = respondToPendingVend(MDBEvent.TYPE_VEND_DENIED)
+    override fun denyVend(): Boolean = respondToPendingVend(MDBEvent.TYPE_VEND_DENIED, -1)
 
-    private fun respondToPendingVend(responseType: Int): Boolean {
+    // A fresh event with result 1 / -1 and the requested amount, as WizarPOS's MDBTestForCloudSDK does.
+    private fun respondToPendingVend(responseType: Int, result: Int): Boolean {
         val event = pendingVendEvent
         if (event == null) {
             Log.w(TAG, "respondToPendingVend($responseType) called with no pending vend request")
@@ -127,8 +156,11 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
         }
         pendingVendEvent = null
         return try {
-            event.eventType = responseType
-            extBoardDevice?.respondEvent(event)
+            extBoardDevice?.respondEvent(MDBEvent().apply {
+                eventType = responseType
+                eventResult = result
+                eventAmount = if (result == 1) event.eventAmount else 0f
+            })
             true
         } catch (e: Exception) {
             Log.e(TAG, "respondEvent($responseType) failed: ${e.message}")
@@ -159,9 +191,9 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
         null
     }
 
-    // Begin / end session: host-sent events, by the SDK's event types (MDBEvent.TYPE_BEGIN_SESSION /
-    // TYPE_VEND_CANCEL). The javadoc names them but doesn't describe this exchange -- unverified
-    // until a real VMC is on the bus; ask WizarPOS for the cashless session sequence.
+    // Begin session: BEGIN_SESSION with the funds, as WizarPOS's demo sends on TRANSACTION_START.
+    // End session: VEND_CANCEL sent by us -- the demo only sends it in answer to the machine's,
+    // so this half is still unverified until a real VMC is on the bus.
     override fun beginSession(funds: Float): Boolean = send(MDBEvent().apply {
         eventType = MDBEvent.TYPE_BEGIN_SESSION
         eventAmount = funds

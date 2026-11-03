@@ -14,6 +14,7 @@ class MockMdbController : IMdbController {
     private var vendRequestCallback: ((Int, String) -> Unit)? = null
     private var successCallback: (() -> Unit)? = null
     private var failureCallback: ((Int) -> Unit)? = null
+    private var cancelCallback: (() -> Unit)? = null
     private var failNext: Boolean = false
     /** The next approved vend gets no answer at all (the terminal's 30 s timeout gives the money back). */
     var silentNext: Boolean = false
@@ -32,6 +33,16 @@ class MockMdbController : IMdbController {
 
     override fun onVendFailure(callback: (Int) -> Unit) {
         this.failureCallback = callback
+    }
+
+    override fun onMachineCancel(callback: () -> Unit) {
+        this.cancelCallback = callback
+    }
+
+    /** The customer pressed cancel on the machine. */
+    fun machineCancel() {
+        Log.d("MockMdb", "VMC: cancel pressed on the machine (Simulated)")
+        cancelCallback?.invoke()
     }
 
     override fun setFailNext(fail: Boolean) {

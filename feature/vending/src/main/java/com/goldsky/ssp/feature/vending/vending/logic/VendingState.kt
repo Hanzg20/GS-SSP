@@ -58,6 +58,8 @@ interface IMdbController {
     fun onVendRequest(callback: (amount: Int, slot: String) -> Unit)
     fun onVendSuccess(callback: () -> Unit)
     fun onVendFailure(callback: (errorCode: Int) -> Unit)
+    /** The machine cancelled (its own cancel button, or it closed the session). */
+    fun onMachineCancel(callback: () -> Unit) {}
     fun approveVend()
     fun denyVend()
     /** Card first: tell the machine a card is good for up to [fundsCents] (MDB Begin Session). */

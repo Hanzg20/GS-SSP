@@ -42,6 +42,7 @@ class WizarPosMdbController(context: Context) : IMdbController {
     private var vendRequestCallback: ((Int, String) -> Unit)? = null
     private var successCallback: (() -> Unit)? = null
     private var failureCallback: ((Int) -> Unit)? = null
+    private var cancelCallback: (() -> Unit)? = null
 
     init {
         hardware.init(context)
@@ -70,6 +71,10 @@ class WizarPosMdbController(context: Context) : IMdbController {
             override fun onVendFailure() {
                 main.post { failureCallback?.invoke(-1) }
             }
+
+            override fun onVendCancel() {
+                main.post { cancelCallback?.invoke() }
+            }
         })
     }
 
@@ -83,6 +88,10 @@ class WizarPosMdbController(context: Context) : IMdbController {
 
     override fun onVendFailure(callback: (errorCode: Int) -> Unit) {
         failureCallback = callback
+    }
+
+    override fun onMachineCancel(callback: () -> Unit) {
+        cancelCallback = callback
     }
 
     override fun approveVend() {

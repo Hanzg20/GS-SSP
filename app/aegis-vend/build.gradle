@@ -37,7 +37,10 @@ android {
         // release, so it installs over it on a test terminal (device secret kept) and the
         // release goes back over it the same way. Never for a store (no demo/sim modes on
         // Aegis, owner 2026-10-31): this flag is false in every normal build.
-        buildConfigField "boolean", "VMC_SIM", "${project.hasProperty('vmcsim')}"
+        // Not a compile-time constant on purpose: a plain `true`/`false` gets inlined into the
+        // Kotlin that reads it, and an incremental build after a -Pvmcsim build kept the old
+        // `true` -- a "release" APK came out with the simulator on (2026-11-02).
+        buildConfigField "boolean", "VMC_SIM", "Boolean.parseBoolean(\"${project.hasProperty('vmcsim')}\")"
         if (project.hasProperty('vmcsim')) versionNameSuffix "-vmcsim"
     }
 

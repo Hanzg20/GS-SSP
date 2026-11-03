@@ -228,6 +228,22 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                 giveBack(s.transactionId, s.amountCents, "MDB_FAILURE_$code")
             }
         }
+
+        // Cancelled on the machine; the board has already answered it.
+        mdbController.onMachineCancel {
+            Log.i(TAG, "Machine cancelled, state ${_uiState.value}")
+            when (_uiState.value) {
+                is VendingState.SessionOpen -> endSession(VendingState.Reason.CANCELLED, machineClosed = true)
+                is VendingState.VendRequestReceived -> {
+                    timerJob?.cancel()
+                    showResult(VendingState.NotCharged(VendingState.Reason.CANCELLED))
+                }
+                // A payment under way: the screen has moved on, so an approval is reversed / released.
+                is VendingState.Authorizing -> showResult(VendingState.NotCharged(VendingState.Reason.CANCELLED))
+                // Dispensing: the machine still owes success / failure, or the timeout gives it back.
+                else -> {}
+            }
+        }
     }
 
     /** Card first: START touched on the idle screen. */
@@ -275,10 +291,10 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
      * Ends a card-first session without an item: the machine's session is closed (and a
      * pending selection refused), the hold released.
      */
-    private fun endSession(reason: VendingState.Reason) {
+    private fun endSession(reason: VendingState.Reason, machineClosed: Boolean = false) {
         timerJob?.cancel()
         if (reason == VendingState.Reason.SOLD_OUT || reason == VendingState.Reason.OVER_LIMIT) mdbController.denyVend()
-        mdbController.endSession()
+        if (!machineClosed) mdbController.endSession()
         holdRef?.let { ref ->
             payment?.release(ref) { ok ->
                 if (ok) unjournal(ref)
@@ -387,7 +403,8 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
      * Simulator commands from adb (debuggable build, off the Q3mini only -- see
      * MainActivity), and the VMC-simulator build on a real terminal:
      * "select:<cents>:<item>" = the machine asks for a price, "fail" = the next vend jams,
-     * "silent" = the machine never answers the next vend, "decline" = the next card is
+     * "silent" = the machine never answers the next vend, "mcancel" = cancel pressed on the
+     * machine, "decline" = the next card is
      * declined (emulator only: a real card answers for itself), "start" / "pay" = the buttons.
      */
     fun simulate(command: String) {
@@ -399,6 +416,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                 parts.getOrNull(1)?.toIntOrNull() ?: 175, parts.getOrNull(2) ?: "14")
             "fail" -> mdbController.setFailNext(true)
             "silent" -> (mdbController as? MockMdbController)?.silentNext = true
+            "mcancel" -> (mdbController as? MockMdbController)?.machineCancel()
             "decline" -> (payment as? VendPayment.Simulated)?.declineNext = true
             "start" -> startSession()
             "pay" -> startPayment()

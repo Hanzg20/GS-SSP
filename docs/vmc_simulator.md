@@ -34,6 +34,22 @@ moved to gitbook `cloudpos-sdk/mdb-communication-protocal`):
   driver from WizarPOS) -- ask WizarPOS for it.
 - `MDBForCoffeeDemousage20220725.pdf`: how they wire PC + board + terminal.
 
+## WizarPOS answers (2026-11-02)
+
+`ExtBoardDevice_MDB_Methods_Guide.docx` (same folder) and the demo
+github.com/SmartPOSSamples/MDBTestForCloudSDK (cloudpossdk 1.8.2.28):
+
+- Order: setCashlessAddress (1, default) -> setConfig / setOption -> enableAutoBeginSession
+  -> **startLoop** -> pollEvent / respondEvent -> stopLoop. pollEvent timeout > 0 or FOREVER.
+- `MDBConfig.currencyCode` is ISO 4217 numeric (840 = USD): we set 124 (CAD) at open; the
+  board reads its MDB form back (0x1840 = USD before, 0x1124 = CAD).
+- Demo answers: VEND_REQUEST -> a new event VEND_APPROVED, eventResult 1, eventAmount = the
+  request's / VEND_DENIED, eventResult -1, amount 0. The machine's VEND_CANCEL -> answer
+  VEND_CANCEL, eventResult 0. TRANSACTION_START -> BEGIN_SESSION with the funds, unless
+  Always Idle on both sides. All done this way in WizarPosMdbProvider.
+- Still open: whether a VEND_CANCEL sent by us (no machine event) closes the session, and
+  what `setConfigStateCheck(false)` (the demo calls it after open) is for.
+
 ## Build and install
 
 ```bash
@@ -77,6 +93,8 @@ Without `fail` / `silent` the simulated machine reports the vend done 2 s after 
 | 9 | #4 with an **Interac debit** card | ? | does Nuvei/Interac accept PreAuth at all? |
 | 10 | START, card, then `adb shell am force-stop com.goldsky.ssp.aegis.vend`, reopen | idle | VendRecovery releases the hold on start (log `VendRecovery`) |
 | 11 | `select 25 7`, wait 60 s without paying | Cancelled | nothing |
+| 12 | START, card, `mcancel` | Cancelled, not charged | AuthVoid; no row |
+| 13 | `select 25 8`, PAY, `mcancel` before tapping, then tap | Cancelled | if the card goes through: reversed |
 
 Afterwards: check the card statement / Nuvei portal for #4–#10 (hold amounts and
 releases), and the rows on 255's store in Cael.

@@ -14,6 +14,8 @@ interface IMdbProvider {
         fun onVendRequest(amount: Float, item: Int)
         fun onVendSuccess()
         fun onVendFailure()
+        /** The machine cancelled (its cancel button, or it ended the session); already answered. */
+        fun onVendCancel() {}
     }
 
     /**
