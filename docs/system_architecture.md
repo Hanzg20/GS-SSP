@@ -1384,3 +1384,12 @@ sequenceDiagram
 *   选货 → PAY → 刷卡：**真实授权后立即撤销**，不扣款、不出货；顶部常驻 DEMO 提示条。绝不做假批准（253 事件）。撤销失败按 PAID / FAILED 上报人工退款；中途崩溃由 `VendRecovery` 撤销。
 *   展示模式开着时 MDB 销售暂停（售货机的选货请求一律拒绝），切回「MDB 售货机」恢复。
 *   2026-11-03 在 255 实测：Mastercard $0.10 获批 → Nuvei 撤销获批，云端无记录。
+
+### 19.8 VIP 会员码付款（2026-11-03）
+*   **开关**：Cael 终端配置 → 支付方式（`settings.payment_method_mode`，与 Wash 同一项）：0 刷卡 + 扫码、1 仅刷卡、2 仅扫码。终端在加载配置时读取。
+*   **先选货**：价格页显示 PAY 与 SCAN VIP 两个按钮（仅扫码时只有 SCAN VIP）→ 扫会员码（30 秒）→ `resolve_vip_card_uid_by_qr` → `vip_deduct(卡, 价格, 单号)` 扣余额 → 通知售货机出货 → 成功页显示余额。
+*   **先刷卡**：空闲屏 START 与 SCAN VIP 并排 → 扫码 → 查卡（`get_vip_card_by_uid`）→ 以 min(余额, $100) 开会话，不预扣 → 售货机发来价格时才 `vip_deduct` → 出货。余额不够这件：拒绝出货，显示「LOW VIP BALANCE」。
+*   **不出货就不扣钱**：出货失败 / 超时 / 期间取消 → `vip_refund(卡, 单号)` 把这一单扣的钱原样退回卡里（每单只退一次）。扣款时网络不明 → 立即按单号退一次（没扣到就无事）。单子在扣款前写入本地流水；崩溃后由 `VendRecovery` 退回，网络不通时下次启动再试。
+*   **数据库**（`docs/migrations/2026-11-03_vip_deduct_refund.sql`）：`vip_deduct` / `vip_refund`，`vip_card_ledger.source_ref = 单号`，kind 新增 `REFUND`；同一单号重复扣款只扣一次。Wash 仍用 `deduct_vip_balance`。
+*   **记账**：交易 `payment_method = VIP_CARD`、`vip_card_uid`、`entry_mode = QR`，与 Wash 相同。
+*   **未做**：六宫格展示模式的 VIP 付款。

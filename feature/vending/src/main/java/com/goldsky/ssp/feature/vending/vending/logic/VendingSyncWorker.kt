@@ -56,7 +56,9 @@ class VendingSyncWorker(appContext: Context, params: WorkerParameters) : Corouti
                 hardware_status = order.dispenseStatus,
                 auth_code = order.authCode,
                 ecr_ref_num = order.orderId,
-                payment_method = "CREDIT_CARD", // same as Wash / Timer card sales
+                // Same values as Wash / Timer: a card sale, or paid from a VIP card's balance.
+                payment_method = if (order.vipCardUid != null) "VIP_CARD" else "CREDIT_CARD",
+                vip_card_uid = order.vipCardUid,
                 entry_mode = order.entryMode,
                 card_brand = order.cardBrand,
                 card_aid = order.cardAid,

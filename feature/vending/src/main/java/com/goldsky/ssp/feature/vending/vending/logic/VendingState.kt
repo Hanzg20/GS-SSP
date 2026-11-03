@@ -9,7 +9,9 @@ package com.goldsky.ssp.vending.logic
  *  - item first (machines set to "always idle"): the machine asks for a price
  *    -> VendRequestReceived [tap to pay] -> Authorizing(price) -> Dispensing -> Success.
  * Anything that ends without an item ends in NotCharged: the hold / sale is
- * voided, never kept.
+ * voided, never kept. A VIP member code (Cael payment methods "card + scan") can stand in
+ * for the card in either flow: Scanning, then the balance pays (item first: at once; card
+ * first: the session runs on the balance, each item deducted at its price).
  */
 sealed class VendingState {
     object Booting : VendingState()
@@ -18,8 +20,14 @@ sealed class VendingState {
     /** [amountCents] null = a hold for a card-first session, else the item's price. */
     data class Authorizing(val amountCents: Int?) : VendingState()
 
-    /** Card approved first: the customer now chooses on the machine before [deadline]. */
-    data class SessionOpen(val limitCents: Int, val deadline: Long) : VendingState()
+    /** The VIP member code is being scanned: [amountCents] = the item's price (item first), null = card first. */
+    data class Scanning(val amountCents: Int?) : VendingState()
+
+    /**
+     * Card approved first: the customer now chooses on the machine before [deadline].
+     * [vipBalanceCents]: the session runs on a VIP card with this balance (no card hold).
+     */
+    data class SessionOpen(val limitCents: Int, val deadline: Long, val vipBalanceCents: Int? = null) : VendingState()
 
     data class VendRequestReceived(
         val amountCents: Int,
@@ -34,15 +42,23 @@ sealed class VendingState {
         val deadline: Long // To handle Auto-Void if timeout
     ) : VendingState()
 
-    data class Success(val orderId: String, val amountCents: Int, val itemSlot: String) : VendingState()
+    /** [vipBalanceCents]: paid from a VIP card, its balance now. */
+    data class Success(val orderId: String, val amountCents: Int, val itemSlot: String, val vipBalanceCents: Int? = null) : VendingState()
 
     data class NotCharged(val reason: Reason) : VendingState()
 
     /** Card payment can't be taken on this terminal: every vend request is denied. */
     object Unavailable : VendingState()
 
-    /** [START_FIRST]: chosen on the machine where only card first is offered. */
-    enum class Reason { NO_SELECTION, CANCELLED, VEND_FAILED, DECLINED, SOLD_OUT, OVER_LIMIT, START_FIRST }
+    /**
+     * [START_FIRST]: chosen on the machine where only card first is offered. VIP: [NO_CODE] nothing
+     * scanned, [VIP_INVALID] not a member code of this store (or inactive / expired / daily limit),
+     * [VIP_LOW_BALANCE] the balance doesn't cover it, [VIP_OFFLINE] the server couldn't be reached.
+     */
+    enum class Reason {
+        NO_SELECTION, CANCELLED, VEND_FAILED, DECLINED, SOLD_OUT, OVER_LIMIT, START_FIRST,
+        NO_CODE, VIP_INVALID, VIP_LOW_BALANCE, VIP_OFFLINE,
+    }
 }
 
 /**

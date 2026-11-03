@@ -251,6 +251,7 @@ class MainActivity : ComponentActivity() {
             TtsManager.setLocale(config.settings.locale_tag)
             showcaseViewModel.refreshItems()
             vendingViewModel.refreshVipPlans()
+            vendingViewModel.refreshPayMode()
         }
     }
 
@@ -302,6 +303,7 @@ class MainActivity : ComponentActivity() {
                         VendingState.Idle -> if (wasResult) KEEP
                             else if (v.flow == PurchaseFlow.ITEM_FIRST) s.sayChooseOnMachine else s.sayStart
                         is VendingState.Authorizing -> s.sayTapCard
+                        is VendingState.Scanning -> s.sayScan
                         is VendingState.SessionOpen -> s.sayChooseItem
                         is VendingState.VendRequestReceived -> s.sayPrice(st.itemSlot, money(st.amountCents))
                         is VendingState.Dispensing -> s.sayDispensing

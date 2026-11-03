@@ -135,3 +135,32 @@ fun ResultAnim(ok: Boolean, size: Dp) {
         }
     }
 }
+
+/** A member code held to the scanner: a QR code with the scan line passing over it. */
+@Composable
+fun QrScanAnim(size: Dp) {
+    val p by rememberInfiniteTransition(label = "qr").animateFloat(0f, 1f,
+        infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Reverse), label = "p")
+    // A fixed pattern that reads as a QR code: three finder squares and some modules.
+    val modules = remember {
+        val r = java.util.Random(7)
+        List(49) { i -> val x = i % 7; val y = i / 7; !((x < 2 && y < 2) || (x > 4 && y < 2) || (x < 2 && y > 4)) && r.nextBoolean() }
+    }
+    Canvas(Modifier.size(size)) {
+        val w = this.size.minDimension
+        val o = w * 0.14f
+        val q = w * 0.72f
+        drawRoundRect(KioskCard, Offset(o - w * 0.04f, o - w * 0.04f), Size(q + w * 0.08f, q + w * 0.08f), CornerRadius(w * 0.06f))
+        val cell = q / 7
+        for (corner in listOf(Offset(o, o), Offset(o + cell * 5, o), Offset(o, o + cell * 5))) {
+            drawRect(KioskAmber, corner, Size(cell * 2, cell * 2))
+            drawRect(KioskCard, corner + Offset(cell * 0.45f, cell * 0.45f), Size(cell * 1.1f, cell * 1.1f))
+        }
+        modules.forEachIndexed { i, on ->
+            if (on) drawRect(KioskAmber.copy(alpha = 0.85f), Offset(o + (i % 7) * cell, o + (i / 7) * cell), Size(cell * 0.86f, cell * 0.86f))
+        }
+        val y = o + q * p
+        drawLine(KioskEmerald, Offset(o - w * 0.08f, y), Offset(o + q + w * 0.08f, y), w * 0.03f, StrokeCap.Round)
+        drawRect(KioskEmerald.copy(alpha = 0.15f), Offset(o, y - w * 0.10f), Size(q, w * 0.10f))
+    }
+}

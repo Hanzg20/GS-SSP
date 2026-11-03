@@ -27,6 +27,7 @@ object VendScreenWire {
             VendingState.Idle -> put("s", "IDLE")
             VendingState.Unavailable -> put("s", "UNAVAILABLE")
             is VendingState.Authorizing -> { put("s", "AUTHORIZING"); state.amountCents?.let { put("amount", it) } }
+            is VendingState.Scanning -> { put("s", "SCANNING"); state.amountCents?.let { put("amount", it) } }
             is VendingState.SessionOpen -> {
                 put("s", "SESSION")
                 put("limit", state.limitCents)
@@ -48,6 +49,7 @@ object VendScreenWire {
             "IDLE" -> VendingState.Idle
             "UNAVAILABLE" -> VendingState.Unavailable
             "AUTHORIZING" -> VendingState.Authorizing(json["amount"]?.jsonPrimitive?.intOrNull)
+            "SCANNING" -> VendingState.Scanning(json["amount"]?.jsonPrimitive?.intOrNull)
             "SESSION" -> VendingState.SessionOpen(int("limit"), System.currentTimeMillis() + (json["left_ms"]?.jsonPrimitive?.longOrNull ?: 0L))
             "PRICE" -> VendingState.VendRequestReceived(int("amount"), str("item"))
             "DISPENSING" -> VendingState.Dispensing("", int("amount"), str("item"), 0L)

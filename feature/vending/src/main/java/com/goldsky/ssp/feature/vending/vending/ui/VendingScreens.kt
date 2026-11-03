@@ -33,6 +33,7 @@ import com.goldsky.ssp.vending.logic.VendingState.Reason
 import com.goldsky.ssp.vending.ui.components.CardTapAnim
 import com.goldsky.ssp.vending.ui.components.ItemDropAnim
 import com.goldsky.ssp.vending.ui.components.KeypadAnim
+import com.goldsky.ssp.vending.ui.components.QrScanAnim
 import com.goldsky.ssp.vending.ui.components.ResultAnim
 import com.goldsky.ssp.vending.ui.theme.*
 import kotlinx.coroutines.delay
@@ -76,6 +77,12 @@ fun VendingMainContainer(viewModel: VendingViewModel, version: String = "", onVi
     val french by viewModel.french.collectAsState()
     val flow by viewModel.purchaseFlow.collectAsState()
     val vipBonus by viewModel.vipBonus.collectAsState()
+    val payMode by viewModel.payMode.collectAsState()
+    // Cael's payment methods: card, VIP member code, or both.
+    val pay = Pay(
+        card = payMode != com.goldsky.ssp.model.PaymentMethodMode.SCAN_ONLY,
+        vip = payMode != com.goldsky.ssp.model.PaymentMethodMode.CARD_ONLY,
+    )
     val s = if (french) VendStrings.FR else VendStrings.EN
     val money = { cents: Int -> VendStrings.money(cents, french) }
 
@@ -98,12 +105,15 @@ fun VendingMainContainer(viewModel: VendingViewModel, version: String = "", onVi
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 Crossfade(targetState = state, label = "screen") { st ->
                     when (st) {
-                        VendingState.Idle -> IdleScreen(s, flow, viewModel::startSession)
+                        VendingState.Idle -> IdleScreen(s, flow, pay, viewModel::startSession, viewModel::startVipScan)
                         is VendingState.Authorizing -> AuthorizingScreen(s, st.amountCents?.let(money))
-                        is VendingState.SessionOpen -> SessionScreen(s, money(st.limitCents), st.deadline, viewModel::cancel)
-                        is VendingState.VendRequestReceived -> PriceScreen(s, st.itemSlot, money(st.amountCents), viewModel::startPayment, viewModel::cancel)
+                        is VendingState.Scanning -> ScanningScreen(s, st.amountCents?.let(money), viewModel::cancel)
+                        is VendingState.SessionOpen -> SessionScreen(s, money(st.limitCents), st.vipBalanceCents?.let(money), st.deadline, viewModel::cancel)
+                        is VendingState.VendRequestReceived -> PriceScreen(
+                            s, st.itemSlot, money(st.amountCents), pay, viewModel::startPayment, viewModel::startVipScan, viewModel::cancel,
+                        )
                         is VendingState.Dispensing -> DispensingScreen(s)
-                        is VendingState.Success -> SuccessScreen(s, money(st.amountCents))
+                        is VendingState.Success -> SuccessScreen(s, money(st.amountCents), st.vipBalanceCents?.let(money))
                         is VendingState.NotCharged -> NotChargedScreen(s, st.reason, money(VendingViewModel.SESSION_LIMIT_CENTS))
                         VendingState.Unavailable -> UnavailableScreen()
                         VendingState.Booting -> Box(Modifier.fillMaxSize(), Alignment.Center) {
@@ -200,6 +210,31 @@ private fun BigButton(text: String, onClick: () -> Unit) {
     }
 }
 
+/** Which payment methods this store takes (Cael), so screens offer only those. */
+private data class Pay(val card: Boolean, val vip: Boolean)
+
+/**
+ * The way(s) to pay, as buttons: the card one gold; SCAN VIP gold-edged beside it (both
+ * taken), or alone and gold (VIP only).
+ */
+@Composable
+private fun PayButtons(s: VendStrings, cardText: String, pay: Pay, onCard: () -> Unit, onVip: () -> Unit) {
+    val d = LocalDims.current
+    when {
+        pay.card && pay.vip -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.weight(1f)) { BigButton(cardText, onCard) }
+            val shape = RoundedCornerShape(16.dp)
+            Box(
+                Modifier.weight(1f).height(d.button).clip(shape).background(kioskTile(best = true))
+                    .border(2.dp, KioskAmber, shape).clickable(onClick = onVip),
+                contentAlignment = Alignment.Center,
+            ) { Text(s.scanVip, color = KioskAmber, fontSize = d.buttonText, fontWeight = FontWeight.Bold, letterSpacing = Spaced, maxLines = 1) }
+        }
+        pay.vip -> BigButton(s.scanVip, onVip)
+        else -> BigButton(cardText, onCard)
+    }
+}
+
 @Composable
 private fun CancelButton(text: String, onClick: () -> Unit) {
     val d = LocalDims.current
@@ -215,7 +250,7 @@ private fun CancelButton(text: String, onClick: () -> Unit) {
 
 /** What the customer does first follows the terminal's purchase flow (technician panel). */
 @Composable
-private fun IdleScreen(s: VendStrings, flow: PurchaseFlow, onStart: () -> Unit) {
+private fun IdleScreen(s: VendStrings, flow: PurchaseFlow, pay: Pay, onStart: () -> Unit, onVip: () -> Unit) {
     val d = LocalDims.current
     Screen {
         if (flow == PurchaseFlow.ITEM_FIRST) {
@@ -224,11 +259,12 @@ private fun IdleScreen(s: VendStrings, flow: PurchaseFlow, onStart: () -> Unit) 
             Spacer(Modifier.height(d.gap))
             Title(s.itemFirstTitle, KioskAmber)
         } else {
-            CardTapAnim(d.mark)
+            // VIP only: the code to the scanner, not a card.
+            if (pay.card) CardTapAnim(d.mark) else QrScanAnim(d.mark)
             Spacer(Modifier.height(d.gap))
-            Title(s.startTitle, KioskAmber)
+            Title(if (pay.card) s.startTitle else s.scanTitle, KioskAmber)
             Spacer(Modifier.height(d.gap))
-            BigButton(s.startButton, onStart)
+            PayButtons(s, s.startButton, pay, onStart, onVip)
             if (flow == PurchaseFlow.BOTH) {
                 Spacer(Modifier.height(d.gap))
                 Line(s.orChooseFirst)
@@ -252,7 +288,7 @@ private fun AuthorizingScreen(s: VendStrings, amount: String?) {
 }
 
 @Composable
-private fun SessionScreen(s: VendStrings, limit: String, deadline: Long, onCancel: () -> Unit) {
+private fun SessionScreen(s: VendStrings, limit: String, vipBalance: String?, deadline: Long, onCancel: () -> Unit) {
     val d = LocalDims.current
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(deadline) {
@@ -281,27 +317,43 @@ private fun SessionScreen(s: VendStrings, limit: String, deadline: Long, onCance
         Spacer(Modifier.height(d.gap))
         Title(s.chooseOnMachine, KioskAmber, d.headline)
         Spacer(Modifier.height(6.dp))
-        // The hold the card shows, in one short line (it's not the price).
-        Line(s.holdNote(limit))
+        // The hold the card shows, in one short line (it's not the price); on a VIP card, its balance.
+        Line(if (vipBalance != null) s.balance(vipBalance) else s.holdNote(limit))
         Spacer(Modifier.height(d.gap))
         CancelButton(s.cancel, onCancel)
     }
 }
 
 @Composable
-private fun PriceScreen(s: VendStrings, item: String, price: String, onPay: () -> Unit, onCancel: () -> Unit) {
+private fun PriceScreen(
+    s: VendStrings, item: String, price: String, pay: Pay, onPay: () -> Unit, onVip: () -> Unit, onCancel: () -> Unit,
+) {
     val d = LocalDims.current
     Screen {
         Line(s.item(item), TextPrimary)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // "PAY" is a card payment: the card going to the reader.
-            CardTapAnim(d.mark * 0.75f)
+            // "PAY" is a card payment: the card going to the reader (VIP only: the code to the scanner).
+            if (pay.card) CardTapAnim(d.mark * 0.75f) else QrScanAnim(d.mark * 0.75f)
             Spacer(Modifier.width(8.dp))
             Text(price, color = KioskAmber, fontSize = d.price, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(d.gap))
-        BigButton(s.payButton, onPay)
+        PayButtons(s, s.payButton, pay, onPay, onVip)
         Spacer(Modifier.height(10.dp))
+        CancelButton(s.cancel, onCancel)
+    }
+}
+
+/** The member code is being looked for (the camera may show its own preview over this). */
+@Composable
+private fun ScanningScreen(s: VendStrings, amount: String?, onCancel: () -> Unit) {
+    val d = LocalDims.current
+    Screen {
+        if (amount != null) Text(amount, color = KioskAmber, fontSize = d.headline * 1.4f, fontWeight = FontWeight.Bold)
+        QrScanAnim(d.mark * 1.2f)
+        Spacer(Modifier.height(d.gap))
+        Title(s.scanTitle, size = d.headline)
+        Spacer(Modifier.height(d.gap))
         CancelButton(s.cancel, onCancel)
     }
 }
@@ -320,7 +372,7 @@ private fun DispensingScreen(s: VendStrings) {
 private fun ResultMark(ok: Boolean) = ResultAnim(ok, LocalDims.current.mark)
 
 @Composable
-private fun SuccessScreen(s: VendStrings, price: String) {
+private fun SuccessScreen(s: VendStrings, price: String, vipBalance: String?) {
     val d = LocalDims.current
     Screen {
         ResultMark(true)
@@ -328,6 +380,7 @@ private fun SuccessScreen(s: VendStrings, price: String) {
         Title(s.takeItem)
         Spacer(Modifier.height(6.dp))
         Line(s.charged(price))
+        if (vipBalance != null) Line(s.balance(vipBalance), KioskAmber)
     }
 }
 

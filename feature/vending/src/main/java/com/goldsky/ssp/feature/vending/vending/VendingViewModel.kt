@@ -97,6 +97,29 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     private var timerJob: Job? = null
     private var resultJob: Job? = null
 
+    /**
+     * Cael's payment methods for this store (KioskSettings.payment_method_mode): card + scan
+     * (VIP member code), card only, or scan only -- the same setting Wash and Timer follow.
+     */
+    private val _payMode = MutableStateFlow(com.goldsky.ssp.model.PaymentMethodMode.CARD_ONLY)
+    val payMode: StateFlow<Int> = _payMode.asStateFlow()
+    private val cardAllowed get() = _payMode.value != com.goldsky.ssp.model.PaymentMethodMode.SCAN_ONLY
+    private val vipAllowed get() = _payMode.value != com.goldsky.ssp.model.PaymentMethodMode.CARD_ONLY
+
+    fun refreshPayMode() {
+        _payMode.value = com.goldsky.ssp.payment.ConfigManager.getConfig()?.settings?.payment_method_mode
+            ?: com.goldsky.ssp.model.PaymentMethodMode.CARD_ONLY
+        Log.i(TAG, "Payment methods: ${_payMode.value} (0 card + scan, 1 card, 2 scan)")
+    }
+
+    // A VIP payment under way (Wash's member-code payment, with an order reference so the
+    // balance can be given back -- vip_deduct / vip_refund): the card, whether it runs a
+    // card-first session, and its balance after the item was paid (for the success screen).
+    private var vipUid: String? = null
+    private var vipSession = false
+    private var vipBalanceAfter: Int? = null
+    private var scanJob: Job? = null
+
     companion object {
         private const val TAG = "VendingVM"
         private const val DISPENSE_TIMEOUT_MS = 30_000L
@@ -109,6 +132,10 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
          */
         val SESSION_LIMIT_CENTS: Int get() = if (com.goldsky.ssp.common.CoreConfig.vmcSimulator) 10 else 1000
         private const val RESULT_MS = 6_000L
+        /** How long the member code is looked for (Wash's payment-page scan is 30 s too). */
+        private const val SCAN_MS = 30_000L
+        /** A VIP card-first session offers at most this much (the machine's own limits apply too). */
+        private const val VIP_SESSION_MAX_CENTS = 10_000
     }
 
     init {
@@ -225,7 +252,11 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
             when (val s = _uiState.value) {
                 is VendingState.SessionOpen -> when {
                     InventoryManager.isSoldOut(slot) -> endSession(VendingState.Reason.SOLD_OUT)
-                    amount > s.limitCents -> endSession(VendingState.Reason.OVER_LIMIT)
+                    amount > s.limitCents -> endSession(
+                        if (s.vipBalanceCents != null) VendingState.Reason.VIP_LOW_BALANCE else VendingState.Reason.OVER_LIMIT
+                    )
+                    // A VIP session: the item's price comes off the balance now.
+                    vipSession -> payVipSessionItem(amount, slot)
                     // The hold covers it: dispense now, settle at the price once it dropped.
                     else -> {
                         val ref = holdRef ?: newRef()
@@ -265,6 +296,8 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                 InventoryManager.decrement(getApplication(), s.itemSlot)
                 val hold = holdRef
                 holdRef = null
+                val balance = vipBalanceAfter
+                if (vipSession) mdbController.endSession()
                 if (hold != null) {
                     mdbController.endSession()
                     // Card first: the customer has the item; now take the price from the hold.
@@ -275,7 +308,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                 } else {
                     record(s.transactionId, "PAID", "SUCCESS")
                 }
-                showResult(VendingState.Success(s.transactionId, s.amountCents, s.itemSlot))
+                showResult(VendingState.Success(s.transactionId, s.amountCents, s.itemSlot, balance))
             }
         }
 
@@ -292,6 +325,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
             Log.i(TAG, "Machine cancelled, state ${_uiState.value}")
             when (_uiState.value) {
                 is VendingState.SessionOpen -> endSession(VendingState.Reason.CANCELLED, machineClosed = true)
+                is VendingState.Scanning -> stopVipScan(VendingState.Reason.CANCELLED, deny = false)
                 is VendingState.VendRequestReceived -> {
                     timerJob?.cancel()
                     showResult(VendingState.NotCharged(VendingState.Reason.CANCELLED))
@@ -307,7 +341,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     /** Card first: START touched on the idle screen. */
     fun startSession() {
         val pay = payment ?: return
-        if (blocked || _uiState.value != VendingState.Idle || _purchaseFlow.value == PurchaseFlow.ITEM_FIRST) return
+        if (blocked || !cardAllowed || _uiState.value != VendingState.Idle || _purchaseFlow.value == PurchaseFlow.ITEM_FIRST) return
         val ref = newRef()
         journal(ref, "HOLD", SESSION_LIMIT_CENTS, "")
         _uiState.value = VendingState.Authorizing(null)
@@ -351,7 +385,9 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
      */
     private fun endSession(reason: VendingState.Reason, machineClosed: Boolean = false) {
         timerJob?.cancel()
-        if (reason == VendingState.Reason.SOLD_OUT || reason == VendingState.Reason.OVER_LIMIT) mdbController.denyVend()
+        // A selection is waiting for its answer: no.
+        if (reason in listOf(VendingState.Reason.SOLD_OUT, VendingState.Reason.OVER_LIMIT, VendingState.Reason.VIP_LOW_BALANCE,
+                VendingState.Reason.VIP_INVALID, VendingState.Reason.VIP_OFFLINE)) mdbController.denyVend()
         if (!machineClosed) mdbController.endSession()
         holdRef?.let { ref ->
             payment?.release(ref) { ok ->
@@ -367,7 +403,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     fun startPayment() {
         val pay = payment ?: return
         val s = _uiState.value
-        if (s !is VendingState.VendRequestReceived) return
+        if (s !is VendingState.VendRequestReceived || !cardAllowed) return
         val ref = newRef()
         journal(ref, "SALE", s.amountCents, s.itemSlot)
         _uiState.value = VendingState.Authorizing(s.amountCents)
@@ -400,7 +436,155 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                 mdbController.denyVend()
                 showResult(VendingState.NotCharged(VendingState.Reason.CANCELLED))
             }
+            is VendingState.Scanning -> stopVipScan(VendingState.Reason.CANCELLED)
             else -> {}
+        }
+    }
+
+    /**
+     * SCAN VIP touched: on the price screen (item first -- the price comes off the balance) or
+     * on the idle screen (card first -- a session on the balance). Wash's member-code payment:
+     * scan, look the card up, deduct; here with an order reference so a vend that fails gives
+     * the balance back (vip_refund), and an unfinished one is given back by VendRecovery.
+     */
+    fun startVipScan() {
+        if (blocked || !vipAllowed) return
+        val s = _uiState.value
+        val request = s as? VendingState.VendRequestReceived
+        if (request == null && (s != VendingState.Idle || _purchaseFlow.value == PurchaseFlow.ITEM_FIRST)) return
+        timerJob?.cancel()
+        val scanning = VendingState.Scanning(request?.amountCents)
+        _uiState.value = scanning
+        scanJob = viewModelScope.launch {
+            val code = scanCode()
+            if (_uiState.value !== scanning) return@launch
+            if (code == null) { stopVipScan(VendingState.Reason.NO_CODE); return@launch }
+            val uid = com.goldsky.ssp.payment.VipRepository.resolveCardUidByQrCode(code.trim())
+            if (_uiState.value !== scanning) return@launch
+            if (uid == null) { stopVipScan(VendingState.Reason.VIP_INVALID); return@launch }
+            if (request != null) payVipItem(uid, request, scanning) else openVipSession(uid, scanning)
+        }
+    }
+
+    /** Ends a scan without a payment; [deny] the machine's waiting selection (item first). */
+    private fun stopVipScan(reason: VendingState.Reason, deny: Boolean = true) {
+        scanJob?.cancel()
+        scanJob = null
+        scanner?.let { runCatching { it.stopScan() } }
+        if (deny && (_uiState.value as? VendingState.Scanning)?.amountCents != null) mdbController.denyVend()
+        showResult(VendingState.NotCharged(reason))
+    }
+
+    private val scanner by lazy {
+        runCatching { com.goldsky.ssp.payment.hardware.HardwareFactory.getScannerProvider(getApplication(), "WIZARPOS") }
+            .onFailure { Log.e(TAG, "No scanner: ${it.message}") }.getOrNull()
+    }
+
+    /** One member-code scan: the code, or null (nothing within [SCAN_MS], no scanner, unreadable). */
+    private suspend fun scanCode(): String? {
+        val sc = scanner ?: return null
+        return kotlinx.coroutines.withTimeoutOrNull(SCAN_MS) {
+            kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
+                sc.startScan(object : com.goldsky.ssp.payment.hardware.IScannerProvider.ScanCallback {
+                    override fun onScanSuccess(result: String) { if (cont.isActive) cont.resumeWith(Result.success(result)) }
+                    override fun onScanFailure(errorMsg: String) {
+                        Log.w(TAG, "Scan failed: $errorMsg")
+                        if (cont.isActive) cont.resumeWith(Result.success(null))
+                    }
+                })
+                // Timed out or cancelled: close the camera (its own "cancelled" callback is ignored above).
+                cont.invokeOnCancellation { runCatching { sc.stopScan() } }
+            }
+        }
+    }
+
+    private fun reasonFor(r: com.goldsky.ssp.payment.VipDeductResult) = when (r) {
+        is com.goldsky.ssp.payment.VipDeductResult.Rejected ->
+            if (r.reason == "insufficient_balance") VendingState.Reason.VIP_LOW_BALANCE else VendingState.Reason.VIP_INVALID
+        else -> VendingState.Reason.VIP_OFFLINE
+    }
+
+    /** Journaled before the deduct, so a crash can't lose it (VendRecovery gives it back). */
+    private fun journalVip(ref: String, cents: Int, slot: String, uid: String) {
+        if (simulated) return
+        OrderRepository.saveOrder(getApplication(), VendingOrder(
+            orderId = ref, amountCents = cents, slot = slot, paymentStatus = "PENDING", dispenseStatus = "PENDING",
+            kind = "VIP", vipCardUid = uid, entryMode = "QR",
+        ))
+    }
+
+    /**
+     * Takes [cents] off the card for order [ref]: the balance after, or a reason (nothing
+     * taken). An unclear answer is given back at once (the refund only returns what [ref]
+     * really took); if even that can't be confirmed the order stays for VendRecovery.
+     */
+    private suspend fun deductVip(uid: String, cents: Int, ref: String, slot: String): Pair<Int?, VendingState.Reason?> {
+        journalVip(ref, cents, slot, uid)
+        return when (val r = com.goldsky.ssp.payment.VipRepository.deduct(uid, cents, ref)) {
+            is com.goldsky.ssp.payment.VipDeductResult.Success -> {
+                if (!simulated) OrderRepository.update(getApplication(), ref) { it.copy(paymentStatus = "PAID") }
+                r.newBalanceCents to null
+            }
+            is com.goldsky.ssp.payment.VipDeductResult.Rejected -> { unjournal(ref); null to reasonFor(r) }
+            com.goldsky.ssp.payment.VipDeductResult.NetworkError -> {
+                if (com.goldsky.ssp.payment.VipRepository.refund(uid, ref)) unjournal(ref)
+                null to VendingState.Reason.VIP_OFFLINE
+            }
+        }
+    }
+
+    /** Item first: the price comes off the balance, then the machine vends. */
+    private suspend fun payVipItem(uid: String, request: VendingState.VendRequestReceived, scanning: VendingState.Scanning) {
+        val ref = newRef()
+        val (balance, reason) = deductVip(uid, request.amountCents, ref, request.itemSlot)
+        if (reason != null) { if (_uiState.value === scanning) stopVipScan(reason); return }
+        if (_uiState.value !== scanning) {
+            // Cancelled meanwhile: give it back.
+            val ok = com.goldsky.ssp.payment.VipRepository.refund(uid, ref)
+            if (ok) unjournal(ref) else record(ref, "PAID", "FAILED")
+            return
+        }
+        vipUid = uid
+        vipBalanceAfter = balance
+        dispense(ref, request.amountCents, request.itemSlot)
+    }
+
+    /** Card first: a session on the balance -- nothing taken until an item is chosen. */
+    private suspend fun openVipSession(uid: String, scanning: VendingState.Scanning) {
+        val card = com.goldsky.ssp.payment.VipRepository.getVipCard(uid)
+        if (_uiState.value !== scanning) return
+        if (card == null || !card.is_active) { stopVipScan(VendingState.Reason.VIP_INVALID); return }
+        if (card.balance_cents <= 0) { stopVipScan(VendingState.Reason.VIP_LOW_BALANCE); return }
+        val limit = card.balance_cents.coerceAtMost(VIP_SESSION_MAX_CENTS)
+        vipUid = uid
+        vipSession = true
+        mdbController.beginSession(limit)
+        _uiState.value = VendingState.SessionOpen(limit, System.currentTimeMillis() + SESSION_MS, card.balance_cents)
+        timerJob?.cancel()
+        timerJob = viewModelScope.launch {
+            delay(SESSION_MS)
+            if (_uiState.value is VendingState.SessionOpen) endSession(VendingState.Reason.NO_SELECTION)
+        }
+    }
+
+    /** A VIP session's selection: its price off the balance, then the machine vends. */
+    private fun payVipSessionItem(amount: Int, slot: String) {
+        val uid = vipUid ?: return endSession(VendingState.Reason.VIP_INVALID)
+        timerJob?.cancel()
+        val ref = newRef()
+        val session = _uiState.value
+        viewModelScope.launch {
+            val (balance, reason) = deductVip(uid, amount, ref, slot)
+            if (_uiState.value !== session) {
+                // The session ended meanwhile (cancelled on the machine, timed out): give it back.
+                if (reason == null) {
+                    if (com.goldsky.ssp.payment.VipRepository.refund(uid, ref)) unjournal(ref) else record(ref, "PAID", "FAILED")
+                }
+                return@launch
+            }
+            if (reason != null) { endSession(reason); return@launch }
+            vipBalanceAfter = balance
+            dispense(ref, amount, slot)
         }
     }
 
@@ -429,7 +613,12 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
             if (!ok) Log.e(TAG, "Give-back of $txnId failed -- refund it by hand")
             record(txnId, if (ok) "VOIDED" else "PAID", "FAILED")
         }
-        if (hold != null) {
+        val vip = vipUid
+        if (vip != null) {
+            // Paid from the balance: it goes back to the card.
+            if (vipSession) mdbController.endSession()
+            viewModelScope.launch { done(simulated || com.goldsky.ssp.payment.VipRepository.refund(vip, txnId)) }
+        } else if (hold != null) {
             mdbController.endSession()
             payment?.release(hold, done)
         } else {
@@ -446,6 +635,9 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun showResult(state: VendingState) {
+        vipUid = null
+        vipSession = false
+        vipBalanceAfter = null
         _uiState.value = state
         resultJob?.cancel()
         resultJob = viewModelScope.launch {
@@ -478,6 +670,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
             "decline" -> (payment as? VendPayment.Simulated)?.declineNext = true
             "start" -> startSession()
             "pay" -> startPayment()
+            "vip" -> startVipScan()
         }
     }
 }

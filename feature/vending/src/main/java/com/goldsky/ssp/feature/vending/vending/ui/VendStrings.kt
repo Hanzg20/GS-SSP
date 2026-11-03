@@ -61,6 +61,15 @@ class VendStrings(
     val sayShowcaseChoose: String,
     val sayShowcaseApproved: String,
     val sayNotPaid: String,
+    // VIP member code as a payment (Cael payment methods "card + scan" / "scan only").
+    val scanVip: String,
+    val scanTitle: String,
+    val balance: (String) -> String,
+    val noCode: String,
+    val vipInvalid: String,
+    val vipLow: String,
+    val vipOffline: String,
+    val sayScan: String,
 ) {
     /** Why nothing was charged ([limit] = the hold, for OVER_LIMIT). */
     fun reason(reason: com.goldsky.ssp.vending.logic.VendingState.Reason, limit: String): String = when (reason) {
@@ -71,6 +80,10 @@ class VendStrings(
         com.goldsky.ssp.vending.logic.VendingState.Reason.SOLD_OUT -> soldOut
         com.goldsky.ssp.vending.logic.VendingState.Reason.OVER_LIMIT -> overLimit(limit)
         com.goldsky.ssp.vending.logic.VendingState.Reason.START_FIRST -> startFirst
+        com.goldsky.ssp.vending.logic.VendingState.Reason.NO_CODE -> noCode
+        com.goldsky.ssp.vending.logic.VendingState.Reason.VIP_INVALID -> vipInvalid
+        com.goldsky.ssp.vending.logic.VendingState.Reason.VIP_LOW_BALANCE -> vipLow
+        com.goldsky.ssp.vending.logic.VendingState.Reason.VIP_OFFLINE -> vipOffline
     }
 
     companion object {
@@ -123,6 +136,14 @@ class VendStrings(
             sayShowcaseChoose = "Select your item, then touch pay.",
             sayShowcaseApproved = "Approved. Not charged.",
             sayNotPaid = "Not paid.",
+            scanVip = "SCAN VIP",
+            scanTitle = "SCAN YOUR VIP CODE",
+            balance = { "BALANCE $it" },
+            noCode = "NO CODE SCANNED",
+            vipInvalid = "VIP CODE NOT VALID",
+            vipLow = "LOW VIP BALANCE",
+            vipOffline = "NETWORK ERROR",
+            sayScan = "Scan your VIP code.",
         )
 
         val FR = VendStrings(
@@ -174,6 +195,14 @@ class VendStrings(
             sayShowcaseChoose = "Choisissez votre article, puis touchez payer.",
             sayShowcaseApproved = "Approuvé. Aucun débit.",
             sayNotPaid = "Non payé.",
+            scanVip = "CODE VIP",
+            scanTitle = "BALAYEZ VOTRE CODE VIP",
+            balance = { "SOLDE $it" },
+            noCode = "AUCUN CODE LU",
+            vipInvalid = "CODE VIP INVALIDE",
+            vipLow = "SOLDE VIP INSUFFISANT",
+            vipOffline = "ERREUR DE RÉSEAU",
+            sayScan = "Balayez votre code VIP.",
         )
 
         fun money(cents: Int, fr: Boolean): String =

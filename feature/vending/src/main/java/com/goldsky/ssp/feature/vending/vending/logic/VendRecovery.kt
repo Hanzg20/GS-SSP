@@ -2,16 +2,19 @@ package com.goldsky.ssp.vending.logic
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.launch
 
 /**
  * On start: vends the app never finished (crash, power cut, PAYWizard silent) -- no
  * item was confirmed, so the money goes back. A hold is released (nothing was ever
  * charged), a sale reversed (void, else refund). What can't be given back stays in the
  * journal as PAID / FAILED so the row reaches Cael for a refund by hand -- same rule as
- * Wash / Timer's PendingResolver: never charged-but-unfulfilled, never guessed.
+ * Wash / Timer's PendingResolver: never charged-but-unfulfilled, never guessed. A VIP
+ * payment's balance is given back to the card (VipRepository.refund).
  */
 object VendRecovery {
     private const val TAG = "VendRecovery"
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main + kotlinx.coroutines.SupervisorJob())
 
     fun run(context: Context, payment: VendPayment, onChanged: () -> Unit) {
         val app = context.applicationContext
@@ -19,7 +22,21 @@ object VendRecovery {
         if (left.isEmpty()) return
         Log.w(TAG, "${left.size} unfinished vend(s) from before: giving the money back")
         left.forEach { order ->
-            if (order.kind == "HOLD") {
+            val vipUid = order.vipCardUid
+            if (order.kind == "VIP" && vipUid != null) {
+                // Paid from a VIP card: give the balance back (once per order, server-side;
+                // nothing deducted = nothing to give). Offline: kept for the next start.
+                scope.launch {
+                    if (com.goldsky.ssp.payment.VipRepository.refund(vipUid, order.orderId)) {
+                        Log.i(TAG, "VIP ${order.orderId} given back")
+                        if (order.paymentStatus == "PENDING") OrderRepository.remove(app, order.orderId)
+                        else OrderRepository.updateOrder(app, order.orderId, "FAILED", "VOIDED")
+                        onChanged()
+                    } else {
+                        Log.e(TAG, "VIP ${order.orderId}: refund not confirmed -- retried on the next start")
+                    }
+                }
+            } else if (order.kind == "HOLD") {
                 payment.release(order.orderId) { ok ->
                     Log.i(TAG, "Hold ${order.orderId} released: $ok")
                     // A hold that couldn't be released expires on its own; nothing was taken.

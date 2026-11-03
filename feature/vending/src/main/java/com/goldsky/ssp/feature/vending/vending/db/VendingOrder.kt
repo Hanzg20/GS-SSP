@@ -16,11 +16,15 @@ data class VendingOrder(
     val dispenseStatus: String,            // PENDING, SUCCESS, FAILED
     val cloudSynced: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
-    /** SALE (item first) or HOLD (card first: pre-authorization, settled at the price). */
+    /**
+     * SALE (item first), HOLD (card first: pre-authorization, settled at the price) or VIP
+     * (paid from a VIP card's balance, [vipCardUid]; given back with VipRepository.refund).
+     */
     val kind: String = "SALE",
     val authCode: String? = null,
     val entryMode: String? = null,
     val cardBrand: String? = null,
     val cardAid: String? = null,
     val cardBin: String? = null,
+    val vipCardUid: String? = null,
 )

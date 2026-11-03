@@ -47,6 +47,12 @@ private data class DeductBalanceParams(
 )
 
 @Serializable
+private data class DeductRefParams(val p_card_uid: String, val p_amount_cents: Int, val p_ref: String)
+
+@Serializable
+private data class RefundParams(val p_card_uid: String, val p_ref: String)
+
+@Serializable
 private data class DeductBalanceResult(
     val success: Boolean,
     val new_balance_cents: Int? = null,
@@ -182,6 +188,41 @@ object VipRepository {
         } catch (e: Exception) {
             Log.e(TAG, "Deduct RPC error (network/transport): ${e.message}")
             VipDeductResult.NetworkError
+        }
+    }
+
+    /**
+     * [deductBalance] for order [ref] (vip_deduct, docs/migrations/2026-11-03_vip_deduct_refund.sql):
+     * the same [ref] twice deducts once, so a call whose answer was lost can be asked again --
+     * and [refund] can give back exactly what [ref] took. Aegis Vend.
+     */
+    suspend fun deduct(uid: String, amountInCents: Int, ref: String): VipDeductResult = withContext(Dispatchers.IO) {
+        try {
+            val decoded = SupabaseClientProvider.client.postgrest.rpc(
+                "vip_deduct", DeductRefParams(p_card_uid = uid, p_amount_cents = amountInCents, p_ref = ref)
+            ).decodeAs<DeductBalanceResult>()
+            if (!decoded.success) Log.w(TAG, "Deduct $ref rejected: ${decoded.message}")
+            classifyDeductResult(decoded.success, decoded.new_balance_cents, decoded.message)
+        } catch (e: Exception) {
+            Log.e(TAG, "Deduct $ref RPC error (network/transport): ${e.message}")
+            VipDeductResult.NetworkError
+        }
+    }
+
+    /**
+     * Gives back what order [ref] deducted (vip_refund), once. True = given back, or nothing
+     * was ever deducted for [ref] (nothing owed); false = couldn't reach the server -- ask again.
+     */
+    suspend fun refund(uid: String, ref: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val decoded = SupabaseClientProvider.client.postgrest.rpc(
+                "vip_refund", RefundParams(p_card_uid = uid, p_ref = ref)
+            ).decodeAs<DeductBalanceResult>()
+            Log.i(TAG, "Refund $ref: success=${decoded.success} ${decoded.message ?: ""}")
+            decoded.success || decoded.message == "not_found"
+        } catch (e: Exception) {
+            Log.e(TAG, "Refund $ref RPC error (network/transport): ${e.message}")
+            false
         }
     }
 }

@@ -223,6 +223,10 @@ fun BigScreenContent(
                                 st.amountCents?.let { Line(money(it), big, KioskAmber) }
                                 Line(s.authorizing, big, TextPrimary)
                             }
+                            is VendingState.Scanning -> {
+                                st.amountCents?.let { Line(money(it), big, KioskAmber) }
+                                Line(s.scanTitle, big, TextPrimary)
+                            }
                             is VendingState.SessionOpen -> {
                                 Countdown(st.deadline) { Line(s.secondsLeft(it), big, KioskEmerald) }
                                 Line(s.chooseOnMachine, big, KioskAmber)
