@@ -3,6 +3,12 @@
 > [!NOTE]
 > **版本号说明**: 本文档实际由两条独立演进线合并而成（CMP/Supabase 后端的 RLS 修复线，与 Android HAL/产品线的架构演进线），两条线各自独立递增版本号，合并后出现了 `v2.23`/`v2.24`/`v2.27` 各被使用两次、且部分条目未按日期严格排序的情况（例如 `v2.27 (2026-08-20)` 实际是全文最新的一次修改，却排在 `v2.28 (2026-08-09)` 之后）。**版本号不是可靠的时间/依赖排序依据，请以每条目标题里的日期为准**；正文中散落的 `[v2.1]` 等内联标记同理，指的是该版本条目引入的变更，不代表这是当前最新状态。
 
+### v2.53 (2026-11-03) — Aegis Vend：MDB 售货机流程成文 + 终端选货展示模式 (Aegis Vend MDB Flow Documented, Showcase Sale Mode)
+
+*   新增 **§19**：开机准备、先刷卡 / 先选货两种流程、异常处理（不出货就不收钱）、记账与重启恢复、待现场确认项。
+*   新增销售模式「终端选货（展示）」（§19.7）：6 宫格带货道号、可滑动；真实授权后立即撤销，不扣款；Cael 产品新增行业「售货机 (VEND)」与货道号（`attributes.slot`）。
+*   §11.2 的 MDB 条目已过时（"应答未经验证"），以 §19 为准。
+
 ### v2.52 (2026-10-14) — 优惠与小费 (Discounts & Customer-Chosen Tips)
 
 设计稿：https://claude.ai/artifact/B4cXVxmX1HRKfHdRcxo34q
@@ -1032,7 +1038,7 @@ IM30 端的 App 采用 **MVVM (Model-View-ViewModel)** 架构，结合 **Reposit
 
 ### 11.2 工业控制 HAL 层标准化
 *   **Digit IO (GPIO)**: `DigitIoAdapter` 已作为 `IDispenseAdapter` 接入 `DispenseEngine`（**更正 2026-09-22，此前条目误称"尚未接入"**）——Q3mini/IM30 UPT 上的 `wash` 出货现经此路，已真机验证（2026-09-18）。驱动的是 **Pulse 电路（PIN1，`portNum=0`）**，经 `ExtBoardDevice.setPulseVoltage`/`triggerPulse` 硬件计时下发（**更正，同日**：早前一版误用 Relay 电路 PIN6/7 的 `triggerRelayOn/Off`，现场接线核实后改正——Relay 电路是继电器线圈驱动端，跟下游计时板要的逻辑脉冲信号是两回事）。见 §13.2 与 `docs/wizarpos_upt_integration_spec.md` §1.1。
-*   **MDB High-Level API**: 采用 `pollEvent` 状态机接收 VMC 事件；`approveVend()`/`denyVend()` 已实装，经 `ExtBoardDevice.respondEvent()` 应答 VMC 的 vend 请求（此前版本完全缺失这一步）。**该应答机制未经官方 MDB 协议 PDF 或真机验证**。业务层经新增的 `IMdbController`/`WizarPosMdbController` 桥接层接入 `VendingViewModel`（仅 `WIZARPOS_Q3MINI` 机型启用，其余机型沿用 `MockMdbController` 模拟器）。
+*   **MDB High-Level API**（**更正 2026-11-03：以下为早期记录，现行流程与应答方式见 §19**）: 采用 `pollEvent` 状态机接收 VMC 事件；`approveVend()`/`denyVend()` 已实装，经 `ExtBoardDevice.respondEvent()` 应答 VMC 的 vend 请求（此前版本完全缺失这一步）。**该应答机制未经官方 MDB 协议 PDF 或真机验证**。业务层经新增的 `IMdbController`/`WizarPosMdbController` 桥接层接入 `VendingViewModel`（仅 `WIZARPOS_Q3MINI` 机型启用，其余机型沿用 `MockMdbController` 模拟器）。
 *   **Double-Stage Serial**: 串口通讯遵循 **Header-Body** 双段读取最佳实践，规避工业电磁干扰。
 
 ---
@@ -1290,3 +1296,79 @@ sequenceDiagram
 | 终端断网 | 订单一直「等待店员确认」 | 离线横幅，恢复后自动补上待处理单 |
 | 厨房网络打印机不通 | — | 自动改在终端本机打印 |
 | 店里没有开着桌台图的终端 | 一直「等待店员确认」 | 没人接单；Cael 现场页能看到待处理单，但不能在 Cael 里接单（只读，见 v2.51） |
+
+---
+
+## 19. Aegis Vend：MDB 售货机流程 (Aegis Vend — MDB Vending Flow, 2026-11-03)
+
+`app/aegis-vend` + `feature/vending`。终端在 MDB 总线上是**刷卡器（Cashless 从机）**，售货机（VMC）是主控：顾客在售货机键盘上选货，终端只收钱并回复"批准 / 拒绝"，出不出货由售货机决定。MDB 协议里没有"刷卡器让机器出某个货道"的命令，所以终端选货只能做成展示模式（§19.7）。代码：`VendingViewModel`（状态机）、`WizarPosMdbController` / `WizarPosMdbProvider`（板子）、`VendPayment`（钱）、`VendRecovery`（重启恢复）、`OrderRepository` / `VendingSyncWorker`（记账上云）。测试方法与模拟售货机见 `docs/vmc_simulator.md`。
+
+### 19.1 开机准备
+1. 打开 MDB 板（`ExtBoardDevice`，固件 v14），顺序同 WizarPOS demo：`setCashlessAddress` → `setConfigStateCheck(false)` → `enableAutoBeginSession(0, 0)`（关闭）→ `setConfig` 币种 CAD（124；板子重启会忘，**每次打开都设**）→ `startLoop` → `pollEvent` / `respondEvent`。
+2. 同步设备身份（`sync_device_identity`），从 Cael 拉配置（技术员 PIN 等，`ConfigManager` 云端 → 缓存 → 内置三级降级）。
+3. 跑 `VendRecovery`：上次没做完的交易退还（§19.5）。
+4. 每 10 秒看一次售货机在不在线；不在线、或被 Cael 远程锁定（`DeviceAccessManager`），屏幕「暂停服务」，顾客无法开始。
+
+### 19.2 两种购买方式
+
+**A. 先刷卡（空闲屏 START）**
+
+| 步骤 | 顾客 | 终端 / 系统 |
+|---|---|---|
+| 1 | 点 START，刷卡 | 预授权（PreAuth）冻结 **$10**（`SESSION_LIMIT_CENTS`；VMC 模拟版 $0.10），不是扣款 |
+| 2 | — | 获批：向售货机开始会话（Begin Session，额度 $10），屏幕倒计时 **60 秒**（`SESSION_MS`） |
+| 3 | 在售货机上选货 | 售货机发 Vend Request（价格、货道） |
+| 4 | — | 未超额度且未售罄：批准出货，屏幕「出货中」 |
+| 5 | 取货 | 售货机报 Vend Success → 按**实际价格**完成预授权（AuthCompletion），结束会话 |
+
+**B. 先选货（直接在售货机上按）**
+
+| 步骤 | 顾客 | 终端 / 系统 |
+|---|---|---|
+| 1 | 在售货机上选货 | 终端显示货道和价格，等 **60 秒** |
+| 2 | 点 PAY，刷卡 | 按价格直接消费（Sale） |
+| 3 | — | 获批：批准出货，「出货中」 |
+| 4 | 取货 | Vend Success，记已付款 |
+
+### 19.3 异常处理（原则：不出货就不收钱）
+
+| 情况 | 处理 |
+|---|---|
+| 卡被拒 | 拒绝出货，「未扣款」 |
+| 支付程序无回应 | 当作未付；若其实已扣，下次启动由 `VendRecovery` 撤销 |
+| 先刷卡后 60 秒没选货 | 结束会话，释放预授权（AuthVoid） |
+| 先选货后 60 秒不付款 | 拒绝这次出货，回空闲 |
+| 选的货超过额度 | 拒绝，释放预授权，「超出限额」 |
+| 售罄 | 拒绝，「售罄」 |
+| 顾客点终端 CANCEL | 结束会话 / 拒绝出货，释放预授权 |
+| 顾客在售货机上取消（VEND_CANCEL） | 板子按 demo 回 VEND_CANCEL（result 0）；终端结束会话，有钱就退；出货中则等售货机结果 |
+| 出货失败，或 30 秒没结果（`DISPENSE_TIMEOUT_MS`） | 释放预授权 / 撤销消费，「出货失败 · 未扣款」 |
+| 付款过程中屏幕已切走 | 获批的钱立即撤销 / 释放 |
+| 撤销或退款本身失败 | 记为 PAID / FAILED 上报 Cael，人工退款 |
+
+结果画面停 6 秒回空闲。批准 / 拒绝按 WizarPOS demo 发新的 `MDBEvent`（批准 eventResult 1 带请求金额；拒绝 -1，金额 0）。
+
+### 19.4 屏幕与外围
+*   **语言**：英 / 法切换，回空闲恢复英文。
+*   **广告**：空闲 3 分钟播 Cael 广告；付款 / 出货中不播。
+*   **技术员面板**：仅空闲时；四角（5 秒内）+ 门店 6–8 位 PIN（Cael 终端配置）。MDB 状态、系统检查、支付测试、本机角色、销售模式。
+*   **大屏**：本机角色「主机（带大屏）」时，状态经 Realtime Broadcast 同步到 Aegis Vend Screen（见 CLAUDE.md / `docs/vmc_simulator.md`）；「单机」不发送。
+*   **远程**：Cael 锁定、同步配置、调到前台；心跳。
+
+### 19.5 记账与恢复
+*   每笔在**问卡之前**先写本地日志（`orders_v2.json`，状态 PENDING），崩溃不丢账。
+*   结束后由 `VendingSyncWorker` 上云：付款状态（PAID / VOIDED）、出货状态（SUCCESS / FAILED）、卡品牌 / AID / BIN。
+*   被拒、或预授权已释放（没扣钱）：删除，不留记录。
+*   重启时（`VendRecovery`）：预授权一律释放；消费一律撤销（void，不行就 refund）；都不成的上报人工处理。
+
+### 19.6 待现场确认（WizarPOS 两次答复矛盾，用 MDB232 盒子 + 板子 sniffer 在线路上核实）
+1. 我方发 VEND_CANCEL 后会话是否真的结束。
+2. Begin Session 带的金额售货机是否使用（MDB 4.3 与 demo 说带，第二次答复说不带）。
+3. 先刷卡全流程（PreAuth → AuthCompletion / AuthVoid）尚未与**真实售货机**跑通；目前只在模拟售货机 + 真卡 $0.10 上测过。Interac 借记卡是否接受预授权也未知。
+
+### 19.7 销售模式：终端选货（展示）
+技术员面板「销售模式」可切到「终端选货（展示）」（`ShowcaseViewModel` / `ShowcaseScreen`，2026-11-03），给潜在客户展示以刷卡机为中心的售卖方式；**真实站点一律用 MDB**。
+*   6 宫格，一屏 3×2，多的向上滑；每格编号 = Cael 商品属性 `attributes.slot`（终端配置 → 产品 → 行业「售货机 (VEND)」→ 货道号），未填按 01、02…；按货道号自然排序。店里没有 VEND 商品时显示内置样品（VMC 模拟版 $0.10）。
+*   选货 → PAY → 刷卡：**真实授权后立即撤销**，不扣款、不出货；顶部常驻 DEMO 提示条。绝不做假批准（253 事件）。撤销失败按 PAID / FAILED 上报人工退款；中途崩溃由 `VendRecovery` 撤销。
+*   展示模式开着时 MDB 销售暂停（售货机的选货请求一律拒绝），切回「MDB 售货机」恢复。
+*   2026-11-03 在 255 实测：Mastercard $0.10 获批 → Nuvei 撤销获批，云端无记录。

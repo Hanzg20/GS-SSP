@@ -1,5 +1,8 @@
 # Aegis Vend: VMC simulator (no vending machine)
 
+The vend flow itself (card first / item first, give-back rules, recovery, showcase mode) is
+designed in `docs/system_architecture.md` §19.
+
 There is no vending machine to test with yet (owner, 2026-11-02), so we play the machine
 ourselves. Two layers:
 
