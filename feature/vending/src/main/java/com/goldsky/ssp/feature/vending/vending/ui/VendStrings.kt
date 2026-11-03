@@ -38,7 +38,19 @@ class VendStrings(
     val unavailableTitle: String,
     val unavailableBody: String,
     val cardsAccepted: String,
+    /** Big screen only: the customer pays on the terminal, not here. */
+    val payAtTerminal: String,
 ) {
+    /** Why nothing was charged ([limit] = the hold, for OVER_LIMIT). */
+    fun reason(reason: com.goldsky.ssp.vending.logic.VendingState.Reason, limit: String): String = when (reason) {
+        com.goldsky.ssp.vending.logic.VendingState.Reason.NO_SELECTION -> noSelection
+        com.goldsky.ssp.vending.logic.VendingState.Reason.CANCELLED -> cancelled
+        com.goldsky.ssp.vending.logic.VendingState.Reason.VEND_FAILED -> vendFailed
+        com.goldsky.ssp.vending.logic.VendingState.Reason.DECLINED -> declined
+        com.goldsky.ssp.vending.logic.VendingState.Reason.SOLD_OUT -> soldOut
+        com.goldsky.ssp.vending.logic.VendingState.Reason.OVER_LIMIT -> overLimit(limit)
+    }
+
     companion object {
         val EN = VendStrings(
             langToggle = "FRANÇAIS",
@@ -71,6 +83,7 @@ class VendStrings(
             unavailableTitle = "Card payment unavailable",
             unavailableBody = "This machine can't take cards right now.",
             cardsAccepted = "Interac · Visa · Mastercard · Amex · Apple/Google Pay",
+            payAtTerminal = "Pay on the card terminal",
         )
 
         val FR = VendStrings(
@@ -104,6 +117,7 @@ class VendStrings(
             unavailableTitle = "Paiement par carte indisponible",
             unavailableBody = "Cette machine n'accepte pas les cartes pour le moment.",
             cardsAccepted = "Interac · Visa · Mastercard · Amex · Apple/Google Pay",
+            payAtTerminal = "Payez au terminal de carte",
         )
 
         fun money(cents: Int, fr: Boolean): String =

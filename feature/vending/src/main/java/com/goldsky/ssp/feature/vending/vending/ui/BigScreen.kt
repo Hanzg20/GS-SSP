@@ -1,0 +1,246 @@
+package com.goldsky.ssp.vending.ui
+
+import android.app.Activity
+import android.app.Presentation
+import android.content.Context
+import android.hardware.display.DisplayManager
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import android.view.Display
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.goldsky.ssp.vending.VendingViewModel
+import com.goldsky.ssp.vending.logic.VendingState
+import com.goldsky.ssp.vending.ui.theme.*
+import kotlinx.coroutines.delay
+
+/**
+ * A big screen beside the terminal (some machines have one): cast to it wirelessly
+ * (Miracast, the system's Cast page) or plugged in. Two modes, set in the technician panel:
+ *  - DUAL: the big screen shows the vend in large type ([BigScreenContent]) while the
+ *    customer still pays on the terminal;
+ *  - MIRROR: the big screen shows what the terminal shows (Android's own mirroring).
+ */
+class BigScreen(private val activity: Activity, private val viewModel: VendingViewModel) {
+
+    enum class Mode { DUAL, MIRROR }
+
+    private val displays = activity.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+    private val prefs = activity.getSharedPreferences("vend_big_screen", Context.MODE_PRIVATE)
+    private var presentation: Presentation? = null
+    private var owner: ScreenOwner? = null
+
+    var mode: Mode
+        get() = runCatching { Mode.valueOf(prefs.getString("mode", null) ?: "") }.getOrDefault(Mode.DUAL)
+        set(value) {
+            prefs.edit().putString("mode", value.name).apply()
+            update()
+        }
+
+    private val listener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = update()
+        override fun onDisplayRemoved(displayId: Int) = update()
+        override fun onDisplayChanged(displayId: Int) {}
+    }
+
+    fun start() {
+        displays.registerDisplayListener(listener, Handler(Looper.getMainLooper()))
+        update()
+    }
+
+    fun stop() {
+        displays.unregisterDisplayListener(listener)
+        hide()
+    }
+
+    /** The connected big screen, if any. */
+    fun display(): Display? = displays.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION).firstOrNull()
+
+    /** One line for the technician panel. */
+    fun describe(): String {
+        val d = display() ?: return "未连接大屏"
+        val m = d.mode
+        return "已连接：${d.name}（${m.physicalWidth}×${m.physicalHeight}）· " + if (mode == Mode.DUAL) "双屏" else "镜像"
+    }
+
+    private fun update() {
+        val d = display()
+        if (d == null || mode == Mode.MIRROR || activity.isFinishing) {
+            hide()
+            return
+        }
+        if (presentation?.display?.displayId == d.displayId) return
+        hide()
+        Log.i(TAG, "Big screen: ${d.name} (${d.displayId}), dual")
+        val o = ScreenOwner().also { it.start() }
+        val p = Presentation(activity, d)
+        val view = ComposeView(p.context).apply { setContent { BigScreenContent(viewModel) } }
+        p.setContentView(view)
+        // A Presentation is a dialog, not a ComponentActivity: Compose needs a lifecycle of its
+        // own -- always resumed, so it keeps updating while the idle ads cover the terminal.
+        p.window?.decorView?.let {
+            it.setViewTreeLifecycleOwner(o)
+            it.setViewTreeSavedStateRegistryOwner(o)
+        }
+        p.setOnDismissListener { if (presentation === p) { presentation = null; owner?.stop(); owner = null } }
+        runCatching { p.show() }.onFailure {
+            Log.w(TAG, "Big screen show failed: ${it.message}")
+            o.stop()
+            return
+        }
+        presentation = p
+        owner = o
+    }
+
+    private fun hide() {
+        val p = presentation ?: return
+        presentation = null
+        runCatching { p.dismiss() }
+        owner?.stop()
+        owner = null
+    }
+
+    private class ScreenOwner : LifecycleOwner, SavedStateRegistryOwner {
+        private val registry = LifecycleRegistry(this)
+        private val saved = SavedStateRegistryController.create(this)
+        override val lifecycle: Lifecycle get() = registry
+        override val savedStateRegistry: SavedStateRegistry get() = saved.savedStateRegistry
+        fun start() {
+            saved.performRestore(null as Bundle?)
+            registry.currentState = Lifecycle.State.RESUMED
+        }
+        fun stop() {
+            registry.currentState = Lifecycle.State.DESTROYED
+        }
+    }
+
+    private companion object {
+        const val TAG = "VendBigScreen"
+    }
+}
+
+/**
+ * The vend on the big screen: the same states as the terminal, in large type, and no
+ * buttons -- the customer pays and touches only the terminal, so every screen here
+ * points to it.
+ */
+@Composable
+fun BigScreenContent(viewModel: VendingViewModel) {
+    val state by viewModel.uiState.collectAsState()
+    val french by viewModel.french.collectAsState()
+    val s = if (french) VendStrings.FR else VendStrings.EN
+    val money = { cents: Int -> VendStrings.money(cents, french) }
+    // Sized from the screen: 1080p and 720p TVs both fill.
+    val unit = (LocalConfiguration.current.screenHeightDp / 100f).coerceAtLeast(3f)
+    val big = (unit * 9).sp
+    val mid = (unit * 5).sp
+    val small = (unit * 3).sp
+
+    Box(Modifier.fillMaxSize().background(KioskBg)) {
+        Column(Modifier.fillMaxSize().padding((unit * 4).dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("GSPay", color = KioskAmber, fontSize = mid, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Spacer(Modifier.weight(1f))
+                if (viewModel.vmcSimulator) {
+                    Text(
+                        "VMC SIMULATOR · TEST ONLY", color = TextPrimary, fontSize = small, fontWeight = FontWeight.Black,
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(KioskRed).padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Crossfade(targetState = state, label = "big") { st ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy((unit * 2).dp)) {
+                        when (st) {
+                            VendingState.Idle -> {
+                                Line(s.startTitle, big, TextPrimary)
+                                Line("1  " + s.step1, mid, TextSecondary)
+                                Line("2  " + s.step2, mid, TextSecondary)
+                                Line(s.orChooseFirst, small, TextSecondary)
+                            }
+                            is VendingState.Authorizing -> {
+                                st.amountCents?.let { Line(money(it), big, KioskAmber) }
+                                Line(s.authorizing, big, TextPrimary)
+                                Line(s.keepCard, mid, TextSecondary)
+                            }
+                            is VendingState.SessionOpen -> {
+                                Line(s.approved, big, KioskEmerald)
+                                Line(s.chooseOnMachine, mid, TextPrimary)
+                                Countdown(st.deadline) { Line(s.secondsLeft(it), mid, KioskAmber) }
+                                Line(s.holdNote(money(st.limitCents)), small, TextSecondary)
+                            }
+                            is VendingState.VendRequestReceived -> {
+                                Line(s.item(st.itemSlot), mid, TextSecondary)
+                                Line(money(st.amountCents), (unit * 14).sp, KioskAmber)
+                                Line(s.payAtTerminal, mid, TextPrimary)
+                            }
+                            is VendingState.Dispensing -> {
+                                Line(s.dispensing, big, TextPrimary)
+                                Line(s.item(st.itemSlot) + " · " + money(st.amountCents), mid, TextSecondary)
+                            }
+                            is VendingState.Success -> {
+                                Line(s.takeItem, big, KioskEmerald)
+                                Line(s.charged(money(st.amountCents)), mid, TextPrimary)
+                                Line(s.thanks, mid, TextSecondary)
+                            }
+                            is VendingState.NotCharged -> {
+                                Line(s.reason(st.reason, money(VendingViewModel.SESSION_LIMIT_CENTS)), big, TextPrimary)
+                                Line(s.notCharged, mid, KioskEmerald)
+                            }
+                            VendingState.Unavailable -> {
+                                Line(s.unavailableTitle, big, TextPrimary)
+                                Line(s.unavailableBody, mid, TextSecondary)
+                            }
+                            VendingState.Booting -> Line("…", big, TextSecondary)
+                        }
+                    }
+                }
+            }
+            if (state == VendingState.Idle) Line(s.cardsAccepted, small, TextSecondary)
+        }
+    }
+}
+
+@Composable
+private fun Line(text: String, size: androidx.compose.ui.unit.TextUnit, color: Color) {
+    Text(
+        text, color = color, fontSize = size, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+        lineHeight = size * 1.2f, modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun Countdown(deadline: Long, content: @Composable (Int) -> Unit) {
+    var left by remember(deadline) { mutableIntStateOf(((deadline - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)) }
+    LaunchedEffect(deadline) {
+        while (left > 0) {
+            delay(1000)
+            left = ((deadline - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)
+        }
+    }
+    content(left)
+}

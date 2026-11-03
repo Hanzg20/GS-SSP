@@ -30,13 +30,18 @@ fun VendTechScreen(
     mdbStatus: () -> String,
     onSystemCheck: () -> Unit,
     onPaymentTests: () -> Unit,
+    bigScreen: BigScreen,
+    onCastSettings: () -> Unit,
     onExit: () -> Unit,
 ) {
+    var screenMode by remember { mutableStateOf(bigScreen.mode) }
+    var screenStatus by remember { mutableStateOf(bigScreen.describe()) }
     var status by remember { mutableStateOf("读取中…") }
     var refresh by remember { mutableIntStateOf(0) }
     LaunchedEffect(refresh) {
         status = "读取中…"
         status = withContext(Dispatchers.IO) { runCatching(mdbStatus).getOrElse { "读取失败: ${it.message}" } }
+        screenStatus = bigScreen.describe()
     }
     Column(
         Modifier.fillMaxSize().background(KioskBg).verticalScroll(rememberScrollState()).padding(12.dp),
@@ -49,6 +54,21 @@ fun VendTechScreen(
             Text(status, color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
         }
         TechButton("刷新售货机状态", { refresh++ })
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(KioskCard).padding(10.dp)) {
+            Text("大屏", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(screenStatus, color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+            Text(
+                if (screenMode == BigScreen.Mode.DUAL) "双屏：大屏显示大字购买信息，顾客在本机刷卡"
+                else "镜像：大屏和本机显示一样",
+                color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp,
+            )
+        }
+        TechButton("投屏设置（连接大屏）", onCastSettings)
+        TechButton(if (screenMode == BigScreen.Mode.DUAL) "改为镜像模式" else "改为双屏模式", {
+            bigScreen.mode = if (screenMode == BigScreen.Mode.DUAL) BigScreen.Mode.MIRROR else BigScreen.Mode.DUAL
+            screenMode = bigScreen.mode
+            screenStatus = bigScreen.describe()
+        })
         TechButton("系统检查", onSystemCheck)
         TechButton("支付测试（真实交易）", onPaymentTests)
         TechButton("返回售卖界面", onExit, primary = true)

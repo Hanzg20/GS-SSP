@@ -57,6 +57,7 @@ class MainActivity : ComponentActivity() {
     private val adHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val adRunnable = Runnable { launchAdsIfIdle() }
     private var watchdogJob: Job? = null
+    private lateinit var bigScreen: com.goldsky.ssp.vending.ui.BigScreen
 
     override fun onCreate(savedInstanceState: Bundle?) {
         setupCrashHandler()
@@ -99,6 +100,7 @@ class MainActivity : ComponentActivity() {
         // Heartbeat, offline replay, batch close, storage cleaning and ad sync -- same jobs as Wash / Timer.
         AdManager.init(this)
         startWatchdog(hardware)
+        bigScreen = com.goldsky.ssp.vending.ui.BigScreen(this, vendingViewModel).also { it.start() }
 
         val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
         setContent {
@@ -112,6 +114,12 @@ class MainActivity : ComponentActivity() {
                     mdbStatus = { vendingViewModel.mdbStatus() },
                     onSystemCheck = { startActivity(Intent(this, com.goldsky.ssp.ui.SystemCheckActivity::class.java)) },
                     onPaymentTests = { startActivity(Intent(this, com.goldsky.ssp.ui.PaymentTestActivity::class.java)) },
+                    bigScreen = bigScreen,
+                    // The system's Cast page: turn on "Enable wireless display" (menu), pick the screen.
+                    onCastSettings = {
+                        runCatching { startActivity(Intent(android.provider.Settings.ACTION_CAST_SETTINGS)) }
+                            .onFailure { Toast.makeText(this, "This terminal has no Cast settings", Toast.LENGTH_LONG).show() }
+                    },
                     onExit = { tech = false },
                 )
             } else {
@@ -262,6 +270,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         watchdogJob?.cancel()
+        bigScreen.stop()
         RemoteCommandManager.stopListening()
         super.onDestroy()
     }

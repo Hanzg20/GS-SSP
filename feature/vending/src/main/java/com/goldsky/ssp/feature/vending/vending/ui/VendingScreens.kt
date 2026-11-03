@@ -331,14 +331,7 @@ private fun SuccessScreen(s: VendStrings, price: String) {
 @Composable
 private fun NotChargedScreen(s: VendStrings, reason: Reason, limit: String) {
     val d = LocalDims.current
-    val why = when (reason) {
-        Reason.NO_SELECTION -> s.noSelection
-        Reason.CANCELLED -> s.cancelled
-        Reason.VEND_FAILED -> s.vendFailed
-        Reason.DECLINED -> s.declined
-        Reason.SOLD_OUT -> s.soldOut
-        Reason.OVER_LIMIT -> s.overLimit(limit)
-    }
+    val why = s.reason(reason, limit)
     Screen {
         ResultMark(false)
         Spacer(Modifier.height(d.gap))
