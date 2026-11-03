@@ -21,12 +21,11 @@ class VendingSyncWorker(appContext: Context, params: WorkerParameters) : Corouti
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
-            val deviceSn = DeviceRepository.getPersistedDeviceSn() ?: "IM25-VEND-MOCK"
-            
-            // 1. Sync Inventory Shadow
-            syncInventory(deviceSn)
+            // No SN yet (first start, before the hardware answered): try again later.
+            val deviceSn = DeviceRepository.getPersistedDeviceSn() ?: return@withContext Result.retry()
 
-            // 2. Sync Unsynced Orders
+            // The inventory shadow (syncInventory) stays off until the terminal knows the
+            // machine's real columns: InventoryManager only holds placeholder slots.
             syncOrders(deviceSn)
 
             Result.success()
@@ -48,15 +47,21 @@ class VendingSyncWorker(appContext: Context, params: WorkerParameters) : Corouti
 
         Log.i(TAG, "Attempting to sync ${unsynced.size} orders...")
 
+        var anyFailed = false
         unsynced.forEach { order ->
             val record = TransactionRecord(
                 device_sn = sn,
                 amount = order.amountCents,
                 payment_status = order.paymentStatus,
                 hardware_status = order.dispenseStatus,
+                auth_code = order.authCode,
                 ecr_ref_num = order.orderId,
-                payment_method = "CREDIT_CARD", // Assume credit card for Vending default
-                currency = "USD"
+                payment_method = "CREDIT_CARD", // same as Wash / Timer card sales
+                entry_mode = order.entryMode,
+                card_brand = order.cardBrand,
+                card_aid = order.cardAid,
+                card_bin = order.cardBin,
+                // currency: the region default (CAD in Canada); this used to say USD.
             )
 
             // Try to push to remote. recordTransactionRemote returns true on success.
@@ -66,7 +71,10 @@ class VendingSyncWorker(appContext: Context, params: WorkerParameters) : Corouti
                 Log.i(TAG, "Order ${order.orderId} synced successfully")
             } else {
                 Log.w(TAG, "Failed to sync order ${order.orderId}")
+                anyFailed = true
             }
         }
+        // Offline: WorkManager retries with backoff instead of leaving the rows for the next vend.
+        if (anyFailed) throw IllegalStateException("some orders not synced")
     }
 }

@@ -63,7 +63,7 @@ private val LocalDims = compositionLocalOf { Dims(false) }
  * price from the machine (item first) is taken from any idle/result screen.
  */
 @Composable
-fun VendingMainContainer(viewModel: VendingViewModel) {
+fun VendingMainContainer(viewModel: VendingViewModel, version: String = "") {
     val state by viewModel.uiState.collectAsState()
     val french by viewModel.french.collectAsState()
     val s = if (french) VendStrings.FR else VendStrings.EN
@@ -74,7 +74,7 @@ fun VendingMainContainer(viewModel: VendingViewModel) {
         CompositionLocalProvider(LocalDims provides remember(compact) { Dims(compact) }) {
         Surface(modifier = Modifier.fillMaxSize(), color = KioskBg) {
             Column(Modifier.fillMaxSize()) {
-                TopBar(s, showToggle = state !is VendingState.Unavailable, onToggle = viewModel::toggleLanguage)
+                TopBar(s, version, showToggle = state !is VendingState.Unavailable, onToggle = viewModel::toggleLanguage)
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     Crossfade(targetState = state, label = "screen") { st ->
                         when (st) {
@@ -106,13 +106,19 @@ fun VendingMainContainer(viewModel: VendingViewModel) {
 }
 
 @Composable
-private fun TopBar(s: VendStrings, showToggle: Boolean, onToggle: () -> Unit) {
+private fun TopBar(s: VendStrings, version: String, showToggle: Boolean, onToggle: () -> Unit) {
     val d = LocalDims.current
     Row(
         Modifier.fillMaxWidth().height(d.bar).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("GOLDSKY", color = KioskAmber, fontSize = d.small, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+        // The terminal's own brand (owner, 2026-11-02), not the store's: a vending operator's
+        // machines carry the payment brand, whatever the store is called in Cael.
+        Text("GSPay", color = KioskAmber, fontSize = d.small, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+        if (version.isNotBlank()) {
+            Spacer(Modifier.width(8.dp))
+            Text("ver $version", color = TextSecondary, fontSize = d.small * 0.85f)
+        }
         Spacer(Modifier.weight(1f))
         if (showToggle) {
             // A thumb-sized pill, quiet next to START.

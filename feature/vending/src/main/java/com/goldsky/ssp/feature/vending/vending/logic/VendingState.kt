@@ -53,6 +53,8 @@ interface IMdbController {
     val ready: Boolean get() = true
     /** A vending machine is on the bus (false = nothing to sell for; null = can't tell). */
     fun machineOnline(): Boolean? = true
+    /** For the technician panel. */
+    fun status(): String = "MDB simulator"
     fun onVendRequest(callback: (amount: Int, slot: String) -> Unit)
     fun onVendSuccess(callback: () -> Unit)
     fun onVendFailure(callback: (errorCode: Int) -> Unit)

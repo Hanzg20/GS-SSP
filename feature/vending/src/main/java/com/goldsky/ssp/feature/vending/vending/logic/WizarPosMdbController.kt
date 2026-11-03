@@ -52,18 +52,23 @@ class WizarPosMdbController(context: Context) : IMdbController {
 
     override fun machineOnline(): Boolean? = mdbProvider.busOnline()
 
+    override fun status(): String = mdbProvider.describe()
+
+    // Events arrive on the poll thread; the vend loop runs on the main thread.
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
     override fun initialize() {
         mdbProvider.startPolling(object : IMdbProvider.MdbEventListener {
             override fun onVendRequest(amount: Float, item: Int) {
-                vendRequestCallback?.invoke((amount * 100).roundToInt(), item.toString())
+                main.post { vendRequestCallback?.invoke((amount * 100).roundToInt(), item.toString()) }
             }
 
             override fun onVendSuccess() {
-                successCallback?.invoke()
+                main.post { successCallback?.invoke() }
             }
 
             override fun onVendFailure() {
-                failureCallback?.invoke(-1)
+                main.post { failureCallback?.invoke(-1) }
             }
         })
     }

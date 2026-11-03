@@ -53,19 +53,30 @@ object OrderRepository {
         saveAll(context)
     }
 
-    fun updateOrder(context: Context, txnId: String, dispenseStatus: String, paymentStatus: String) {
+    fun updateOrder(context: Context, txnId: String, dispenseStatus: String, paymentStatus: String) =
+        update(context, txnId) { it.copy(dispenseStatus = dispenseStatus, paymentStatus = paymentStatus) }
+
+    /** Changes the order [txnId] (if it's there) and saves. */
+    fun update(context: Context, txnId: String, change: (VendingOrder) -> VendingOrder) {
         val current = _orders.value.toMutableList()
         val index = current.indexOfFirst { it.orderId == txnId }
         if (index != -1) {
-            current[index] = current[index].copy(
-                dispenseStatus = dispenseStatus,
-                paymentStatus = paymentStatus
-            )
+            current[index] = change(current[index])
             _orders.value = current
             saveAll(context)
-            Log.i(TAG, "Updated Order $txnId: $dispenseStatus / $paymentStatus")
+            Log.i(TAG, "Updated Order $txnId: ${current[index].paymentStatus} / ${current[index].dispenseStatus}")
         }
     }
+
+    /** Drops an order nothing was charged for (declined, or a hold released before any item). */
+    fun remove(context: Context, txnId: String) {
+        _orders.value = _orders.value.filterNot { it.orderId == txnId }
+        saveAll(context)
+        Log.i(TAG, "Removed Order $txnId")
+    }
+
+    /** Left mid-vend by a crash or power cut: the money may be held / taken with no item given. */
+    fun getUnfinishedOrders(): List<VendingOrder> = _orders.value.filter { it.dispenseStatus == "PENDING" }
 
     /**
      * Called by SyncWorker to mark an order as synced to cloud.
@@ -81,6 +92,7 @@ object OrderRepository {
     }
 
     fun getUnsyncedOrders(): List<VendingOrder> {
-        return _orders.value.filter { !it.cloudSynced && it.dispenseStatus != "PENDING" }
+        // UNKNOWN: no answer from the card terminal and no reversal possible -- not a sale to report.
+        return _orders.value.filter { !it.cloudSynced && it.dispenseStatus != "PENDING" && it.paymentStatus != "UNKNOWN" }
     }
 }

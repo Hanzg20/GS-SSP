@@ -1,0 +1,14 @@
+{
+  "version": "vend-1.0.0",
+  "vertical_type": "VENDING",
+  "products": [],
+  "settings": {
+    "maintenance_pin": "",
+    "locale_tag": "en-US",
+    "payment_method_mode": 1
+  },
+  "branding": {
+    "brand_name": "GSPay",
+    "primary_color_hex": "#F59E0B"
+  }
+}

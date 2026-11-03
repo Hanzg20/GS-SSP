@@ -39,6 +39,9 @@ interface IMdbProvider {
     /** The MDB board could be opened (polling is running). */
     fun isOpen(): Boolean = true
 
+    /** One line for the technician panel: board, protocol level, whether a machine is on the bus. */
+    fun describe(): String = "MDB: not available"
+
     /** A vending machine (VMC) is talking on the bus; null = can't tell. */
     fun busOnline(): Boolean? = null
 

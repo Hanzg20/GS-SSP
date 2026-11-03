@@ -11,7 +11,9 @@ if (localPropertiesFile.exists()) {
     localProperties.load(new FileInputStream(localPropertiesFile))
 }
 
-ext.appVersion = "0.1.2"
+// Owner, 2026-11-02: GSPay ver 0.0.1. Earlier dev builds were 0.1.x / 0.2.0 -- a terminal
+// that has one needs Vend uninstalled first (versionCode only goes up).
+ext.appVersion = "0.0.1"
 
 android {
     namespace 'com.goldsky.ssp.aegis.vend'

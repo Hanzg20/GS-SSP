@@ -138,6 +138,20 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
 
     override fun isOpen(): Boolean = extBoardDevice != null
 
+    override fun describe(): String {
+        val d = extBoardDevice ?: return "MDB board not open"
+        val parts = mutableListOf<String>()
+        runCatching { parts += "board v${d.boardVersion}" }
+        runCatching { d.config.let { parts += "level ${it.level}, ${it.decimalPlace} decimals, currency 0x${Integer.toHexString(it.currencyCode)}" } }
+        runCatching { parts += if (d.option.enableAlwaysIdle) "always idle" else "sessions" }
+        parts += when (busOnline()) {
+            true -> "machine ONLINE"
+            false -> "no machine on the bus"
+            null -> "bus status unknown"
+        }
+        return parts.joinToString(" | ")
+    }
+
     override fun busOnline(): Boolean? = try {
         extBoardDevice?.mdbConnStatus?.let { it == 1 }
     } catch (e: Exception) {

@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- BootFrontGuard / KioskRecall bring the kiosk back over OPC after a boot: Android 14 only
+         lets a background start through with "display over other apps" (see aegis-timer). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- WizarPOS: card payment + ext board (MDB on the Q3mini UPT's serial ext port); same set as aegis-timer -->
     <uses-permission android:name="android.permission.CLOUDPOS_MSR" />
     <uses-permission android:name="android.permission.CLOUDPOS_SMARTCARD" />
@@ -48,6 +51,14 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- Idle ad screen, same as Wash / Timer. -->
+        <activity
+            android:name="com.goldsky.ssp.ui.AdActivity"
+            android:exported="false"
+            android:screenOrientation="nosensor"
+            android:theme="@style/Theme.SSP.Fullscreen"
+            android:configChanges="orientation|keyboardHidden|screenSize" />
 
     </application>
 </manifest>
