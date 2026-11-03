@@ -75,12 +75,14 @@ class ShowcaseViewModel(application: Application) : AndroidViewModel(application
     val idle: Boolean get() = _state.value is State.Choosing
 
     /**
-     * The store's VENDING products from Cael (those with a price; six to a screen, the rest
-     * by scrolling), numbered by attributes.slot else in order; else the samples.
+     * The store's VEND products from Cael (those with a price; six to a screen, the rest by
+     * scrolling), in slot order and numbered by attributes.slot, else in order; else the samples.
+     * "VEND" is products.vertical_type's value (its CHECK constraint), not "VENDING".
      */
     fun refreshItems() {
-        val fromCael = ConfigManager.getConfig()?.products.orEmpty().forVertical("VENDING")
+        val fromCael = ConfigManager.getConfig()?.products.orEmpty().forVertical("VEND")
             .filter { it.is_active && it.price_cents > 0 }
+            .sortedWith(compareBy(nullsLast(SLOT_ORDER)) { it.slot })
             .mapIndexed { i, p -> Item(p.slot ?: number(i), p.name, p.price_cents, "", p.image_url) }
         _items.value = if (fromCael.isNotEmpty()) fromCael else samples()
     }
@@ -190,6 +192,20 @@ class ShowcaseViewModel(application: Application) : AndroidViewModel(application
         const val CHOICE_MS = 60_000L
         const val DISPENSE_SHOW_MS = 3_000L
         const val RESULT_MS = 6_000L
+
+        /** Natural order: A2 before A10, 9 before 12 (runs of digits compared as numbers). */
+        val SLOT_ORDER = Comparator<String> { a, b ->
+            val split = Regex("\\d+|\\D+")
+            val x = split.findAll(a.uppercase()).map { it.value }.toList()
+            val y = split.findAll(b.uppercase()).map { it.value }.toList()
+            for (i in 0 until minOf(x.size, y.size)) {
+                val nx = x[i].toBigIntegerOrNull()
+                val ny = y[i].toBigIntegerOrNull()
+                val c = if (nx != null && ny != null) nx.compareTo(ny) else x[i].compareTo(y[i])
+                if (c != 0) return@Comparator c
+            }
+            x.size - y.size
+        }
     }
 }
 

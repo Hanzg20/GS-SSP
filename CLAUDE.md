@@ -82,7 +82,7 @@ app/aegis-vend-screen -- Aegis Vend Screen (`com.goldsky.ssp.aegis.vend.screen`)
                   own device identity (`VSCR_<android id>`) so Cael lists it and gives it a playlist. Vendor .so excluded.
                   The Q3 UPT has no video output (WizarPOS, 2026-11-02): a USB-C-to-HDMI cable can't drive a screen.
                   Aegis Vend showcase sale mode (technician panel, 2026-11-03, for showing prospects): a 6-item grid on the
-                  terminal (`ShowcaseViewModel` / `ShowcaseScreen`, store's VENDING products else samples), PAY, real card
+                  terminal (`ShowcaseViewModel` / `ShowcaseScreen`, store's VEND products by `attributes.slot` else samples), PAY, real card
                   sale voided at once -- never a fake approval; MDB sales refused meanwhile. Real sites stay on MDB.
 app/aegis-timer -- Aegis Timer (`com.goldsky.ssp.aegis.timer`, feature:timer), added 2026-09-23: the time-based product family
                   (pay -> terminal times the session and HOLDS an output ON, countdown on screen) -- first product is the
