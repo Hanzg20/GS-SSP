@@ -295,6 +295,8 @@ class MainActivity : BaseAdActivity() {
             SupabaseClientProvider.ensureAuthenticated()
             com.goldsky.ssp.payment.DeviceRepository.registerDevice(deviceSn, installedVersion())
             val identity = com.goldsky.ssp.payment.DeviceRepository.syncDeviceIdentity(deviceSn)
+            // This terminal runs Aegis Wash, whatever it ran before (devices.vertical_type).
+            if (identity != null) com.goldsky.ssp.payment.DeviceRepository.reportVertical("WASH")
             DeviceAccessManager.applyActiveState(identity?.is_active)
             performHealthCheck()
             if (identity?.org_id != null) {

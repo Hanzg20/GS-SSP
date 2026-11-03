@@ -323,6 +323,8 @@ class MainActivity : ComponentActivity() {
             // Tells CMP whether remote start needs a unit (1 / 2) for this terminal.
             DeviceRepository.registerDevice(deviceSn, version, serviceUnits = if (outputSettings.dualBay) 2 else 1)
             val identity = DeviceRepository.syncDeviceIdentity(deviceSn)
+            // This terminal runs Aegis Timer, whatever it ran before (devices.vertical_type).
+            if (identity != null) DeviceRepository.reportVertical("TIMER")
             DeviceAccessManager.applyActiveState(identity?.is_active)
             timerVm.setLocked(DeviceAccessManager.isLocked())
             identity?.org_id?.let { loadConfig(it) }

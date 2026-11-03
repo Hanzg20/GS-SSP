@@ -1393,4 +1393,4 @@ sequenceDiagram
 *   **数据库**（`docs/migrations/2026-11-03_vip_deduct_refund.sql`）：`vip_deduct` / `vip_refund`，`vip_card_ledger.source_ref = 单号`，kind 新增 `REFUND`；同一单号重复扣款只扣一次。Wash 仍用 `deduct_vip_balance`。
 *   **记账**：交易 `payment_method = VIP_CARD`、`vip_card_uid`、`entry_mode = QR`，与 Wash 相同。
 *   **未做**：六宫格展示模式的 VIP 付款。
-*   **终端类型**：Vend 每次启动（`sync_device_identity` 之后）调用 `device_set_vertical('VEND')`，把自己那一行的 `devices.vertical_type` 改成 VEND（`docs/migrations/2026-11-03_device_set_vertical.sql`；只能改自己，只接受 WASH/VEND/TIMER/EV/LAUNDRY）。起因：255 从 Wash 改装成 Vend 后仍是 WASH，发布「刷卡 + 扫码」被当成旧版洗车机拦下。
+*   **终端类型**：Vend / Wash / Timer 每次启动（Wash 报 WASH，Timer 报 TIMER）（`sync_device_identity` 之后）调用 `device_set_vertical`，把自己那一行的 `devices.vertical_type` 改成本 App 的类型（`docs/migrations/2026-11-03_device_set_vertical.sql`；只能改自己，只接受 WASH/VEND/TIMER/EV/LAUNDRY）。起因：255 从 Wash 改装成 Vend 后仍是 WASH，发布「刷卡 + 扫码」被当成旧版洗车机拦下。
