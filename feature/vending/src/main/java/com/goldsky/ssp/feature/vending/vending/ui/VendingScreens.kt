@@ -1,13 +1,11 @@
 package com.goldsky.ssp.vending.ui
 
 import androidx.compose.animation.Crossfade
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.goldsky.ssp.vending.VendingViewModel
 import com.goldsky.ssp.vending.logic.PurchaseFlow
@@ -37,31 +36,33 @@ import kotlinx.coroutines.delay
 
 /**
  * Sizes for the screen we're on: the Q3mini is ~320dp square, so below 480dp of
- * height everything tightens (same idea as core/ui's values-h480dp).
+ * height everything tightens (same idea as core/ui's values-h480dp). No small print
+ * (owner, 2026-11-03): the smallest text is [body].
  */
 private class Dims(c: Boolean) {
-    val bar: Dp = if (c) 40.dp else 52.dp
-    val pad: Dp = if (c) 6.dp else 8.dp
-    val title: TextUnit = if (c) 22.sp else 28.sp
-    val headline: TextUnit = if (c) 20.sp else 24.sp
-    val body: TextUnit = if (c) 14.sp else 16.sp
-    val small: TextUnit = if (c) 11.sp else 13.sp
-    val price: TextUnit = if (c) 40.sp else 52.sp
-    val button: Dp = if (c) 52.dp else 64.dp
-    val cancel: Dp = if (c) 44.dp else 52.dp
-    val buttonText: TextUnit = if (c) 20.sp else 24.sp
-    val mark: Dp = if (c) 64.dp else 84.dp
-    val gap: Dp = if (c) 8.dp else 14.dp
+    val bar: Dp = if (c) 44.dp else 56.dp
+    val pad: Dp = if (c) 8.dp else 12.dp
+    val title: TextUnit = if (c) 30.sp else 38.sp
+    val headline: TextUnit = if (c) 26.sp else 32.sp
+    val body: TextUnit = if (c) 20.sp else 24.sp
+    val price: TextUnit = if (c) 60.sp else 76.sp
+    val button: Dp = if (c) 64.dp else 76.dp
+    val cancel: Dp = if (c) 52.dp else 60.dp
+    val buttonText: TextUnit = if (c) 26.sp else 30.sp
+    val mark: Dp = if (c) 80.dp else 100.dp
+    val gap: Dp = if (c) 12.dp else 18.dp
 }
 
 private val LocalDims = compositionLocalOf { Dims(false) }
 
+/** The VIP page's title look: bold, widely spaced capitals. */
+private val Spaced = 0.08.em
+
 /**
- * Aegis Vend, the screen on the vending machine's front (Q3mini: ~4", square).
- * One message per screen, big type, one amber button at most, so it reads at a
- * glance next to the machine's own keypad and display. Both MDB flows are shown
- * (see [VendingState]): the idle screen leads with card first (START), and a
- * price from the machine (item first) is taken from any idle/result screen.
+ * Aegis Vend, the screen on the vending machine's front (Q3mini: ~4", square), in the VIP
+ * page's black and gold (owner, 2026-11-03). One message per screen, big bold words, no
+ * explanations, one gold button at most, so it reads at a glance next to the machine's
+ * own keypad and display. The idle screen follows the purchase flow (see [VendingState]).
  */
 @Composable
 fun VendingMainContainer(viewModel: VendingViewModel, version: String = "", onVip: () -> Unit = {}) {
@@ -75,42 +76,35 @@ fun VendingMainContainer(viewModel: VendingViewModel, version: String = "", onVi
     val compact = LocalConfiguration.current.screenHeightDp < 480
     VendingTheme {
         CompositionLocalProvider(LocalDims provides remember(compact) { Dims(compact) }) {
-        Surface(modifier = Modifier.fillMaxSize(), color = KioskBg) {
-            Column(Modifier.fillMaxSize()) {
-                if (viewModel.vmcSimulator) {
-                    // Can't be missed: no vending machine, real card payments.
-                    Text(
-                        "VMC SIMULATOR · TEST ONLY · REAL CARD PAYMENTS",
-                        color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().background(KioskRed).padding(vertical = 3.dp),
-                    )
-                }
-                TopBar(s, version, showToggle = state !is VendingState.Unavailable, onToggle = viewModel::toggleLanguage)
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    Crossfade(targetState = state, label = "screen") { st ->
-                        when (st) {
-                            VendingState.Idle -> IdleScreen(s, flow, viewModel::startSession)
-                            is VendingState.Authorizing -> AuthorizingScreen(s, st.amountCents?.let(money))
-                            is VendingState.SessionOpen -> SessionScreen(s, money(st.limitCents), st.deadline, viewModel::cancel)
-                            is VendingState.VendRequestReceived -> PriceScreen(s, st.itemSlot, money(st.amountCents), viewModel::startPayment, viewModel::cancel)
-                            is VendingState.Dispensing -> DispensingScreen(s, st.itemSlot, money(st.amountCents))
-                            is VendingState.Success -> SuccessScreen(s, money(st.amountCents))
-                            is VendingState.NotCharged -> NotChargedScreen(s, st.reason, money(VendingViewModel.SESSION_LIMIT_CENTS))
-                            VendingState.Unavailable -> UnavailableScreen()
-                            VendingState.Booting -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                                CircularProgressIndicator(color = KioskAmber)
-                            }
+        Column(Modifier.fillMaxSize().background(KioskPage)) {
+            if (viewModel.vmcSimulator) {
+                // Can't be missed: no vending machine, real card payments.
+                Text(
+                    "VMC SIMULATOR · TEST",
+                    color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().background(KioskRed).padding(vertical = 2.dp),
+                )
+            }
+            TopBar(s, version, showToggle = state !is VendingState.Unavailable, onToggle = viewModel::toggleLanguage)
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                Crossfade(targetState = state, label = "screen") { st ->
+                    when (st) {
+                        VendingState.Idle -> IdleScreen(s, flow, viewModel::startSession)
+                        is VendingState.Authorizing -> AuthorizingScreen(s, st.amountCents?.let(money))
+                        is VendingState.SessionOpen -> SessionScreen(s, money(st.limitCents), st.deadline, viewModel::cancel)
+                        is VendingState.VendRequestReceived -> PriceScreen(s, st.itemSlot, money(st.amountCents), viewModel::startPayment, viewModel::cancel)
+                        is VendingState.Dispensing -> DispensingScreen(s)
+                        is VendingState.Success -> SuccessScreen(s, money(st.amountCents))
+                        is VendingState.NotCharged -> NotChargedScreen(s, st.reason, money(VendingViewModel.SESSION_LIMIT_CENTS))
+                        VendingState.Unavailable -> UnavailableScreen()
+                        VendingState.Booting -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                            CircularProgressIndicator(color = KioskAmber)
                         }
                     }
                 }
-                if (state == VendingState.Idle) {
-                    vipBonus?.let { bonus -> VipBanner(if (bonus > 0) s.vipBonus(bonus) else s.vipBanner, onVip) }
-                    Text(
-                        s.cardsAccepted,
-                        color = TextSecondary, fontSize = 11.sp, textAlign = TextAlign.Center, maxLines = 1,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = LocalDims.current.pad)
-                    )
-                }
+            }
+            if (state == VendingState.Idle) {
+                vipBonus?.let { bonus -> VipBanner(if (bonus > 0) s.vipBonus(bonus) else s.vipBanner, onVip) }
             }
         }
         }
@@ -121,13 +115,13 @@ fun VendingMainContainer(viewModel: VendingViewModel, version: String = "", onVi
 @Composable
 private fun VipBanner(text: String, onClick: () -> Unit) {
     val d = LocalDims.current
+    val shape = RoundedCornerShape(16.dp)
     Box(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(d.cancel * 0.8f).clip(RoundedCornerShape(12.dp))
-            .border(1.5.dp, KioskAmber, RoundedCornerShape(12.dp)).background(KioskAmber.copy(alpha = 0.12f))
-            .clickable(onClick = onClick),
+        Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = d.pad).height(d.cancel).clip(shape)
+            .background(kioskTile(best = true)).border(1.5.dp, KioskAmber, shape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = KioskAmber, fontSize = d.small, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp, maxLines = 1)
+        Text(text, color = KioskAmber, fontSize = d.body, fontWeight = FontWeight.Bold, letterSpacing = Spaced, maxLines = 1)
     }
 }
 
@@ -135,26 +129,25 @@ private fun VipBanner(text: String, onClick: () -> Unit) {
 private fun TopBar(s: VendStrings, version: String, showToggle: Boolean, onToggle: () -> Unit) {
     val d = LocalDims.current
     Row(
-        Modifier.fillMaxWidth().height(d.bar).padding(horizontal = 12.dp),
+        Modifier.fillMaxWidth().height(d.bar).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // The terminal's own brand (owner, 2026-11-02), not the store's: a vending operator's
         // machines carry the payment brand, whatever the store is called in Cael.
-        Text("GSPay", color = KioskAmber, fontSize = d.small, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+        Text("GSPay", color = KioskAmber, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = Spaced)
         if (version.isNotBlank()) {
             Spacer(Modifier.width(8.dp))
-            Text("ver $version", color = TextSecondary, fontSize = d.small * 0.85f)
+            Text("ver $version", color = TextSecondary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.weight(1f))
         if (showToggle) {
-            // A thumb-sized pill, quiet next to START.
             Box(
-                Modifier.height(d.bar - 6.dp).clip(RoundedCornerShape(20.dp))
-                    .border(1.dp, TextSecondary.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                Modifier.height(d.bar - 6.dp).clip(RoundedCornerShape(20.dp)).background(KioskCard)
+                    .border(1.dp, KioskCardEdge, RoundedCornerShape(20.dp))
                     .clickable(onClick = onToggle).padding(horizontal = 14.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(s.langToggle, color = TextPrimary, fontSize = d.small, fontWeight = FontWeight.Bold)
+                Text(s.langToggle, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -164,37 +157,50 @@ private fun TopBar(s: VendStrings, version: String, showToggle: Boolean, onToggl
 @Composable
 private fun Screen(content: @Composable ColumnScope.() -> Unit) {
     Column(
-        Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = LocalDims.current.pad),
+        Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = LocalDims.current.pad),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
         content = content
     )
 }
 
+/** A screen's one big line, bold, spaced capitals like the VIP page's title. */
 @Composable
-private fun BigButton(text: String, color: Color, onClick: () -> Unit) {
+private fun Title(text: String, color: Color = TextPrimary, size: TextUnit = LocalDims.current.title) =
+    Text(text, color = color, fontSize = size, fontWeight = FontWeight.Bold, letterSpacing = Spaced,
+        textAlign = TextAlign.Center, lineHeight = size * 1.15f)
+
+/** The one line under it, if any. */
+@Composable
+private fun Line(text: String, color: Color = TextSecondary) {
+    val d = LocalDims.current
+    Text(text, color = color, fontSize = d.body, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+        lineHeight = d.body * 1.2f)
+}
+
+@Composable
+private fun BigButton(text: String, onClick: () -> Unit) {
     val d = LocalDims.current
     Button(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().height(d.button),
-        shape = RoundedCornerShape(14.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = KioskBg)
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = KioskAmber, contentColor = KioskBg)
     ) {
-        Text(text, fontSize = d.buttonText, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+        Text(text, fontSize = d.buttonText, fontWeight = FontWeight.Bold, letterSpacing = Spaced)
     }
 }
 
 @Composable
 private fun CancelButton(text: String, onClick: () -> Unit) {
     val d = LocalDims.current
-    OutlinedButton(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(d.cancel),
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, TextSecondary),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        Modifier.fillMaxWidth().height(d.cancel).clip(shape).background(kioskTile())
+            .border(1.dp, KioskCardEdge, shape).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(text, fontSize = d.body, fontWeight = FontWeight.Bold)
+        Text(text, color = TextPrimary, fontSize = d.body, fontWeight = FontWeight.Bold, letterSpacing = Spaced)
     }
 }
 
@@ -205,45 +211,18 @@ private fun IdleScreen(s: VendStrings, flow: PurchaseFlow, onStart: () -> Unit) 
     Screen {
         if (flow == PurchaseFlow.ITEM_FIRST) {
             // No START: the price arrives from the machine (PriceScreen).
-            Text(s.itemFirstTitle, color = TextPrimary, fontSize = d.headline, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+            NfcRadar(size = d.mark)
             Spacer(Modifier.height(d.gap))
-            StepRow(1, s.step2)
-            Spacer(Modifier.height(6.dp))
-            StepRow(2, s.itemStep2)
-            Spacer(Modifier.height(d.gap))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                NfcRadar(size = 32.dp)
-                Spacer(Modifier.width(6.dp))
-                Text(s.priceShowsHere, color = TextSecondary, fontSize = d.body, fontWeight = FontWeight.SemiBold)
-            }
+            Title(s.itemFirstTitle, KioskAmber)
         } else {
-            Text(s.startTitle, color = TextPrimary, fontSize = d.title, fontWeight = FontWeight.Black)
-            Spacer(Modifier.height(d.gap))
-            StepRow(1, s.step1)
-            Spacer(Modifier.height(6.dp))
-            StepRow(2, s.step2)
-            Spacer(Modifier.height(d.gap))
-            BigButton(s.startButton, KioskAmber, onStart)
+            Title(s.startTitle, KioskAmber)
+            Spacer(Modifier.height(d.gap * 2))
+            BigButton(s.startButton, onStart)
             if (flow == PurchaseFlow.BOTH) {
-                Spacer(Modifier.height(6.dp))
-                Text(s.orChooseFirst, color = TextSecondary, fontSize = d.small, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(d.gap))
+                Line(s.orChooseFirst)
             }
         }
-    }
-}
-
-@Composable
-private fun StepRow(n: Int, text: String) {
-    val d = LocalDims.current
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(KioskCard).padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(Modifier.size(26.dp).background(KioskAmber, CircleShape), contentAlignment = Alignment.Center) {
-            Text("$n", color = KioskBg, fontSize = d.body, fontWeight = FontWeight.Black)
-        }
-        Spacer(Modifier.width(10.dp))
-        Text(text, color = TextPrimary, fontSize = d.body, fontWeight = FontWeight.SemiBold, lineHeight = d.body * 1.2f)
     }
 }
 
@@ -252,14 +231,12 @@ private fun AuthorizingScreen(s: VendStrings, amount: String?) {
     val d = LocalDims.current
     Screen {
         if (amount != null) {
-            Text(amount, color = TextPrimary, fontSize = d.price, fontWeight = FontWeight.Black)
+            Text(amount, color = KioskAmber, fontSize = d.price, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(d.gap))
         }
-        CircularProgressIndicator(color = KioskAmber, strokeWidth = 5.dp, modifier = Modifier.size(d.mark * 0.75f))
+        CircularProgressIndicator(color = KioskAmber, strokeWidth = 5.dp, modifier = Modifier.size(d.mark * 0.7f))
         Spacer(Modifier.height(d.gap))
-        Text(s.authorizing, color = TextPrimary, fontSize = d.headline, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(4.dp))
-        Text(s.keepCard, color = TextSecondary, fontSize = d.body, textAlign = TextAlign.Center)
+        Title(s.authorizing, size = d.headline)
     }
 }
 
@@ -274,26 +251,22 @@ private fun SessionScreen(s: VendStrings, limit: String, deadline: Long, onCance
     val left = ((leftMs + 999) / 1000).toInt()
     val frac = (leftMs.toFloat() / VendingViewModel.SESSION_MS).coerceIn(0f, 1f)
     Screen {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(d.mark)) {
-                Canvas(Modifier.fillMaxSize()) {
-                    val st = 7.dp.toPx()
-                    val tl = Offset(st / 2, st / 2)
-                    val sz = Size(size.width - st, size.height - st)
-                    drawArc(KioskCard, 0f, 360f, false, tl, sz, style = Stroke(st))
-                    drawArc(if (left > 10) KioskEmerald else KioskAmber, -90f, 360f * frac, false, tl, sz,
-                        style = Stroke(st, cap = StrokeCap.Round))
-                }
-                Text(s.secondsLeft(left), color = TextPrimary, fontSize = d.body, fontWeight = FontWeight.Bold)
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(d.mark)) {
+            Canvas(Modifier.fillMaxSize()) {
+                val st = 7.dp.toPx()
+                val tl = Offset(st / 2, st / 2)
+                val sz = Size(size.width - st, size.height - st)
+                drawArc(KioskCard, 0f, 360f, false, tl, sz, style = Stroke(st))
+                drawArc(if (left > 10) KioskEmerald else KioskAmber, -90f, 360f * frac, false, tl, sz,
+                    style = Stroke(st, cap = StrokeCap.Round))
             }
-            Spacer(Modifier.width(12.dp))
-            Text(s.approved, color = KioskEmerald, fontSize = d.headline, fontWeight = FontWeight.Black)
+            Text(s.secondsLeft(left), color = TextPrimary, fontSize = d.headline, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(d.gap))
-        Text(s.chooseOnMachine, color = TextPrimary, fontSize = d.headline, fontWeight = FontWeight.Black,
-            textAlign = TextAlign.Center, lineHeight = d.headline * 1.2f)
-        Spacer(Modifier.height(d.gap))
-        Text(s.holdNote(limit), color = TextSecondary, fontSize = d.small, textAlign = TextAlign.Center, lineHeight = d.small * 1.3f)
+        Title(s.chooseOnMachine, KioskAmber, d.headline)
+        Spacer(Modifier.height(6.dp))
+        // The hold the card shows, in one short line (it's not the price).
+        Line(s.holdNote(limit))
         Spacer(Modifier.height(d.gap))
         CancelButton(s.cancel, onCancel)
     }
@@ -303,29 +276,22 @@ private fun SessionScreen(s: VendStrings, limit: String, deadline: Long, onCance
 private fun PriceScreen(s: VendStrings, item: String, price: String, onPay: () -> Unit, onCancel: () -> Unit) {
     val d = LocalDims.current
     Screen {
-        Text(s.item(item), color = TextSecondary, fontSize = d.body, fontWeight = FontWeight.Bold)
-        Text(price, color = TextPrimary, fontSize = d.price, fontWeight = FontWeight.Black)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            NfcRadar(size = 32.dp)
-            Spacer(Modifier.width(6.dp))
-            Text(s.tapToPay, color = TextPrimary, fontSize = d.body, fontWeight = FontWeight.SemiBold)
-        }
+        Line(s.item(item), TextPrimary)
+        Text(price, color = KioskAmber, fontSize = d.price, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(d.gap))
-        BigButton(s.payButton, KioskAmber, onPay)
-        Spacer(Modifier.height(8.dp))
+        BigButton(s.payButton, onPay)
+        Spacer(Modifier.height(10.dp))
         CancelButton(s.cancel, onCancel)
     }
 }
 
 @Composable
-private fun DispensingScreen(s: VendStrings, item: String, price: String) {
+private fun DispensingScreen(s: VendStrings) {
     val d = LocalDims.current
     Screen {
-        CircularProgressIndicator(color = KioskEmerald, strokeWidth = 5.dp, modifier = Modifier.size(d.mark * 0.75f))
+        CircularProgressIndicator(color = KioskEmerald, strokeWidth = 5.dp, modifier = Modifier.size(d.mark * 0.7f))
         Spacer(Modifier.height(d.gap))
-        Text(s.dispensing, color = TextPrimary, fontSize = d.title, fontWeight = FontWeight.Black)
-        Spacer(Modifier.height(4.dp))
-        Text("${s.item(item)} · $price", color = TextSecondary, fontSize = d.body)
+        Title(s.dispensing)
     }
 }
 
@@ -356,25 +322,21 @@ private fun SuccessScreen(s: VendStrings, price: String) {
     Screen {
         ResultMark(true)
         Spacer(Modifier.height(d.gap))
-        Text(s.takeItem, color = TextPrimary, fontSize = d.title, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(4.dp))
-        Text(s.charged(price), color = TextSecondary, fontSize = d.body)
-        Spacer(Modifier.height(2.dp))
-        Text(s.thanks, color = KioskEmerald, fontSize = d.body, fontWeight = FontWeight.Bold)
+        Title(s.takeItem)
+        Spacer(Modifier.height(6.dp))
+        Line(s.charged(price))
     }
 }
 
 @Composable
 private fun NotChargedScreen(s: VendStrings, reason: Reason, limit: String) {
     val d = LocalDims.current
-    val why = s.reason(reason, limit)
     Screen {
         ResultMark(false)
         Spacer(Modifier.height(d.gap))
-        Text(why, color = TextPrimary, fontSize = d.headline, fontWeight = FontWeight.Black,
-            textAlign = TextAlign.Center, lineHeight = d.headline * 1.2f)
+        Title(s.reason(reason, limit), size = d.headline)
         Spacer(Modifier.height(6.dp))
-        Text(s.notCharged, color = KioskEmerald, fontSize = d.body, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Line(s.notCharged, KioskEmerald)
     }
 }
 
@@ -385,10 +347,8 @@ private fun UnavailableScreen() {
     Screen {
         ResultMark(false)
         Spacer(Modifier.height(d.gap))
-        for (l in listOf(VendStrings.EN, VendStrings.FR)) {
-            Text(l.unavailableTitle, color = TextPrimary, fontSize = d.body * 1.2f, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
-            Text(l.unavailableBody, color = TextSecondary, fontSize = d.small, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(d.gap))
-        }
+        Title(VendStrings.EN.unavailableTitle, size = d.headline)
+        Spacer(Modifier.height(d.gap))
+        Title(VendStrings.FR.unavailableTitle, size = d.headline)
     }
 }

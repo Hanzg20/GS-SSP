@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -189,76 +190,64 @@ fun BigScreenContent(
     // Sized from the shorter side: landscape TVs and portrait signage both fill.
     val conf = LocalConfiguration.current
     val unit = (minOf(conf.screenWidthDp, conf.screenHeightDp) / 100f).coerceAtLeast(3f)
-    val big = (unit * 9).sp
-    val mid = (unit * 5).sp
-    val small = (unit * 3).sp
+    val big = (unit * 10).sp
+    val mid = (unit * 6).sp
 
-    Box(Modifier.fillMaxSize().background(KioskBg)) {
+    // The terminal's look (VIP page's black and gold): one big line, at most one more.
+    Box(Modifier.fillMaxSize().background(KioskPage)) {
         Column(Modifier.fillMaxSize().padding((unit * 4).dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("GSPay", color = KioskAmber, fontSize = mid, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Text("GSPay", color = KioskAmber, fontSize = mid, fontWeight = FontWeight.Bold, letterSpacing = 0.08.em)
                 Spacer(Modifier.weight(1f))
-                status?.let { Text(it, color = TextSecondary, fontSize = small) }
+                status?.let { Text(it, color = TextSecondary, fontSize = (unit * 4).sp, fontWeight = FontWeight.Bold) }
                 if (simulator) {
                     Text(
-                        "VMC SIMULATOR · TEST ONLY", color = TextPrimary, fontSize = small, fontWeight = FontWeight.Black,
+                        "VMC SIMULATOR · TEST", color = TextPrimary, fontSize = (unit * 4).sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(KioskRed).padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Crossfade(targetState = state, label = "big") { st ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy((unit * 2).dp)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy((unit * 3).dp)) {
                         when (st) {
                             VendingState.Idle -> if (flow == com.goldsky.ssp.vending.logic.PurchaseFlow.ITEM_FIRST) {
-                                Line(s.itemFirstTitle, big, TextPrimary)
-                                Line("1  " + s.step2, mid, TextSecondary)
-                                Line("2  " + s.payAtTerminal, mid, TextSecondary)
+                                Line(s.itemFirstTitle, big, KioskAmber)
+                                Line(s.itemStep2, mid, TextPrimary)
                             } else {
-                                Line(s.startTitle, big, TextPrimary)
-                                Line("1  " + s.step1, mid, TextSecondary)
-                                Line("2  " + s.step2, mid, TextSecondary)
-                                if (flow == com.goldsky.ssp.vending.logic.PurchaseFlow.BOTH) Line(s.orChooseFirst, small, TextSecondary)
+                                Line(s.startTitle, big, KioskAmber)
+                                Line(s.step1, mid, TextPrimary)
+                                if (flow == com.goldsky.ssp.vending.logic.PurchaseFlow.BOTH) Line(s.orChooseFirst, mid, TextSecondary)
                             }
                             is VendingState.Authorizing -> {
                                 st.amountCents?.let { Line(money(it), big, KioskAmber) }
                                 Line(s.authorizing, big, TextPrimary)
-                                Line(s.keepCard, mid, TextSecondary)
                             }
                             is VendingState.SessionOpen -> {
-                                Line(s.approved, big, KioskEmerald)
-                                Line(s.chooseOnMachine, mid, TextPrimary)
-                                Countdown(st.deadline) { Line(s.secondsLeft(it), mid, KioskAmber) }
-                                Line(s.holdNote(money(st.limitCents)), small, TextSecondary)
+                                Countdown(st.deadline) { Line(s.secondsLeft(it), big, KioskEmerald) }
+                                Line(s.chooseOnMachine, big, KioskAmber)
+                                Line(s.holdNote(money(st.limitCents)), mid, TextSecondary)
                             }
                             is VendingState.VendRequestReceived -> {
-                                Line(s.item(st.itemSlot), mid, TextSecondary)
-                                Line(money(st.amountCents), (unit * 14).sp, KioskAmber)
+                                Line(s.item(st.itemSlot), mid, TextPrimary)
+                                Line(money(st.amountCents), (unit * 16).sp, KioskAmber)
                                 Line(s.payAtTerminal, mid, TextPrimary)
                             }
-                            is VendingState.Dispensing -> {
-                                Line(s.dispensing, big, TextPrimary)
-                                Line(s.item(st.itemSlot) + " · " + money(st.amountCents), mid, TextSecondary)
-                            }
+                            is VendingState.Dispensing -> Line(s.dispensing, big, TextPrimary)
                             is VendingState.Success -> {
                                 Line(s.takeItem, big, KioskEmerald)
                                 Line(s.charged(money(st.amountCents)), mid, TextPrimary)
-                                Line(s.thanks, mid, TextSecondary)
                             }
                             is VendingState.NotCharged -> {
                                 Line(s.reason(st.reason, money(limitCents)), big, TextPrimary)
                                 Line(s.notCharged, mid, KioskEmerald)
                             }
-                            VendingState.Unavailable -> {
-                                Line(s.unavailableTitle, big, TextPrimary)
-                                Line(s.unavailableBody, mid, TextSecondary)
-                            }
+                            VendingState.Unavailable -> Line(s.unavailableTitle, big, TextPrimary)
                             VendingState.Booting -> Line("…", big, TextSecondary)
                         }
                     }
                 }
             }
-            if (state == VendingState.Idle) Line(s.cardsAccepted, small, TextSecondary)
         }
     }
 }
@@ -266,7 +255,7 @@ fun BigScreenContent(
 @Composable
 private fun Line(text: String, size: androidx.compose.ui.unit.TextUnit, color: Color) {
     Text(
-        text, color = color, fontSize = size, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+        text, color = color, fontSize = size, fontWeight = FontWeight.Bold, letterSpacing = 0.04.em, textAlign = TextAlign.Center,
         lineHeight = size * 1.2f, modifier = Modifier.fillMaxWidth(),
     )
 }
