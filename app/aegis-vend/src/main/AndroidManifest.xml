@@ -18,6 +18,9 @@
     <uses-permission android:name="android.permission.CLOUDPOS_MCUCTL" />
     <uses-permission android:name="android.permission.CLOUDPOS_SERIAL" />
     <uses-permission android:name="android.permission.CLOUDPOS_VIRTUAL_SERIAL_PORT" />
+    <!-- WizarPOS system extension: setting the boot launcher (LauncherClaim); both names, see aegis-timer -->
+    <uses-permission android:name="android.permission.CLOUDPOS_DEFAULT_LAUNCHER" />
+    <uses-permission android:name="android.permission.CLOUDPOS_SET_DEFAULT_LAUNCHER" />
 
     <application
         android:name=".AegisVendApplication"
@@ -35,6 +38,14 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Unattended kiosk: as HOME the terminal comes back into the vend screen
+                 after a power cut by itself (same as Wash / Timer). The terminal's default
+                 HOME is set when it's provisioned (255: adb, 2026-11-02). -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 

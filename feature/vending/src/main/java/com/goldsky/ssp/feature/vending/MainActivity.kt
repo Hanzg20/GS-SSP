@@ -43,6 +43,8 @@ class MainActivity : ComponentActivity() {
             "MOCK_SN_${System.currentTimeMillis()}"
         }
         DeviceRepository.persistDeviceSn(deviceSn)
+        // Unattended: stay the terminal's HOME / WizarPOS boot launcher (see LauncherClaim).
+        com.goldsky.ssp.payment.LauncherClaim.ensureDefault(this, DeviceRepository.getPersistedHardwareVendor())
         AdManager.init(this)
         val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
         CoroutineScope(Dispatchers.IO).launch {

@@ -29,6 +29,19 @@ object LauncherClaim {
             val current = currentHomePackage(app)
             if (holdsHome(app) ?: (current == app.packageName)) {
                 Log.i(TAG, "Already the default HOME")
+                // WizarPOS keeps its own boot launcher (persist.wp.launcher) and starts -- and
+                // re-enables -- that app at boot whatever Android's HOME role says (255,
+                // 2026-11-02: HOME = Vend, Timer disabled, yet Timer came back at boot). Bring it
+                // in line with the role this app already holds; never taken from anyone here.
+                // The vendor call clears Android's HOME choice (255: the chooser came up once),
+                // so after it set HOME again: `adb shell cmd package set-home-activity <pkg>/<activity>`
+                // or "Always" on the chooser. Runs only while the two disagree, i.e. once.
+                val wp = systemProperty("persist.wp.launcher")
+                if (!wp.isNullOrBlank() && !wp.startsWith(app.packageName + "/")) {
+                    Log.i(TAG, "WizarPOS boot launcher is $wp, aligning it with HOME")
+                    runCatching { HardwareFactory.getHardwareProvider(vendor).setDefaultLauncher(app.packageName) }
+                        .onFailure { Log.w(TAG, "setDefaultLauncher failed: ${it.message}") }
+                }
                 return@launch
             }
             if (current != null && current in AppSwitcher.AEGIS_PACKAGES) {
@@ -55,6 +68,10 @@ object LauncherClaim {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
         return runCatching { context.getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_HOME) }.getOrNull()
     }
+
+    private fun systemProperty(key: String): String? = runCatching {
+        Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, key) as String
+    }.getOrNull()
 
     /** Package of the current default HOME; "android" when the chooser would show. */
     private fun currentHomePackage(context: Context): String? {
