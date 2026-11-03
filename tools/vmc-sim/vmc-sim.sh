@@ -8,10 +8,11 @@
 #   fail                    the next vend jams (the money goes back)
 #   silent                  the machine never answers the next vend (30 s, then money back)
 #   mcancel                 the customer presses cancel on the machine
+#   pair <code>             pair the network big screen showing <code> (Aegis Vend Screen)
 #   start | pay             press START / PAY on the screen
 #   log                     follow the vend log (Ctrl-C to stop)
 #
-# The card payments are REAL (live acquirer on 255): use small prices, e.g. select 25 1.
+# The card payments are REAL (live acquirer on 255): test with $0.10: select 10 1 (owner, 2026-11-02).
 # Build / install the simulator: see docs/vmc_simulator.md.
 set -e
 ADB=${ADB:-adb}
@@ -23,6 +24,7 @@ send() { "$ADB" "${SERIAL[@]}" shell am start -a android.intent.action.MAIN -c a
 case "$1" in
   select) [ -n "$2" ] && [ -n "$3" ] || { echo "usage: select <cents> <item>"; exit 1; }; send "select:$2:$3" ;;
   fail|silent|mcancel|start|pay) send "$1" ;;
-  log) "$ADB" "${SERIAL[@]}" logcat -v time -s VendingVM MockMdb VendPayment VendRecovery WizarPosPayment OrderRepo ;;
-  *) sed -n 2,16p "$0"; exit 1 ;;
+  pair) [ -n "$2" ] || { echo "usage: pair <code>"; exit 1; }; send "pair:$2" ;;
+  log) "$ADB" "${SERIAL[@]}" logcat -v time -s VendingVM MockMdb VendPayment VendRecovery WizarPosPayment OrderRepo VendScreenLink AegisVend ;;
+  *) sed -n 2,17p "$0"; exit 1 ;;
 esac

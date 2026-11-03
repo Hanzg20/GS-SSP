@@ -63,7 +63,9 @@ class AdActivity : BaseAdActivity() {
         tvPrompt = findViewById(R.id.tv_ad_prompt)
         btnPause = findViewById(R.id.btn_pause_ad)
 
-        setupPromptAnimation()
+        // A display nobody pays on (Aegis Vend Screen): no "tap to pay" call to action.
+        if (intent.getBooleanExtra(EXTRA_NO_PROMPT, false)) tvPrompt.visibility = View.GONE
+        else setupPromptAnimation()
         loadPlaylist()
         startPlayback()
 
@@ -313,8 +315,10 @@ class AdActivity : BaseAdActivity() {
     override fun onResume() {
         super.onResume()
         stopAdTimer()
-        HardwareFactory.getScannerProvider(this, "IDTECH").setScannerLed(false)
-        HardwareFactory.getScannerProvider(this, "PAX").setScannerLed(false)
+        // Only where those vendors are registered: a display with no scanner (Aegis Vend
+        // Screen) has none, and the lookup throws.
+        runCatching { HardwareFactory.getScannerProvider(this, "IDTECH").setScannerLed(false) }
+        runCatching { HardwareFactory.getScannerProvider(this, "PAX").setScannerLed(false) }
         if (!isPaused && videoAd.visibility == View.VISIBLE && !videoAd.isPlaying) videoAd.start()
     }
 
@@ -322,5 +326,10 @@ class AdActivity : BaseAdActivity() {
         super.onPause()
         reportAdCompletion()
         if (videoAd.isPlaying) videoAd.pause()
+    }
+
+    companion object {
+        /** Boolean extra: hide the "tap to pay" prompt. */
+        const val EXTRA_NO_PROMPT = "no_prompt"
     }
 }

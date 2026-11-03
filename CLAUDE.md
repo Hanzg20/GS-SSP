@@ -74,6 +74,13 @@ app/aegis-wash, app/aegis-vend, app/aegis-ev
                   (EV charging, feature:ev). Renamed 2026-08-27 from the old, wrongly-named `app/aegis`/`app/ourea`/
                   `app/sentinel` respectively -- content unchanged, only package/applicationId/module dir/label changed.
                -- `app/aegis-parking` does not exist yet; `feature/parking` is still a 1-file stub.
+app/aegis-vend-screen -- Aegis Vend Screen (`com.goldsky.ssp.aegis.vend.screen`), added 2026-11-02: the big screen beside a
+                  vending machine -- an ordinary Android display, always the SECONDARY of an Aegis Vend terminal whose technician
+                  panel role is "主机（带大屏）" (default "单机" sends nothing). Paired with a 6-digit code it shows; follows the
+                  terminal over Supabase Realtime Broadcast (`VendScreenLink`, core/data; no DB writes -- the terminal is often
+                  on 4G, the screen on site Wi-Fi), shows `BigScreenContent` (feature:vending) and Cael ads when idle. Has its
+                  own device identity (`VSCR_<android id>`) so Cael lists it and gives it a playlist. Vendor .so excluded.
+                  The Q3 UPT has no video output (WizarPOS, 2026-11-02): a USB-C-to-HDMI cable can't drive a screen.
 app/aegis-timer -- Aegis Timer (`com.goldsky.ssp.aegis.timer`, feature:timer), added 2026-09-23: the time-based product family
                   (pay -> terminal times the session and HOLDS an output ON, countdown on screen) -- first product is the
                   self-service vacuum beside the wash ($2/4min, $3/5min, card-only, alarm-only on fault). Deliberately NOT a

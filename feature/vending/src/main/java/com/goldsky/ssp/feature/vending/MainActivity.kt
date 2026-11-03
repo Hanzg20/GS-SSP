@@ -101,6 +101,14 @@ class MainActivity : ComponentActivity() {
         AdManager.init(this)
         startWatchdog(hardware)
         bigScreen = com.goldsky.ssp.vending.ui.BigScreen(this, vendingViewModel).also { it.start() }
+        // Primary (technician panel): Aegis Vend Screen, an Android display beside the machine
+        // paired in the panel, follows this screen over the cloud. Standalone sends nothing.
+        bigScreen.onRoleChanged = { applyRole(it) }
+        applyRole(bigScreen.role)
+        lifecycleScope.launch {
+            kotlinx.coroutines.flow.combine(vendingViewModel.uiState, vendingViewModel.french) { _, _ -> }
+                .collect { com.goldsky.ssp.payment.VendScreenLink.publish() }
+        }
 
         val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
         setContent {
@@ -115,6 +123,10 @@ class MainActivity : ComponentActivity() {
                     onSystemCheck = { startActivity(Intent(this, com.goldsky.ssp.ui.SystemCheckActivity::class.java)) },
                     onPaymentTests = { startActivity(Intent(this, com.goldsky.ssp.ui.PaymentTestActivity::class.java)) },
                     bigScreen = bigScreen,
+                    onPairScreen = { code ->
+                        if (deviceSn.isBlank()) null
+                        else com.goldsky.ssp.payment.VendScreenLink.pair(code, deviceSn)
+                    },
                     // The system's Cast page: turn on "Enable wireless display" (menu), pick the screen.
                     onCastSettings = {
                         runCatching { startActivity(Intent(android.provider.Settings.ACTION_CAST_SETTINGS)) }
@@ -151,7 +163,30 @@ class MainActivity : ComponentActivity() {
      * (also start / pay / fail / decline).
      */
     private fun simulate(intent: Intent?) {
-        intent?.getStringExtra("sim")?.let { vendingViewModel.simulate(it) }
+        val command = intent?.getStringExtra("sim") ?: return
+        // VMC-simulator build: pair a network big screen without the technician panel.
+        if (command.startsWith("pair:") && vendingViewModel.vmcSimulator && deviceSn.isNotBlank()) {
+            bigScreen.role = com.goldsky.ssp.vending.ui.BigScreen.Role.PRIMARY // a big screen = primary
+            lifecycleScope.launch {
+                val screen = com.goldsky.ssp.payment.VendScreenLink.pair(command.removePrefix("pair:"), deviceSn)
+                Log.i(TAG, "Pair ${command.removePrefix("pair:")}: ${screen ?: "no screen answered"}")
+            }
+            return
+        }
+        vendingViewModel.simulate(command)
+    }
+
+    private fun applyRole(role: com.goldsky.ssp.vending.ui.BigScreen.Role) {
+        if (role == com.goldsky.ssp.vending.ui.BigScreen.Role.PRIMARY && deviceSn.isNotBlank()) {
+            com.goldsky.ssp.payment.VendScreenLink.startPublishing(deviceSn) {
+                com.goldsky.ssp.vending.logic.VendScreenWire.encode(
+                    vendingViewModel.uiState.value, vendingViewModel.french.value, vendingViewModel.vmcSimulator,
+                    com.goldsky.ssp.vending.VendingViewModel.SESSION_LIMIT_CENTS,
+                )
+            }
+        } else {
+            com.goldsky.ssp.payment.VendScreenLink.stopPublishing()
+        }
     }
 
     /** Offline-first: cached org config right away, then refresh once the device's identity is synced. */

@@ -1,0 +1,68 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+// Same local.properties -> BuildConfig pattern as the other shells.
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
+
+// Aegis Vend Screen: the big screen beside a vending machine (an Android display), following
+// that machine's Aegis Vend terminal over the cloud (owner, 2026-11-02, "option B").
+ext.appVersion = "0.0.1"
+
+android {
+    namespace 'com.goldsky.ssp.aegis.vend.screen'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.goldsky.ssp.aegis.vend.screen"
+        minSdk 25
+        targetSdk 34
+        // versionCode/versionName come from ext.appVersion, see gradle/release-signing.gradle
+
+        buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
+        buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
+        buildConfigField "boolean", "IS_MOCK", "false"
+    }
+
+    buildFeatures {
+        compose true
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    // The vendor SDKs' native libraries (card reader, printer, MDB, ...) come in through
+    // feature:vending; a display never touches that hardware, and without them the APK
+    // installs on any Android display, whatever its CPU.
+    packagingOptions {
+        jniLibs {
+            excludes += ['**/*.so']
+        }
+    }
+}
+
+apply from: rootProject.file('gradle/release-signing.gradle')
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.9.0'
+    implementation project(':core:common')
+    implementation project(':core:data')
+    implementation project(':core:ui')
+    // The big-screen layout, texts and states are Aegis Vend's own (one source for both screens).
+    implementation project(':feature:vending')
+
+    implementation 'androidx.activity:activity-compose:1.7.2'
+}

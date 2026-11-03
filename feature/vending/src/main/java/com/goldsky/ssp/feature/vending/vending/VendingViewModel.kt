@@ -68,8 +68,12 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
         private const val DISPENSE_TIMEOUT_MS = 30_000L
         /** How long a card-first customer has to choose on the machine (owner, 2026-11-02). */
         const val SESSION_MS = 60_000L
-        /** The card-first hold; an item above it is refused (owner, 2026-11-02). */
-        const val SESSION_LIMIT_CENTS = 1000
+        /**
+         * The card-first hold; an item above it is refused (owner, 2026-11-02: $10). The
+         * VMC-simulator build holds $0.10 -- every test amount on a live card is $0.10 (owner,
+         * 2026-11-02).
+         */
+        val SESSION_LIMIT_CENTS: Int get() = if (com.goldsky.ssp.common.CoreConfig.vmcSimulator) 10 else 1000
         private const val RESULT_MS = 6_000L
     }
 

@@ -80,7 +80,7 @@ in every build without `-Pvmcsim`.
 ## Playing the machine
 
 ```bash
-tools/vmc-sim/vmc-sim.sh -s 10.0.0.168:5555 select 25 1   # customer chose item 1 at $0.25
+tools/vmc-sim/vmc-sim.sh -s 10.0.0.168:5555 select 10 1   # customer chose item 1 at $0.10
 tools/vmc-sim/vmc-sim.sh -s 10.0.0.168:5555 fail          # next vend jams
 tools/vmc-sim/vmc-sim.sh -s 10.0.0.168:5555 silent        # machine never answers the next vend
 tools/vmc-sim/vmc-sim.sh -s 10.0.0.168:5555 log           # follow the vend log
@@ -88,23 +88,33 @@ tools/vmc-sim/vmc-sim.sh -s 10.0.0.168:5555 log           # follow the vend log
 
 Without `fail` / `silent` the simulated machine reports the vend done 2 s after approval.
 
-## Test plan (255, live Nuvei: small amounts; a person taps the card)
+## Test plan (255, live Nuvei: $0.10 (owner 2026-11-02); a person taps the card)
 
 | # | Steps | Expect on screen | Expect in money / Cael |
 |---|---|---|---|
-| 1 | `select 25 1`, PAY, tap card | Take your item, charged $0.25 | sale PAID, row PAID / SUCCESS with card brand |
-| 2 | `fail`, `select 25 2`, PAY, card | The item did not drop, not charged | sale reversed, row VOIDED / FAILED |
-| 3 | `silent`, `select 25 3`, PAY, card, wait 30 s | The item did not drop | reversed, row VOIDED / FAILED |
-| 4 | START, card, `select 25 4` | Approved → Take your item, charged $0.25 | **PreAuth $10 then AuthCompletion $0.25**; row PAID $0.25 |
+| 1 | `select 10 1`, PAY, tap card | Take your item, charged $0.10 | sale PAID, row PAID / SUCCESS with card brand |
+| 2 | `fail`, `select 10 2`, PAY, card | The item did not drop, not charged | sale reversed, row VOIDED / FAILED |
+| 3 | `silent`, `select 10 3`, PAY, card, wait 30 s | The item did not drop | reversed, row VOIDED / FAILED |
+| 4 | START, card, `select 10 4` | Approved → Take your item, charged $0.10 | **PreAuth $0.10 then AuthCompletion $0.10** (the VMCSIM build holds $0.10; release $10); row PAID $0.10 |
 | 5 | START, card, wait 60 s | No item was chosen, not charged | **AuthVoid**: hold gone from the card; no row |
 | 6 | START, card, CANCEL | Cancelled, not charged | AuthVoid; no row |
-| 7 | `fail`, START, card, `select 25 5` | The item did not drop | AuthVoid; row VOIDED / FAILED |
-| 8 | START, card, `select 1500 6` | Over the $10.00 limit | AuthVoid; no row |
+| 7 | `fail`, START, card, `select 10 5` | The item did not drop | AuthVoid; row VOIDED / FAILED |
+| 8 | START, card, `select 20 6` | Over the $0.10 limit | AuthVoid; no row |
 | 9 | #4 with an **Interac debit** card | ? | does Nuvei/Interac accept PreAuth at all? |
 | 10 | START, card, then `adb shell am force-stop com.goldsky.ssp.aegis.vend`, reopen | idle | VendRecovery releases the hold on start (log `VendRecovery`) |
-| 11 | `select 25 7`, wait 60 s without paying | Cancelled | nothing |
+| 11 | `select 10 7`, wait 60 s without paying | Cancelled | nothing |
 | 12 | START, card, `mcancel` | Cancelled, not charged | AuthVoid; no row |
-| 13 | `select 25 8`, PAY, `mcancel` before tapping, then tap | Cancelled | if the card goes through: reversed |
+| 13 | `select 10 8`, PAY, `mcancel` before tapping, then tap | Cancelled | if the card goes through: reversed |
 
 Afterwards: check the card statement / Nuvei portal for #4–#10 (hold amounts and
 releases), and the rows on 255's store in Cael.
+
+## Big screen (Aegis Vend Screen, 2026-11-02)
+
+Terminal technician panel: 本机角色 单机 (default, sends nothing) / 主机 (带大屏). As primary the
+terminal sends its state on Realtime Broadcast `vend_screen_<sn>` on every change and every 15 s;
+`app/aegis-vend-screen` on the display shows a 6-digit code, paired from the panel ("配对网络大屏")
+or in the simulator build with `vmc-sim.sh pair <code>` (also switches to primary). The screen
+shows the vend in large type, "offline" after 45 s without a message, and Cael ads after 20 s idle,
+taken down when the machine is used. Tested 255 (VMCSIM) <-> emulator 1080p: pair, price, cancel,
+ads and back, standalone sends nothing. Not tried yet on a real signage display.

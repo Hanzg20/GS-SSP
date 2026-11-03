@@ -39,6 +39,10 @@ import com.goldsky.ssp.vending.ui.theme.*
 import kotlinx.coroutines.delay
 
 /**
+ * This terminal's role (technician panel, owner 2026-11-02): STANDALONE -- no big screen,
+ * nothing sent; PRIMARY -- it has one: its state goes to a paired network screen (Aegis Vend
+ * Screen, always the secondary) and to a second display if one is connected.
+ *
  * A big screen beside the terminal (some machines have one): cast to it wirelessly
  * (Miracast, the system's Cast page) or plugged in. Two modes, set in the technician panel:
  *  - DUAL: the big screen shows the vend in large type ([BigScreenContent]) while the
@@ -48,6 +52,18 @@ import kotlinx.coroutines.delay
 class BigScreen(private val activity: Activity, private val viewModel: VendingViewModel) {
 
     enum class Mode { DUAL, MIRROR }
+    enum class Role { STANDALONE, PRIMARY }
+
+    /** Told when the role changes (MainActivity starts / stops sending to the network screen). */
+    var onRoleChanged: ((Role) -> Unit)? = null
+
+    var role: Role
+        get() = runCatching { Role.valueOf(prefs.getString("role", null) ?: "") }.getOrDefault(Role.STANDALONE)
+        set(value) {
+            prefs.edit().putString("role", value.name).apply()
+            update()
+            onRoleChanged?.invoke(value)
+        }
 
     private val displays = activity.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     private val prefs = activity.getSharedPreferences("vend_big_screen", Context.MODE_PRIVATE)
@@ -60,6 +76,11 @@ class BigScreen(private val activity: Activity, private val viewModel: VendingVi
             prefs.edit().putString("mode", value.name).apply()
             update()
         }
+
+    /** The network big screen last paired in the technician panel (for display only). */
+    var pairedScreen: String?
+        get() = prefs.getString("net_screen_sn", null)
+        set(value) { prefs.edit().putString("net_screen_sn", value).apply() }
 
     private val listener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = update()
@@ -89,7 +110,7 @@ class BigScreen(private val activity: Activity, private val viewModel: VendingVi
 
     private fun update() {
         val d = display()
-        if (d == null || mode == Mode.MIRROR || activity.isFinishing) {
+        if (d == null || role == Role.STANDALONE || mode == Mode.MIRROR || activity.isFinishing) {
             hide()
             return
         }
@@ -98,7 +119,13 @@ class BigScreen(private val activity: Activity, private val viewModel: VendingVi
         Log.i(TAG, "Big screen: ${d.name} (${d.displayId}), dual")
         val o = ScreenOwner().also { it.start() }
         val p = Presentation(activity, d)
-        val view = ComposeView(p.context).apply { setContent { BigScreenContent(viewModel) } }
+        val view = ComposeView(p.context).apply {
+            setContent {
+                val state by viewModel.uiState.collectAsState()
+                val french by viewModel.french.collectAsState()
+                BigScreenContent(state, french, viewModel.vmcSimulator)
+            }
+        }
         p.setContentView(view)
         // A Presentation is a dialog, not a ComponentActivity: Compose needs a lifecycle of its
         // own -- always resumed, so it keeps updating while the idle ads cover the terminal.
@@ -146,16 +173,20 @@ class BigScreen(private val activity: Activity, private val viewModel: VendingVi
 /**
  * The vend on the big screen: the same states as the terminal, in large type, and no
  * buttons -- the customer pays and touches only the terminal, so every screen here
- * points to it.
+ * points to it. Used by the terminal's own second display and by Aegis Vend Screen
+ * (a separate Android display, over the network). [status]: a line for the corner,
+ * e.g. that the terminal can't be reached.
  */
 @Composable
-fun BigScreenContent(viewModel: VendingViewModel) {
-    val state by viewModel.uiState.collectAsState()
-    val french by viewModel.french.collectAsState()
+fun BigScreenContent(
+    state: VendingState, french: Boolean, simulator: Boolean, status: String? = null,
+    limitCents: Int = VendingViewModel.SESSION_LIMIT_CENTS,
+) {
     val s = if (french) VendStrings.FR else VendStrings.EN
     val money = { cents: Int -> VendStrings.money(cents, french) }
-    // Sized from the screen: 1080p and 720p TVs both fill.
-    val unit = (LocalConfiguration.current.screenHeightDp / 100f).coerceAtLeast(3f)
+    // Sized from the shorter side: landscape TVs and portrait signage both fill.
+    val conf = LocalConfiguration.current
+    val unit = (minOf(conf.screenWidthDp, conf.screenHeightDp) / 100f).coerceAtLeast(3f)
     val big = (unit * 9).sp
     val mid = (unit * 5).sp
     val small = (unit * 3).sp
@@ -165,7 +196,8 @@ fun BigScreenContent(viewModel: VendingViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("GSPay", color = KioskAmber, fontSize = mid, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                 Spacer(Modifier.weight(1f))
-                if (viewModel.vmcSimulator) {
+                status?.let { Text(it, color = TextSecondary, fontSize = small) }
+                if (simulator) {
                     Text(
                         "VMC SIMULATOR · TEST ONLY", color = TextPrimary, fontSize = small, fontWeight = FontWeight.Black,
                         modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(KioskRed).padding(horizontal = 16.dp, vertical = 4.dp),
@@ -208,7 +240,7 @@ fun BigScreenContent(viewModel: VendingViewModel) {
                                 Line(s.thanks, mid, TextSecondary)
                             }
                             is VendingState.NotCharged -> {
-                                Line(s.reason(st.reason, money(VendingViewModel.SESSION_LIMIT_CENTS)), big, TextPrimary)
+                                Line(s.reason(st.reason, money(limitCents)), big, TextPrimary)
                                 Line(s.notCharged, mid, KioskEmerald)
                             }
                             VendingState.Unavailable -> {
