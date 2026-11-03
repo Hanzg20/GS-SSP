@@ -46,6 +46,9 @@ class VendStrings(
     val priceShowsHere: String,
     // Card first only (PurchaseFlow.CARD_FIRST): chosen on the machine without a card.
     val startFirst: String,
+    /** The idle screen's VIP banner (opens Wash's VipActivity): plain, or with the best bonus %. */
+    val vipBanner: String,
+    val vipBonus: (Int) -> String,
 ) {
     /** Why nothing was charged ([limit] = the hold, for OVER_LIMIT). */
     fun reason(reason: com.goldsky.ssp.vending.logic.VendingState.Reason, limit: String): String = when (reason) {
@@ -91,6 +94,8 @@ class VendStrings(
             unavailableBody = "This machine can't take cards right now.",
             cardsAccepted = "Interac · Visa · Mastercard · Amex · Apple/Google Pay",
             payAtTerminal = "Pay on the card terminal",
+            vipBanner = "★ BECOME A VIP MEMBER",
+            vipBonus = { "★ BECOME A VIP · UP TO $it% BONUS" },
             itemFirstTitle = "Choose, then pay by card",
             itemStep2 = "Pay here: touch PAY, tap your card",
             priceShowsHere = "Your price will show here",
@@ -129,6 +134,8 @@ class VendStrings(
             unavailableBody = "Cette machine n'accepte pas les cartes pour le moment.",
             cardsAccepted = "Interac · Visa · Mastercard · Amex · Apple/Google Pay",
             payAtTerminal = "Payez au terminal de carte",
+            vipBanner = "★ DEVENEZ MEMBRE VIP",
+            vipBonus = { "★ DEVENEZ VIP · JUSQU'À $it % EN PRIME" },
             itemFirstTitle = "Choisissez, puis payez par carte",
             itemStep2 = "Payez ici : touchez PAYER, puis votre carte",
             priceShowsHere = "Votre prix s'affichera ici",

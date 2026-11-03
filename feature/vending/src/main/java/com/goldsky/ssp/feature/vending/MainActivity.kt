@@ -116,6 +116,17 @@ class MainActivity : ComponentActivity() {
         // paired in the panel, follows this screen over the cloud. Standalone sends nothing.
         bigScreen.onRoleChanged = { applyRole(it) }
         applyRole(bigScreen.role)
+        // A price from the machine while the idle ads play: back in front so the customer sees it.
+        // Only on that entry -- never over the payment app's own card screen.
+        lifecycleScope.launch {
+            vendingViewModel.uiState.collect { st ->
+                if (st is com.goldsky.ssp.vending.logic.VendingState.VendRequestReceived &&
+                    !lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+                ) {
+                    startActivity(Intent(this@MainActivity, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+                }
+            }
+        }
         lifecycleScope.launch {
             kotlinx.coroutines.flow.combine(vendingViewModel.uiState, vendingViewModel.french, vendingViewModel.purchaseFlow) { _, _, _ -> }
                 .collect { com.goldsky.ssp.payment.VendScreenLink.publish() }
@@ -134,8 +145,8 @@ class MainActivity : ComponentActivity() {
                     version = version,
                     deviceSn = deviceSn,
                     mdbStatus = { vendingViewModel.mdbStatus() },
-                    onSystemCheck = { startActivity(Intent(this, com.goldsky.ssp.ui.SystemCheckActivity::class.java)) },
-                    onPaymentTests = { startActivity(Intent(this, com.goldsky.ssp.ui.PaymentTestActivity::class.java)) },
+                    onSystemCheck = { openAway(com.goldsky.ssp.ui.SystemCheckActivity::class.java) },
+                    onPaymentTests = { openAway(com.goldsky.ssp.ui.PaymentTestActivity::class.java) },
                     bigScreen = bigScreen,
                     onPairScreen = { code ->
                         if (deviceSn.isBlank()) null
@@ -158,7 +169,10 @@ class MainActivity : ComponentActivity() {
             } else if (showcase && !locked) {
                 com.goldsky.ssp.vending.ui.ShowcaseContainer(showcaseViewModel, french, vendingViewModel::toggleLanguage)
             } else {
-                VendingMainContainer(vendingViewModel, version)
+                VendingMainContainer(vendingViewModel, version, onVip = {
+                    // Wash's VIP page: buy / top up a VIP card with a bank card.
+                    if (idle) openAway(com.goldsky.ssp.ui.VipActivity::class.java)
+                })
             }
             if (showPin) {
                 VendPinDialog(onDismiss = { showPin = false }) { pin ->
@@ -233,6 +247,20 @@ class MainActivity : ComponentActivity() {
             val config = ConfigManager.loadConfig(this@MainActivity, orgId)
             TtsManager.setLocale(config.settings.locale_tag)
             showcaseViewModel.refreshItems()
+            vendingViewModel.refreshVipPlans()
+        }
+    }
+
+    /**
+     * Another of our screens over this one (VIP page, technician checks): MDB sales pause
+     * until we're back in front (onResume), so a price never waits hidden behind it and the
+     * card reader isn't wanted twice.
+     */
+    private fun openAway(screen: Class<*>) {
+        vendingViewModel.setAway(true)
+        runCatching { startActivity(Intent(this, screen)) }.onFailure {
+            Log.e(TAG, "Can't open ${screen.simpleName}: ${it.message}")
+            vendingViewModel.setAway(false)
         }
     }
 
@@ -267,6 +295,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        vendingViewModel.setAway(false)
         resetAdTimer()
     }
 

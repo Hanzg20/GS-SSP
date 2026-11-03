@@ -64,10 +64,11 @@ private val LocalDims = compositionLocalOf { Dims(false) }
  * price from the machine (item first) is taken from any idle/result screen.
  */
 @Composable
-fun VendingMainContainer(viewModel: VendingViewModel, version: String = "") {
+fun VendingMainContainer(viewModel: VendingViewModel, version: String = "", onVip: () -> Unit = {}) {
     val state by viewModel.uiState.collectAsState()
     val french by viewModel.french.collectAsState()
     val flow by viewModel.purchaseFlow.collectAsState()
+    val vipBonus by viewModel.vipBonus.collectAsState()
     val s = if (french) VendStrings.FR else VendStrings.EN
     val money = { cents: Int -> VendStrings.money(cents, french) }
 
@@ -103,6 +104,7 @@ fun VendingMainContainer(viewModel: VendingViewModel, version: String = "") {
                     }
                 }
                 if (state == VendingState.Idle) {
+                    vipBonus?.let { bonus -> VipBanner(if (bonus > 0) s.vipBonus(bonus) else s.vipBanner, onVip) }
                     Text(
                         s.cardsAccepted,
                         color = TextSecondary, fontSize = 11.sp, textAlign = TextAlign.Center, maxLines = 1,
@@ -112,6 +114,20 @@ fun VendingMainContainer(viewModel: VendingViewModel, version: String = "") {
             }
         }
         }
+    }
+}
+
+/** Wash's VIP banner, here: buy or top up a VIP card (VipActivity). Only while the store sells VIP loads. */
+@Composable
+private fun VipBanner(text: String, onClick: () -> Unit) {
+    val d = LocalDims.current
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(d.cancel * 0.8f).clip(RoundedCornerShape(12.dp))
+            .border(1.5.dp, KioskAmber, RoundedCornerShape(12.dp)).background(KioskAmber.copy(alpha = 0.12f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = KioskAmber, fontSize = d.small, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp, maxLines = 1)
     }
 }
 

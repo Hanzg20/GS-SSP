@@ -72,7 +72,28 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     private var locked = false
     /** Showcase sale mode (technician panel): the machine's MDB sales are refused meanwhile. */
     private var showcase = false
-    private val blocked get() = locked || showcase
+    /**
+     * Another of this app's screens is in front (the VIP page, the technician's checks): no
+     * MDB sales meanwhile -- the price screen would be hidden, and the card reader busy.
+     */
+    private var away = false
+    private val blocked get() = locked || showcase || away
+
+    /**
+     * The VIP banner on the idle screen: the store's best load bonus in % (0 = plans without
+     * a bonus); null = no plans, or couldn't fetch them -- no banner (Wash's VipActivity).
+     */
+    private val _vipBonus = MutableStateFlow<Int?>(null)
+    val vipBonus: StateFlow<Int?> = _vipBonus.asStateFlow()
+
+    fun refreshVipPlans() {
+        viewModelScope.launch {
+            val plans = com.goldsky.ssp.payment.VipLoadRepository.getPlans() ?: return@launch // offline: keep what we had
+            _vipBonus.value = plans.filter { it.amount_cents > 0 }
+                .takeIf { it.isNotEmpty() }
+                ?.maxOf { it.bonus_cents * 100 / it.amount_cents }
+        }
+    }
     private var timerJob: Job? = null
     private var resultJob: Job? = null
 
@@ -127,6 +148,12 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     /** Showcase sale mode on / off (see ShowcaseViewModel): no MDB sales while it's on. */
     fun setShowcase(on: Boolean) {
         showcase = on
+        applyBlocked()
+    }
+
+    /** See [away]. */
+    fun setAway(on: Boolean) {
+        away = on
         applyBlocked()
     }
 

@@ -60,5 +60,13 @@
             android:theme="@style/Theme.SSP.Fullscreen"
             android:configChanges="orientation|keyboardHidden|screenSize" />
 
+        <!-- VIP page (buy / top up a VIP card), Wash's, from the idle screen's banner. -->
+        <activity
+            android:name="com.goldsky.ssp.ui.VipActivity"
+            android:exported="false"
+            android:screenOrientation="nosensor"
+            android:theme="@style/Theme.SSP.Fullscreen"
+            android:configChanges="orientation|keyboardHidden|screenSize" />
+
     </application>
 </manifest>
