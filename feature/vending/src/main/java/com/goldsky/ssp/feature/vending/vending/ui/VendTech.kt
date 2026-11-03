@@ -34,6 +34,8 @@ fun VendTechScreen(
     bigScreen: BigScreen,
     onCastSettings: () -> Unit,
     onPairScreen: suspend (code: String) -> String?,
+    purchaseFlow: com.goldsky.ssp.vending.logic.PurchaseFlow,
+    onPurchaseFlow: (com.goldsky.ssp.vending.logic.PurchaseFlow) -> Unit,
     saleMode: com.goldsky.ssp.vending.SaleMode.Mode,
     onSaleMode: (com.goldsky.ssp.vending.SaleMode.Mode) -> Unit,
     onExit: () -> Unit,
@@ -62,6 +64,34 @@ fun VendTechScreen(
             Text(status, color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
         }
         TechButton("刷新售货机状态", { refresh++ })
+        if (!showcase) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(KioskCard).padding(10.dp)) {
+                Text("购买方式", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    when (purchaseFlow) {
+                        com.goldsky.ssp.vending.logic.PurchaseFlow.BOTH -> "两种都可：顾客可先点 START 刷卡再选货，也可先在售货机上选货再付款"
+                        com.goldsky.ssp.vending.logic.PurchaseFlow.CARD_FIRST -> "只先刷卡：点 START 刷卡（预授权）后在售货机上选货；没刷卡就选货会被拒绝"
+                        com.goldsky.ssp.vending.logic.PurchaseFlow.ITEM_FIRST -> "只先选货：先在售货机上选货，本机显示价格后点 PAY 刷卡；没有 START"
+                    },
+                    color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        com.goldsky.ssp.vending.logic.PurchaseFlow.BOTH to "两种都可",
+                        com.goldsky.ssp.vending.logic.PurchaseFlow.CARD_FIRST to "先刷卡",
+                        com.goldsky.ssp.vending.logic.PurchaseFlow.ITEM_FIRST to "先选货",
+                    ).forEach { (f, label) ->
+                        val on = f == purchaseFlow
+                        Box(
+                            Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(8.dp))
+                                .background(if (on) KioskAmber else KioskBg).clickable { onPurchaseFlow(f) },
+                            contentAlignment = Alignment.Center,
+                        ) { Text(label, color = if (on) KioskBg else TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+            }
+        }
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(KioskCard).padding(10.dp)) {
             Text("销售模式", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Text(

@@ -210,7 +210,7 @@ class ShowcaseViewModel(application: Application) : AndroidViewModel(application
 }
 
 /**
- * How this terminal sells, set in the technician panel: [MDB] = the vending machine's own
+ * How this terminal sells, set in the technician panel (and, for MDB, which purchase flow): [MDB] = the vending machine's own
  * keypad (every real site), [SHOWCASE] = the 6-item grid on the terminal, for showing
  * prospects (card authorized, then voided).
  */
@@ -223,4 +223,12 @@ object SaleMode {
         runCatching { Mode.valueOf(prefs(context).getString("mode", null) ?: "") }.getOrDefault(Mode.MDB)
 
     fun set(context: Context, mode: Mode) = prefs(context).edit().putString("mode", mode.name).apply()
+
+    /** The MDB purchase flow (see [com.goldsky.ssp.vending.logic.PurchaseFlow]). */
+    fun flow(context: Context): com.goldsky.ssp.vending.logic.PurchaseFlow = runCatching {
+        com.goldsky.ssp.vending.logic.PurchaseFlow.valueOf(prefs(context).getString("flow", null) ?: "")
+    }.getOrDefault(com.goldsky.ssp.vending.logic.PurchaseFlow.BOTH)
+
+    fun setFlow(context: Context, flow: com.goldsky.ssp.vending.logic.PurchaseFlow) =
+        prefs(context).edit().putString("flow", flow.name).apply()
 }

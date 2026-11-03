@@ -36,6 +36,16 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     private val _french = MutableStateFlow(false)
     val french: StateFlow<Boolean> = _french.asStateFlow()
 
+    /** Technician panel: card first, item first or both (see [PurchaseFlow]). */
+    private val _purchaseFlow = MutableStateFlow(SaleMode.flow(application))
+    val purchaseFlow: StateFlow<PurchaseFlow> = _purchaseFlow.asStateFlow()
+
+    fun setPurchaseFlow(flow: PurchaseFlow) {
+        SaleMode.setFlow(getApplication(), flow)
+        _purchaseFlow.value = flow
+        Log.i(TAG, "Purchase flow: $flow")
+    }
+
     private val onQ3mini = DeviceAdapter.getModel() == DeviceAdapter.HardwareModel.WIZARPOS_Q3MINI
 
     /** VMC-simulator build (CoreConfig.vmcSimulator): simulated machine, real payments. */
@@ -198,7 +208,11 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                 }
                 VendingState.Idle, is VendingState.NotCharged, is VendingState.Success -> {
                     resultJob?.cancel()
-                    if (InventoryManager.isSoldOut(slot)) {
+                    if (_purchaseFlow.value == PurchaseFlow.CARD_FIRST) {
+                        // Card first only: no paying for a price here.
+                        mdbController.denyVend()
+                        showResult(VendingState.NotCharged(VendingState.Reason.START_FIRST))
+                    } else if (InventoryManager.isSoldOut(slot)) {
                         mdbController.denyVend()
                         showResult(VendingState.NotCharged(VendingState.Reason.SOLD_OUT))
                     } else {
@@ -266,7 +280,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     /** Card first: START touched on the idle screen. */
     fun startSession() {
         val pay = payment ?: return
-        if (blocked || _uiState.value != VendingState.Idle) return
+        if (blocked || _uiState.value != VendingState.Idle || _purchaseFlow.value == PurchaseFlow.ITEM_FIRST) return
         val ref = newRef()
         journal(ref, "HOLD", SESSION_LIMIT_CENTS, "")
         _uiState.value = VendingState.Authorizing(null)

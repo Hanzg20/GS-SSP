@@ -9,10 +9,16 @@ import kotlinx.serialization.json.*
  */
 object VendScreenWire {
 
-    /** [limitCents]: the terminal's card-first hold, for "over the limit". */
-    data class Shown(val state: VendingState, val french: Boolean, val simulator: Boolean, val limitCents: Int)
+    /** [limitCents]: the terminal's card-first hold, for "over the limit"; [flow]: what the idle screen asks for. */
+    data class Shown(
+        val state: VendingState, val french: Boolean, val simulator: Boolean, val limitCents: Int,
+        val flow: PurchaseFlow = PurchaseFlow.BOTH,
+    )
 
-    fun encode(state: VendingState, french: Boolean, simulator: Boolean, limitCents: Int): JsonObject = buildJsonObject {
+    fun encode(
+        state: VendingState, french: Boolean, simulator: Boolean, limitCents: Int, flow: PurchaseFlow = PurchaseFlow.BOTH,
+    ): JsonObject = buildJsonObject {
+        put("flow", flow.name)
         put("fr", french)
         put("sim", simulator)
         put("hold", limitCents)
@@ -54,6 +60,7 @@ object VendScreenWire {
         return Shown(
             state, json["fr"]?.jsonPrimitive?.booleanOrNull ?: false, json["sim"]?.jsonPrimitive?.booleanOrNull ?: false,
             json["hold"]?.jsonPrimitive?.intOrNull ?: 1000,
+            runCatching { PurchaseFlow.valueOf(str("flow")) }.getOrDefault(PurchaseFlow.BOTH), // older terminals: BOTH
         )
     }
 }

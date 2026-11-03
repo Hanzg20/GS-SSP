@@ -40,6 +40,12 @@ class VendStrings(
     val cardsAccepted: String,
     /** Big screen only: the customer pays on the terminal, not here. */
     val payAtTerminal: String,
+    // Item first only (PurchaseFlow.ITEM_FIRST): no START, the price comes from the machine.
+    val itemFirstTitle: String,
+    val itemStep2: String,
+    val priceShowsHere: String,
+    // Card first only (PurchaseFlow.CARD_FIRST): chosen on the machine without a card.
+    val startFirst: String,
 ) {
     /** Why nothing was charged ([limit] = the hold, for OVER_LIMIT). */
     fun reason(reason: com.goldsky.ssp.vending.logic.VendingState.Reason, limit: String): String = when (reason) {
@@ -49,6 +55,7 @@ class VendStrings(
         com.goldsky.ssp.vending.logic.VendingState.Reason.DECLINED -> declined
         com.goldsky.ssp.vending.logic.VendingState.Reason.SOLD_OUT -> soldOut
         com.goldsky.ssp.vending.logic.VendingState.Reason.OVER_LIMIT -> overLimit(limit)
+        com.goldsky.ssp.vending.logic.VendingState.Reason.START_FIRST -> startFirst
     }
 
     companion object {
@@ -84,6 +91,10 @@ class VendStrings(
             unavailableBody = "This machine can't take cards right now.",
             cardsAccepted = "Interac · Visa · Mastercard · Amex · Apple/Google Pay",
             payAtTerminal = "Pay on the card terminal",
+            itemFirstTitle = "Choose, then pay by card",
+            itemStep2 = "Pay here: touch PAY, tap your card",
+            priceShowsHere = "Your price will show here",
+            startFirst = "Touch START here first,\nthen choose on the machine",
         )
 
         val FR = VendStrings(
@@ -118,6 +129,10 @@ class VendStrings(
             unavailableBody = "Cette machine n'accepte pas les cartes pour le moment.",
             cardsAccepted = "Interac · Visa · Mastercard · Amex · Apple/Google Pay",
             payAtTerminal = "Payez au terminal de carte",
+            itemFirstTitle = "Choisissez, puis payez par carte",
+            itemStep2 = "Payez ici : touchez PAYER, puis votre carte",
+            priceShowsHere = "Votre prix s'affichera ici",
+            startFirst = "Touchez d'abord DÉBUTER ici,\npuis choisissez sur la machine",
         )
 
         fun money(cents: Int, fr: Boolean): String =

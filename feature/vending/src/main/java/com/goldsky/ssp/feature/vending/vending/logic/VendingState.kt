@@ -41,8 +41,17 @@ sealed class VendingState {
     /** Card payment can't be taken on this terminal: every vend request is denied. */
     object Unavailable : VendingState()
 
-    enum class Reason { NO_SELECTION, CANCELLED, VEND_FAILED, DECLINED, SOLD_OUT, OVER_LIMIT }
+    /** [START_FIRST]: chosen on the machine where only card first is offered. */
+    enum class Reason { NO_SELECTION, CANCELLED, VEND_FAILED, DECLINED, SOLD_OUT, OVER_LIMIT, START_FIRST }
 }
+
+/**
+ * Which way customers buy on this terminal (technician panel, per machine, owner 2026-11-03):
+ * [BOTH] = START on the idle screen or a price from the machine; [CARD_FIRST] = START only
+ * (a selection on the machine without a card is refused); [ITEM_FIRST] = choose on the
+ * machine, pay the price shown (no START).
+ */
+enum class PurchaseFlow { BOTH, CARD_FIRST, ITEM_FIRST }
 
 /**
  * Abstract interface to isolate MDB hardware from the UI logic.

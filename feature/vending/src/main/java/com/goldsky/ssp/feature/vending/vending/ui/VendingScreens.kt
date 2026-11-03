@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.goldsky.ssp.vending.VendingViewModel
+import com.goldsky.ssp.vending.logic.PurchaseFlow
 import com.goldsky.ssp.vending.logic.VendingState
 import com.goldsky.ssp.vending.logic.VendingState.Reason
 import com.goldsky.ssp.vending.ui.components.NfcRadar
@@ -66,6 +67,7 @@ private val LocalDims = compositionLocalOf { Dims(false) }
 fun VendingMainContainer(viewModel: VendingViewModel, version: String = "") {
     val state by viewModel.uiState.collectAsState()
     val french by viewModel.french.collectAsState()
+    val flow by viewModel.purchaseFlow.collectAsState()
     val s = if (french) VendStrings.FR else VendStrings.EN
     val money = { cents: Int -> VendStrings.money(cents, french) }
 
@@ -86,7 +88,7 @@ fun VendingMainContainer(viewModel: VendingViewModel, version: String = "") {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     Crossfade(targetState = state, label = "screen") { st ->
                         when (st) {
-                            VendingState.Idle -> IdleScreen(s, viewModel::startSession)
+                            VendingState.Idle -> IdleScreen(s, flow, viewModel::startSession)
                             is VendingState.Authorizing -> AuthorizingScreen(s, st.amountCents?.let(money))
                             is VendingState.SessionOpen -> SessionScreen(s, money(st.limitCents), st.deadline, viewModel::cancel)
                             is VendingState.VendRequestReceived -> PriceScreen(s, st.itemSlot, money(st.amountCents), viewModel::startPayment, viewModel::cancel)
@@ -180,19 +182,37 @@ private fun CancelButton(text: String, onClick: () -> Unit) {
     }
 }
 
+/** What the customer does first follows the terminal's purchase flow (technician panel). */
 @Composable
-private fun IdleScreen(s: VendStrings, onStart: () -> Unit) {
+private fun IdleScreen(s: VendStrings, flow: PurchaseFlow, onStart: () -> Unit) {
     val d = LocalDims.current
     Screen {
-        Text(s.startTitle, color = TextPrimary, fontSize = d.title, fontWeight = FontWeight.Black)
-        Spacer(Modifier.height(d.gap))
-        StepRow(1, s.step1)
-        Spacer(Modifier.height(6.dp))
-        StepRow(2, s.step2)
-        Spacer(Modifier.height(d.gap))
-        BigButton(s.startButton, KioskAmber, onStart)
-        Spacer(Modifier.height(6.dp))
-        Text(s.orChooseFirst, color = TextSecondary, fontSize = d.small, textAlign = TextAlign.Center)
+        if (flow == PurchaseFlow.ITEM_FIRST) {
+            // No START: the price arrives from the machine (PriceScreen).
+            Text(s.itemFirstTitle, color = TextPrimary, fontSize = d.headline, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(d.gap))
+            StepRow(1, s.step2)
+            Spacer(Modifier.height(6.dp))
+            StepRow(2, s.itemStep2)
+            Spacer(Modifier.height(d.gap))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                NfcRadar(size = 32.dp)
+                Spacer(Modifier.width(6.dp))
+                Text(s.priceShowsHere, color = TextSecondary, fontSize = d.body, fontWeight = FontWeight.SemiBold)
+            }
+        } else {
+            Text(s.startTitle, color = TextPrimary, fontSize = d.title, fontWeight = FontWeight.Black)
+            Spacer(Modifier.height(d.gap))
+            StepRow(1, s.step1)
+            Spacer(Modifier.height(6.dp))
+            StepRow(2, s.step2)
+            Spacer(Modifier.height(d.gap))
+            BigButton(s.startButton, KioskAmber, onStart)
+            if (flow == PurchaseFlow.BOTH) {
+                Spacer(Modifier.height(6.dp))
+                Text(s.orChooseFirst, color = TextSecondary, fontSize = d.small, textAlign = TextAlign.Center)
+            }
+        }
     }
 }
 

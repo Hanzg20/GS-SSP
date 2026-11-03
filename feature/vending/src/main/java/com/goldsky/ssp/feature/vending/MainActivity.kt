@@ -117,7 +117,7 @@ class MainActivity : ComponentActivity() {
         bigScreen.onRoleChanged = { applyRole(it) }
         applyRole(bigScreen.role)
         lifecycleScope.launch {
-            kotlinx.coroutines.flow.combine(vendingViewModel.uiState, vendingViewModel.french) { _, _ -> }
+            kotlinx.coroutines.flow.combine(vendingViewModel.uiState, vendingViewModel.french, vendingViewModel.purchaseFlow) { _, _, _ -> }
                 .collect { com.goldsky.ssp.payment.VendScreenLink.publish() }
         }
 
@@ -146,6 +146,8 @@ class MainActivity : ComponentActivity() {
                         runCatching { startActivity(Intent(android.provider.Settings.ACTION_CAST_SETTINGS)) }
                             .onFailure { Toast.makeText(this, "This terminal has no Cast settings", Toast.LENGTH_LONG).show() }
                     },
+                    purchaseFlow = vendingViewModel.purchaseFlow.collectAsState().value,
+                    onPurchaseFlow = vendingViewModel::setPurchaseFlow,
                     saleMode = if (showcase) com.goldsky.ssp.vending.SaleMode.Mode.SHOWCASE else com.goldsky.ssp.vending.SaleMode.Mode.MDB,
                     onSaleMode = { mode ->
                         com.goldsky.ssp.vending.SaleMode.set(this, mode)
@@ -203,6 +205,7 @@ class MainActivity : ComponentActivity() {
                 com.goldsky.ssp.vending.logic.VendScreenWire.encode(
                     vendingViewModel.uiState.value, vendingViewModel.french.value, vendingViewModel.vmcSimulator,
                     com.goldsky.ssp.vending.VendingViewModel.SESSION_LIMIT_CENTS,
+                    vendingViewModel.purchaseFlow.value,
                 )
             }
         } else {

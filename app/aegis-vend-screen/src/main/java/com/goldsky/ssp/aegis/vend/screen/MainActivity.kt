@@ -92,6 +92,7 @@ class MainActivity : ComponentActivity() {
                                 simulator = s?.simulator ?: false,
                                 status = if (offline) "· offline" else null,
                                 limitCents = s?.limitCents ?: 1000,
+                                flow = s?.flow ?: com.goldsky.ssp.vending.logic.PurchaseFlow.BOTH,
                             )
                         }
                     }

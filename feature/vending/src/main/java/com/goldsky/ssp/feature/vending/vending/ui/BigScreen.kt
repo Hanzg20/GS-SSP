@@ -123,7 +123,8 @@ class BigScreen(private val activity: Activity, private val viewModel: VendingVi
             setContent {
                 val state by viewModel.uiState.collectAsState()
                 val french by viewModel.french.collectAsState()
-                BigScreenContent(state, french, viewModel.vmcSimulator)
+                val flow by viewModel.purchaseFlow.collectAsState()
+                BigScreenContent(state, french, viewModel.vmcSimulator, flow = flow)
             }
         }
         p.setContentView(view)
@@ -181,6 +182,7 @@ class BigScreen(private val activity: Activity, private val viewModel: VendingVi
 fun BigScreenContent(
     state: VendingState, french: Boolean, simulator: Boolean, status: String? = null,
     limitCents: Int = VendingViewModel.SESSION_LIMIT_CENTS,
+    flow: com.goldsky.ssp.vending.logic.PurchaseFlow = com.goldsky.ssp.vending.logic.PurchaseFlow.BOTH,
 ) {
     val s = if (french) VendStrings.FR else VendStrings.EN
     val money = { cents: Int -> VendStrings.money(cents, french) }
@@ -208,11 +210,15 @@ fun BigScreenContent(
                 Crossfade(targetState = state, label = "big") { st ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy((unit * 2).dp)) {
                         when (st) {
-                            VendingState.Idle -> {
+                            VendingState.Idle -> if (flow == com.goldsky.ssp.vending.logic.PurchaseFlow.ITEM_FIRST) {
+                                Line(s.itemFirstTitle, big, TextPrimary)
+                                Line("1  " + s.step2, mid, TextSecondary)
+                                Line("2  " + s.payAtTerminal, mid, TextSecondary)
+                            } else {
                                 Line(s.startTitle, big, TextPrimary)
                                 Line("1  " + s.step1, mid, TextSecondary)
                                 Line("2  " + s.step2, mid, TextSecondary)
-                                Line(s.orChooseFirst, small, TextSecondary)
+                                if (flow == com.goldsky.ssp.vending.logic.PurchaseFlow.BOTH) Line(s.orChooseFirst, small, TextSecondary)
                             }
                             is VendingState.Authorizing -> {
                                 st.amountCents?.let { Line(money(it), big, KioskAmber) }
