@@ -10,6 +10,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
 @Serializable
+private data class VerticalParams(val p_vertical: String)
+
+@Serializable
+private data class VerticalResult(val success: Boolean, val changed: Boolean? = null, val message: String? = null)
+
+@Serializable
 data class DeviceRegistration(
     val sn: String,
     val app_version: String,
@@ -402,6 +408,26 @@ object DeviceRepository {
      * lock state alone", never as "locked", so a transient blip or an
      * unprovisioned device can't false-positive lock a legitimate device.
      */
+    /**
+     * Tells the server which Aegis app this terminal runs (devices.vertical_type, own row only:
+     * device_set_vertical, docs/migrations/2026-11-03_device_set_vertical.sql). A terminal moved
+     * from one app to another (255: Wash -> Vend, 2026-11-03) otherwise keeps the old type, and
+     * the store's publish checks treat it as the wrong kind of terminal. Call after
+     * [syncDeviceIdentity] (the RPC needs the device_auth_map link). False = not recorded.
+     */
+    suspend fun reportVertical(vertical: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val r = SupabaseClientProvider.client.postgrest.rpc("device_set_vertical", VerticalParams(p_vertical = vertical))
+                .decodeAs<VerticalResult>()
+            if (r.success) { if (r.changed == true) Log.i(TAG, "Terminal type now $vertical") }
+            else Log.w(TAG, "device_set_vertical($vertical) rejected: ${r.message}")
+            r.success
+        } catch (e: Exception) {
+            Log.w(TAG, "device_set_vertical failed: ${e.message}")
+            false
+        }
+    }
+
     suspend fun syncDeviceIdentity(sn: String): SyncDeviceIdentityResult? = withContext(Dispatchers.IO) {
         try {
             authenticateDevice()

@@ -243,6 +243,8 @@ class MainActivity : ComponentActivity() {
             val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
             DeviceRepository.registerDevice(deviceSn, version)
             val identity = DeviceRepository.syncDeviceIdentity(deviceSn)
+            // This terminal runs Aegis Vend, whatever it ran before (devices.vertical_type).
+            if (identity != null) DeviceRepository.reportVertical("VEND")
             DeviceAccessManager.applyActiveState(identity?.is_active)
             applyLock()
             identity?.org_id?.let { loadConfig(it) }
