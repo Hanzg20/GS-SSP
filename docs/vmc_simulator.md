@@ -51,6 +51,11 @@ github.com/SmartPOSSamples/MDBTestForCloudSDK (cloudpossdk 1.8.2.28):
   VMC and reader back to idle). `setConfigStateCheck(false)` at open, as the demo: with the
   check on, a VMC with a non-standard SETUP / CONFIG handshake gets Begin Session and
   vends blocked. Both done.
+- `enableAutoBeginSession(0, 0)` at open (second WizarPOS answer: with Always Idle, auto
+  Begin Session off -- else the board could open a session with no card).
+- The second answer contradicts the first on ending a session (VEND_CANCEL vs "depends")
+  and says Begin Session carries no amount (MDB 4.3 and their demo say it does). Settle it on
+  the wire: MDB232 box + `setEnableSniffer(true)` / `snifferMDBData` to see the bytes sent.
 - The MDB232 converter box for the PC simulator: on Taobao.
 - `setConfig` is not kept by the board: after a restart it reads 0x1840 (USD) again, so
   the app sets CAD on every open.

@@ -33,6 +33,10 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
                 // CONFIG handshake is out of the usual order gets Begin Session and vends blocked.
                 runCatching { extBoardDevice?.setConfigStateCheck(false) }
                     .onFailure { Log.w(TAG, "setConfigStateCheck: ${it.message}") }
+                // Always Idle is on: the board must never open a session by itself (it would offer
+                // funds with no card). WizarPOS: with Always Idle, auto Begin Session off.
+                runCatching { extBoardDevice?.enableAutoBeginSession(0, 0f) }
+                    .onFailure { Log.w(TAG, "enableAutoBeginSession: ${it.message}") }
                 setCurrencyCad()
                 logBoardState()
             } catch (e: Throwable) {
