@@ -174,7 +174,12 @@ class MainActivity : ComponentActivity() {
                     onExit = { tech = false },
                 )
             } else if (showcase && !locked) {
-                com.goldsky.ssp.vending.ui.ShowcaseContainer(showcaseViewModel, french, vendingViewModel::toggleLanguage)
+                val payMode by vendingViewModel.payMode.collectAsState()
+                com.goldsky.ssp.vending.ui.ShowcaseContainer(
+                    showcaseViewModel, french, vendingViewModel::toggleLanguage,
+                    card = payMode != com.goldsky.ssp.model.PaymentMethodMode.SCAN_ONLY,
+                    vip = payMode != com.goldsky.ssp.model.PaymentMethodMode.CARD_ONLY,
+                )
             } else {
                 VendingMainContainer(vendingViewModel, version, onVip = {
                     // Wash's VIP page: buy / top up a VIP card with a bank card.
@@ -300,10 +305,12 @@ class MainActivity : ComponentActivity() {
                     v.showcase -> when (val sc = v.sc) {
                         com.goldsky.ssp.vending.ShowcaseViewModel.State.Choosing -> if (wasResult) KEEP else s.sayShowcaseChoose
                         is com.goldsky.ssp.vending.ShowcaseViewModel.State.Authorizing -> s.sayTapCard
+                        is com.goldsky.ssp.vending.ShowcaseViewModel.State.Scanning -> s.sayScan
                         is com.goldsky.ssp.vending.ShowcaseViewModel.State.Dispensing -> s.sayDispensing
                         is com.goldsky.ssp.vending.ShowcaseViewModel.State.Done ->
                             if (sc.voided) s.sayShowcaseApproved else null
-                        is com.goldsky.ssp.vending.ShowcaseViewModel.State.Declined -> s.sayNotPaid
+                        is com.goldsky.ssp.vending.ShowcaseViewModel.State.Declined ->
+                            sc.reason?.let { sentence(s.reason(it, "")) + " " + s.sayNotCharged } ?: s.sayNotPaid
                     }
                     else -> when (val st = v.state) {
                         VendingState.Idle -> if (wasResult) KEEP

@@ -29,6 +29,7 @@ import com.goldsky.ssp.vending.ShowcaseViewModel.Item
 import com.goldsky.ssp.vending.ShowcaseViewModel.State
 import com.goldsky.ssp.vending.ui.components.CardTapAnim
 import com.goldsky.ssp.vending.ui.components.ItemDropAnim
+import com.goldsky.ssp.vending.ui.components.QrScanAnim
 import com.goldsky.ssp.vending.ui.components.ResultAnim
 import com.goldsky.ssp.vending.ui.theme.*
 
@@ -38,7 +39,11 @@ import com.goldsky.ssp.vending.ui.theme.*
  * gold, big bold words, no explanations (owner, 2026-11-03). Sized for the Q3mini's ~320dp square screen.
  */
 @Composable
-fun ShowcaseContainer(viewModel: ShowcaseViewModel, french: Boolean, onToggleLanguage: () -> Unit) {
+fun ShowcaseContainer(
+    viewModel: ShowcaseViewModel, french: Boolean, onToggleLanguage: () -> Unit,
+    /** Cael's payment methods: card, VIP member code, or both. */
+    card: Boolean = true, vip: Boolean = false,
+) {
     val state by viewModel.state.collectAsState()
     val items by viewModel.items.collectAsState()
     val selected by viewModel.selected.collectAsState()
@@ -55,7 +60,20 @@ fun ShowcaseContainer(viewModel: ShowcaseViewModel, french: Boolean, onToggleLan
             )
             Crossfade(targetState = state, label = "showcase", modifier = Modifier.weight(1f)) { st ->
                 when (st) {
-                    State.Choosing -> Choosing(items, selected, french, money, viewModel::select, viewModel::pay, onToggleLanguage)
+                    State.Choosing -> Choosing(
+                        items, selected, french, money, viewModel::select, card, vip, viewModel::pay, viewModel::payVip, onToggleLanguage,
+                    )
+                    is State.Scanning -> Message(st.item, money) {
+                        QrScanAnim(72.dp)
+                        Spacer(Modifier.height(12.dp))
+                        Big(if (french) "BALAYEZ VOTRE CODE VIP" else "SCAN YOUR VIP CODE")
+                        Spacer(Modifier.height(12.dp))
+                        Box(
+                            Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(16.dp)).background(kioskTile())
+                                .border(1.dp, KioskCardEdge, RoundedCornerShape(16.dp)).clickable(onClick = viewModel::cancel),
+                            contentAlignment = Alignment.Center,
+                        ) { Text(if (french) "ANNULER" else "CANCEL", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = SPACED) }
+                    }
                     is State.Authorizing -> Message(st.item, money) {
                         CardTapAnim(72.dp)
                         Spacer(Modifier.height(12.dp))
@@ -71,7 +89,14 @@ fun ShowcaseContainer(viewModel: ShowcaseViewModel, french: Boolean, onToggleLan
                         Spacer(Modifier.height(10.dp))
                         if (st.voided) {
                             Big(if (french) "APPROUVÉ" else "APPROVED", KioskEmerald)
-                            Line(if (french) "Annulé · aucun débit" else "Voided · not charged")
+                            Line(
+                                if (st.vip) { if (french) "Rendu à la carte VIP" else "Returned to the VIP card" }
+                                else if (french) "Annulé · aucun débit" else "Voided · not charged"
+                            )
+                        } else if (st.vip) {
+                            // Not given back yet: VendRecovery does it on the next start.
+                            Big(if (french) "REMBOURSEMENT EN ATTENTE" else "REFUND PENDING", KioskAmber)
+                            Line(if (french) "Retour automatique sur la carte VIP" else "Goes back to the VIP card")
                         } else {
                             Big(if (french) "ANNULATION IMPOSSIBLE" else "VOID FAILED", KioskRed)
                             Line(if (french) "Remboursement par le personnel" else "Staff will refund")
@@ -80,7 +105,9 @@ fun ShowcaseContainer(viewModel: ShowcaseViewModel, french: Boolean, onToggleLan
                     is State.Declined -> Message(st.item, money) {
                         ResultAnim(false, 64.dp)
                         Spacer(Modifier.height(10.dp))
-                        Big(if (french) "NON PAYÉ" else "NOT PAID", KioskAmber)
+                        // A VIP payment that didn't go through says why (same words as the MDB screens).
+                        val why = st.reason?.let { (if (french) VendStrings.FR else VendStrings.EN).reason(it, "") }
+                        Big(why ?: if (french) "NON PAYÉ" else "NOT PAID", KioskAmber)
                     }
                 }
             }
@@ -91,7 +118,7 @@ fun ShowcaseContainer(viewModel: ShowcaseViewModel, french: Boolean, onToggleLan
 @Composable
 private fun Choosing(
     items: List<Item>, selected: Item?, french: Boolean, money: (Int) -> String,
-    onSelect: (Item) -> Unit, onPay: () -> Unit, onToggleLanguage: () -> Unit,
+    onSelect: (Item) -> Unit, card: Boolean, vip: Boolean, onPay: () -> Unit, onVip: () -> Unit, onToggleLanguage: () -> Unit,
 ) {
     // Six to a screen (3 x 2); more items scroll up.
     val grid = rememberLazyGridState()
@@ -136,12 +163,27 @@ private fun Choosing(
                 color = if (ready) KioskAmber else TextSecondary, fontSize = 22.sp, fontWeight = FontWeight.Bold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
-            Box(
+            if (card) Box(
                 Modifier.height(44.dp).widthIn(min = 96.dp).clip(RoundedCornerShape(14.dp))
                     .background(if (ready) KioskAmber else KioskAmber.copy(alpha = 0.3f))
                     .clickable(enabled = ready, onClick = onPay).padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center,
             ) { Text(if (french) "PAYER" else "PAY", color = KioskBg, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = SPACED) }
+            if (vip) {
+                if (card) Spacer(Modifier.width(6.dp))
+                // The VIP member code: gold-edged beside PAY, gold alone.
+                val shape = RoundedCornerShape(14.dp)
+                Box(
+                    Modifier.height(44.dp).widthIn(min = 80.dp).clip(shape)
+                        .background(if (card) kioskTile(best = true) else androidx.compose.ui.graphics.SolidColor(if (ready) KioskAmber else KioskAmber.copy(alpha = 0.3f)))
+                        .border(if (card) 2.dp else 0.dp, if (ready) KioskAmber else KioskAmber.copy(alpha = 0.3f), shape)
+                        .clickable(enabled = ready, onClick = onVip).padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("VIP", color = if (card) (if (ready) KioskAmber else KioskAmber.copy(alpha = 0.4f)) else KioskBg,
+                        fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = SPACED)
+                }
+            }
         }
     }
 }

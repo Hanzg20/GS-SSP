@@ -15,6 +15,10 @@ import com.goldsky.ssp.payment.PaymentProviderFactory
 import com.goldsky.ssp.vending.db.VendingOrder
 import com.goldsky.ssp.vending.logic.OrderRepository
 import com.goldsky.ssp.vending.logic.VendPayment
+import com.goldsky.ssp.vending.logic.VendingState
+import com.goldsky.ssp.vending.logic.VipScan
+import com.goldsky.ssp.payment.VipDeductResult
+import com.goldsky.ssp.payment.VipRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +37,9 @@ import kotlinx.coroutines.launch
  * row goes to Cael as PAID / FAILED for a refund by hand, as any failed vend; a crash in
  * between is given back by VendRecovery (the sale is journaled before the card is asked for).
  * Turned on only from the technician panel ([SaleMode]).
+ *
+ * VIP member code too (Cael payment methods with scan): the balance is really deducted, then
+ * given straight back (vip_refund) -- the card demo's void, for a VIP card.
  */
 class ShowcaseViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -43,10 +50,13 @@ class ShowcaseViewModel(application: Application) : AndroidViewModel(application
         /** The grid; what's picked is [selected], so picking doesn't redraw the screen. */
         object Choosing : State()
         data class Authorizing(val item: Item) : State()
+        /** The VIP member code is being scanned. */
+        data class Scanning(val item: Item) : State()
         data class Dispensing(val item: Item) : State()
-        /** [voided] false: the void failed -- a refund by hand is owed. */
-        data class Done(val item: Item, val voided: Boolean) : State()
-        data class Declined(val item: Item) : State()
+        /** [voided] false: the void failed -- a refund by hand is owed. [vip]: paid with a VIP card, given back to it. */
+        data class Done(val item: Item, val voided: Boolean, val vip: Boolean = false) : State()
+        /** [reason]: why a VIP payment didn't go through (null = the card was declined). */
+        data class Declined(val item: Item, val reason: VendingState.Reason? = null) : State()
     }
 
     private val _state = MutableStateFlow<State>(State.Choosing)
@@ -130,11 +140,67 @@ class ShowcaseViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun finish(ref: String, item: Item, voided: Boolean) {
+    /** VIP: scan the member code, deduct the price, show the vend, give it straight back. */
+    fun payVip() {
+        if (_state.value != State.Choosing) return
+        val item = _selected.value ?: return
+        _selected.value = null
+        timer?.cancel()
+        val scanning = State.Scanning(item)
+        _state.value = scanning
+        timer = viewModelScope.launch {
+            val code = VipScan.code(getApplication())
+            if (_state.value !== scanning) return@launch
+            val uid = code?.let { VipRepository.resolveCardUidByQrCode(it.trim()) }
+            if (_state.value !== scanning) return@launch
+            if (uid == null) {
+                show(State.Declined(item, if (code == null) VendingState.Reason.NO_CODE else VendingState.Reason.VIP_INVALID))
+                return@launch
+            }
+            val ref = "VND-${System.currentTimeMillis()}"
+            // Journaled first: a crash in between is given back by VendRecovery.
+            if (!simulated) OrderRepository.saveOrder(getApplication(), VendingOrder(
+                orderId = ref, amountCents = item.cents, slot = "DEMO ${item.name}".take(40),
+                paymentStatus = "PENDING", dispenseStatus = "PENDING", kind = "VIP", vipCardUid = uid, entryMode = "QR",
+            ))
+            when (val r = VipRepository.deduct(uid, item.cents, ref)) {
+                is VipDeductResult.Success -> {
+                    _state.value = State.Dispensing(item)
+                    delay(DISPENSE_SHOW_MS)
+                    val back = VipRepository.refund(uid, ref)
+                    finish(ref, item, back, vip = true)
+                }
+                is VipDeductResult.Rejected -> {
+                    if (!simulated) OrderRepository.remove(getApplication(), ref)
+                    show(State.Declined(item,
+                        if (r.reason == "insufficient_balance") VendingState.Reason.VIP_LOW_BALANCE else VendingState.Reason.VIP_INVALID))
+                }
+                VipDeductResult.NetworkError -> {
+                    // Unclear: give back whatever this order took (nothing, if it never arrived).
+                    if (VipRepository.refund(uid, ref) && !simulated) OrderRepository.remove(getApplication(), ref)
+                    show(State.Declined(item, VendingState.Reason.VIP_OFFLINE))
+                }
+            }
+        }
+    }
+
+    /** CANCEL while the code is being scanned. */
+    fun cancel() {
+        val s = _state.value as? State.Scanning ?: return
+        timer?.cancel()
+        VipScan.stop(getApplication())
+        show(State.Declined(s.item, VendingState.Reason.CANCELLED))
+    }
+
+    private fun finish(ref: String, item: Item, voided: Boolean, vip: Boolean = false) {
         if (!simulated) {
             if (voided) {
                 // Authorized and voided: nothing owed, nothing to report.
                 OrderRepository.remove(getApplication(), ref)
+            } else if (vip) {
+                // Left unfinished (PAID / PENDING): VendRecovery gives the balance back on the next start.
+                Log.e(TAG, "Showcase VIP $ref not given back yet -- VendRecovery retries it")
+                OrderRepository.update(getApplication(), ref) { it.copy(paymentStatus = "PAID") }
             } else {
                 Log.e(TAG, "Showcase sale $ref could not be voided -- refund it by hand")
                 OrderRepository.updateOrder(getApplication(), ref, "FAILED", "PAID")
@@ -144,7 +210,7 @@ class ShowcaseViewModel(application: Application) : AndroidViewModel(application
                 }
             }
         }
-        show(State.Done(item, voided))
+        show(State.Done(item, voided, vip))
     }
 
     private fun journal(ref: String, item: Item) {

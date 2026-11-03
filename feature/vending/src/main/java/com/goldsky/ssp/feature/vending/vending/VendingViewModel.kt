@@ -132,8 +132,6 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
          */
         val SESSION_LIMIT_CENTS: Int get() = if (com.goldsky.ssp.common.CoreConfig.vmcSimulator) 10 else 1000
         private const val RESULT_MS = 6_000L
-        /** How long the member code is looked for (Wash's payment-page scan is 30 s too). */
-        private const val SCAN_MS = 30_000L
         /** A VIP card-first session offers at most this much (the machine's own limits apply too). */
         private const val VIP_SESSION_MAX_CENTS = 10_000
     }
@@ -456,7 +454,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
         val scanning = VendingState.Scanning(request?.amountCents)
         _uiState.value = scanning
         scanJob = viewModelScope.launch {
-            val code = scanCode()
+            val code = VipScan.code(getApplication())
             if (_uiState.value !== scanning) return@launch
             if (code == null) { stopVipScan(VendingState.Reason.NO_CODE); return@launch }
             val uid = com.goldsky.ssp.payment.VipRepository.resolveCardUidByQrCode(code.trim())
@@ -470,32 +468,9 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     private fun stopVipScan(reason: VendingState.Reason, deny: Boolean = true) {
         scanJob?.cancel()
         scanJob = null
-        scanner?.let { runCatching { it.stopScan() } }
+        VipScan.stop(getApplication())
         if (deny && (_uiState.value as? VendingState.Scanning)?.amountCents != null) mdbController.denyVend()
         showResult(VendingState.NotCharged(reason))
-    }
-
-    private val scanner by lazy {
-        runCatching { com.goldsky.ssp.payment.hardware.HardwareFactory.getScannerProvider(getApplication(), "WIZARPOS") }
-            .onFailure { Log.e(TAG, "No scanner: ${it.message}") }.getOrNull()
-    }
-
-    /** One member-code scan: the code, or null (nothing within [SCAN_MS], no scanner, unreadable). */
-    private suspend fun scanCode(): String? {
-        val sc = scanner ?: return null
-        return kotlinx.coroutines.withTimeoutOrNull(SCAN_MS) {
-            kotlinx.coroutines.suspendCancellableCoroutine<String?> { cont ->
-                sc.startScan(object : com.goldsky.ssp.payment.hardware.IScannerProvider.ScanCallback {
-                    override fun onScanSuccess(result: String) { if (cont.isActive) cont.resumeWith(Result.success(result)) }
-                    override fun onScanFailure(errorMsg: String) {
-                        Log.w(TAG, "Scan failed: $errorMsg")
-                        if (cont.isActive) cont.resumeWith(Result.success(null))
-                    }
-                })
-                // Timed out or cancelled: close the camera (its own "cancelled" callback is ignored above).
-                cont.invokeOnCancellation { runCatching { sc.stopScan() } }
-            }
-        }
     }
 
     private fun reasonFor(r: com.goldsky.ssp.payment.VipDeductResult) = when (r) {
