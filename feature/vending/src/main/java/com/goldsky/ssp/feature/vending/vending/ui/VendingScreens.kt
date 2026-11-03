@@ -74,6 +74,14 @@ fun VendingMainContainer(viewModel: VendingViewModel, version: String = "") {
         CompositionLocalProvider(LocalDims provides remember(compact) { Dims(compact) }) {
         Surface(modifier = Modifier.fillMaxSize(), color = KioskBg) {
             Column(Modifier.fillMaxSize()) {
+                if (viewModel.vmcSimulator) {
+                    // Can't be missed: no vending machine, real card payments.
+                    Text(
+                        "VMC SIMULATOR · TEST ONLY · REAL CARD PAYMENTS",
+                        color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().background(KioskRed).padding(vertical = 3.dp),
+                    )
+                }
                 TopBar(s, version, showToggle = state !is VendingState.Unavailable, onToggle = viewModel::toggleLanguage)
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     Crossfade(targetState = state, label = "screen") { st ->

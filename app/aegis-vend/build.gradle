@@ -30,6 +30,15 @@ android {
         // false, as on Wash / Timer: IS_MOCK=true on a real-hardware shell silently
         // skipped every Supabase transaction write at a live site (2026-09-19).
         buildConfigField "boolean", "IS_MOCK", "false"
+        // VMC simulator build (owner, 2026-11-02: no vending machine yet, test with our own):
+        // `gradlew :app:aegis-vend:signRelease -Pvmcsim` -> aegis-vend-<v>-VMCSIM-signed.apk.
+        // The vending machine is simulated (commands over adb, tools/vmc-sim.sh), the card
+        // payments are REAL, and a red banner says so on every screen. Same id and key as the
+        // release, so it installs over it on a test terminal (device secret kept) and the
+        // release goes back over it the same way. Never for a store (no demo/sim modes on
+        // Aegis, owner 2026-10-31): this flag is false in every normal build.
+        buildConfigField "boolean", "VMC_SIM", "${project.hasProperty('vmcsim')}"
+        if (project.hasProperty('vmcsim')) versionNameSuffix "-vmcsim"
     }
 
     buildFeatures {
@@ -60,6 +69,21 @@ androidComponents {
 }
 
 apply from: rootProject.file('gradle/release-signing.gradle')
+
+// The simulator build gets its own file name, so it can never pass for the release.
+if (project.hasProperty('vmcsim')) {
+    tasks.named('signRelease') {
+        doLast {
+            def dir = layout.buildDirectory.dir('outputs/apk/release').get().asFile
+            dir.listFiles().findAll { it.name.endsWith('-signed.apk') && !it.name.contains('VMCSIM') }.each { f ->
+                def sim = new File(dir, f.name.replace('-signed.apk', '-VMCSIM-signed.apk'))
+                sim.delete()
+                f.renameTo(sim)
+                println("VMC simulator APK: $sim")
+            }
+        }
+    }
+}
 
 dependencies {
     implementation 'androidx.core:core-ktx:1.9.0'

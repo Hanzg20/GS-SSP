@@ -38,10 +38,13 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
 
     private val onQ3mini = DeviceAdapter.getModel() == DeviceAdapter.HardwareModel.WIZARPOS_Q3MINI
 
+    /** VMC-simulator build (CoreConfig.vmcSimulator): simulated machine, real payments. */
+    val vmcSimulator = com.goldsky.ssp.common.CoreConfig.vmcSimulator
+
     // Real hardware only on Q3mini UPT (per docs/wizarpos_upt_integration_spec.md's
-    // own "机型检测" guidance); everything else uses the simulator.
+    // own "机型检测" guidance); everything else -- and the VMC-simulator build -- uses the simulator.
     private val mdbController: IMdbController =
-        if (onQ3mini) WizarPosMdbController(application) else MockMdbController()
+        if (onQ3mini && !vmcSimulator) WizarPosMdbController(application) else MockMdbController()
 
     val simulated = !onQ3mini &&
         (application.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -182,7 +185,14 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                         mdbController.denyVend()
                         showResult(VendingState.NotCharged(VendingState.Reason.SOLD_OUT))
                     } else {
-                        _uiState.value = VendingState.VendRequestReceived(amount, slot)
+                        val request = VendingState.VendRequestReceived(amount, slot)
+                        _uiState.value = request
+                        // Walked away from the price: refuse the vend, back to idle.
+                        timerJob?.cancel()
+                        timerJob = viewModelScope.launch {
+                            delay(SESSION_MS)
+                            if (_uiState.value === request) cancel()
+                        }
                     }
                 }
                 // Unavailable, or busy with a payment: the machine gets a no.
@@ -375,16 +385,20 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
 
     /**
      * Simulator commands from adb (debuggable build, off the Q3mini only -- see
-     * MainActivity): "select:<cents>:<item>" = the machine asks for a price,
-     * "fail" = the next vend jams, "decline" = the next card is declined.
+     * MainActivity), and the VMC-simulator build on a real terminal:
+     * "select:<cents>:<item>" = the machine asks for a price, "fail" = the next vend jams,
+     * "silent" = the machine never answers the next vend, "decline" = the next card is
+     * declined (emulator only: a real card answers for itself), "start" / "pay" = the buttons.
      */
     fun simulate(command: String) {
-        if (!simulated) return
+        if (!simulated && !vmcSimulator) return
+        Log.i(TAG, "Simulator command: $command")
         val parts = command.split(":")
         when (parts[0]) {
             "select" -> (mdbController as MockMdbController).simulateMachineSelection(
                 parts.getOrNull(1)?.toIntOrNull() ?: 175, parts.getOrNull(2) ?: "14")
             "fail" -> mdbController.setFailNext(true)
+            "silent" -> (mdbController as? MockMdbController)?.silentNext = true
             "decline" -> (payment as? VendPayment.Simulated)?.declineNext = true
             "start" -> startSession()
             "pay" -> startPayment()

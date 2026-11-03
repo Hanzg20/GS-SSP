@@ -21,6 +21,7 @@ class AegisVendApplication : Application() {
         super.onCreate()
 
         CoreConfig.isMock = BuildConfig.IS_MOCK
+        CoreConfig.vmcSimulator = BuildConfig.VMC_SIM
         HardwareConfig.isMock = BuildConfig.IS_MOCK
         CoreConfig.supabaseUrl = BuildConfig.SUPABASE_URL
         CoreConfig.supabaseKey = BuildConfig.SUPABASE_KEY

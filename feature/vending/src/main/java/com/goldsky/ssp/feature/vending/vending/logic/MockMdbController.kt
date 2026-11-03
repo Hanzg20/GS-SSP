@@ -15,6 +15,8 @@ class MockMdbController : IMdbController {
     private var successCallback: (() -> Unit)? = null
     private var failureCallback: ((Int) -> Unit)? = null
     private var failNext: Boolean = false
+    /** The next approved vend gets no answer at all (the terminal's 30 s timeout gives the money back). */
+    var silentNext: Boolean = false
 
     override fun initialize() {
         Log.d("MockMdb", "MDB Link established (Simulated)")
@@ -37,6 +39,11 @@ class MockMdbController : IMdbController {
     }
 
     override fun approveVend() {
+        if (silentNext) {
+            silentNext = false
+            Log.w("MockMdb", "VMC: approved, but saying nothing (Simulated)")
+            return
+        }
         Log.d("MockMdb", "VMC: Received Approve. Starting motors...")
         // Simulate mechanical delay then success or failure
         CoroutineScope(Dispatchers.Main).launch {
