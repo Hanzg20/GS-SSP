@@ -79,6 +79,10 @@ class MainActivity : ComponentActivity() {
         DeviceRepository.init(this)
         DeviceAccessManager.init(this)
         TtsManager.registerLifecycle(this, this)
+        // VIP member code payment scans with the camera: asked once, at start, not mid-sale.
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 1)
+        }
         setShowcase(com.goldsky.ssp.vending.SaleMode.get(this) == com.goldsky.ssp.vending.SaleMode.Mode.SHOWCASE)
         applyLock() // a remote lock survives a restart
 

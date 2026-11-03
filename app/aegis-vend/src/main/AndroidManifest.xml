@@ -24,6 +24,16 @@
     <!-- WizarPOS system extension: setting the boot launcher (LauncherClaim); both names, see aegis-timer -->
     <uses-permission android:name="android.permission.CLOUDPOS_DEFAULT_LAUNCHER" />
     <uses-permission android:name="android.permission.CLOUDPOS_SET_DEFAULT_LAUNCHER" />
+    <!-- VIP member code payment: the camera scan, as Aegis Wash. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- The CloudPOS scanner resolves its com.cloudpos.scanserver service package by name: hidden by
+         Android's package-visibility filtering without this (2026-11-03 on 255: "No such package:
+         com.cloudpos.scanserver", same as Wash on 2026-09-18). -->
+    <queries>
+        <package android:name="com.cloudpos.scanserver" />
+        <package android:name="com.wizarpos.honeywell.scanner" />
+    </queries>
 
     <application
         android:name=".AegisVendApplication"
