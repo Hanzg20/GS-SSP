@@ -8,8 +8,31 @@ ourselves. Two layers:
    Tests everything except the MDB wire protocol: sale, PreAuth / AuthCompletion /
    AuthVoid on Nuvei (and whether Interac accepts a pre-authorization), give-back on a
    jam or a silent machine, crash recovery, the transaction rows in Cael.
-2. **Hardware VMC (later)**: an MDB master adapter on a PC playing the machine on the
-   Q3mini's MDB port, for Begin Session / Vend Request / Session Complete on the wire.
+2. **Hardware VMC (later)**: WizarPOS's MDB master test board on a PC playing the machine
+   on the Q3mini's MDB port, for Begin Session / Vend Request / Session Complete on the wire.
+
+## WizarPOS material (downloaded 2026-11-02 to `C:\goldsky\WizerPOS SDK\MDB\`)
+
+From the old revision of sdkwiki "MDB Communication Protocal" (oldid 3377; the live page
+moved to gitbook `cloudpos-sdk/mdb-communication-protocal`):
+
+- **Reader side**: the terminal is the cashless slave; the app starts a transaction with
+  **Begin Session (MDB 03H + funds available, 2 bytes)** and may end it with **Session
+  Cancel Request (04H)**; the VMC then sends Vend Request, the app approves / denies, the
+  VMC reports Vend Success / Failure. POLL is answered by the board itself.
+- Our `ExtBoardDevice` path (board v14) does this through events: `respondEvent` with
+  `MDBEvent.TYPE_BEGIN_SESSION` (amount = funds) / `TYPE_VEND_CANCEL`. The mapping to
+  03H / 04H is inferred, to confirm on the wire.
+- Amount scale (sdkwiki "SDK杂记"): factor 1, decimal places 2 -- what 255's board has.
+- `MDB_Version_4-3.pdf`: the MDB/ICP 4.3 spec.
+- `MDBTest/`: WizarPOS's terminal demo (older raw-serial Q3V protocol, 115200 baud,
+  frames 09 len mode data LRC 0D).
+- `vmc_master_tool/`: **WizarPOS's VMC simulator for a PC** (Python + `dist/Q3V-test.exe`):
+  talks Modbus RTU at 9600 baud over a COM port to an MDB master board, which plays the
+  vending machine on the terminal's MDB port -- reset, vend request (item, price), dispense
+  ok / failed, cashless status. Needs that board (sdkwiki "Hardware": "MDB板连到PC", RS232
+  driver from WizarPOS) -- ask WizarPOS for it.
+- `MDBForCoffeeDemousage20220725.pdf`: how they wire PC + board + terminal.
 
 ## Build and install
 
