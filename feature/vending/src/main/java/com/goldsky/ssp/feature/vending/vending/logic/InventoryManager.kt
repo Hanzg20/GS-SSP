@@ -61,8 +61,9 @@ object InventoryManager {
         return stockMap[slot] ?: 0
     }
 
+    /** Only an item we track with nothing left: the machine itself won't offer an empty column. */
     fun isSoldOut(slot: String): Boolean {
-        return getStock(slot) <= 0
+        return stockMap[slot]?.let { it <= 0 } ?: false
     }
 
     /**

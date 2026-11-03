@@ -2,12 +2,13 @@ package com.goldsky.ssp.vending.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val GoldskyPrimary = Color(0xFF2E86DE) // Luxury Blue
-val GoldskySecondary = Color(0xFFF1C40F) // Premium Gold
-val GoldskySuccess = Color(0xFF2ECC71) // Industrial Green
-val GoldskyError = Color(0xFFE74C3C) // Alert Red
-
-val DarkBg = Color(0xFF0D0D0D) // Deep Black for OLED
-val GlassSurface = Color(0xFF1C1C1E) // Apple-style glass effect
+// Aegis kiosk palette (.cursorrules): navy background, slate cards, amber for the
+// one thing to do, emerald for done. Readable on a small screen in daylight.
+val KioskBg = Color(0xFF121824)
+val KioskCard = Color(0xFF1E293B)
+val KioskAmber = Color(0xFFF59E0B)
+val KioskEmerald = Color(0xFF10B981)
+val KioskRed = Color(0xFFEF4444)
+val KioskCyan = Color(0xFF38BDF8)
 val TextPrimary = Color(0xFFFFFFFF)
-val TextSecondary = Color(0xFFA0A0A2)
+val TextSecondary = Color(0xFF94A3B8)

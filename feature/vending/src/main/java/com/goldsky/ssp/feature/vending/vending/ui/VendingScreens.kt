@@ -1,270 +1,351 @@
 package com.goldsky.ssp.vending.ui
 
-import androidx.compose.animation.*
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.goldsky.ssp.vending.VendingViewModel
-import com.goldsky.ssp.vending.logic.InventoryManager
 import com.goldsky.ssp.vending.logic.VendingState
+import com.goldsky.ssp.vending.logic.VendingState.Reason
 import com.goldsky.ssp.vending.ui.components.NfcRadar
 import com.goldsky.ssp.vending.ui.theme.*
+import kotlinx.coroutines.delay
 
 /**
- * The main container for IM25 Vending UI.
- * High contrast, large fonts, and clear NFC guidance.
- * Modernized via Logic Crowdsourcing from Nayax/Cantaloupe/Ingenico.
+ * Sizes for the screen we're on: the Q3mini is ~320dp square, so below 480dp of
+ * height everything tightens (same idea as core/ui's values-h480dp).
+ */
+private class Dims(c: Boolean) {
+    val bar: Dp = if (c) 40.dp else 52.dp
+    val pad: Dp = if (c) 6.dp else 8.dp
+    val title: TextUnit = if (c) 22.sp else 28.sp
+    val headline: TextUnit = if (c) 20.sp else 24.sp
+    val body: TextUnit = if (c) 14.sp else 16.sp
+    val small: TextUnit = if (c) 11.sp else 13.sp
+    val price: TextUnit = if (c) 40.sp else 52.sp
+    val button: Dp = if (c) 52.dp else 64.dp
+    val cancel: Dp = if (c) 44.dp else 52.dp
+    val buttonText: TextUnit = if (c) 20.sp else 24.sp
+    val mark: Dp = if (c) 64.dp else 84.dp
+    val gap: Dp = if (c) 8.dp else 14.dp
+}
+
+private val LocalDims = compositionLocalOf { Dims(false) }
+
+/**
+ * Aegis Vend, the screen on the vending machine's front (Q3mini: ~4", square).
+ * One message per screen, big type, one amber button at most, so it reads at a
+ * glance next to the machine's own keypad and display. Both MDB flows are shown
+ * (see [VendingState]): the idle screen leads with card first (START), and a
+ * price from the machine (item first) is taken from any idle/result screen.
  */
 @Composable
 fun VendingMainContainer(viewModel: VendingViewModel) {
     val state by viewModel.uiState.collectAsState()
+    val french by viewModel.french.collectAsState()
+    val s = if (french) VendStrings.FR else VendStrings.EN
+    val money = { cents: Int -> VendStrings.money(cents, french) }
 
+    val compact = LocalConfiguration.current.screenHeightDp < 480
     VendingTheme {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Crossfade(targetState = state, label = "ScreenTransition") { currentState ->
-                    when (currentState) {
-                        is VendingState.Idle -> IdleScreen()
-                        is VendingState.VendRequestReceived -> PaymentScreen(
-                            currentState.amountCents, 
-                            currentState.itemSlot,
-                            stockCount = InventoryManager.getStock(currentState.itemSlot),
-                            onPayClick = { viewModel.startPayment() }
-                        )
-                        is VendingState.PaymentAuthorizing -> LoadingScreen("AUTHORIZING...")
-                        is VendingState.Dispensing -> LoadingScreen("DISPENSING...")
-                        is VendingState.Success -> ResultScreen(true, currentState.orderId)
-                        is VendingState.Error -> ResultScreen(false, currentState.message)
-                        else -> LoadingScreen("BOOTING...")
-                    }
-                }
-                
-                // One-Tap Localization & Branding Header (Insights from Moneris/Nayax)
-                VendingHeader()
-                
-                // Debug Overlay
-                if (state is VendingState.Idle) {
-                    Column(
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Button(
-                            onClick = { viewModel.debugFailNextVend() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.5f))
-                        ) {
-                            Text("DEBUG: FAIL NEXT VEND", fontSize = 10.sp)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = { viewModel.debugTriggerMachineRequest(200, "A1") },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray.copy(alpha = 0.5f))
-                        ) {
-                            Text("DEBUG: SIMULATE SELECTION", fontSize = 10.sp)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = { viewModel.debugTriggerMachineRequest(300, "B2") },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Magenta.copy(alpha = 0.5f))
-                        ) {
-                            Text("DEBUG: SIMULATE SOLD OUT (B2)", fontSize = 10.sp)
+        CompositionLocalProvider(LocalDims provides remember(compact) { Dims(compact) }) {
+        Surface(modifier = Modifier.fillMaxSize(), color = KioskBg) {
+            Column(Modifier.fillMaxSize()) {
+                TopBar(s, showToggle = state !is VendingState.Unavailable, onToggle = viewModel::toggleLanguage)
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    Crossfade(targetState = state, label = "screen") { st ->
+                        when (st) {
+                            VendingState.Idle -> IdleScreen(s, viewModel::startSession)
+                            is VendingState.Authorizing -> AuthorizingScreen(s, st.amountCents?.let(money))
+                            is VendingState.SessionOpen -> SessionScreen(s, money(st.limitCents), st.deadline, viewModel::cancel)
+                            is VendingState.VendRequestReceived -> PriceScreen(s, st.itemSlot, money(st.amountCents), viewModel::startPayment, viewModel::cancel)
+                            is VendingState.Dispensing -> DispensingScreen(s, st.itemSlot, money(st.amountCents))
+                            is VendingState.Success -> SuccessScreen(s, money(st.amountCents))
+                            is VendingState.NotCharged -> NotChargedScreen(s, st.reason, money(VendingViewModel.SESSION_LIMIT_CENTS))
+                            VendingState.Unavailable -> UnavailableScreen()
+                            VendingState.Booting -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                                CircularProgressIndicator(color = KioskAmber)
+                            }
                         }
                     }
                 }
+                if (state == VendingState.Idle) {
+                    Text(
+                        s.cardsAccepted,
+                        color = TextSecondary, fontSize = 11.sp, textAlign = TextAlign.Center, maxLines = 1,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = LocalDims.current.pad)
+                    )
+                }
+            }
+        }
+        }
+    }
+}
+
+@Composable
+private fun TopBar(s: VendStrings, showToggle: Boolean, onToggle: () -> Unit) {
+    val d = LocalDims.current
+    Row(
+        Modifier.fillMaxWidth().height(d.bar).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("GOLDSKY", color = KioskAmber, fontSize = d.small, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+        Spacer(Modifier.weight(1f))
+        if (showToggle) {
+            // A thumb-sized pill, quiet next to START.
+            Box(
+                Modifier.height(d.bar - 6.dp).clip(RoundedCornerShape(20.dp))
+                    .border(1.dp, TextSecondary.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                    .clickable(onClick = onToggle).padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(s.langToggle, color = TextPrimary, fontSize = d.small, fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
+/** Centered column every screen shares. */
 @Composable
-fun VendingHeader() {
+private fun Screen(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = LocalDims.current.pad),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        content = content
+    )
+}
+
+@Composable
+private fun BigButton(text: String, color: Color, onClick: () -> Unit) {
+    val d = LocalDims.current
+    Button(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(d.button),
+        shape = RoundedCornerShape(14.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = KioskBg)
+    ) {
+        Text(text, fontSize = d.buttonText, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+    }
+}
+
+@Composable
+private fun CancelButton(text: String, onClick: () -> Unit) {
+    val d = LocalDims.current
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(d.cancel),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, TextSecondary),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
+    ) {
+        Text(text, fontSize = d.body, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun IdleScreen(s: VendStrings, onStart: () -> Unit) {
+    val d = LocalDims.current
+    Screen {
+        Text(s.startTitle, color = TextPrimary, fontSize = d.title, fontWeight = FontWeight.Black)
+        Spacer(Modifier.height(d.gap))
+        StepRow(1, s.step1)
+        Spacer(Modifier.height(6.dp))
+        StepRow(2, s.step2)
+        Spacer(Modifier.height(d.gap))
+        BigButton(s.startButton, KioskAmber, onStart)
+        Spacer(Modifier.height(6.dp))
+        Text(s.orChooseFirst, color = TextSecondary, fontSize = d.small, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun StepRow(n: Int, text: String) {
+    val d = LocalDims.current
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(KioskCard).padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "GOLDSKY", 
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = Color.White.copy(alpha = 0.6f)
-        )
-        
-        // Language Toggle (Insights from Nayax)
-        Surface(
-            shape = CircleShape,
-            color = Color.White.copy(alpha = 0.1f)
-        ) {
-            Text(
-                text = "EN | FR",
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                fontSize = 10.sp,
-                color = Color.White
-            )
+        Box(Modifier.size(26.dp).background(KioskAmber, CircleShape), contentAlignment = Alignment.Center) {
+            Text("$n", color = KioskBg, fontSize = d.body, fontWeight = FontWeight.Black)
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(text, color = TextPrimary, fontSize = d.body, fontWeight = FontWeight.SemiBold, lineHeight = d.body * 1.2f)
+    }
+}
+
+@Composable
+private fun AuthorizingScreen(s: VendStrings, amount: String?) {
+    val d = LocalDims.current
+    Screen {
+        if (amount != null) {
+            Text(amount, color = TextPrimary, fontSize = d.price, fontWeight = FontWeight.Black)
+            Spacer(Modifier.height(d.gap))
+        }
+        CircularProgressIndicator(color = KioskAmber, strokeWidth = 5.dp, modifier = Modifier.size(d.mark * 0.75f))
+        Spacer(Modifier.height(d.gap))
+        Text(s.authorizing, color = TextPrimary, fontSize = d.headline, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
+        Text(s.keepCard, color = TextSecondary, fontSize = d.body, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun SessionScreen(s: VendStrings, limit: String, deadline: Long, onCancel: () -> Unit) {
+    val d = LocalDims.current
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(deadline) {
+        while (now < deadline) { delay(250); now = System.currentTimeMillis() }
+    }
+    val leftMs = (deadline - now).coerceAtLeast(0)
+    val left = ((leftMs + 999) / 1000).toInt()
+    val frac = (leftMs.toFloat() / VendingViewModel.SESSION_MS).coerceIn(0f, 1f)
+    Screen {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(d.mark)) {
+                Canvas(Modifier.fillMaxSize()) {
+                    val st = 7.dp.toPx()
+                    val tl = Offset(st / 2, st / 2)
+                    val sz = Size(size.width - st, size.height - st)
+                    drawArc(KioskCard, 0f, 360f, false, tl, sz, style = Stroke(st))
+                    drawArc(if (left > 10) KioskEmerald else KioskAmber, -90f, 360f * frac, false, tl, sz,
+                        style = Stroke(st, cap = StrokeCap.Round))
+                }
+                Text(s.secondsLeft(left), color = TextPrimary, fontSize = d.body, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(s.approved, color = KioskEmerald, fontSize = d.headline, fontWeight = FontWeight.Black)
+        }
+        Spacer(Modifier.height(d.gap))
+        Text(s.chooseOnMachine, color = TextPrimary, fontSize = d.headline, fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center, lineHeight = d.headline * 1.2f)
+        Spacer(Modifier.height(d.gap))
+        Text(s.holdNote(limit), color = TextSecondary, fontSize = d.small, textAlign = TextAlign.Center, lineHeight = d.small * 1.3f)
+        Spacer(Modifier.height(d.gap))
+        CancelButton(s.cancel, onCancel)
+    }
+}
+
+@Composable
+private fun PriceScreen(s: VendStrings, item: String, price: String, onPay: () -> Unit, onCancel: () -> Unit) {
+    val d = LocalDims.current
+    Screen {
+        Text(s.item(item), color = TextSecondary, fontSize = d.body, fontWeight = FontWeight.Bold)
+        Text(price, color = TextPrimary, fontSize = d.price, fontWeight = FontWeight.Black)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            NfcRadar(size = 32.dp)
+            Spacer(Modifier.width(6.dp))
+            Text(s.tapToPay, color = TextPrimary, fontSize = d.body, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.height(d.gap))
+        BigButton(s.payButton, KioskAmber, onPay)
+        Spacer(Modifier.height(8.dp))
+        CancelButton(s.cancel, onCancel)
+    }
+}
+
+@Composable
+private fun DispensingScreen(s: VendStrings, item: String, price: String) {
+    val d = LocalDims.current
+    Screen {
+        CircularProgressIndicator(color = KioskEmerald, strokeWidth = 5.dp, modifier = Modifier.size(d.mark * 0.75f))
+        Spacer(Modifier.height(d.gap))
+        Text(s.dispensing, color = TextPrimary, fontSize = d.title, fontWeight = FontWeight.Black)
+        Spacer(Modifier.height(4.dp))
+        Text("${s.item(item)} · $price", color = TextSecondary, fontSize = d.body)
+    }
+}
+
+@Composable
+private fun ResultMark(ok: Boolean) {
+    val color = if (ok) KioskEmerald else KioskAmber
+    Canvas(Modifier.size(LocalDims.current.mark)) {
+        val w = size.width
+        drawCircle(color.copy(alpha = 0.18f))
+        drawCircle(color, radius = w * 0.36f)
+        val st = Stroke(w * 0.08f, cap = StrokeCap.Round)
+        if (ok) {
+            val path = Path().apply {
+                moveTo(w * 0.33f, w * 0.52f); lineTo(w * 0.45f, w * 0.64f); lineTo(w * 0.68f, w * 0.38f)
+            }
+            drawPath(path, KioskBg, style = st)
+        } else {
+            // "!" -- nothing taken, not a scolding red cross.
+            drawLine(KioskBg, Offset(w / 2, w * 0.32f), Offset(w / 2, w * 0.54f), st.width, StrokeCap.Round)
+            drawCircle(KioskBg, radius = st.width * 0.6f, center = Offset(w / 2, w * 0.68f))
         }
     }
 }
 
 @Composable
-fun IdleScreen() {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        // Logo Placeholder
-        Box(
-            modifier = Modifier.size(60.dp).clip(CircleShape).background(GoldskyPrimary),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("G", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-        }
-        
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        Text(
-            text = "WELCOME",
-            color = Color.White,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 2.sp
-        )
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text(
-            text = "PLEASE SELECT PRODUCT\nON MACHINE PANEL",
-            color = TextSecondary,
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center,
-            lineHeight = 20.sp
-        )
+private fun SuccessScreen(s: VendStrings, price: String) {
+    val d = LocalDims.current
+    Screen {
+        ResultMark(true)
+        Spacer(Modifier.height(d.gap))
+        Text(s.takeItem, color = TextPrimary, fontSize = d.title, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(4.dp))
+        Text(s.charged(price), color = TextSecondary, fontSize = d.body)
+        Spacer(Modifier.height(2.dp))
+        Text(s.thanks, color = KioskEmerald, fontSize = d.body, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-fun PaymentScreen(amountCents: Int, label: String, stockCount: Int, onPayClick: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(modifier = Modifier.height(32.dp))
-        
-        Text("$label (Stock: $stockCount)", color = TextSecondary, fontSize = 14.sp)
-        
-        Text(
-            text = "$${String.format("%.2f", amountCents / 100.0)}",
-            color = MaterialTheme.colorScheme.secondary,
-            fontSize = 42.sp,
-            fontWeight = FontWeight.Black
-        )
-        
-        Spacer(modifier = Modifier.weight(1f))
-        
-        // Modern NFC Radar Animation (Insights from Cantaloupe)
-        Box(modifier = Modifier.clickable { onPayClick() }) {
-            NfcRadar()
-        }
-        
-        Spacer(modifier = Modifier.weight(1f))
-        
-        Text(
-            text = "TAP TO PAY",
-            color = Color.White,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-        )
-        
-        Text(
-            text = "DEBIT / CREDIT / MOBILE",
-            color = Color.DarkGray,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Medium
-        )
+private fun NotChargedScreen(s: VendStrings, reason: Reason, limit: String) {
+    val d = LocalDims.current
+    val why = when (reason) {
+        Reason.NO_SELECTION -> s.noSelection
+        Reason.CANCELLED -> s.cancelled
+        Reason.VEND_FAILED -> s.vendFailed
+        Reason.DECLINED -> s.declined
+        Reason.SOLD_OUT -> s.soldOut
+        Reason.OVER_LIMIT -> s.overLimit(limit)
+    }
+    Screen {
+        ResultMark(false)
+        Spacer(Modifier.height(d.gap))
+        Text(why, color = TextPrimary, fontSize = d.headline, fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center, lineHeight = d.headline * 1.2f)
+        Spacer(Modifier.height(6.dp))
+        Text(s.notCharged, color = KioskEmerald, fontSize = d.body, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
     }
 }
 
 @Composable
-fun LoadingScreen(text: String) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        CircularProgressIndicator(color = GoldskyPrimary, strokeWidth = 4.dp)
-        Spacer(modifier = Modifier.height(24.dp))
-        Text(text, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-fun ResultScreen(isSuccess: Boolean, info: String) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        val color = if (isSuccess) GoldskySuccess else GoldskyError
-        
-        // Success/Error Feedback (Insights from Ingenico)
-        Box(
-            modifier = Modifier
-                .size(80.dp)
-                .background(color.copy(alpha = 0.1f), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(50.dp)
-                    .background(color, CircleShape)
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(32.dp))
-        
-        Text(
-            text = if (isSuccess) "APPROVED" else "DECLINED",
-            color = color,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Black,
-            textAlign = TextAlign.Center
-        )
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text(
-            text = info.uppercase(),
-            color = TextSecondary,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            lineHeight = 16.sp
-        )
-        
-        if (isSuccess) {
-            Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                text = "PLEASE COLLECT YOUR ITEM",
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
+private fun UnavailableScreen() {
+    val d = LocalDims.current
+    // Both languages at once: nobody can act on this screen, so no toggle.
+    Screen {
+        ResultMark(false)
+        Spacer(Modifier.height(d.gap))
+        for (l in listOf(VendStrings.EN, VendStrings.FR)) {
+            Text(l.unavailableTitle, color = TextPrimary, fontSize = d.body * 1.2f, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+            Text(l.unavailableBody, color = TextSecondary, fontSize = d.small, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(d.gap))
         }
     }
 }

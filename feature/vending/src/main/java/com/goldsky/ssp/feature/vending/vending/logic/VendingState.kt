@@ -1,35 +1,47 @@
 package com.goldsky.ssp.vending.logic
 
 /**
- * Formal Finite State Machine states for the Vending process.
- * Highly aligned with MDB/ICP 4.3 standards.
+ * The vend loop, one state per screen. Both ways a cashless vending machine
+ * (MDB) is used are covered:
+ *  - card first (how most machines around Ottawa work, Nayax/Cantaloupe style):
+ *    Idle -> Authorizing(null) [a hold] -> SessionOpen [choose on the machine]
+ *    -> Dispensing -> Success, the hold settled at the item's price;
+ *  - item first (machines set to "always idle"): the machine asks for a price
+ *    -> VendRequestReceived [tap to pay] -> Authorizing(price) -> Dispensing -> Success.
+ * Anything that ends without an item ends in NotCharged: the hold / sale is
+ * voided, never kept.
  */
 sealed class VendingState {
     object Booting : VendingState()
     object Idle : VendingState()
-    
+
+    /** [amountCents] null = a hold for a card-first session, else the item's price. */
+    data class Authorizing(val amountCents: Int?) : VendingState()
+
+    /** Card approved first: the customer now chooses on the machine before [deadline]. */
+    data class SessionOpen(val limitCents: Int, val deadline: Long) : VendingState()
+
     data class VendRequestReceived(
         val amountCents: Int,
         val itemSlot: String,
         val timestamp: Long = System.currentTimeMillis()
     ) : VendingState()
-    
-    object PaymentAuthorizing : VendingState()
-    
+
     data class Dispensing(
         val transactionId: String,
         val amountCents: Int,
         val itemSlot: String,
         val deadline: Long // To handle Auto-Void if timeout
     ) : VendingState()
-    
-    data class Success(val orderId: String) : VendingState()
-    
-    data class Error(
-        val code: String,
-        val message: String,
-        val retryable: Boolean = true
-    ) : VendingState()
+
+    data class Success(val orderId: String, val amountCents: Int, val itemSlot: String) : VendingState()
+
+    data class NotCharged(val reason: Reason) : VendingState()
+
+    /** Card payment can't be taken on this terminal: every vend request is denied. */
+    object Unavailable : VendingState()
+
+    enum class Reason { NO_SELECTION, CANCELLED, VEND_FAILED, DECLINED, SOLD_OUT, OVER_LIMIT }
 }
 
 /**
