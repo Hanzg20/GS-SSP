@@ -47,8 +47,13 @@ github.com/SmartPOSSamples/MDBTestForCloudSDK (cloudpossdk 1.8.2.28):
   request's / VEND_DENIED, eventResult -1, amount 0. The machine's VEND_CANCEL -> answer
   VEND_CANCEL, eventResult 0. TRANSACTION_START -> BEGIN_SESSION with the funds, unless
   Always Idle on both sides. All done this way in WizarPosMdbProvider.
-- Still open: whether a VEND_CANCEL sent by us (no machine event) closes the session, and
-  what `setConfigStateCheck(false)` (the demo calls it after open) is for.
+- WizarPOS's answers: VEND_CANCEL sent by us ends the session (board sends Session Cancel,
+  VMC and reader back to idle). `setConfigStateCheck(false)` at open, as the demo: with the
+  check on, a VMC with a non-standard SETUP / CONFIG handshake gets Begin Session and
+  vends blocked. Both done.
+- The MDB232 converter box for the PC simulator: on Taobao.
+- `setConfig` is not kept by the board: after a restart it reads 0x1840 (USD) again, so
+  the app sets CAD on every open.
 
 ## Build and install
 

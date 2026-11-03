@@ -29,6 +29,10 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
                 extBoardDevice = terminal?.getDevice("com.cloudpos.device.extboard") as? ExtBoardDevice
                 extBoardDevice?.open()
                 Log.i(TAG, "ExtBoard opened for MDB")
+                // WizarPOS (2026-11-02), as in their demo: with the check on, a VMC whose SETUP /
+                // CONFIG handshake is out of the usual order gets Begin Session and vends blocked.
+                runCatching { extBoardDevice?.setConfigStateCheck(false) }
+                    .onFailure { Log.w(TAG, "setConfigStateCheck: ${it.message}") }
                 setCurrencyCad()
                 logBoardState()
             } catch (e: Throwable) {
@@ -192,8 +196,8 @@ class WizarPosMdbProvider(private val terminal: POSTerminal?) : IMdbProvider {
     }
 
     // Begin session: BEGIN_SESSION with the funds, as WizarPOS's demo sends on TRANSACTION_START.
-    // End session: VEND_CANCEL sent by us -- the demo only sends it in answer to the machine's,
-    // so this half is still unverified until a real VMC is on the bus.
+    // End session: VEND_CANCEL -- WizarPOS (2026-11-02): the board sends Session Cancel to the
+    // VMC and both go back to idle.
     override fun beginSession(funds: Float): Boolean = send(MDBEvent().apply {
         eventType = MDBEvent.TYPE_BEGIN_SESSION
         eventAmount = funds
