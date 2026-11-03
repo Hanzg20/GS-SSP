@@ -34,8 +34,11 @@ fun VendTechScreen(
     bigScreen: BigScreen,
     onCastSettings: () -> Unit,
     onPairScreen: suspend (code: String) -> String?,
+    saleMode: com.goldsky.ssp.vending.SaleMode.Mode,
+    onSaleMode: (com.goldsky.ssp.vending.SaleMode.Mode) -> Unit,
     onExit: () -> Unit,
 ) {
+    val showcase = saleMode == com.goldsky.ssp.vending.SaleMode.Mode.SHOWCASE
     var pairing by remember { mutableStateOf(false) }
     var pairedScreen by remember { mutableStateOf(bigScreen.pairedScreen) }
     var role by remember { mutableStateOf(bigScreen.role) }
@@ -59,6 +62,19 @@ fun VendTechScreen(
             Text(status, color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
         }
         TechButton("刷新售货机状态", { refresh++ })
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(KioskCard).padding(10.dp)) {
+            Text("销售模式", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(
+                if (showcase)
+                    "终端选货（展示）：本机显示 6 宫格，顾客点选后刷卡；卡授权后立即撤销，不扣款、不出货。售货机的 MDB 销售暂停"
+                else "MDB 售货机（默认）：顾客在售货机上选货，本机收款",
+                color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp,
+            )
+        }
+        TechButton(
+            if (showcase) "改回 MDB 售货机" else "改为终端选货（展示）",
+            { onSaleMode(if (showcase) com.goldsky.ssp.vending.SaleMode.Mode.MDB else com.goldsky.ssp.vending.SaleMode.Mode.SHOWCASE) },
+        )
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(KioskCard).padding(10.dp)) {
             Text("本机角色", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Text(

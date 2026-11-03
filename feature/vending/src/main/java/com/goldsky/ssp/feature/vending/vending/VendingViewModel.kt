@@ -60,6 +60,9 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     private var holdRef: String? = null
 
     private var locked = false
+    /** Showcase sale mode (technician panel): the machine's MDB sales are refused meanwhile. */
+    private var showcase = false
+    private val blocked get() = locked || showcase
     private var timerJob: Job? = null
     private var resultJob: Job? = null
 
@@ -93,7 +96,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                     VendRecovery.run(application, payment) { triggerSync() }
                     triggerSync()
                 }
-                _uiState.value = if (locked) VendingState.Unavailable else VendingState.Idle
+                _uiState.value = if (blocked) VendingState.Unavailable else VendingState.Idle
                 watchMachine()
             }
         }
@@ -108,9 +111,19 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     /** Remote LOCK / admin deactivation from Cael: no new vends while locked. */
     fun setLocked(locked: Boolean) {
         this.locked = locked
+        applyBlocked()
+    }
+
+    /** Showcase sale mode on / off (see ShowcaseViewModel): no MDB sales while it's on. */
+    fun setShowcase(on: Boolean) {
+        showcase = on
+        applyBlocked()
+    }
+
+    private fun applyBlocked() {
         val s = _uiState.value
-        if (locked && s == VendingState.Idle) _uiState.value = VendingState.Unavailable
-        else if (!locked && s == VendingState.Unavailable && payment != null && mdbController.ready) _uiState.value = VendingState.Idle
+        if (blocked && s == VendingState.Idle) _uiState.value = VendingState.Unavailable
+        else if (!blocked && s == VendingState.Unavailable && payment != null && mdbController.ready) _uiState.value = VendingState.Idle
     }
 
     /**
@@ -126,7 +139,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                 lastOnline = online
                 val s = _uiState.value
                 if (!online && s == VendingState.Idle) _uiState.value = VendingState.Unavailable
-                else if (online && !locked && s == VendingState.Unavailable) _uiState.value = VendingState.Idle
+                else if (online && !blocked && s == VendingState.Unavailable) _uiState.value = VendingState.Idle
                 delay(10_000)
             }
         }
@@ -253,7 +266,7 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
     /** Card first: START touched on the idle screen. */
     fun startSession() {
         val pay = payment ?: return
-        if (locked || _uiState.value != VendingState.Idle) return
+        if (blocked || _uiState.value != VendingState.Idle) return
         val ref = newRef()
         journal(ref, "HOLD", SESSION_LIMIT_CENTS, "")
         _uiState.value = VendingState.Authorizing(null)

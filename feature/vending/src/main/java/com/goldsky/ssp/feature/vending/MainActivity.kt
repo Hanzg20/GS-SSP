@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +50,14 @@ import kotlin.system.exitProcess
 class MainActivity : ComponentActivity() {
 
     private val vendingViewModel: VendingViewModel by viewModels()
+    private val showcaseViewModel: com.goldsky.ssp.vending.ShowcaseViewModel by viewModels()
+    /** Technician panel: the 6-item showcase instead of the machine's MDB sales. */
+    private val showcaseState = mutableStateOf(false)
+    private val lockedState = mutableStateOf(false)
+
+    /** No payment or vend under way on whichever screen is up. */
+    private val idle: Boolean
+        get() = vendingViewModel.idle && (!showcaseState.value || showcaseViewModel.idle)
     private var deviceSn = ""
 
     private val showPinState = mutableStateOf(false)
@@ -68,6 +77,8 @@ class MainActivity : ComponentActivity() {
         DeviceRepository.init(this)
         DeviceAccessManager.init(this)
         TtsManager.registerLifecycle(this, this)
+        setShowcase(com.goldsky.ssp.vending.SaleMode.get(this) == com.goldsky.ssp.vending.SaleMode.Mode.SHOWCASE)
+        applyLock() // a remote lock survives a restart
 
         val vendor = DeviceAdapter.getRecommendedVendor()
         DeviceRepository.persistHardwareVendor(vendor)
@@ -82,16 +93,16 @@ class MainActivity : ComponentActivity() {
         LauncherClaim.ensureDefault(this, vendor)
         com.goldsky.ssp.ui.BootFrontGuard.install(this)
         // PAYWizard stopped (after a reboot, or by itself): restart it while idle.
-        com.goldsky.ssp.ui.PayWizardGuard.start(this) { vendingViewModel.idle }
+        com.goldsky.ssp.ui.PayWizardGuard.start(this) { idle }
         if (deviceSn.isNotBlank()) {
             RemoteCommandManager.startListening(this, deviceSn, vendor, object : RemoteCommandManager.CommandListener {
                 override fun onSyncRequested() { lifecycleScope.launch { loadConfig(DeviceRepository.refreshOrgId(deviceSn)) } }
                 // A LOCK mid-vend lets that vend finish; it only blocks new ones.
-                override fun onLockRequested(locked: Boolean) = vendingViewModel.setLocked(DeviceAccessManager.isLocked())
-                override fun isIdleForScannerTest() = vendingViewModel.idle
+                override fun onLockRequested(locked: Boolean) = applyLock()
+                override fun isIdleForScannerTest() = idle
                 override suspend fun onBringToFrontRequested(): Pair<Boolean, String>? {
                     if (!com.goldsky.ssp.ui.KioskRecall.handles(application)) return null
-                    if (!vendingViewModel.idle) return false to "Not run: a payment or vend is in progress"
+                    if (!idle) return false to "Not run: a payment or vend is in progress"
                     return com.goldsky.ssp.ui.KioskRecall.bringBack(application, this@MainActivity.javaClass)
                 }
             })
@@ -114,6 +125,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             var showPin by showPinState
             var tech by techState
+            val showcase by showcaseState
+            val locked by lockedState
+            val french by vendingViewModel.french.collectAsState()
             BackHandler(enabled = true) { if (tech) tech = false } // kiosk: back never leaves the app
             if (tech) {
                 VendTechScreen(
@@ -132,8 +146,15 @@ class MainActivity : ComponentActivity() {
                         runCatching { startActivity(Intent(android.provider.Settings.ACTION_CAST_SETTINGS)) }
                             .onFailure { Toast.makeText(this, "This terminal has no Cast settings", Toast.LENGTH_LONG).show() }
                     },
+                    saleMode = if (showcase) com.goldsky.ssp.vending.SaleMode.Mode.SHOWCASE else com.goldsky.ssp.vending.SaleMode.Mode.MDB,
+                    onSaleMode = { mode ->
+                        com.goldsky.ssp.vending.SaleMode.set(this, mode)
+                        setShowcase(mode == com.goldsky.ssp.vending.SaleMode.Mode.SHOWCASE)
+                    },
                     onExit = { tech = false },
                 )
+            } else if (showcase && !locked) {
+                com.goldsky.ssp.vending.ui.ShowcaseContainer(showcaseViewModel, french, vendingViewModel::toggleLanguage)
             } else {
                 VendingMainContainer(vendingViewModel, version)
             }
@@ -199,7 +220,7 @@ class MainActivity : ComponentActivity() {
             DeviceRepository.registerDevice(deviceSn, version)
             val identity = DeviceRepository.syncDeviceIdentity(deviceSn)
             DeviceAccessManager.applyActiveState(identity?.is_active)
-            vendingViewModel.setLocked(DeviceAccessManager.isLocked())
+            applyLock()
             identity?.org_id?.let { loadConfig(it) }
         }
     }
@@ -208,7 +229,20 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val config = ConfigManager.loadConfig(this@MainActivity, orgId)
             TtsManager.setLocale(config.settings.locale_tag)
+            showcaseViewModel.refreshItems()
         }
+    }
+
+    private fun applyLock() {
+        lockedState.value = DeviceAccessManager.isLocked()
+        vendingViewModel.setLocked(lockedState.value)
+    }
+
+    private fun setShowcase(on: Boolean) {
+        showcaseState.value = on
+        vendingViewModel.setShowcase(on)
+        if (on) showcaseViewModel.refreshItems()
+        Log.i(TAG, "Sale mode: ${if (on) "SHOWCASE (6-item grid, card voided)" else "MDB"}")
     }
 
     // ---- idle ad screen (same rule as wash's BaseAdActivity) ----------------
@@ -220,7 +254,7 @@ class MainActivity : ComponentActivity() {
         // PIN (com.goldsky.ssp.ui.CornerSequence). Only watches -- the touch still lands.
         if (ev?.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
             val root = window.decorView
-            if (!vendingViewModel.idle || techState.value || showPinState.value) techEntry.reset()
+            if (!idle || techState.value || showPinState.value) techEntry.reset()
             else if (techEntry.onDown(ev.rawX, ev.rawY, root.width, root.height, android.os.SystemClock.elapsedRealtime())) {
                 showPinState.value = true
             }
@@ -245,7 +279,7 @@ class MainActivity : ComponentActivity() {
 
     /** Only from the idle screen -- never mid-payment, mid-vend or in the technician panel. */
     private fun launchAdsIfIdle() {
-        if (!vendingViewModel.idle || techState.value || showPinState.value) {
+        if (!idle || techState.value || showPinState.value) {
             resetAdTimer()
             return
         }
