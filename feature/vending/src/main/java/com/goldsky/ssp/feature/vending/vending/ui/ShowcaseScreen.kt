@@ -5,6 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
@@ -29,7 +33,7 @@ import com.goldsky.ssp.vending.ui.components.NfcRadar
 import com.goldsky.ssp.vending.ui.theme.*
 
 /**
- * Showcase sale mode (see [ShowcaseViewModel]): six items on the terminal, pick one, PAY,
+ * Showcase sale mode (see [ShowcaseViewModel]): six numbered items to a screen (more scroll up), pick one, PAY,
  * tap the card. A DEMO strip is always on top: the card is authorized and voided.
  * Sized for the Q3mini's ~320dp square screen.
  */
@@ -37,6 +41,7 @@ import com.goldsky.ssp.vending.ui.theme.*
 fun ShowcaseContainer(viewModel: ShowcaseViewModel, french: Boolean, onToggleLanguage: () -> Unit) {
     val state by viewModel.state.collectAsState()
     val items by viewModel.items.collectAsState()
+    val selected by viewModel.selected.collectAsState()
     val money = { cents: Int -> VendStrings.money(cents, french) }
     VendingTheme {
         Surface(Modifier.fillMaxSize(), color = KioskBg) {
@@ -49,7 +54,7 @@ fun ShowcaseContainer(viewModel: ShowcaseViewModel, french: Boolean, onToggleLan
                 )
                 Crossfade(targetState = state, label = "showcase", modifier = Modifier.weight(1f)) { st ->
                     when (st) {
-                        is State.Choosing -> Choosing(items, st.selected, french, money, viewModel::select, viewModel::pay, onToggleLanguage)
+                        State.Choosing -> Choosing(items, selected, french, money, viewModel::select, viewModel::pay, onToggleLanguage)
                         is State.Authorizing -> Message(st.item, money) {
                             CircularProgressIndicator(color = KioskAmber, strokeWidth = 4.dp, modifier = Modifier.size(40.dp))
                             Spacer(Modifier.height(10.dp))
@@ -87,25 +92,34 @@ private fun Choosing(
     items: List<Item>, selected: Item?, french: Boolean, money: (Int) -> String,
     onSelect: (Item) -> Unit, onPay: () -> Unit, onToggleLanguage: () -> Unit,
 ) {
+    // Six to a screen (3 x 2); more items scroll up.
+    val grid = rememberLazyGridState()
     Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)) {
         Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (french) "CHOISISSEZ VOTRE ARTICLE" else "SELECT YOUR ITEM",
+                if (french) "CHOISISSEZ" else "SELECT YOUR ITEM",
                 color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f),
             )
+            if (grid.canScrollForward) {
+                Text(
+                    if (french) "▲ Glissez : plus" else "▲ Swipe for more",
+                    color = KioskAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 8.dp),
+                )
+            }
             Box(
                 Modifier.clip(RoundedCornerShape(14.dp)).border(1.dp, TextSecondary.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
                     .clickable(onClick = onToggleLanguage).padding(horizontal = 10.dp, vertical = 3.dp),
             ) { Text(if (french) "EN" else "FR", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
         }
         Spacer(Modifier.height(4.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items.withIndex().chunked(3).forEach { row ->
-                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    row.forEach { (i, item) ->
-                        Tile(item, i, item == selected, money, Modifier.weight(1f).fillMaxHeight()) { onSelect(item) }
-                    }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val tileHeight = (maxHeight - GAP) / 2
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3), state = grid, modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(GAP), verticalArrangement = Arrangement.spacedBy(GAP),
+            ) {
+                itemsIndexed(items, key = { i, item -> "$i ${item.number}" }) { i, item ->
+                    Tile(item, i, item == selected, money, Modifier.height(tileHeight)) { onSelect(item) }
                 }
             }
         }
@@ -117,7 +131,7 @@ private fun Choosing(
             NfcRadar(size = 28.dp)
             Spacer(Modifier.width(6.dp))
             Text(
-                selected?.let { "${it.name} · ${money(it.cents)}" } ?: if (french) "Touchez un article" else "Tap an item",
+                selected?.let { "${it.number} · ${it.name} · ${money(it.cents)}" } ?: if (french) "Touchez un article" else "Tap an item",
                 color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
@@ -131,6 +145,8 @@ private fun Choosing(
         }
     }
 }
+
+private val GAP = 6.dp
 
 @Composable
 private fun Tile(item: Item, index: Int, selected: Boolean, money: (Int) -> String, modifier: Modifier, onClick: () -> Unit) {
@@ -152,6 +168,11 @@ private fun Tile(item: Item, index: Int, selected: Boolean, money: (Int) -> Stri
             else SubcomposeAsyncImage(
                 model = item.imageUrl, contentDescription = item.name, contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(), error = { fallback() }, loading = { fallback() },
+            )
+            Text(
+                item.number, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black,
+                modifier = Modifier.align(Alignment.TopStart).padding(4.dp)
+                    .clip(RoundedCornerShape(6.dp)).background(Color(0xCC1E293B)).padding(horizontal = 5.dp, vertical = 1.dp),
             )
         }
         Text(item.name, color = Color(0xFF1E293B), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1,

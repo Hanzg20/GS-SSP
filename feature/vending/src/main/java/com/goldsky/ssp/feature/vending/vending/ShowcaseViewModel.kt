@@ -36,10 +36,12 @@ import kotlinx.coroutines.launch
  */
 class ShowcaseViewModel(application: Application) : AndroidViewModel(application) {
 
-    data class Item(val name: String, val cents: Int, val emoji: String, val imageUrl: String? = null)
+    /** [number]: the item's number, shown on its tile. */
+    data class Item(val number: String, val name: String, val cents: Int, val emoji: String, val imageUrl: String? = null)
 
     sealed class State {
-        data class Choosing(val selected: Item?) : State()
+        /** The grid; what's picked is [selected], so picking doesn't redraw the screen. */
+        object Choosing : State()
         data class Authorizing(val item: Item) : State()
         data class Dispensing(val item: Item) : State()
         /** [voided] false: the void failed -- a refund by hand is owed. */
@@ -47,8 +49,11 @@ class ShowcaseViewModel(application: Application) : AndroidViewModel(application
         data class Declined(val item: Item) : State()
     }
 
-    private val _state = MutableStateFlow<State>(State.Choosing(null))
+    private val _state = MutableStateFlow<State>(State.Choosing)
     val state: StateFlow<State> = _state.asStateFlow()
+
+    private val _selected = MutableStateFlow<Item?>(null)
+    val selected: StateFlow<Item?> = _selected.asStateFlow()
 
     private val _items = MutableStateFlow(samples())
     val items: StateFlow<List<Item>> = _items.asStateFlow()
@@ -69,29 +74,33 @@ class ShowcaseViewModel(application: Application) : AndroidViewModel(application
     /** Nothing under way: ads, the technician panel and remote recalls only then. */
     val idle: Boolean get() = _state.value is State.Choosing
 
-    /** The store's VENDING products from Cael (first 6 with a price), else the samples. */
+    /**
+     * The store's VENDING products from Cael (those with a price; six to a screen, the rest
+     * by scrolling), numbered by attributes.slot else in order; else the samples.
+     */
     fun refreshItems() {
         val fromCael = ConfigManager.getConfig()?.products.orEmpty().forVertical("VENDING")
             .filter { it.is_active && it.price_cents > 0 }
-            .take(6)
-            .map { Item(it.name, it.price_cents, "", it.image_url) }
+            .mapIndexed { i, p -> Item(p.slot ?: number(i), p.name, p.price_cents, "", p.image_url) }
         _items.value = if (fromCael.isNotEmpty()) fromCael else samples()
     }
 
     fun select(item: Item) {
         if (_state.value !is State.Choosing) return
-        _state.value = State.Choosing(item)
+        _selected.value = item
         // Walked away: clear the choice.
         timer?.cancel()
         timer = viewModelScope.launch {
             delay(CHOICE_MS)
-            if ((_state.value as? State.Choosing)?.selected == item) _state.value = State.Choosing(null)
+            if (_selected.value == item) _selected.value = null
         }
     }
 
     fun pay() {
         val pay = payment ?: return
-        val item = (_state.value as? State.Choosing)?.selected ?: return
+        if (_state.value != State.Choosing) return
+        val item = _selected.value ?: return
+        _selected.value = null
         timer?.cancel()
         val ref = "VND-${System.currentTimeMillis()}"
         journal(ref, item)
@@ -149,7 +158,7 @@ class ShowcaseViewModel(application: Application) : AndroidViewModel(application
         timer?.cancel()
         timer = viewModelScope.launch {
             delay(RESULT_MS)
-            if (_state.value == state) _state.value = State.Choosing(null)
+            if (_state.value == state) _state.value = State.Choosing
         }
     }
 
@@ -158,14 +167,23 @@ class ShowcaseViewModel(application: Application) : AndroidViewModel(application
         fun p(cents: Int) = if (com.goldsky.ssp.common.CoreConfig.vmcSimulator) 10 else cents
         // Emoji up to Unicode 9: the Q3mini runs Android 7.1.
         return listOf(
-            Item("Chips", p(250), "🥔"),
-            Item("Water", p(175), "💧"),
-            Item("Juice", p(225), "🍹"),
-            Item("Candy", p(150), "🍬"),
-            Item("Coffee", p(300), "☕"),
-            Item("Chocolate", p(275), "🍫"),
-        )
+            Triple("Chips", 250, "🥔"),
+            Triple("Water", 175, "💧"),
+            Triple("Juice", 225, "🍹"),
+            Triple("Candy", 150, "🍬"),
+            Triple("Coffee", 300, "☕"),
+            Triple("Chocolate", 275, "🍫"),
+            Triple("Cookies", 200, "🍪"),
+            Triple("Donut", 225, "🍩"),
+            Triple("Apple", 125, "🍎"),
+            Triple("Milk", 200, "🥛"),
+            Triple("Green Tea", 250, "🍵"),
+            Triple("Ice Cream", 350, "🍦"),
+        ).mapIndexed { i, (name, cents, emoji) -> Item(number(i), name, p(cents), emoji) }
     }
+
+    /** 01, 02, ... for items without a number of their own. */
+    private fun number(i: Int) = (i + 1).toString().padStart(2, '0')
 
     private companion object {
         const val TAG = "VendShowcase"

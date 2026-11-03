@@ -39,6 +39,12 @@ data class Product(
     val stockQty: Int? get() = attributes?.get("stock_qty")?.jsonPrimitive?.intOrNull
 
     /**
+     * The item's number on a vending machine ("A1", "12"), same `attributes` JSONB story
+     * as [category]; shown on Aegis Vend's showcase grid. Null when unset.
+     */
+    val slot: String? get() = attributes?.get("slot")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+
+    /**
      * Session length for Aegis Timer products (vertical_type "TIMER", e.g.
      * $2 -> 240 for a self-service vacuum), same `attributes` JSONB story as
      * [category]. Null when unset or non-numeric -- a TIMER product without
