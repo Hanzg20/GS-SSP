@@ -10,7 +10,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,7 +27,9 @@ import coil.compose.SubcomposeAsyncImage
 import com.goldsky.ssp.vending.ShowcaseViewModel
 import com.goldsky.ssp.vending.ShowcaseViewModel.Item
 import com.goldsky.ssp.vending.ShowcaseViewModel.State
-import com.goldsky.ssp.vending.ui.components.NfcRadar
+import com.goldsky.ssp.vending.ui.components.CardTapAnim
+import com.goldsky.ssp.vending.ui.components.ItemDropAnim
+import com.goldsky.ssp.vending.ui.components.ResultAnim
 import com.goldsky.ssp.vending.ui.theme.*
 
 /**
@@ -43,27 +44,31 @@ fun ShowcaseContainer(viewModel: ShowcaseViewModel, french: Boolean, onToggleLan
     val selected by viewModel.selected.collectAsState()
     val money = { cents: Int -> VendStrings.money(cents, french) }
     VendingTheme {
-        Column(Modifier.fillMaxSize().background(KioskPage)) {
+        // Nothing in the screen's corners (owner, 2026-11-03), as on the MDB screens.
+        Column(Modifier.fillMaxSize().background(KioskPage).padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 24.dp)) {
             Text(
                 if (french) "DÉMO · AUCUN DÉBIT" else "DEMO · NOT CHARGED",
                 color = KioskBg, fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = SPACED,
                 textAlign = TextAlign.Center, maxLines = 1,
-                modifier = Modifier.fillMaxWidth().background(KioskAmber).padding(vertical = 2.dp),
+                modifier = Modifier.align(Alignment.CenterHorizontally).clip(RoundedCornerShape(10.dp))
+                    .background(KioskAmber).padding(horizontal = 14.dp, vertical = 1.dp),
             )
             Crossfade(targetState = state, label = "showcase", modifier = Modifier.weight(1f)) { st ->
                 when (st) {
                     State.Choosing -> Choosing(items, selected, french, money, viewModel::select, viewModel::pay, onToggleLanguage)
                     is State.Authorizing -> Message(st.item, money) {
-                        NfcRadar(size = 64.dp)
+                        CardTapAnim(72.dp)
                         Spacer(Modifier.height(12.dp))
                         Big(if (french) "PRÉSENTEZ VOTRE CARTE" else "TAP YOUR CARD")
                     }
                     is State.Dispensing -> Message(st.item, money) {
-                        CircularProgressIndicator(color = KioskEmerald, strokeWidth = 5.dp, modifier = Modifier.size(56.dp))
+                        ItemDropAnim(72.dp)
                         Spacer(Modifier.height(12.dp))
                         Big(if (french) "DISTRIBUTION…" else "DISPENSING…")
                     }
                     is State.Done -> Message(st.item, money) {
+                        ResultAnim(st.voided, 64.dp)
+                        Spacer(Modifier.height(10.dp))
                         if (st.voided) {
                             Big(if (french) "APPROUVÉ" else "APPROVED", KioskEmerald)
                             Line(if (french) "Annulé · aucun débit" else "Voided · not charged")
@@ -73,6 +78,8 @@ fun ShowcaseContainer(viewModel: ShowcaseViewModel, french: Boolean, onToggleLan
                         }
                     }
                     is State.Declined -> Message(st.item, money) {
+                        ResultAnim(false, 64.dp)
+                        Spacer(Modifier.height(10.dp))
                         Big(if (french) "NON PAYÉ" else "NOT PAID", KioskAmber)
                     }
                 }
@@ -88,7 +95,7 @@ private fun Choosing(
 ) {
     // Six to a screen (3 x 2); more items scroll up.
     val grid = rememberLazyGridState()
-    Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)) {
+    Column(Modifier.fillMaxSize().padding(vertical = 4.dp)) {
         Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 if (french) "CHOISISSEZ" else "SELECT YOUR ITEM",
@@ -181,9 +188,9 @@ private fun Message(item: Item, money: (Int) -> String, content: @Composable Col
         Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
     ) {
-        Text(money(item.cents), color = KioskAmber, fontSize = 52.sp, fontWeight = FontWeight.Bold)
+        Text(money(item.cents), color = KioskAmber, fontSize = 44.sp, fontWeight = FontWeight.Bold)
         Text("${item.number} · ${item.name}", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         content()
     }
 }

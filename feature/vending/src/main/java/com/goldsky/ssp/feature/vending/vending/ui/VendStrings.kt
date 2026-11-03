@@ -49,6 +49,18 @@ class VendStrings(
     /** The idle screen's VIP banner (opens Wash's VipActivity): plain, or with the best bonus %. */
     val vipBanner: String,
     val vipBonus: (Int) -> String,
+    // Voice (owner, 2026-11-03): each main screen's words as a sentence, said three times.
+    val sayStart: String,
+    val sayChooseOnMachine: String,
+    val sayTapCard: String,
+    val sayChooseItem: String,
+    val sayPrice: (String, String) -> String,
+    val sayDispensing: String,
+    val sayTakeItem: String,
+    val sayNotCharged: String,
+    val sayShowcaseChoose: String,
+    val sayShowcaseApproved: String,
+    val sayNotPaid: String,
 ) {
     /** Why nothing was charged ([limit] = the hold, for OVER_LIMIT). */
     fun reason(reason: com.goldsky.ssp.vending.logic.VendingState.Reason, limit: String): String = when (reason) {
@@ -100,6 +112,17 @@ class VendStrings(
             itemStep2 = "Then pay here",
             priceShowsHere = "Price shows here",
             startFirst = "TOUCH START FIRST",
+            sayStart = "Pay by card. Touch start.",
+            sayChooseOnMachine = "Choose your item on the machine.",
+            sayTapCard = "Tap your card.",
+            sayChooseItem = "Choose your item.",
+            sayPrice = { item, price -> "Item $item. $price. Touch pay." },
+            sayDispensing = "Dispensing.",
+            sayTakeItem = "Take your item. Thank you.",
+            sayNotCharged = "Not charged.",
+            sayShowcaseChoose = "Select your item, then touch pay.",
+            sayShowcaseApproved = "Approved. Not charged.",
+            sayNotPaid = "Not paid.",
         )
 
         val FR = VendStrings(
@@ -140,6 +163,17 @@ class VendStrings(
             itemStep2 = "Puis payez ici",
             priceShowsHere = "Le prix s'affiche ici",
             startFirst = "TOUCHEZ D'ABORD DÉBUTER",
+            sayStart = "Payez par carte. Touchez débuter.",
+            sayChooseOnMachine = "Choisissez votre article sur la machine.",
+            sayTapCard = "Présentez votre carte.",
+            sayChooseItem = "Choisissez votre article.",
+            sayPrice = { item, price -> "Article $item. $price. Touchez payer." },
+            sayDispensing = "Distribution.",
+            sayTakeItem = "Prenez votre article. Merci.",
+            sayNotCharged = "Aucun débit.",
+            sayShowcaseChoose = "Choisissez votre article, puis touchez payer.",
+            sayShowcaseApproved = "Approuvé. Aucun débit.",
+            sayNotPaid = "Non payé.",
         )
 
         fun money(cents: Int, fr: Boolean): String =

@@ -30,7 +30,10 @@ import com.goldsky.ssp.vending.VendingViewModel
 import com.goldsky.ssp.vending.logic.PurchaseFlow
 import com.goldsky.ssp.vending.logic.VendingState
 import com.goldsky.ssp.vending.logic.VendingState.Reason
-import com.goldsky.ssp.vending.ui.components.NfcRadar
+import com.goldsky.ssp.vending.ui.components.CardTapAnim
+import com.goldsky.ssp.vending.ui.components.ItemDropAnim
+import com.goldsky.ssp.vending.ui.components.KeypadAnim
+import com.goldsky.ssp.vending.ui.components.ResultAnim
 import com.goldsky.ssp.vending.ui.theme.*
 import kotlinx.coroutines.delay
 
@@ -55,6 +58,9 @@ private class Dims(c: Boolean) {
 
 private val LocalDims = compositionLocalOf { Dims(false) }
 
+/** Kept clear at each edge, so nothing sits in a corner. */
+private val CORNER = 24.dp
+
 /** The VIP page's title look: bold, widely spaced capitals. */
 private val Spaced = 0.08.em
 
@@ -76,13 +82,16 @@ fun VendingMainContainer(viewModel: VendingViewModel, version: String = "", onVi
     val compact = LocalConfiguration.current.screenHeightDp < 480
     VendingTheme {
         CompositionLocalProvider(LocalDims provides remember(compact) { Dims(compact) }) {
-        Column(Modifier.fillMaxSize().background(KioskPage)) {
+        // Nothing in the screen's corners (owner, 2026-11-03): they're rounded on some terminals,
+        // the technician's corner taps land there, and the system's labels sit at the bottom.
+        Column(Modifier.fillMaxSize().background(KioskPage).padding(start = CORNER, end = CORNER, top = 6.dp, bottom = CORNER)) {
             if (viewModel.vmcSimulator) {
                 // Can't be missed: no vending machine, real card payments.
                 Text(
                     "VMC SIMULATOR · TEST",
                     color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().background(KioskRed).padding(vertical = 2.dp),
+                    modifier = Modifier.align(Alignment.CenterHorizontally).clip(RoundedCornerShape(10.dp))
+                        .background(KioskRed).padding(horizontal = 14.dp, vertical = 1.dp),
                 )
             }
             TopBar(s, version, showToggle = state !is VendingState.Unavailable, onToggle = viewModel::toggleLanguage)
@@ -117,7 +126,7 @@ private fun VipBanner(text: String, onClick: () -> Unit) {
     val d = LocalDims.current
     val shape = RoundedCornerShape(16.dp)
     Box(
-        Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = d.pad).height(d.cancel).clip(shape)
+        Modifier.fillMaxWidth().height(d.cancel).clip(shape)
             .background(kioskTile(best = true)).border(1.5.dp, KioskAmber, shape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -129,7 +138,7 @@ private fun VipBanner(text: String, onClick: () -> Unit) {
 private fun TopBar(s: VendStrings, version: String, showToggle: Boolean, onToggle: () -> Unit) {
     val d = LocalDims.current
     Row(
-        Modifier.fillMaxWidth().height(d.bar).padding(horizontal = 14.dp),
+        Modifier.fillMaxWidth().height(d.bar),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // The terminal's own brand (owner, 2026-11-02), not the store's: a vending operator's
@@ -157,7 +166,7 @@ private fun TopBar(s: VendStrings, version: String, showToggle: Boolean, onToggl
 @Composable
 private fun Screen(content: @Composable ColumnScope.() -> Unit) {
     Column(
-        Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = LocalDims.current.pad),
+        Modifier.fillMaxSize().padding(vertical = LocalDims.current.pad),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
         content = content
@@ -211,12 +220,14 @@ private fun IdleScreen(s: VendStrings, flow: PurchaseFlow, onStart: () -> Unit) 
     Screen {
         if (flow == PurchaseFlow.ITEM_FIRST) {
             // No START: the price arrives from the machine (PriceScreen).
-            NfcRadar(size = d.mark)
+            KeypadAnim(d.mark * 1.2f)
             Spacer(Modifier.height(d.gap))
             Title(s.itemFirstTitle, KioskAmber)
         } else {
+            CardTapAnim(d.mark)
+            Spacer(Modifier.height(d.gap))
             Title(s.startTitle, KioskAmber)
-            Spacer(Modifier.height(d.gap * 2))
+            Spacer(Modifier.height(d.gap))
             BigButton(s.startButton, onStart)
             if (flow == PurchaseFlow.BOTH) {
                 Spacer(Modifier.height(d.gap))
@@ -234,9 +245,9 @@ private fun AuthorizingScreen(s: VendStrings, amount: String?) {
             Text(amount, color = KioskAmber, fontSize = d.price, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(d.gap))
         }
-        CircularProgressIndicator(color = KioskAmber, strokeWidth = 5.dp, modifier = Modifier.size(d.mark * 0.7f))
+        CardTapAnim(d.mark)
         Spacer(Modifier.height(d.gap))
-        Title(s.authorizing, size = d.headline)
+        Title(s.tapToPay, size = d.headline)
     }
 }
 
@@ -251,6 +262,7 @@ private fun SessionScreen(s: VendStrings, limit: String, deadline: Long, onCance
     val left = ((leftMs + 999) / 1000).toInt()
     val frac = (leftMs.toFloat() / VendingViewModel.SESSION_MS).coerceIn(0f, 1f)
     Screen {
+        Row(verticalAlignment = Alignment.CenterVertically) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.size(d.mark)) {
             Canvas(Modifier.fillMaxSize()) {
                 val st = 7.dp.toPx()
@@ -261,6 +273,10 @@ private fun SessionScreen(s: VendStrings, limit: String, deadline: Long, onCance
                     style = Stroke(st, cap = StrokeCap.Round))
             }
             Text(s.secondsLeft(left), color = TextPrimary, fontSize = d.headline, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.width(d.gap * 2))
+        // The words say "choose on the machine": its keypad, being pressed.
+        KeypadAnim(d.mark)
         }
         Spacer(Modifier.height(d.gap))
         Title(s.chooseOnMachine, KioskAmber, d.headline)
@@ -277,7 +293,12 @@ private fun PriceScreen(s: VendStrings, item: String, price: String, onPay: () -
     val d = LocalDims.current
     Screen {
         Line(s.item(item), TextPrimary)
-        Text(price, color = KioskAmber, fontSize = d.price, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // "PAY" is a card payment: the card going to the reader.
+            CardTapAnim(d.mark * 0.75f)
+            Spacer(Modifier.width(8.dp))
+            Text(price, color = KioskAmber, fontSize = d.price, fontWeight = FontWeight.Bold)
+        }
         Spacer(Modifier.height(d.gap))
         BigButton(s.payButton, onPay)
         Spacer(Modifier.height(10.dp))
@@ -289,32 +310,14 @@ private fun PriceScreen(s: VendStrings, item: String, price: String, onPay: () -
 private fun DispensingScreen(s: VendStrings) {
     val d = LocalDims.current
     Screen {
-        CircularProgressIndicator(color = KioskEmerald, strokeWidth = 5.dp, modifier = Modifier.size(d.mark * 0.7f))
+        ItemDropAnim(d.mark * 1.2f)
         Spacer(Modifier.height(d.gap))
         Title(s.dispensing)
     }
 }
 
 @Composable
-private fun ResultMark(ok: Boolean) {
-    val color = if (ok) KioskEmerald else KioskAmber
-    Canvas(Modifier.size(LocalDims.current.mark)) {
-        val w = size.width
-        drawCircle(color.copy(alpha = 0.18f))
-        drawCircle(color, radius = w * 0.36f)
-        val st = Stroke(w * 0.08f, cap = StrokeCap.Round)
-        if (ok) {
-            val path = Path().apply {
-                moveTo(w * 0.33f, w * 0.52f); lineTo(w * 0.45f, w * 0.64f); lineTo(w * 0.68f, w * 0.38f)
-            }
-            drawPath(path, KioskBg, style = st)
-        } else {
-            // "!" -- nothing taken, not a scolding red cross.
-            drawLine(KioskBg, Offset(w / 2, w * 0.32f), Offset(w / 2, w * 0.54f), st.width, StrokeCap.Round)
-            drawCircle(KioskBg, radius = st.width * 0.6f, center = Offset(w / 2, w * 0.68f))
-        }
-    }
-}
+private fun ResultMark(ok: Boolean) = ResultAnim(ok, LocalDims.current.mark)
 
 @Composable
 private fun SuccessScreen(s: VendStrings, price: String) {

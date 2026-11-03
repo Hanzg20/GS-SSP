@@ -28,6 +28,8 @@ import com.goldsky.ssp.payment.SupabaseClientProvider
 import com.goldsky.ssp.payment.hardware.HardwareFactory
 import com.goldsky.ssp.payment.hardware.IHardwareProvider
 import com.goldsky.ssp.vending.VendingViewModel
+import com.goldsky.ssp.vending.logic.PurchaseFlow
+import com.goldsky.ssp.vending.logic.VendingState
 import com.goldsky.ssp.vending.ui.VendPinDialog
 import com.goldsky.ssp.vending.ui.VendTechScreen
 import com.goldsky.ssp.vending.ui.VendingMainContainer
@@ -131,6 +133,7 @@ class MainActivity : ComponentActivity() {
             kotlinx.coroutines.flow.combine(vendingViewModel.uiState, vendingViewModel.french, vendingViewModel.purchaseFlow) { _, _, _ -> }
                 .collect { com.goldsky.ssp.payment.VendScreenLink.publish() }
         }
+        speakScreens()
 
         val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
         setContent {
@@ -264,6 +267,81 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Voice (owner, 2026-11-03): each main screen's words, said three times
+     * (TtsManager.speakRepeated), in the screen's language. Back to the idle / grid screen
+     * after a result says nothing, so the result's own three times aren't cut short; the
+     * locked screen, start-up and the technician panel are silent.
+     */
+    private fun speakScreens() {
+        val screen = androidx.compose.runtime.snapshotFlow {
+            (showcaseState.value && !lockedState.value) to techState.value
+        }
+        lifecycleScope.launch {
+            var spoken: Pair<String?, Boolean>? = null
+            var afterResult = false
+            var french: Boolean? = null
+            kotlinx.coroutines.flow.combine(
+                vendingViewModel.uiState, vendingViewModel.french, vendingViewModel.purchaseFlow,
+                screen, showcaseViewModel.state,
+            ) { st, fr, flow, (showcase, tech), sc -> Voice(st, fr, flow, showcase, tech, sc) }.collect { v ->
+                val s = if (v.french) com.goldsky.ssp.vending.ui.VendStrings.FR else com.goldsky.ssp.vending.ui.VendStrings.EN
+                val money = { cents: Int -> com.goldsky.ssp.vending.ui.VendStrings.money(cents, v.french) }
+                val wasResult = afterResult
+                val line: String? = when {
+                    v.tech -> null
+                    v.showcase -> when (val sc = v.sc) {
+                        com.goldsky.ssp.vending.ShowcaseViewModel.State.Choosing -> if (wasResult) KEEP else s.sayShowcaseChoose
+                        is com.goldsky.ssp.vending.ShowcaseViewModel.State.Authorizing -> s.sayTapCard
+                        is com.goldsky.ssp.vending.ShowcaseViewModel.State.Dispensing -> s.sayDispensing
+                        is com.goldsky.ssp.vending.ShowcaseViewModel.State.Done ->
+                            if (sc.voided) s.sayShowcaseApproved else null
+                        is com.goldsky.ssp.vending.ShowcaseViewModel.State.Declined -> s.sayNotPaid
+                    }
+                    else -> when (val st = v.state) {
+                        VendingState.Idle -> if (wasResult) KEEP
+                            else if (v.flow == PurchaseFlow.ITEM_FIRST) s.sayChooseOnMachine else s.sayStart
+                        is VendingState.Authorizing -> s.sayTapCard
+                        is VendingState.SessionOpen -> s.sayChooseItem
+                        is VendingState.VendRequestReceived -> s.sayPrice(st.itemSlot, money(st.amountCents))
+                        is VendingState.Dispensing -> s.sayDispensing
+                        is VendingState.Success -> s.sayTakeItem
+                        is VendingState.NotCharged -> sentence(s.reason(st.reason, money(VendingViewModel.SESSION_LIMIT_CENTS))) +
+                            " " + s.sayNotCharged
+                        VendingState.Unavailable, VendingState.Booting -> null
+                    }
+                }
+                afterResult = !v.tech && if (v.showcase) {
+                    v.sc is com.goldsky.ssp.vending.ShowcaseViewModel.State.Done ||
+                        v.sc is com.goldsky.ssp.vending.ShowcaseViewModel.State.Declined
+                } else v.state is VendingState.Success || v.state is VendingState.NotCharged
+                if (line === KEEP) return@collect
+                val key = line to v.french
+                if (key == spoken) return@collect
+                spoken = key
+                if (line == null) { TtsManager.cancelRepeat(); return@collect }
+                if (french != v.french) {
+                    french = v.french
+                    TtsManager.setLocale(if (v.french) "fr-CA" else ConfigManager.getConfig()?.settings?.locale_tag ?: "en-US")
+                    // The voice is switched on the engine's own thread; give it a moment.
+                    delay(VOICE_SWITCH_MS)
+                }
+                // Just started: the engine takes a few seconds; the first line waits for it.
+                withTimeoutOrNull(TTS_READY_MS) { while (!TtsManager.isReady()) delay(200) }
+                TtsManager.speakRepeated(line)
+            }
+        }
+    }
+
+    private data class Voice(
+        val state: VendingState, val french: Boolean, val flow: PurchaseFlow, val showcase: Boolean, val tech: Boolean,
+        val sc: com.goldsky.ssp.vending.ShowcaseViewModel.State,
+    )
+
+    /** "CARD DECLINED" -> "Card declined.", so the engine reads words, not letters. */
+    private fun sentence(text: String) =
+        text.lowercase().replaceFirstChar { it.uppercase() }.trimEnd('.') + "."
+
     private fun applyLock() {
         lockedState.value = DeviceAccessManager.isLocked()
         vendingViewModel.setLocked(lockedState.value)
@@ -378,6 +456,10 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val TAG = "AegisVend"
+        /** "Say nothing new, let what's being said finish": compared by identity. */
+        val KEEP = String(charArrayOf('-'))
+        const val VOICE_SWITCH_MS = 500L
+        const val TTS_READY_MS = 10_000L
         /** Same idle time as Wash (BaseAdActivity). */
         const val AD_IDLE_MS = 180_000L
     }
