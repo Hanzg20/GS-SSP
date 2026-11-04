@@ -1152,7 +1152,10 @@ class MainActivity : BaseAdActivity() {
         val mobileQr = scanPaysWithMobileQr()
         // A coupon that left something to pay was already scanned: the rest is paid
         // by card (a phone QR can still pay it in MOBILE_QR mode).
-        val scanAllowed = mode != PaymentMethodMode.CARD_ONLY && (couponCode == null || mobileQr)
+        // A promotion package (buy 4 get 1 washed all now) is paid by card -- straight to the
+        // tap, no scan choice: a VIP code would only pay its price in minutes (owner, 2026-11-04).
+        val promoByCard = couponCode == null && serviceCents > priceInCents && mode != PaymentMethodMode.SCAN_ONLY
+        val scanAllowed = !promoByCard && mode != PaymentMethodMode.CARD_ONLY && (couponCode == null || mobileQr)
         val cardAllowed = mode != PaymentMethodMode.SCAN_ONLY || (couponCode != null && !mobileQr)
         if (notice == null && !(scanAllowed && cardAllowed)) {
             Log.i("SSP_TEST", "Single payment method: ${if (cardAllowed) "card" else "scan"}")
