@@ -448,7 +448,18 @@ class MainActivity : BaseAdActivity() {
                 // minute) if a product omits it rather than showing nothing.
                 val durationSec = product.attributes?.get("duration_sec")?.jsonPrimitive?.intOrNull
                     ?: (creditCentsOf(product) / 100 * 60)
-                labelView.text = getString(R.string.card_minutes, durationSec / 60)
+                val minutes = durationSec / 60
+                // Promotion package: "8+2 MIN", the bonus big and gold, and a gold frame
+                // (owner, 2026-11-03). The paid minutes are the price's share of the time.
+                val credit = creditCentsOf(product)
+                val paidMin = (minutes.toLong() * product.price_cents / credit).toInt()
+                if (credit > product.price_cents && paidMin in 1 until minutes) {
+                    labelView.text = promoMinutes(paidMin, minutes - paidMin)
+                    cardView.foreground = ContextCompat.getDrawable(this, R.drawable.fg_promo_card)
+                } else {
+                    labelView.text = getString(R.string.card_minutes, minutes)
+                    cardView.foreground = null
+                }
                 durationView.visibility = View.GONE
 
                 cardView.setOnClickListener {
@@ -463,6 +474,7 @@ class MainActivity : BaseAdActivity() {
                 cardView.visibility = View.VISIBLE
                 priceView.text = "$$fallbackPrice"
                 labelView.text = getString(R.string.card_minutes, fallbackPrice)
+                cardView.foreground = null
                 durationView.visibility = View.GONE
                 cardView.setOnClickListener {
                     applyClickFeedback(it)
@@ -757,6 +769,19 @@ class MainActivity : BaseAdActivity() {
             isWorking = false
             resetAdTimer()
         }
+    }
+
+    /** "8+2 MIN" with "+2" half again as big, bold and gold. */
+    private fun promoMinutes(paidMin: Int, bonusMin: Int): CharSequence {
+        val bonus = "+$bonusMin"
+        val text = android.text.SpannableString("$paidMin$bonus MIN")
+        val start = paidMin.toString().length
+        val end = start + bonus.length
+        val flags = android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        text.setSpan(android.text.style.ForegroundColorSpan(ContextCompat.getColor(this, R.color.gold_accent)), start, end, flags)
+        text.setSpan(android.text.style.RelativeSizeSpan(1.5f), start, end, flags)
+        text.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), start, end, flags)
+        return text
     }
 
     /**
