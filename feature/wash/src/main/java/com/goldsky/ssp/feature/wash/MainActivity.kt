@@ -2441,10 +2441,19 @@ class MainActivity : BaseAdActivity() {
                 previewSuccessScreens()
             }
         }
-        dialog.findViewById<Button>(R.id.btn_op_payment_test)?.setOnClickListener {
-            applyClickFeedback(it)
-            dialog.dismiss()
-            startActivity(android.content.Intent(this, com.goldsky.ssp.ui.PaymentTestActivity::class.java))
+        dialog.findViewById<Button>(R.id.btn_op_payment_test)?.let { btn ->
+            // Only on a UAT terminal (devices.payment_test_enabled): elsewhere its cases are
+            // real charges and the page only says "disabled" -- and it was taken for the
+            // $0.10 TEST SALE on 255 (2026-11-04).
+            btn.visibility = View.GONE
+            CoroutineScope(Dispatchers.Main).launch {
+                if (com.goldsky.ssp.payment.PaymentTestSuite.isEnabled(deviceSn)) btn.visibility = View.VISIBLE
+            }
+            btn.setOnClickListener {
+                applyClickFeedback(it)
+                dialog.dismiss()
+                startActivity(android.content.Intent(this, com.goldsky.ssp.ui.PaymentTestActivity::class.java))
+            }
         }
         com.goldsky.ssp.payment.AppSwitcher.other(this)?.let { (pkg, name) ->
             dialog.findViewById<Button>(R.id.btn_op_switch_app)?.apply {
