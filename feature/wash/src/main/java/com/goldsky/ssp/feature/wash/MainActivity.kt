@@ -64,6 +64,9 @@ class MainActivity : BaseAdActivity() {
         // terminals' products (e.g. Aegis Timer's vacuum packages), see forVertical;
         // a package switched off in Cael (is_active false) is left off the screen.
         private const val WASH_VERTICAL = "WASH"
+        // A promotion package without its own attributes.promo_label.
+        private const val DEFAULT_PROMO_LABEL = "SPECIAL"
+        private const val PROMO_BADGE_TAG = "promo_badge"
         // How long the machine-error screen waits for the automatic VOID/REFUND
         // before telling the customer to see the attendant instead.
         private const val REVERSAL_WAIT_MS = 90_000L
@@ -457,9 +460,12 @@ class MainActivity : BaseAdActivity() {
                 if (credit > product.price_cents && paidMin in 1 until minutes) {
                     labelView.text = promoMinutes(paidMin, minutes - paidMin)
                     cardView.foreground = ContextCompat.getDrawable(this, R.drawable.fg_promo_card)
+                    promoBadge(cardView, product.attributes?.get("promo_label")?.jsonPrimitive?.contentOrNull
+                        ?.takeIf { it.isNotBlank() } ?: DEFAULT_PROMO_LABEL)
                 } else {
                     labelView.text = getString(R.string.card_minutes, minutes)
                     cardView.foreground = null
+                    promoBadge(cardView, null)
                 }
                 durationView.visibility = View.GONE
 
@@ -476,6 +482,7 @@ class MainActivity : BaseAdActivity() {
                 priceView.text = "$$fallbackPrice"
                 labelView.text = getString(R.string.card_minutes, fallbackPrice)
                 cardView.foreground = null
+                promoBadge(cardView, null)
                 durationView.visibility = View.GONE
                 cardView.setOnClickListener {
                     applyClickFeedback(it)
@@ -770,6 +777,45 @@ class MainActivity : BaseAdActivity() {
             isWorking = false
             resetAdTimer()
         }
+    }
+
+    /**
+     * The promotion's label ("WINTER SPECIAL", `attributes.promo_label`) hanging from the top
+     * of the gold frame; [label] null takes it away.
+     */
+    private fun promoBadge(card: View, label: String?) {
+        val layout = card as? ConstraintLayout ?: return
+        var badge = layout.findViewWithTag<TextView>(PROMO_BADGE_TAG)
+        if (label == null) {
+            badge?.visibility = View.GONE
+            return
+        }
+        if (badge == null) {
+            badge = TextView(this).apply {
+                tag = PROMO_BADGE_TAG
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.bg_dark))
+                // A size under the minutes: "WINTER SPECIAL" fits on one line of the card.
+                setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.card_label_size) * 0.72f)
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                letterSpacing = 0.04f
+                maxLines = 1
+                gravity = android.view.Gravity.CENTER
+                setBackgroundResource(R.drawable.bg_promo_badge)
+                val h = (8 * resources.displayMetrics.density).toInt()
+                val v = (2 * resources.displayMetrics.density).toInt()
+                setPadding(h, v, h, v)
+                elevation = 8 * resources.displayMetrics.density
+            }
+            layout.addView(badge, ConstraintLayout.LayoutParams(
+                ConstraintLayout.LayoutParams.WRAP_CONTENT, ConstraintLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topToTop = ConstraintLayout.LayoutParams.PARENT_ID
+                startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+                endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+            })
+        }
+        badge.text = label.uppercase()
+        badge.visibility = View.VISIBLE
     }
 
     /** "8+2 MIN" with "+2" half again as big, bold and gold. */
