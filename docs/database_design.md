@@ -48,7 +48,7 @@ erDiagram
   A row is only written by `sync_device_identity`, which needs the device's secret (§6.1).
 - **device_secrets**: SHA-256 of each device's identity secret; no API role can read it.
 - **products**: one generic catalog with `vertical_type`; industry details ride in
-  `attributes` JSONB (category, tax_rate_bps, stock_qty, duration_sec, modifier_groups; wash: credit_cents -- what a promotion package runs for, e.g. $8 for 10 min = price 800, credit 1000; promo_label -- its frame label, e.g. "WINTER SPECIAL", default "SPECIAL").
+  `attributes` JSONB (category, tax_rate_bps, stock_qty, duration_sec, modifier_groups; wash: credit_cents -- what a promotion package runs for, e.g. $8 for 10 min = price 800, credit 1000; promo_label -- its frame label, e.g. "BUY 4 GET 1", default "SPECIAL"; vip_bundle -- may be kept on a new VIP code instead, through the vip_load_plans row of the same amount + bonus).
 - **transactions**: one payment attempt / sale (amount, subtotal / tax / tip cents,
   payment_status, method, card AID / BIN / brand, staff, refund approval,
   quick-service `order_number / order_type / order_note`, dine-in `check_id`).

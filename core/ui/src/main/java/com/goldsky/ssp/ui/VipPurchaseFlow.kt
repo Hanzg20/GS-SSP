@@ -69,6 +69,11 @@ class VipPurchaseFlow(
     private val activity: AppCompatActivity,
     private val plan: VipLoadPlan,
     private val brandName: String,
+    /**
+     * Aegis Wash "buy 4 get 1" kept for later (owner, 2026-11-04): a new card only (no
+     * choose step), and the pass tells the customer every wash is paid by scanning it.
+     */
+    private val newCardOnly: Boolean = false,
     /** true while the flow is on screen -- the VIP page pauses its idle exit. */
     private val onActive: (Boolean) -> Unit,
 ) {
@@ -112,7 +117,7 @@ class VipPurchaseFlow(
         wireKeypad()
         onActive(true)
         dialog.show()
-        showChoose()
+        if (newCardOnly) showPhone() else showChoose()
     }
 
     // ---- steps ------------------------------------------------------------
@@ -142,7 +147,7 @@ class VipPurchaseFlow(
                     TtsManager.speak(why)
                 }
             },
-            secondary = activity.getString(R.string.vip_back) to { showChoose() },
+            secondary = activity.getString(R.string.vip_back) to { if (newCardOnly) close() else showChoose() },
         )
         phoneDigits = ""
         input.apply {
@@ -318,10 +323,13 @@ class VipPurchaseFlow(
         // No message line: the room goes to the card, the photo hint to the step label.
         screen(Step.DONE, activity.getString(R.string.vip_done_new_title), "",
             primary = activity.getString(R.string.vip_done) to { close() }, closable = false)
-        stepLabel.text = activity.getString(R.string.vip_step_photo)
+        stepLabel.text = activity.getString(if (newCardOnly) R.string.vip_step_scan_to_wash else R.string.vip_step_photo)
         // Spoken until Done / the auto close (after screen(), which ends the last prompt):
         // this photo is the customer's card.
-        TtsManager.speakRepeated("Your VIP card is ready. Please take a photo of your member code.")
+        TtsManager.speakRepeated(
+            if (newCardOnly) activity.getString(R.string.tts_vip_scan_to_wash)
+            else "Your VIP card is ready. Please take a photo of your member code."
+        )
         // The card itself says it all; its height goes to the QR code.
         title.visibility = View.GONE
         pass.apply {

@@ -47,6 +47,7 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.booleanOrNull
 
 
 /**
@@ -475,7 +476,8 @@ class MainActivity : BaseAdActivity() {
                     applyClickFeedback(it)
                     val serialHex = product.attributes?.get("serial_hex")?.jsonPrimitive?.contentOrNull
                         ?: "AA 01 ${"%02X".format(newPrice)} 55"
-                    startPackagePurchaseFlow(product.price_cents, serialHex, product.id, creditCentsOf(product))
+                    if (isBundle(product) && pendingVipCardUid == null && pendingCoupon == null) showBundleChoice(product, serialHex)
+                    else startPackagePurchaseFlow(product.price_cents, serialHex, product.id, creditCentsOf(product))
                 }
             } else {
                 // Fallback: If cloud/cache doesn't have 5 products, show the requested defaults
@@ -1014,7 +1016,102 @@ class MainActivity : BaseAdActivity() {
      * Overrides parent check to prevent launching AdActivity while wash is active.
      */
     override fun isCarWashSessionActive(): Boolean {
-        return isWorking || (paymentDialog != null && paymentDialog!!.isShowing)
+        return isWorking || (paymentDialog != null && paymentDialog!!.isShowing) || bundleActive
+    }
+
+    /** The "buy 4 get 1" choice or its VIP purchase is on screen: no ad over it. */
+    private var bundleActive = false
+
+    /**
+     * "Buy 4 get 1" (owner, 2026-11-04): a promotion package with `attributes.vip_bundle`
+     * -- $16 for 20 minutes, the one promotion. Washed all at once it's an ordinary
+     * promotion package; kept for later it's the store's matching VIP load plan ($16 + $4)
+     * on a new member code, which never expires.
+     */
+    private fun isBundle(product: Product): Boolean =
+        product.attributes?.get("vip_bundle")?.jsonPrimitive?.booleanOrNull == true &&
+            creditCentsOf(product) > product.price_cents
+
+    private fun showBundleChoice(product: Product, serialHex: String) {
+        val credit = creditCentsOf(product)
+        val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
+        val dp = resources.displayMetrics.density
+        val gold = ContextCompat.getColor(this, R.color.gold_accent)
+        val dark = ContextCompat.getColor(this, R.color.bg_dark)
+        fun big(text: String, size: Float, color: Int) = TextView(this).apply {
+            this.text = text; textSize = size; setTextColor(color)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD; gravity = android.view.Gravity.CENTER
+        }
+        fun button(text: String, filled: Boolean, onClick: () -> Unit) = TextView(this).apply {
+            this.text = text; textSize = 22f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = android.view.Gravity.CENTER; letterSpacing = 0.05f
+            setTextColor(if (filled) dark else gold)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 16 * dp
+                if (filled) setColor(gold) else { setColor(dark); setStroke((2 * dp).toInt(), gold) }
+            }
+            setOnClickListener { applyClickFeedback(it); onClick() }
+        }
+        val column = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            setBackgroundColor(dark)
+            // The four corners stay clear (kiosk style).
+            val pad = (32 * dp).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        val label = product.attributes?.get("promo_label")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: DEFAULT_PROMO_LABEL
+        val gap = { h: Int -> android.widget.Space(this).apply { minimumHeight = (h * dp).toInt() } }
+        val full = { h: Int -> android.widget.LinearLayout.LayoutParams(android.widget.LinearLayout.LayoutParams.MATCH_PARENT, (h * dp).toInt()) }
+        column.addView(big(label.uppercase(), 20f, gold))
+        column.addView(gap(8))
+        column.addView(big(getString(R.string.bundle_title, formatCents(product.price_cents).removeSuffix(".00"), credit / 100), 34f, Color.WHITE))
+        column.addView(gap(28))
+        column.addView(button(getString(R.string.bundle_wash_all), true) {
+            dialog.dismiss()
+            startPackagePurchaseFlow(product.price_cents, serialHex, product.id, credit)
+        }, full(64))
+        column.addView(gap(14))
+        column.addView(button(getString(R.string.bundle_save), false) {
+            dialog.dismiss()
+            saveBundle(product, credit)
+        }, full(64))
+        column.addView(gap(14))
+        column.addView(big(getString(R.string.bundle_cancel), 18f, ContextCompat.getColor(this, R.color.text_light)).apply {
+            setOnClickListener { dialog.dismiss() }
+            setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt())
+        })
+        dialog.setContentView(column)
+        dialog.setOnShowListener { applyKioskWindowFlags() }
+        dialog.setOnDismissListener { if (!bundleSaving) { bundleActive = false; resetAdTimer() } }
+        bundleActive = true
+        dialog.show()
+        TtsManager.speakRepeated(getString(R.string.tts_bundle))
+    }
+
+    private var bundleSaving = false
+
+    /** Kept for later: the store's matching VIP load plan on a new code; every wash is then a scan of it. */
+    private fun saveBundle(product: Product, credit: Int) {
+        bundleSaving = true
+        CoroutineScope(Dispatchers.Main).launch {
+            val plan = com.goldsky.ssp.payment.VipLoadRepository.getPlans()
+                ?.find { it.amount_cents == product.price_cents && it.totalCents == credit }
+            bundleSaving = false
+            if (plan == null) {
+                // No such plan in Cael (or offline): never sell a code that wouldn't hold the 20 minutes.
+                bundleActive = false
+                showScanFeedback(getString(R.string.bundle_unavailable))
+                return@launch
+            }
+            val brand = ConfigManager.getConfig()?.branding?.brand_name
+                ?.replace(Regex("""^\s*welcome\s+to\s+""", RegexOption.IGNORE_CASE), "")?.trim()
+                ?.takeIf { it.isNotBlank() } ?: getString(R.string.header_default_title)
+            com.goldsky.ssp.ui.VipPurchaseFlow(this@MainActivity, plan, brand, newCardOnly = true) { active ->
+                bundleActive = active
+                if (!active) resetAdTimer()
+            }.start()
+        }
     }
 
     /**
@@ -1024,7 +1121,8 @@ class MainActivity : BaseAdActivity() {
      * selection page is skipped entirely and the terminal goes straight into
      * that flow.
      */
-    // serviceCents: the package's own price -- what the wash delivers (pulses).
+    // serviceCents: the package's own price -- what the wash delivers (pulses); more on a
+    // promotion package, except when a VIP balance pays (no bonus on a bonus, owner 2026-11-04).
     // priceInCents: what the customer pays; lower only after a coupon or a
     // VIP tier discount, which must never shorten the wash itself.
     // [notice]: why the customer is back on this page (no code read, balance short,
@@ -1313,7 +1411,7 @@ class MainActivity : BaseAdActivity() {
                         "Remaining Balance: ${formatCents(result.newBalanceCents)}"
                     ).joinToString("\n")
                     delay(1500)
-                    startFinalizationSequence(finalPrice, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog, pulseAmountCents = serviceCents, productId = productId, paymentMethod = "VIP_CARD", entryMode = "NFC_TAP", vipCardUid = uid)
+                    startFinalizationSequence(finalPrice, startHex, "VIP_${uid}_${System.currentTimeMillis()}", dialog, pulseAmountCents = minOf(serviceCents, priceInCents), productId = productId, paymentMethod = "VIP_CARD", entryMode = "NFC_TAP", vipCardUid = uid)
                 }
                 is VipDeductResult.Rejected -> {
                     paymentInFlight = false
