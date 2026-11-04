@@ -450,12 +450,14 @@ class MainActivity : BaseAdActivity() {
                 // as serial_hex -- falls back to the price-as-minutes
                 // convention the default config already uses (1 dollar = 1
                 // minute) if a product omits it rather than showing nothing.
-                val durationSec = product.attributes?.get("duration_sec")?.jsonPrimitive?.intOrNull
-                    ?: (creditCentsOf(product) / 100 * 60)
+                // A promotion's minutes are its credit's, whatever duration_sec says.
+                val credit = creditCentsOf(product)
+                val durationSec = (if (credit > product.price_cents) null
+                    else product.attributes?.get("duration_sec")?.jsonPrimitive?.intOrNull)
+                    ?: (credit / 100 * 60)
                 val minutes = durationSec / 60
                 // Promotion package: "8+2 MIN", the bonus big and gold, and a gold frame
                 // (owner, 2026-11-03). The paid minutes are the price's share of the time.
-                val credit = creditCentsOf(product)
                 val paidMin = (minutes.toLong() * product.price_cents / credit).toInt()
                 if (credit > product.price_cents && paidMin in 1 until minutes) {
                     labelView.text = promoMinutes(paidMin, minutes - paidMin)
