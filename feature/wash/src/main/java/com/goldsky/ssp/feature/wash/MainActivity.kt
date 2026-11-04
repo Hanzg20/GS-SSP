@@ -1082,10 +1082,17 @@ class MainActivity : BaseAdActivity() {
             setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt())
         })
         dialog.setContentView(column)
+        // Left alone: back Home, like the payment page.
+        val idle = Runnable { if (dialog.isShowing) dialog.dismiss() }
         dialog.setOnShowListener { applyKioskWindowFlags() }
-        dialog.setOnDismissListener { if (!bundleSaving) { bundleActive = false; resetAdTimer() } }
+        dialog.setOnDismissListener {
+            scanFeedbackHandler.removeCallbacks(idle)
+            TtsManager.cancelRepeat()
+            if (!bundleSaving) { bundleActive = false; resetAdTimer() }
+        }
         bundleActive = true
         dialog.show()
+        scanFeedbackHandler.postDelayed(idle, CHOICE_IDLE_MS)
         TtsManager.speakRepeated(getString(R.string.tts_bundle))
     }
 
