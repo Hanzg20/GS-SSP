@@ -107,10 +107,11 @@
     <string name="tts_vip_scan_to_wash">Your twenty minutes are on this code. Take a photo of it, and scan it at the terminal every time you wash.</string>
     <string name="bundle_title">%1$s → %2$d MIN</string>
     <string name="bundle_wash_all">WASH ALL NOW</string>
-    <string name="bundle_save">SAVE ON VIP CODE</string>
+    <string name="bundle_save">SAVE ON PREPAID CODE</string>
+    <string name="bundle_save_sub">USE MANY TIMES</string>
     <string name="bundle_cancel">CANCEL</string>
     <string name="bundle_unavailable">VIP code not available now. Please wash all now.</string>
-    <string name="tts_bundle">Wash all twenty minutes now, or save them on a VIP code.</string>
+    <string name="tts_bundle">Save twenty minutes on a prepaid code and use them many times, or wash all now.</string>
     <string name="vip_buy_title">Pay %1$s, get %2$s</string>
     <string name="vip_buy_choose">Buy a new VIP card, or add this to the card you already have?</string>
     <string name="vip_buy_new">NEW CARD</string>

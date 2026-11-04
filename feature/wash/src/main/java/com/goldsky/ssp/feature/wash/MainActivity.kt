@@ -1042,7 +1042,7 @@ class MainActivity : BaseAdActivity() {
             this.text = text; textSize = size; setTextColor(color)
             typeface = android.graphics.Typeface.DEFAULT_BOLD; gravity = android.view.Gravity.CENTER
         }
-        fun button(text: String, filled: Boolean, onClick: () -> Unit) = TextView(this).apply {
+        fun button(text: CharSequence, filled: Boolean, onClick: () -> Unit) = TextView(this).apply {
             this.text = text; textSize = 22f; typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = android.view.Gravity.CENTER; letterSpacing = 0.05f
             setTextColor(if (filled) dark else gold)
@@ -1067,14 +1067,19 @@ class MainActivity : BaseAdActivity() {
         column.addView(gap(8))
         column.addView(big(getString(R.string.bundle_title, formatCents(product.price_cents).removeSuffix(".00"), credit / 100), 34f, Color.WHITE))
         column.addView(gap(28))
-        column.addView(button(getString(R.string.bundle_wash_all), true) {
-            dialog.dismiss()
-            startPackagePurchaseFlow(product.price_cents, serialHex, product.id, credit)
-        }, full(64))
-        column.addView(gap(14))
-        column.addView(button(getString(R.string.bundle_save), false) {
+        // Stored value, used many times, is the default (owner, 2026-11-04): gold and first.
+        val save = getString(R.string.bundle_save)
+        val saveText = android.text.SpannableString(save + "\n" + getString(R.string.bundle_save_sub)).apply {
+            setSpan(android.text.style.RelativeSizeSpan(0.7f), save.length + 1, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        column.addView(button(saveText, true) {
             dialog.dismiss()
             saveBundle(product, credit)
+        }, full(80))
+        column.addView(gap(14))
+        column.addView(button(getString(R.string.bundle_wash_all), false) {
+            dialog.dismiss()
+            startPackagePurchaseFlow(product.price_cents, serialHex, product.id, credit)
         }, full(64))
         column.addView(gap(14))
         column.addView(big(getString(R.string.bundle_cancel), 18f, ContextCompat.getColor(this, R.color.text_light)).apply {
