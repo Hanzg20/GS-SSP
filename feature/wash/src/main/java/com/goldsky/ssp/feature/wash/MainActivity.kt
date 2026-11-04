@@ -61,7 +61,8 @@ class MainActivity : BaseAdActivity() {
         // Payment page left alone (e.g. back from a timed-out card sale): Home after this long.
         private const val CHOICE_IDLE_MS = 30_000L
         // Only this vertical's packages -- the org's config also carries other
-        // terminals' products (e.g. Aegis Timer's vacuum packages), see forVertical.
+        // terminals' products (e.g. Aegis Timer's vacuum packages), see forVertical;
+        // a package switched off in Cael (is_active false) is left off the screen.
         private const val WASH_VERTICAL = "WASH"
         // How long the machine-error screen waits for the automatic VOID/REFUND
         // before telling the customer to see the attendant instead.
@@ -387,7 +388,7 @@ class MainActivity : BaseAdActivity() {
     private fun loadInitialConfig(orgId: String?) {
         CoroutineScope(Dispatchers.Main).launch {
             val config = ConfigManager.loadConfig(this@MainActivity, orgId)
-            refreshProductsUI(config.products.forVertical(WASH_VERTICAL))
+            refreshProductsUI(config.products.forVertical(WASH_VERTICAL).filter { it.is_active })
             refreshVipBanner()
 
             // Sync dynamic TTS language
@@ -570,7 +571,7 @@ class MainActivity : BaseAdActivity() {
                         val cardUid = VipRepository.resolveCardUidByQrCode(scanned)
                         // Can't cover even the cheapest package: say so now, not
                         // after the customer has picked one.
-                        val lowest = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)
+                        val lowest = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)?.filter { it.is_active }
                             ?.filter { it.price_cents > 0 }?.minOfOrNull { it.price_cents }
                         val scannedCard = cardUid?.let { VipRepository.getVipCard(it) }
                         if (scannedCard != null && lowest != null && scannedCard.balance_cents < lowest) {
@@ -727,7 +728,7 @@ class MainActivity : BaseAdActivity() {
      *   guessing.
      */
     private fun findMatchingLocalProduct(peek: CouponPeekResult.Success): Product? {
-        val localProducts = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL) ?: emptyList()
+        val localProducts = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)?.filter { it.is_active } ?: emptyList()
         return when {
             peek.applicableProductId != null ->
                 localProducts.firstOrNull { it.id == peek.applicableProductId }
@@ -749,7 +750,7 @@ class MainActivity : BaseAdActivity() {
             Log.w("SSP_REMOTE", "Remote start refused: terminal busy with a customer")
             return false
         }
-        val product = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)?.find { it.id == productId }
+        val product = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)?.filter { it.is_active }?.find { it.id == productId }
         if (product == null) {
             Log.w("SSP_REMOTE", "Remote start refused: no wash product $productId in config")
             return false
@@ -1539,7 +1540,7 @@ class MainActivity : BaseAdActivity() {
                     is CouponPeekResult.Success -> {
                         val forProduct = peek.applicableProductId
                         if (forProduct != null && forProduct != productId) {
-                            val name = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)?.find { it.id == forProduct }?.name
+                            val name = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)?.filter { it.is_active }?.find { it.id == forProduct }?.name
                             back(getString(R.string.pay_coupon_other_package, name ?: "another wash"))
                             return@launch
                         }
@@ -2234,7 +2235,7 @@ class MainActivity : BaseAdActivity() {
                 // already uses elsewhere (see the RemoteCommandManager wiring).
                 DeviceAccessManager.applyActiveState(identity?.is_active)
                 val config = ConfigManager.loadConfig(this@MainActivity, identity?.org_id)
-                refreshProductsUI(config.products.forVertical(WASH_VERTICAL))
+                refreshProductsUI(config.products.forVertical(WASH_VERTICAL).filter { it.is_active })
                 DiagnosticManager.recordMaintenance(deviceSn, "DASH_FORCE_SYNC")
 
                 updateHealthUI()
