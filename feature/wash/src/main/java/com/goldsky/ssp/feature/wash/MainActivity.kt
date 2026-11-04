@@ -447,7 +447,7 @@ class MainActivity : BaseAdActivity() {
                 // convention the default config already uses (1 dollar = 1
                 // minute) if a product omits it rather than showing nothing.
                 val durationSec = product.attributes?.get("duration_sec")?.jsonPrimitive?.intOrNull
-                    ?: (newPrice * 60)
+                    ?: (creditCentsOf(product) / 100 * 60)
                 labelView.text = getString(R.string.card_minutes, durationSec / 60)
                 durationView.visibility = View.GONE
 
@@ -455,7 +455,7 @@ class MainActivity : BaseAdActivity() {
                     applyClickFeedback(it)
                     val serialHex = product.attributes?.get("serial_hex")?.jsonPrimitive?.contentOrNull
                         ?: "AA 01 ${"%02X".format(newPrice)} 55"
-                    startPackagePurchaseFlow(product.price_cents, serialHex, product.id)
+                    startPackagePurchaseFlow(product.price_cents, serialHex, product.id, creditCentsOf(product))
                 }
             } else {
                 // Fallback: If cloud/cache doesn't have 5 products, show the requested defaults
@@ -747,7 +747,7 @@ class MainActivity : BaseAdActivity() {
             TtsManager.speak(getString(R.string.tts_remote_start))
             Toast.makeText(this, getString(R.string.tts_remote_start), Toast.LENGTH_LONG).show()
             val outcome = DispenseEngine.dispense(
-                DispenseJob(product.price_cents, serialHexOf(product), deviceSn, "REMOTE_$commandId"),
+                DispenseJob(creditCentsOf(product), serialHexOf(product), deviceSn, "REMOTE_$commandId"),
                 HardwareFactory.getSerialProvider(this, hardwareVendor),
                 HardwareFactory.getGpioProvider(this, hardwareVendor)
             )
@@ -758,6 +758,14 @@ class MainActivity : BaseAdActivity() {
             resetAdTimer()
         }
     }
+
+    /**
+     * What the wash runs for (pulses): a promotion package's `attributes.credit_cents`
+     * ("$8 for 10 minutes" = price 800, credit 1000), else its price. Never less than the price.
+     */
+    private fun creditCentsOf(product: Product): Int =
+        product.attributes?.get("credit_cents")?.jsonPrimitive?.intOrNull
+            ?.takeIf { it > product.price_cents } ?: product.price_cents
 
     /** Same fallback convention refreshProductsUI() uses for a product missing serial_hex. */
     private fun serialHexOf(product: Product): String {
@@ -798,7 +806,7 @@ class MainActivity : BaseAdActivity() {
             // Not consumed yet: startPackagePurchaseFlow consumes it when it
             // pays (before a free wash, or after the card payment for the rest).
             pendingCoupon = PendingCoupon(code, peek.type, peek.value)
-            startPackagePurchaseFlow(originalPriceCents, serialHexOf(product), product.id)
+            startPackagePurchaseFlow(originalPriceCents, serialHexOf(product), product.id, creditCentsOf(product))
         }
         dialog.findViewById<Button>(R.id.btn_coupon_cancel).setOnClickListener {
             applyClickFeedback(it)
@@ -895,14 +903,15 @@ class MainActivity : BaseAdActivity() {
      * button call this instead of showPaymentDialog directly, so any pending
      * scan result from initCouponScan() is applied exactly once, regardless
      * of which path the customer took to get here. [priceInCents]/[startHex]
-     * are the package's own (pre-discount) price and hardware command.
+     * are the package's own (pre-discount) price and hardware command; [serviceCents]
+     * what the wash runs for (more than the price on a promotion package).
      */
-    private fun startPackagePurchaseFlow(priceInCents: Int, startHex: String, productId: String? = null) {
+    private fun startPackagePurchaseFlow(priceInCents: Int, startHex: String, productId: String? = null, serviceCents: Int = priceInCents) {
         hideScanPending()
         val vipUid = pendingVipCardUid
         if (vipUid != null) {
             pendingVipCardUid = null
-            startPreAuthenticatedVipFlow(priceInCents, startHex, vipUid, productId)
+            startPreAuthenticatedVipFlow(priceInCents, startHex, vipUid, productId, serviceCents)
             return
         }
 
@@ -914,17 +923,17 @@ class MainActivity : BaseAdActivity() {
                 // Free wash: the coupon is the payment -- consume it first.
                 CoroutineScope(Dispatchers.Main).launch {
                     when (CouponRepository.redeemCoupon(coupon.code, deviceSn)) {
-                        is CouponRedeemResult.Success -> startFreeWashFlow(priceInCents, startHex, productId)
+                        is CouponRedeemResult.Success -> startFreeWashFlow(serviceCents, startHex, productId)
                         else -> showScanFeedback(getString(couponRejectionMessageRes(coupon.code)))
                     }
                 }
             } else {
-                showPaymentDialog(finalPriceCents, startHex, productId, serviceCents = priceInCents, couponCode = coupon.code)
+                showPaymentDialog(finalPriceCents, startHex, productId, serviceCents = serviceCents, couponCode = coupon.code)
             }
             return
         }
 
-        showPaymentDialog(priceInCents, startHex, productId)
+        showPaymentDialog(priceInCents, startHex, productId, serviceCents = serviceCents)
     }
 
     /**
@@ -1272,7 +1281,7 @@ class MainActivity : BaseAdActivity() {
      * between EMV and MIFARE when the identity isn't known yet, which
      * doesn't apply here.
      */
-    private fun startPreAuthenticatedVipFlow(priceInCents: Int, startHex: String, uid: String, productId: String? = null) {
+    private fun startPreAuthenticatedVipFlow(priceInCents: Int, startHex: String, uid: String, productId: String? = null, serviceCents: Int = priceInCents) {
         // Only interrupt the customer when the payment can't succeed anyway
         // (balance short / card deactivated) -- say so up front instead of a
         // rejected deduct. Otherwise go straight to payment; the card no. and
@@ -1285,7 +1294,7 @@ class MainActivity : BaseAdActivity() {
             if (card != null && (!card.is_active || card.balance_cents < priceInCents)) {
                 showVipUnavailableDialog(card, priceInCents)
             } else {
-                proceedVipPayment(priceInCents, startHex, uid, productId)
+                proceedVipPayment(priceInCents, startHex, uid, productId, serviceCents)
             }
         }
     }
@@ -1314,7 +1323,7 @@ class MainActivity : BaseAdActivity() {
         if (card.is_active) TtsManager.speak(getString(R.string.voice_vip_low_balance))
     }
 
-    private fun proceedVipPayment(priceInCents: Int, startHex: String, uid: String, productId: String? = null) {
+    private fun proceedVipPayment(priceInCents: Int, startHex: String, uid: String, productId: String? = null, serviceCents: Int = priceInCents) {
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         dialog.setContentView(R.layout.dialog_payment)
         paymentDialog = dialog
@@ -1330,7 +1339,7 @@ class MainActivity : BaseAdActivity() {
         }
         dialog.show()
 
-        initVipPayment(uid, priceInCents, startHex, dialog, productId)
+        initVipPayment(uid, priceInCents, startHex, dialog, productId, serviceCents)
     }
 
     /**
@@ -1497,7 +1506,7 @@ class MainActivity : BaseAdActivity() {
                         card != null && !card.is_active -> back(getString(R.string.pay_vip_inactive))
                         card != null && card.balance_cents < priceInCents ->
                             back(getString(R.string.pay_vip_short, vipCardNumber(card), formatCents(card.balance_cents), formatCents(priceInCents)))
-                        else -> proceedVipPayment(priceInCents, startHex, uid, productId)
+                        else -> proceedVipPayment(priceInCents, startHex, uid, productId, serviceCents)
                     }
                     return@launch
                 }
