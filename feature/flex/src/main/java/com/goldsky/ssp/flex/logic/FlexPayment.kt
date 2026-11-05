@@ -28,6 +28,15 @@ interface FlexPayment {
     /** Give back the sale [ref]: void, else refund. */
     fun reverse(ref: String, cents: Int, done: (Boolean) -> Unit)
 
+    /** Like [reverse], saying how: VOID, REFUND or NONE (not given back). */
+    fun undo(ref: String, cents: Int, done: (Boolean, String) -> Unit)
+
+    /** The completion that settled the hold [ref] (what a void of a settled hold reverses), if known. */
+    fun settledRef(ref: String): String? = null
+
+    /** See IPaymentProvider.rememberSale. */
+    fun rememberSale(ref: String, cents: Int, trace: String?, invoice: String?, transId: String?, rrn: String?) {}
+
     class Real(private val provider: IPaymentProvider) : FlexPayment {
         private fun callback(done: (Result) -> Unit) = object : IPaymentProvider.PaymentCallback {
             private var card: IPaymentProvider.CardInfo? = null
@@ -59,6 +68,11 @@ interface FlexPayment {
         override fun release(ref: String, done: (Boolean) -> Unit) = provider.voidAuth(ref, yesNo(done))
         override fun reverse(ref: String, cents: Int, done: (Boolean) -> Unit) =
             provider.voidOrRefund(ref, cents) { ok, _ -> done(ok) }
+        override fun undo(ref: String, cents: Int, done: (Boolean, String) -> Unit) =
+            provider.voidOrRefund(ref, cents) { ok, how -> done(ok, how) }
+        override fun settledRef(ref: String) = provider.settledRef(ref)
+        override fun rememberSale(ref: String, cents: Int, trace: String?, invoice: String?, transId: String?, rrn: String?) =
+            provider.rememberSale(ref, cents, trace, invoice, transId, rrn)
     }
 
     /** Emulator only (see FlexViewModel.simulated): approves after a moment unless told to decline. */
@@ -75,5 +89,6 @@ interface FlexPayment {
         override fun complete(ref: String, cents: Int, done: (Boolean) -> Unit) = done(true)
         override fun release(ref: String, done: (Boolean) -> Unit) = done(true)
         override fun reverse(ref: String, cents: Int, done: (Boolean) -> Unit) = done(true)
+        override fun undo(ref: String, cents: Int, done: (Boolean, String) -> Unit) = done(true, "VOID")
     }
 }

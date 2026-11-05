@@ -29,4 +29,6 @@ data class FlexOrder(
     val vipCardUid: String? = null,
     /** The Cael product (products.id); null for an item not from Cael. */
     val productId: String? = null,
+    /** HOLD: the AuthCompletion's TransIndexCode that settled it -- what a void reverses. */
+    val settleRef: String? = null,
 )

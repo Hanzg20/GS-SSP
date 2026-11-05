@@ -113,6 +113,11 @@ class MainActivity : ComponentActivity() {
                     val how = if (com.goldsky.ssp.flex.logic.FlexController.preauth(this@MainActivity)) "PREAUTH" else "SALE"
                     return true to "${c.description} -- $state -- card: $how"
                 }
+                // Cael transactions: give a card payment of this terminal back.
+                override suspend fun onVoidPaymentRequested(ref: String, payload: kotlinx.serialization.json.JsonObject?): Pair<Boolean, String>? {
+                    fun f(k: String) = (payload?.get(k) as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+                    return viewModel.voidPayment(ref, listOf("ori_index", "trace", "invoice", "trans_id", "rrn").associateWith { f(it) })
+                }
                 override suspend fun onBringToFrontRequested(): Pair<Boolean, String>? {
                     if (!com.goldsky.ssp.ui.KioskRecall.handles(application)) return null
                     if (!idle) return false to "Not run: a payment is in progress"

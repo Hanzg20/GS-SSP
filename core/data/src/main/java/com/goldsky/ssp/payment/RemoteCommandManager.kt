@@ -45,7 +45,7 @@ object RemoteCommandManager {
     private const val SCANNER_TEST_MS = 4_000L
     private val KNOWN_COMMANDS = setOf(
         "REBOOT", "SYNC_CONFIG", "LOCK", "UNLOCK", "FETCH_LOGS", "START_SERVICE", "SCANNER_TEST", "BRING_TO_FRONT",
-        "SET_CONTROLLER",
+        "SET_CONTROLLER", "VOID_PAYMENT",
     )
 
     // Command ids already taken by this process (Realtime or poll), so a
@@ -92,6 +92,15 @@ object RemoteCommandManager {
          * has no controller (status left for the app that does).
          */
         suspend fun onSetControllerRequested(url: String, token: String, flow: String?): Pair<Boolean, String>? = null
+
+        /**
+         * Remote VOID_PAYMENT (Cael transactions, 2026-11-05): give back the card payment [ref]
+         * (ecr_ref_num) -- void before the batch closes, refund after. [payload] may carry the
+         * original's identifiers (ori_index, trace, invoice, trans_id, rrn) when this process
+         * doesn't know them. Returns whether it was given back and how, or null if the order isn't
+         * this app's (status left for the app that has it).
+         */
+        suspend fun onVoidPaymentRequested(ref: String, payload: kotlinx.serialization.json.JsonObject?): Pair<Boolean, String>? = null
     }
 
     private var commandListener: CommandListener? = null
@@ -254,6 +263,17 @@ object RemoteCommandManager {
                 val outcome = commandListener?.onSetControllerRequested(url, token, flow)
                 if (outcome == null) { Log.d(TAG, "SET_CONTROLLER not taken here, status left alone"); return@launch }
                 Log.i(TAG, "Remote SET_CONTROLLER -> ${outcome.second}")
+                withContext(Dispatchers.IO) { updateCommandStatus(deviceCommand.id, if (outcome.first) "SUCCESS" else "FAILED", outcome.second) }
+            }
+            return
+        }
+        if (cmd == "VOID_PAYMENT") {
+            CoroutineScope(Dispatchers.Main).launch {
+                val ref = deviceCommand.payload?.get("ref")?.jsonPrimitive?.contentOrNull.orEmpty()
+                val outcome = if (ref.isBlank()) false to "No ref in the payload"
+                    else commandListener?.onVoidPaymentRequested(ref, deviceCommand.payload)
+                if (outcome == null) { Log.d(TAG, "VOID_PAYMENT $ref not taken here, status left alone"); return@launch }
+                Log.w(TAG, "Remote VOID_PAYMENT $ref -> ${outcome.second}")
                 withContext(Dispatchers.IO) { updateCommandStatus(deviceCommand.id, if (outcome.first) "SUCCESS" else "FAILED", outcome.second) }
             }
             return

@@ -189,6 +189,18 @@ interface IPaymentProvider {
         callback(QueryResult.Error("query not supported by this provider"))
     }
 
+    /**
+     * The TransIndexCode of the AuthCompletion that settled the hold [refNum] in this process, if
+     * any: a settled hold is reversed through it, not through the hold.
+     */
+    fun settledRef(refNum: String): String? = null
+
+    /**
+     * Identifiers of an approved sale this process didn't start (a remote void after a restart,
+     * read from the terminal's records): lets a Reversal find it. No-op where not needed.
+     */
+    fun rememberSale(refNum: String, amountInCents: Int, traceNum: String?, invoiceNum: String?, transId: String?, rrn: String?) {}
+
     fun voidOrRefund(refNum: String, amountInCents: Int, callback: (success: Boolean, method: String) -> Unit) {
         voidTransaction(refNum, object : PaymentCallback {
             override fun onSuccess(authCode: String, refNum: String, entryMode: String) = callback(true, "VOID")

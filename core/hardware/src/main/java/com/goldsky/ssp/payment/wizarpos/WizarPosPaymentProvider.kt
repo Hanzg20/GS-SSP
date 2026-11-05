@@ -52,6 +52,17 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
     private data class SaleIds(val traceNum: String?, val invoiceNum: String?, val transId: String?, val rrn: String?)
     private val saleIds = java.util.concurrent.ConcurrentHashMap<String, SaleIds>()
 
+    // Hold TransIndexCode -> the AuthCompletion's TransIndexCode that settled it (Aegis Flex,
+    // 2026-11-05): the completion is the charge, so a later void reverses it.
+    private val completions = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    override fun settledRef(refNum: String): String? = completions[refNum]
+
+    override fun rememberSale(refNum: String, amountInCents: Int, traceNum: String?, invoiceNum: String?, transId: String?, rrn: String?) {
+        saleAmounts[refNum] = amountInCents
+        saleIds[refNum] = SaleIds(traceNum, invoiceNum, transId, rrn)
+    }
+
     /**
      * Data model aligned with WizarPOS GlobalRequest.java
      */
@@ -342,6 +353,13 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                     Log.i(TAG, "Approved: TransIndexCode=$originalRef RRN=$rrn")
                     if (request.TransType == "Purchase" || request.TransType == "PreAuth") {
                         saleIds[originalRef] = SaleIds(field("TraceNum"), field("InvoiceNum"), field("TransID"), rrn)
+                    }
+                    // A settled hold: the completion is what a void reverses (its own TransIndexCode).
+                    val settledBy = request.TransIndexCode
+                    if (request.TransType == "AuthCompletion" && settledBy != null) {
+                        completions[originalRef] = settledBy
+                        saleIds[settledBy] = SaleIds(field("TraceNum"), field("InvoiceNum"), field("TransID"), rrn)
+                        request.TransAmount?.toIntOrNull()?.let { saleAmounts[settledBy] = it }
                     }
                     callback.onCardInfo(info)
                     // refNum is what the caller later hands back to voidOrRefund, so

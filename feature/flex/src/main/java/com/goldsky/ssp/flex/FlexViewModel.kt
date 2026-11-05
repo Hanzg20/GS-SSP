@@ -348,6 +348,38 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Cael's VOID_PAYMENT: give back the paid card order [ref] -- void before the batch closes,
+     * refund after; a settled hold through its completion. [ids] = the original's identifiers when
+     * this process doesn't know them (ori_index, trace, invoice, trans_id, rrn). Null = not an
+     * order of this terminal's Flex journal.
+     */
+    suspend fun voidPayment(ref: String, ids: Map<String, String?>): Pair<Boolean, String>? {
+        val order = OrderRepository.orders.value.firstOrNull { it.orderId == ref } ?: return null
+        val pay = payment ?: return false to "No card terminal on this device"
+        if (!idle) return false to "Not done: a payment is in progress -- try again"
+        if (order.vipCardUid != null) return false to "A VIP payment: give it back from the VIP card ledger"
+        if (order.paymentStatus != "PAID") return false to "Nothing to give back: the order is ${order.paymentStatus}"
+        val target = ids["ori_index"] ?: order.settleRef ?: pay.settledRef(ref) ?: ref
+        if (ids["trace"] != null || ids["rrn"] != null) {
+            pay.rememberSale(target, order.amountCents, ids["trace"], ids["invoice"], ids["trans_id"], ids["rrn"])
+        }
+        away = true // no new sale while the card terminal works on it
+        applyAvailability()
+        val (ok, how) = kotlinx.coroutines.suspendCancellableCoroutine<Pair<Boolean, String>> { c ->
+            pay.undo(target, order.amountCents) { ok, how -> if (c.isActive) c.resumeWith(Result.success(ok to how)) }
+        }
+        away = false
+        applyAvailability()
+        val money = String.format(java.util.Locale.US, "$%.2f", order.amountCents / 100.0)
+        if (!ok) return false to "Card terminal refused to give back $money ($target): void and refund both failed"
+        val status = if (how == "REFUND") "REFUNDED" else "VOIDED"
+        OrderRepository.update(getApplication(), ref) { it.copy(paymentStatus = status) }
+        val synced = com.goldsky.ssp.payment.TransactionRepository.updatePaymentStatusRemote(ref, status)
+        Log.w(TAG, "Remote void $ref ($target): $how of $money")
+        return true to "$how of $money approved ($target)" + if (synced) "" else " -- Cael row not updated yet"
+    }
+
+    /**
      * A pre-authorization after the hand-over: dispensed = settle at the controller's amount (never
      * more than held; none given = the price; 0 = release), else release -- nothing charged.
      */
@@ -370,6 +402,8 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         }
         pay.complete(ref, charge) { ok ->
             if (ok) {
+                // Kept for a later void: the completion is the charge.
+                if (!simulated) pay.settledRef(ref)?.let { s -> OrderRepository.update(getApplication(), ref) { it.copy(settleRef = s) } }
                 finishOrder(ref, "SUCCESS", "PAID", charge)
                 show(State.Done(item, charge))
             } else {
