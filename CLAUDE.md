@@ -84,6 +84,13 @@ app/aegis-vend-screen -- Aegis Vend Screen (`com.goldsky.ssp.aegis.vend.screen`)
                   Aegis Vend showcase sale mode (technician panel, 2026-11-03, for showing prospects): a 6-item grid on the
                   terminal (`ShowcaseViewModel` / `ShowcaseScreen`, store's VEND products by `attributes.slot` else samples), PAY, real card
                   sale voided at once -- never a fake approval; MDB sales refused meanwhile. Real sites stay on MDB.
+app/aegis-flex -- Aegis Flex (`com.goldsky.ssp.aegis.flex`, feature:flex), added 2026-11-05: the card terminal in front of a
+                  PARTNER's own machine -- the customer picks and pays on the terminal, the partner's controller hands the
+                  product over (first lead: Outdoor Vend's firewood kiosk on an InHand EC3320). Copied from Aegis Vend without
+                  MDB / big screen / VMC simulator; the sale screen is Vend's showcase grid. Only the controller's "dispensed"
+                  keeps the money (`FlexController`); none is built yet (`NotConnected`), so every sale is reversed at once and
+                  a TEST strip says so. Next: the LAN link (HTTP, later Modbus TCP) as a DispenseEngine protocol. No
+                  vertical of its own in the DB yet (products / devices CHECK): sells the store's VEND products.
 app/aegis-timer -- Aegis Timer (`com.goldsky.ssp.aegis.timer`, feature:timer), added 2026-09-23: the time-based product family
                   (pay -> terminal times the session and HOLDS an output ON, countdown on screen) -- first product is the
                   self-service vacuum beside the wash ($2/4min, $3/5min, card-only, alarm-only on fault). Deliberately NOT a

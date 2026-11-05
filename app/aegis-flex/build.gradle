@@ -1,0 +1,75 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+// Same local.properties -> BuildConfig pattern as app/iris, app/aegis-wash and app/aegis-vend.
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
+
+// Aegis Flex (owner, 2026-11-05): starts at 0.0.1.
+ext.appVersion = "0.0.1"
+
+android {
+    namespace 'com.goldsky.ssp.aegis.flex'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.goldsky.ssp.aegis.flex"
+        minSdk 25
+        targetSdk 34
+        // versionCode/versionName come from ext.appVersion, see gradle/release-signing.gradle
+
+        buildConfigField "String", "SUPABASE_URL", "\"${localProperties.getProperty('supabase.url') ?: ''}\""
+        buildConfigField "String", "SUPABASE_KEY", "\"${localProperties.getProperty('supabase.key') ?: ''}\""
+        // false, as on Wash / Timer: IS_MOCK=true on a real-hardware shell silently
+        // skipped every Supabase transaction write at a live site (2026-09-19).
+        buildConfigField "boolean", "IS_MOCK", "false"
+    }
+
+    buildFeatures {
+        compose true
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+}
+
+// cloudpos_sdk.aar is arm64/armeabi only, so the x86_64 dev emulator refuses an APK that
+// carries its .so files: the DEBUG variant drops them (debug = emulator: screens and the
+// stand-in payment). Done per variant on purpose -- a packagingOptions block inside
+// buildTypes { debug { } } is the android-wide one, and stripped the release too (2026-11-02:
+// libjni_cloudpos_ext_board.so missing on 255, Vend's MDB open crashed). The signed release that
+// terminals get keeps them.
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.packaging.jniLibs.excludes.add("**/*.so")
+    }
+}
+
+apply from: rootProject.file('gradle/release-signing.gradle')
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.9.0'
+    implementation project(':core:common')
+    implementation project(':core:data')
+    implementation project(':core:hardware')
+    implementation project(':core:ui')
+    implementation project(':core:payment')
+    implementation project(':feature:flex')
+    implementation project(':libs:pax')
+    implementation project(':libs:wizarpos')
+
+    implementation 'androidx.activity:activity-compose:1.7.0'
+}
