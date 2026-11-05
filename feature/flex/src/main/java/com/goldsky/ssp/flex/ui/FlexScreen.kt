@@ -100,7 +100,10 @@ fun FlexContainer(
                     is State.Done -> Message(st.item, money) {
                         ResultAnim(true, 64.dp)
                         Spacer(Modifier.height(10.dp))
-                        Big(s.takeItem, KioskEmerald)
+                        // What was actually charged, then what to do.
+                        Big(s.paid(money(st.item.cents)), KioskEmerald)
+                        st.vipBalanceCents?.let { Line(s.vipBalance(money(it))) }
+                        Line(s.takeItem)
                     }
                     is State.NotDispensed -> Message(st.item, money) {
                         ResultAnim(false, 64.dp)
@@ -108,10 +111,10 @@ fun FlexContainer(
                         Big(s.notDispensed, KioskAmber)
                         Line(
                             when {
-                                st.givenBack -> if (st.vip) s.givenBackVip else s.givenBackCard
+                                st.givenBack -> if (st.vip) s.givenBackVip(money(st.item.cents)) else s.givenBackCard(money(st.item.cents))
                                 // Not given back yet: FlexRecovery does it on the next start.
-                                st.vip -> s.refundPending
-                                else -> s.refundByStaff
+                                st.vip -> s.refundPending(money(st.item.cents))
+                                else -> s.refundByStaff(money(st.item.cents))
                             }
                         )
                     }

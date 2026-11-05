@@ -65,8 +65,8 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         /** The VIP member code is being scanned. */
         data class Scanning(val item: Item) : State()
         data class Dispensing(val item: Item) : State()
-        /** Handed over; [vip] = paid from a VIP card. */
-        data class Done(val item: Item, val vip: Boolean = false) : State()
+        /** Handed over, [item]'s price charged; [vip] = paid from a VIP card, whose balance is now [vipBalanceCents]. */
+        data class Done(val item: Item, val vip: Boolean = false, val vipBalanceCents: Int? = null) : State()
         /** Paid but not handed over: [givenBack] false = the reversal failed, a refund by hand is owed. */
         data class NotDispensed(val item: Item, val givenBack: Boolean, val vip: Boolean = false) : State()
         /** [reason] null = the card was declined. */
@@ -302,7 +302,7 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
                     _state.value = State.Dispensing(item)
                     if (dispense(ref, item, "VIP")) {
                         finishOrder(ref, "SUCCESS", "PAID")
-                        show(State.Done(item, vip = true))
+                        show(State.Done(item, vip = true, vipBalanceCents = r.newBalanceCents))
                     } else {
                         notDispensed(ref, item, VipRepository.refund(uid, ref), vip = true)
                     }

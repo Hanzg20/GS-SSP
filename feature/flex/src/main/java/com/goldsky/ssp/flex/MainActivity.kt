@@ -231,7 +231,7 @@ class MainActivity : ComponentActivity() {
                         is FlexViewModel.State.Authorizing -> s.sayTapCard
                         is FlexViewModel.State.Scanning -> s.sayScan
                         is FlexViewModel.State.Dispensing -> s.sayDispensing
-                        is FlexViewModel.State.Done -> s.sayTakeItem
+                        is FlexViewModel.State.Done -> s.sayPaid(FlexStrings.money(st.item.cents, fr)) + " " + s.sayTakeItem
                         is FlexViewModel.State.NotDispensed ->
                             s.sayNotDispensed + if (st.givenBack && !st.vip) " " + s.sayNotCharged else ""
                         is FlexViewModel.State.Declined ->
