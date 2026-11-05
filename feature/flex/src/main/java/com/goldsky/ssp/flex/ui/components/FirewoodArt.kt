@@ -24,8 +24,9 @@ import kotlin.math.sin
  * A product tile's picture for firewood (products.attributes.art = "firewood", owner 2026-11-05:
  * "realistic, refined, lively"): [quantity] tied bundles of split logs, seen from the front so
  * the end grain shows -- bark, growth rings, a crack, a rope round each bundle -- in front of a
- * warm glow that breathes, on a bed of glowing coals that flicker, with sparks drifting up
- * (the "Ember" look, owner 2026-11-05). Picked: the bundles hop and the fire comes up.
+ * warm glow that breathes, on a bed of glowing coals with flames licking up behind the wood and
+ * sparks drifting up (the "Ember" look, owner 2026-11-05). A bundle is the same size on every tile,
+ * so 1, 2, 3 grow into a pile. Picked: the bundles hop and the fire comes up.
  * Drawn, not a bitmap, so it stays sharp on any screen and needs nothing from the network.
  */
 
@@ -85,22 +86,22 @@ fun FirewoodArt(quantity: Int, selected: Boolean, modifier: Modifier = Modifier)
         // The ember bed under the wood: dark charcoal, its coals glowing and flickering.
         emberBed(Offset(w / 2, ground), w * 0.86f, h * 0.09f, coals, flicker, heat)
 
-        // Bundles, as big as the tile allows: 1 in the middle; 2 stacked; 3 = two below, one on top.
-        val r = when (bundles) {
-            // A bundle reaches about 1.3 r from its centre (pieces, rope): kept inside the tile.
-            1 -> minOf(w * 0.37f, h * 0.30f)
-            2 -> minOf(w * 0.32f, h * 0.18f)
-            else -> minOf(w * 0.205f, h * 0.18f)
-        }
+        // One bundle size for every tile (owner 2026-11-05: 1, 2, 3 must visibly grow): the size
+        // three need -- two on the coals, one on top. A bundle reaches about 1.2 r from its centre.
+        val r = minOf(w * 0.215f, h * 0.17f)
         val spots = when (bundles) {
-            1 -> listOf(Offset(w / 2, ground - r * 1.05f))
-            // Back (upper) one first, so the front one sits over it.
-            2 -> listOf(Offset(w / 2 - r * 0.12f, ground - r * 2.75f), Offset(w / 2 + r * 0.10f, ground - r * 1.05f))
+            1 -> listOf(Offset(w / 2, ground - r * 1.0f))
+            2 -> listOf(Offset(w / 2 - r * 1.02f, ground - r * 1.0f), Offset(w / 2 + r * 1.02f, ground - r * 1.0f))
+            // Back (top) one first, so the front ones sit over it.
             else -> listOf(
-                Offset(w / 2, ground - r * 2.85f),
-                Offset(w / 2 - r * 1.0f, ground - r * 1.05f), Offset(w / 2 + r * 1.0f, ground - r * 1.05f),
+                Offset(w / 2, ground - r * 2.72f),
+                Offset(w / 2 - r * 1.02f, ground - r * 1.0f), Offset(w / 2 + r * 1.02f, ground - r * 1.0f),
             )
         }
+        // Flames behind the wood, as wide as the pile and up past its top.
+        val pileWidth = if (bundles == 1) r * 2.6f else r * 4.6f
+        val pileTop = spots.minOf { it.y } - r * 1.2f
+        flames(Offset(w / 2, ground - r * 0.3f), pileWidth, (ground - pileTop) + h * 0.16f + h * 0.10f * heat, flicker, heat, back = true)
         spots.forEachIndexed { i, c ->
             // Each bundle hops a little after the one before it.
             val hop = lift * r * 0.22f * (1f - i * 0.18f)
@@ -117,6 +118,9 @@ fun FirewoodArt(quantity: Int, selected: Boolean, modifier: Modifier = Modifier)
                 radius = r * 1.12f, center = at,
             )
         }
+
+        // Low tongues of flame in front, licking the foot of the wood.
+        flames(Offset(w / 2, ground + r * 0.05f), pileWidth * 0.9f, r * (0.42f + 0.25f * heat), flicker, heat, back = false)
 
         // Embers drifting up and fading; more of them when picked.
         val shown = (8 + 8 * heat).toInt()
@@ -178,6 +182,52 @@ private fun DrawScope.emberBed(c: Offset, width: Float, depth: Float, coals: Lis
     }
 }
 
+/**
+ * Tongues of flame rising from [c] across [width], up to [height]: red at the edge, orange,
+ * then a yellow-white core, each swaying and leaping at its own beat (whole beats per [flicker]
+ * loop, so the loop is seamless). [back]: the tall ones behind the wood; else short ones in front.
+ */
+private fun DrawScope.flames(c: Offset, width: Float, height: Float, flicker: Float, heat: Float, back: Boolean) {
+    val n = if (back) 7 else 5
+    for (j in 0 until n) {
+        val rel = if (n == 1) 0f else j / (n - 1f) - 0.5f
+        val seed = j * 0.37f + if (back) 0f else 0.5f
+        // Taller in the middle, each leaping on two beats of its own.
+        val leap = 0.5f + 0.3f * sin((flicker * (3 + j % 3) + seed) * 2 * PI).toFloat() +
+            0.2f * sin((flicker * (5 + j % 2) + seed * 2) * 2 * PI).toFloat()
+        val fh = height * (1f - kotlin.math.abs(rel) * 0.9f) * (0.55f + 0.45f * leap)
+        val bw = width / n * (if (back) 1.7f else 1.4f)
+        val x = c.x + rel * width * 0.85f
+        val sway = sin((flicker * (2 + j % 2) + seed * 3) * 2 * PI).toFloat() * bw * 0.45f
+        val layers = listOf(
+            Triple(1.00f, 1.00f, listOf(Color(0xFFFF3D00), Color(0xFFFF6A00))),
+            Triple(0.66f, 0.78f, listOf(Color(0xFFFF8A00), Color(0xFFFFB300))),
+            Triple(0.34f, 0.48f, listOf(Color(0xFFFFE27A), Color(0xFFFFF8E1))),
+        )
+        // In front they only lick the wood's foot: faint, so the wood stays readable.
+        val alpha = (if (back) 0.85f else 0.40f) * (0.85f + 0.15f * heat)
+        for ((wf, hf, cols) in layers) {
+            val hw = bw * wf / 2
+            val top = c.y - fh * hf
+            val tip = Offset(x + sway * hf, top)
+            val path = Path().apply {
+                moveTo(x - hw, c.y)
+                cubicTo(x - hw * 1.1f, c.y - fh * hf * 0.45f, tip.x - hw * 0.35f, c.y - fh * hf * 0.80f, tip.x, tip.y)
+                cubicTo(tip.x + hw * 0.35f, c.y - fh * hf * 0.80f, x + hw * 1.1f, c.y - fh * hf * 0.45f, x + hw, c.y)
+                close()
+            }
+            drawPath(
+                path,
+                Brush.verticalGradient(
+                    listOf(cols[0].copy(alpha = 0f), cols[0].copy(alpha = alpha), cols[1].copy(alpha = alpha)),
+                    startY = top, endY = c.y,
+                ),
+                blendMode = androidx.compose.ui.graphics.BlendMode.Plus,
+            )
+        }
+    }
+}
+
 /** One tied bundle around [c], about [r] in radius. */
 private fun DrawScope.bundle(c: Offset, r: Float, seed: Int, warmth: Float) {
     val rnd = java.util.Random(seed.toLong())
@@ -197,7 +247,7 @@ private fun DrawScope.bundle(c: Offset, r: Float, seed: Int, warmth: Float) {
 private fun DrawScope.piece(c: Offset, size: Float, turn: Float, seed: Int, warmth: Float) {
     val rnd = java.util.Random(seed.toLong())
     val sweep = 95f + rnd.nextFloat() * 40f
-    val radius = size * 1.55f
+    val radius = size * 1.38f
     // The pith sits behind the piece's middle, so the wedge is centred on [c].
     val mid = Math.toRadians((turn + sweep / 2).toDouble())
     val dir = Offset(cos(mid).toFloat(), sin(mid).toFloat())
