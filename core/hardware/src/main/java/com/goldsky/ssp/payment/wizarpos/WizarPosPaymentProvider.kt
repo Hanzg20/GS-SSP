@@ -211,11 +211,19 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
         CoroutineScope(Dispatchers.Main).launch {
             callback.onProgress("CONNECTING TO TERMINAL...")
             
+            // With the original's identifiers too, as the Reversal: WizarPOS (owner, 2026-11-05) --
+            // with OriTransId the payment app finds the original by itself, without it it asks for
+            // manual input, which an unattended terminal can't give (255: a Refund with only
+            // OriTransIndexCode answered FF "transType not supported").
             val request = GlobalRequest(
                 TransType = "Refund",
                 CurrencyCode = currencyCode(),
                 TransAmount = amountInCents.toString(),
                 OriTransIndexCode = refNum,
+                OriTraceNum = saleIds[refNum]?.traceNum,
+                OriInvoiceNum = saleIds[refNum]?.invoiceNum,
+                OriTransId = saleIds[refNum]?.transId,
+                OriRrn = saleIds[refNum]?.rrn,
                 TransIndexCode = "R-" + java.lang.System.currentTimeMillis()
             )
 
