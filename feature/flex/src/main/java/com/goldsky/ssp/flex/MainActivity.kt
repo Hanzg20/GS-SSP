@@ -99,8 +99,9 @@ class MainActivity : ComponentActivity() {
                 override fun onLockRequested(locked: Boolean) = applyLock()
                 override fun isIdleForScannerTest() = idle
                 // Cael sets the controller remotely (device page), as the technician panel does.
-                override suspend fun onSetControllerRequested(url: String, token: String): Pair<Boolean, String> {
+                override suspend fun onSetControllerRequested(url: String, token: String, flow: String?): Pair<Boolean, String> {
                     if (!idle) return false to "Not changed: a sale is in progress -- try again"
+                    if (flow == "PREAUTH" || flow == "SALE") viewModel.setPreauth(flow == "PREAUTH")
                     viewModel.setController(url, token)
                     viewModel.checkController()
                     val c = viewModel.controller
@@ -109,7 +110,8 @@ class MainActivity : ComponentActivity() {
                         false -> "NOT ready (sales paused): ${viewModel.controllerDetail.value}"
                         null -> "no controller: every sale is voided (TEST)"
                     }
-                    return true to "${c.description} -- $state"
+                    val how = if (com.goldsky.ssp.flex.logic.FlexController.preauth(this@MainActivity)) "PREAUTH" else "SALE"
+                    return true to "${c.description} -- $state -- card: $how"
                 }
                 override suspend fun onBringToFrontRequested(): Pair<Boolean, String>? {
                     if (!com.goldsky.ssp.ui.KioskRecall.handles(application)) return null
@@ -147,6 +149,8 @@ class MainActivity : ComponentActivity() {
                     controllerToken = com.goldsky.ssp.flex.logic.FlexController.token(this),
                     onSetController = viewModel::setController,
                     onTestController = { lifecycleScope.launch { viewModel.checkController() } },
+                    preauth = ctrl.let { com.goldsky.ssp.flex.logic.FlexController.preauth(this) },
+                    onPreauth = viewModel::setPreauth,
                     products = items.size,
                     onSystemCheck = { openAway(com.goldsky.ssp.ui.SystemCheckActivity::class.java) },
                     onPaymentTests = { openAway(com.goldsky.ssp.ui.PaymentTestActivity::class.java) },
@@ -158,6 +162,7 @@ class MainActivity : ComponentActivity() {
                     card = payMode != com.goldsky.ssp.model.PaymentMethodMode.SCAN_ONLY,
                     vip = payMode != com.goldsky.ssp.model.PaymentMethodMode.CARD_ONLY,
                     controller = ctrl.connected,
+                    preauth = ctrl.let { com.goldsky.ssp.flex.logic.FlexController.preauth(this) },
                 )
             }
             if (showPin) {
@@ -231,7 +236,7 @@ class MainActivity : ComponentActivity() {
                         is FlexViewModel.State.Authorizing -> s.sayTapCard
                         is FlexViewModel.State.Scanning -> s.sayScan
                         is FlexViewModel.State.Dispensing -> s.sayDispensing
-                        is FlexViewModel.State.Done -> s.sayPaid(FlexStrings.money(st.item.cents, fr)) + " " + s.sayTakeItem
+                        is FlexViewModel.State.Done -> s.sayPaid(FlexStrings.money(st.chargedCents, fr)) + " " + s.sayTakeItem
                         is FlexViewModel.State.NotDispensed ->
                             s.sayNotDispensed + if (st.givenBack && !st.vip) " " + s.sayNotCharged else ""
                         is FlexViewModel.State.Declined ->

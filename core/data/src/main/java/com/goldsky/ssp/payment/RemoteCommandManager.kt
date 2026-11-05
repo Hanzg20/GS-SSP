@@ -87,10 +87,11 @@ object RemoteCommandManager {
         /**
          * Remote SET_CONTROLLER (Aegis Flex, 2026-11-05): the partner controller this terminal hands
          * products over through -- payload "url" (an address on the LAN, "cael" = Cael's test
-         * simulator, blank = none) and "token". Returns whether it was taken and what the terminal
-         * now sees, or null if this app has no controller (status left for the app that does).
+         * simulator, blank = none), "token", and "flow" (SALE / PREAUTH: how the card is taken; absent =
+         * unchanged). Returns whether it was taken and what the terminal now sees, or null if this app
+         * has no controller (status left for the app that does).
          */
-        suspend fun onSetControllerRequested(url: String, token: String): Pair<Boolean, String>? = null
+        suspend fun onSetControllerRequested(url: String, token: String, flow: String?): Pair<Boolean, String>? = null
     }
 
     private var commandListener: CommandListener? = null
@@ -249,7 +250,8 @@ object RemoteCommandManager {
             CoroutineScope(Dispatchers.Main).launch {
                 val url = deviceCommand.payload?.get("url")?.jsonPrimitive?.contentOrNull.orEmpty()
                 val token = deviceCommand.payload?.get("token")?.jsonPrimitive?.contentOrNull.orEmpty()
-                val outcome = commandListener?.onSetControllerRequested(url, token)
+                val flow = deviceCommand.payload?.get("flow")?.jsonPrimitive?.contentOrNull
+                val outcome = commandListener?.onSetControllerRequested(url, token, flow)
                 if (outcome == null) { Log.d(TAG, "SET_CONTROLLER not taken here, status left alone"); return@launch }
                 Log.i(TAG, "Remote SET_CONTROLLER -> ${outcome.second}")
                 withContext(Dispatchers.IO) { updateCommandStatus(deviceCommand.id, if (outcome.first) "SUCCESS" else "FAILED", outcome.second) }

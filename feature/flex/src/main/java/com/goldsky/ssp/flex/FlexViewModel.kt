@@ -65,8 +65,12 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         /** The VIP member code is being scanned. */
         data class Scanning(val item: Item) : State()
         data class Dispensing(val item: Item) : State()
-        /** Handed over, [item]'s price charged; [vip] = paid from a VIP card, whose balance is now [vipBalanceCents]. */
-        data class Done(val item: Item, val vip: Boolean = false, val vipBalanceCents: Int? = null) : State()
+        /**
+         * Handed over and [chargedCents] charged (a pre-authorization settles at what the controller
+         * says, so it can be less than the price); [vip] = paid from a VIP card, whose balance is now
+         * [vipBalanceCents].
+         */
+        data class Done(val item: Item, val chargedCents: Int, val vip: Boolean = false, val vipBalanceCents: Int? = null) : State()
         /** Paid but not handed over: [givenBack] false = the reversal failed, a refund by hand is owed. */
         data class NotDispensed(val item: Item, val givenBack: Boolean, val vip: Boolean = false) : State()
         /** [reason] null = the card was declined. */
@@ -141,7 +145,14 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { checkController() }
     }
 
-    /** Bumped on every change of [controller], so the screens redraw with it. */
+    /** SALE or PREAUTH (see FlexController.preauth); the next sale goes the new way. */
+    fun setPreauth(on: Boolean) {
+        FlexController.savePreauth(getApplication(), on)
+        Log.i(TAG, "Card taken by ${if (on) "PRE-AUTHORIZATION" else "SALE"}")
+        _controllerVersion.value++
+    }
+
+    /** Bumped on every change of [controller] or the card flow, so the screens redraw with it. */
     private val _controllerVersion = MutableStateFlow(0)
     val controllerVersion: StateFlow<Int> = _controllerVersion.asStateFlow()
 
@@ -241,24 +252,30 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         _selected.value = null
         timer?.cancel()
         val ref = newRef()
+        // Technician panel / Cael: held at the price and settled after the hand-over, or charged at once.
+        val preauth = FlexController.preauth(getApplication())
         journal(FlexOrder(
             orderId = ref, amountCents = item.cents, slot = item.name.take(40),
-            paymentStatus = "PENDING", dispenseStatus = "PENDING", kind = "SALE", productId = item.productId,
+            paymentStatus = "PENDING", dispenseStatus = "PENDING", kind = if (preauth) "HOLD" else "SALE", productId = item.productId,
         ))
         _state.value = State.Authorizing(item)
-        pay.sale(item.cents, ref) { r ->
+        val take: (Int, String, (FlexPayment.Result) -> Unit) -> Unit = if (preauth) pay::hold else pay::sale
+        take(item.cents, ref) { r ->
             when (r) {
                 is FlexPayment.Result.Approved -> viewModelScope.launch {
                     if (!simulated) OrderRepository.update(getApplication(), ref) {
-                        it.copy(paymentStatus = "PAID", authCode = r.authCode, entryMode = r.entryMode,
+                        it.copy(paymentStatus = if (preauth) "AUTHORIZED" else "PAID", authCode = r.authCode, entryMode = r.entryMode,
                             cardBrand = r.card?.brand, cardAid = r.card?.aid, cardBin = r.card?.bin)
                     }
                     _state.value = State.Dispensing(item)
-                    if (dispense(ref, item, "CARD")) {
-                        finishOrder(ref, "SUCCESS", "PAID")
-                        show(State.Done(item))
-                    } else {
-                        pay.reverse(ref, item.cents) { ok -> notDispensed(ref, item, ok) }
+                    val outcome = dispense(ref, item, "CARD", if (preauth) "PREAUTH" else "SALE")
+                    when {
+                        preauth -> settleHold(pay, ref, item, outcome)
+                        outcome.dispensed -> {
+                            finishOrder(ref, "SUCCESS", "PAID")
+                            show(State.Done(item, item.cents))
+                        }
+                        else -> pay.reverse(ref, item.cents) { ok -> notDispensed(ref, item, ok) }
                     }
                 }
                 FlexPayment.Result.Declined -> {
@@ -300,9 +317,10 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
                 is VipDeductResult.Success -> {
                     if (!simulated) OrderRepository.update(getApplication(), ref) { it.copy(paymentStatus = "PAID") }
                     _state.value = State.Dispensing(item)
-                    if (dispense(ref, item, "VIP")) {
+                    // A VIP code pays the price; the controller's own amount applies to a card hold only.
+                    if (dispense(ref, item, "VIP", "SALE").dispensed) {
                         finishOrder(ref, "SUCCESS", "PAID")
-                        show(State.Done(item, vip = true, vipBalanceCents = r.newBalanceCents))
+                        show(State.Done(item, item.cents, vip = true, vipBalanceCents = r.newBalanceCents))
                     } else {
                         notDispensed(ref, item, VipRepository.refund(uid, ref), vip = true)
                     }
@@ -329,18 +347,56 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         show(State.Declined(s.item, SaleReason.CANCELLED))
     }
 
-    private suspend fun dispense(ref: String, item: Item, method: String): Boolean =
+    /**
+     * A pre-authorization after the hand-over: dispensed = settle at the controller's amount (never
+     * more than held; none given = the price; 0 = release), else release -- nothing charged.
+     */
+    private fun settleHold(pay: FlexPayment, ref: String, item: Item, outcome: FlexController.DispenseOutcome) {
+        if (!outcome.dispensed) {
+            pay.release(ref) { ok ->
+                // A hold that couldn't be released expires on its own: nothing was taken either way.
+                if (!ok) Log.w(TAG, "Hold $ref not released -- it expires by itself")
+                notDispensed(ref, item, givenBack = true)
+            }
+            return
+        }
+        val charge = (outcome.chargeCents ?: item.cents).coerceIn(0, item.cents)
+        if (charge == 0) {
+            pay.release(ref) { _ ->
+                finishOrder(ref, "SUCCESS", "VOIDED", 0)
+                show(State.Done(item, 0))
+            }
+            return
+        }
+        pay.complete(ref, charge) { ok ->
+            if (ok) {
+                finishOrder(ref, "SUCCESS", "PAID", charge)
+                show(State.Done(item, charge))
+            } else {
+                // Handed over, but the settlement was refused: the hold lapses, nothing is charged.
+                Log.e(TAG, "Hold $ref: completion of $charge refused -- handed over, not charged")
+                finishOrder(ref, "SUCCESS", "CANCELLED", charge)
+                DeviceRepository.getPersistedDeviceSn()?.let {
+                    DiagnosticManager.reportError(it, "FLEX_COMPLETION_FAILED", severity = "WARNING",
+                        trace = "Hold $ref: dispensed, completion of $charge cents refused -- not charged")
+                }
+                show(State.Done(item, 0))
+            }
+        }
+    }
+
+    private suspend fun dispense(ref: String, item: Item, method: String, flow: String): FlexController.DispenseOutcome =
         runCatching {
             controller.dispense(FlexController.DispenseRequest(
                 order_id = ref, product_id = item.productId, slot = item.number, name = item.name,
                 quantity = item.quantity, amount_cents = item.cents,
                 currency = if (com.goldsky.ssp.common.CoreConfig.region == "CA") "CAD" else "USD",
-                payment_method = method, terminal_sn = DeviceRepository.getPersistedDeviceSn().orEmpty(),
+                payment_method = method, payment_flow = flow, terminal_sn = DeviceRepository.getPersistedDeviceSn().orEmpty(),
                 deadline_ms = System.currentTimeMillis() + FlexController.DISPENSE_WINDOW_MS,
             ))
         }
             .onFailure { Log.e(TAG, "Controller failed on $ref: ${it.message}") }
-            .getOrDefault(false)
+            .getOrDefault(FlexController.DispenseOutcome.FAILED)
 
     /** Paid, not handed over: [givenBack] = voided / refunded (to the card or the VIP balance). */
     private fun notDispensed(ref: String, item: Item, givenBack: Boolean, vip: Boolean = false) {
@@ -360,9 +416,12 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         show(State.NotDispensed(item, givenBack, vip))
     }
 
-    private fun finishOrder(ref: String, dispense: String, payment: String) {
+    /** [chargedCents]: what a settled hold came to (the row's amount), else the price stays. */
+    private fun finishOrder(ref: String, dispense: String, payment: String, chargedCents: Int? = null) {
         if (simulated) return
-        OrderRepository.updateOrder(getApplication(), ref, dispense, payment)
+        OrderRepository.update(getApplication(), ref) {
+            it.copy(dispenseStatus = dispense, paymentStatus = payment, amountCents = chargedCents ?: it.amountCents)
+        }
         triggerSync()
     }
 

@@ -33,6 +33,9 @@ fun FlexTechScreen(
     controllerToken: String,
     onSetController: (url: String, token: String) -> Unit,
     onTestController: () -> Unit,
+    /** The card is held at the price and settled after the hand-over, instead of charged at once. */
+    preauth: Boolean,
+    onPreauth: (Boolean) -> Unit,
     products: Int,
     onSystemCheck: () -> Unit,
     onPaymentTests: () -> Unit,
@@ -57,6 +60,15 @@ fun FlexTechScreen(
         // The shared simulator on Cael: tests anywhere, a person answers on the page.
         TechButton("使用 Cael 测试模拟器", { onSetController(com.goldsky.ssp.flex.logic.FlexController.CAEL_SIM, "") })
         if (controllerReady != null) TechButton("测试连接", onTestController)
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(KioskCard).padding(10.dp)) {
+            Text("收款方式", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(
+                if (preauth) "预授权：按标价冻结，出货后按控制器给的金额结算（不超过标价），没出货就释放"
+                else "直接扣款：按标价扣款，没出货就撤销",
+                color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp,
+            )
+        }
+        TechButton(if (preauth) "改为直接扣款" else "改为预授权", { onPreauth(!preauth) })
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(KioskCard).padding(10.dp)) {
             Text("商品", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Text(

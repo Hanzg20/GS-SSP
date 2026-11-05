@@ -47,12 +47,16 @@ fun FlexContainer(
     card: Boolean = true, vip: Boolean = false,
     /** False = no controller yet: the TEST strip on top. */
     controller: Boolean = false,
+    /** The card is held at the price and settled after the hand-over: prices read as a hold. */
+    preauth: Boolean = false,
 ) {
     val state by viewModel.state.collectAsState()
     val items by viewModel.items.collectAsState()
     val selected by viewModel.selected.collectAsState()
     val s = if (french) FlexStrings.FR else FlexStrings.EN
     val money = { cents: Int -> FlexStrings.money(cents, french) }
+    // A result / payment screen's headline: the price, or under pre-authorization the hold.
+    val head = { item: Item -> if (preauth) s.hold(money(item.cents)) else money(item.cents) }
     FlexTheme {
         // Nothing in the screen's corners, as on Vend.
         Column(Modifier.fillMaxSize().background(KioskPage).padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 24.dp)) {
@@ -73,10 +77,10 @@ fun FlexContainer(
                         Line(s.unavailableBody)
                     }
                     State.Choosing -> Choosing(
-                        items, selected, s, money, viewModel::select, card, vip, viewModel::pay, viewModel::payVip,
+                        items, selected, s, money, if (preauth) s.upTo else null, viewModel::select, card, vip, viewModel::pay, viewModel::payVip,
                         if (french) "EN" else "FR", onToggleLanguage,
                     )
-                    is State.Scanning -> Message(st.item, money) {
+                    is State.Scanning -> Message(st.item, head(st.item)) {
                         QrScanAnim(72.dp)
                         Spacer(Modifier.height(12.dp))
                         Big(s.scanTitle)
@@ -87,25 +91,29 @@ fun FlexContainer(
                             contentAlignment = Alignment.Center,
                         ) { Text(s.cancel, color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = SPACED) }
                     }
-                    is State.Authorizing -> Message(st.item, money) {
+                    is State.Authorizing -> Message(st.item, head(st.item)) {
                         CardTapAnim(72.dp)
                         Spacer(Modifier.height(12.dp))
                         Big(s.tapCard)
+                        if (preauth) Line(s.holdNote)
                     }
-                    is State.Dispensing -> Message(st.item, money) {
+                    is State.Dispensing -> Message(st.item, head(st.item)) {
                         ItemDropAnim(72.dp)
                         Spacer(Modifier.height(12.dp))
                         Big(s.dispensing)
+                        if (preauth) Line(s.holdNote)
                     }
-                    is State.Done -> Message(st.item, money) {
+                    is State.Done -> Message(st.item, head(st.item)) {
                         ResultAnim(true, 64.dp)
                         Spacer(Modifier.height(10.dp))
                         // What was actually charged, then what to do.
-                        Big(s.paid(money(st.item.cents)), KioskEmerald)
+                        Big(s.paid(money(st.chargedCents)), KioskEmerald)
                         st.vipBalanceCents?.let { Line(s.vipBalance(money(it))) }
+                        // A hold settled for less: the rest went back.
+                        if (!st.vip && st.chargedCents < st.item.cents) Line(s.released(money(st.item.cents - st.chargedCents)))
                         Line(s.takeItem)
                     }
-                    is State.NotDispensed -> Message(st.item, money) {
+                    is State.NotDispensed -> Message(st.item, head(st.item)) {
                         ResultAnim(false, 64.dp)
                         Spacer(Modifier.height(10.dp))
                         Big(s.notDispensed, KioskAmber)
@@ -118,7 +126,7 @@ fun FlexContainer(
                             }
                         )
                     }
-                    is State.Declined -> Message(st.item, money) {
+                    is State.Declined -> Message(st.item, head(st.item)) {
                         ResultAnim(false, 64.dp)
                         Spacer(Modifier.height(10.dp))
                         Big(st.reason?.let(s::reason) ?: s.notPaid, KioskAmber)
@@ -132,6 +140,8 @@ fun FlexContainer(
 @Composable
 private fun Choosing(
     items: List<Item>, selected: Item?, s: FlexStrings, money: (Int) -> String,
+    /** "UP TO" over each price under pre-authorization, else null. */
+    upTo: String?,
     onSelect: (Item) -> Unit, card: Boolean, vip: Boolean, onPay: () -> Unit, onVip: () -> Unit,
     otherLanguage: String, onToggleLanguage: () -> Unit,
 ) {
@@ -162,7 +172,7 @@ private fun Choosing(
                 horizontalArrangement = Arrangement.spacedBy(GAP), verticalArrangement = Arrangement.spacedBy(GAP),
             ) {
                 itemsIndexed(items, key = { i, item -> "$i ${item.number}" }) { _, item ->
-                    Tile(item, item == selected, money, Modifier.height(tileHeight)) { onSelect(item) }
+                    Tile(item, item == selected, money, upTo, Modifier.height(tileHeight)) { onSelect(item) }
                 }
             }
         }
@@ -175,7 +185,7 @@ private fun Choosing(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                selected?.let { "${it.number} · ${money(it.cents)}" } ?: s.pickOne,
+                selected?.let { "${it.number} · ${upTo?.let { u -> "$u " } ?: ""}${money(it.cents)}" } ?: s.pickOne,
                 color = if (ready) KioskAmber else TextSecondary, fontSize = 22.sp, fontWeight = FontWeight.Bold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
@@ -211,7 +221,7 @@ private val SPACED = 0.08.em
 
 /** Like a VIP plan tile: dark, gold-edged when picked; number, picture, name, gold price. */
 @Composable
-private fun Tile(item: Item, selected: Boolean, money: (Int) -> String, modifier: Modifier, onClick: () -> Unit) {
+private fun Tile(item: Item, selected: Boolean, money: (Int) -> String, upTo: String?, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     Column(
         modifier.clip(shape).background(kioskTile(best = selected))
@@ -238,18 +248,20 @@ private fun Tile(item: Item, selected: Boolean, money: (Int) -> String, modifier
         }
         Text(item.name, color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1,
             overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
+        upTo?.let { Text(it, color = KioskAmber.copy(alpha = 0.8f), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = SPACED) }
         Text(money(item.cents), color = KioskAmber, fontSize = 22.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 4.dp))
     }
 }
 
 @Composable
-private fun Message(item: Item, money: (Int) -> String, content: @Composable ColumnScope.() -> Unit) {
+private fun Message(item: Item, top: String, content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
     ) {
-        Text(money(item.cents), color = KioskAmber, fontSize = 44.sp, fontWeight = FontWeight.Bold)
+        // "HOLD $12.00" is longer than a price: smaller, so it stays on one line.
+        Text(top, color = KioskAmber, fontSize = if (top.length > 7) 34.sp else 44.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         Text("${item.number} · ${item.name}", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         Spacer(Modifier.height(12.dp))
         content()

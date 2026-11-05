@@ -17,7 +17,11 @@ import java.net.URL
  * The wire format is ours: docs/flex_controller_api.md.
  */
 interface FlexController {
-    /** One paid order to hand over. [deadlineMs]: epoch ms after which the controller must not start it. */
+    /**
+     * One paid order to hand over. [deadline_ms]: epoch ms after which the controller must not start
+     * it. [payment_flow] SALE = [amount_cents] is already charged; PREAUTH = it is only held, and
+     * the controller may say how much of it to charge (DispenseOutcome.chargeCents).
+     */
     @Serializable
     data class DispenseRequest(
         val order_id: String,
@@ -28,9 +32,18 @@ interface FlexController {
         val amount_cents: Int,
         val currency: String,
         val payment_method: String,
+        val payment_flow: String,
         val terminal_sn: String,
         val deadline_ms: Long,
     )
+
+    /**
+     * How a hand-over went: [dispensed], and on a PREAUTH order the amount to charge of what's held
+     * ([chargeCents], e.g. by weight; null = all of it).
+     */
+    data class DispenseOutcome(val dispensed: Boolean, val chargeCents: Int? = null) {
+        companion object { val FAILED = DispenseOutcome(false) }
+    }
 
     /** Shown in the technician panel. */
     val description: String
@@ -45,10 +58,10 @@ interface FlexController {
     suspend fun ready(detail: (String) -> Unit = {}): Boolean? = null
 
     /**
-     * Hand over [request]. True = the controller confirmed it; false = it refused, failed or never
-     * answered -- the money goes back.
+     * Hand over [request]. Dispensed = the controller confirmed it; otherwise it refused, failed or
+     * never answered -- the money goes back.
      */
-    suspend fun dispense(request: DispenseRequest): Boolean
+    suspend fun dispense(request: DispenseRequest): DispenseOutcome
 
     /**
      * No controller yet: nothing can be handed over, so every approved sale is reversed at once and
@@ -57,7 +70,7 @@ interface FlexController {
     object NotConnected : FlexController {
         override val description = "未设置控制器：每笔交易都会立即撤销（测试）"
         override val connected = false
-        override suspend fun dispense(request: DispenseRequest) = false
+        override suspend fun dispense(request: DispenseRequest) = DispenseOutcome.FAILED
     }
 
     /**
@@ -73,7 +86,9 @@ interface FlexController {
         private data class Status(val ready: Boolean = false, val message: String? = null)
 
         @Serializable
-        private data class DispenseAnswer(val order_id: String? = null, val result: String? = null, val reason: String? = null)
+        private data class DispenseAnswer(
+            val order_id: String? = null, val result: String? = null, val reason: String? = null, val amount_cents: Int? = null,
+        )
 
         override suspend fun ready(detail: (String) -> Unit): Boolean = withContext(Dispatchers.IO) {
             runCatching {
@@ -91,17 +106,18 @@ interface FlexController {
             }
         }
 
-        override suspend fun dispense(request: DispenseRequest): Boolean = withContext(Dispatchers.IO) {
+        override suspend fun dispense(request: DispenseRequest): DispenseOutcome = withContext(Dispatchers.IO) {
             val timeout = (request.deadline_ms - System.currentTimeMillis()).coerceAtLeast(5_000L) + ANSWER_GRACE_MS
             runCatching {
                 val (code, body) = call("POST", "/flex/v1/dispense", json.encodeToString(request), timeout)
                 val a = runCatching { json.decodeFromString<DispenseAnswer>(body) }.getOrNull()
                 Log.i(TAG, "Dispense ${request.order_id}: HTTP $code ${a?.result} ${a?.reason ?: ""}")
                 // Only an explicit DISPENSED for this very order keeps the money.
-                code == 200 && a?.result == "DISPENSED" && a.order_id == request.order_id
+                if (code == 200 && a?.result == "DISPENSED" && a.order_id == request.order_id) DispenseOutcome(true, a.amount_cents)
+                else DispenseOutcome.FAILED
             }.getOrElse {
                 Log.e(TAG, "Dispense ${request.order_id}: no answer (${it.message})")
-                false
+                DispenseOutcome.FAILED
             }
         }
 
@@ -147,11 +163,11 @@ interface FlexController {
             return s.ready
         }
 
-        override suspend fun dispense(request: DispenseRequest): Boolean {
+        override suspend fun dispense(request: DispenseRequest): DispenseOutcome {
             val payload = json.encodeToJsonElement(DispenseRequest.serializer(), request) as kotlinx.serialization.json.JsonObject
             if (!com.goldsky.ssp.payment.TestSimRepository.submit(KIND, request.order_id, payload, request.deadline_ms)) {
                 Log.e(TAG, "Simulator: ${request.order_id} not delivered")
-                return false
+                return DispenseOutcome.FAILED
             }
             // A person answers on the page; asked every second until the deadline (+ grace).
             val until = request.deadline_ms + ANSWER_GRACE_MS
@@ -159,13 +175,14 @@ interface FlexController {
                 val a = com.goldsky.ssp.payment.TestSimRepository.answerOf(KIND, request.order_id)
                 if (a?.answered == true) {
                     val result = (a.answer?.get("result") as? kotlinx.serialization.json.JsonPrimitive)?.content
-                    Log.i(TAG, "Simulator: ${request.order_id} -> $result")
-                    return result == "DISPENSED"
+                    val charge = (a.answer?.get("amount_cents") as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()
+                    Log.i(TAG, "Simulator: ${request.order_id} -> $result${charge?.let { " (charge $it)" } ?: ""}")
+                    return if (result == "DISPENSED") DispenseOutcome(true, charge) else DispenseOutcome.FAILED
                 }
                 kotlinx.coroutines.delay(1_000)
             }
             Log.e(TAG, "Simulator: ${request.order_id} unanswered")
-            return false
+            return DispenseOutcome.FAILED
         }
 
         private const val KIND = "FLEX_DISPENSE"
@@ -194,6 +211,15 @@ interface FlexController {
         }
 
         fun url(context: Context): String = prefs(context).getString("url", null).orEmpty()
+
+        /**
+         * How the card is taken: SALE (charged at once, given back if not dispensed) or PREAUTH
+         * (held at the price, then charged for what the controller says was handed over -- e.g. by
+         * weight -- or released). Per terminal, like the controller.
+         */
+        fun preauth(context: Context): Boolean = prefs(context).getString("flow", null) == "PREAUTH"
+        fun savePreauth(context: Context, on: Boolean) =
+            prefs(context).edit().putString("flow", if (on) "PREAUTH" else "SALE").apply()
         fun token(context: Context): String = prefs(context).getString("token", null).orEmpty()
 
         /** Blank [url] = none (back to [NotConnected]). "192.168.1.50:8080" gets http:// in front. */

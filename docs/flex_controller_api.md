@@ -48,6 +48,7 @@ Request:
   "amount_cents": 1900,
   "currency": "CAD",
   "payment_method": "CARD",
+  "payment_flow": "PREAUTH",
   "terminal_sn": "WP6350VQ36000255",
   "deadline_ms": 1793906911219
 }
@@ -60,6 +61,7 @@ Request:
 | `quantity` | Units to hand over (e.g. bags). |
 | `amount_cents`, `currency` | What the customer paid. |
 | `payment_method` | `CARD` or `VIP` (GoldSky member code). |
+| `payment_flow` | `SALE`: `amount_cents` is already charged. `PREAUTH`: it is only held on the card -- you may say how much of it to charge (below). |
 | `terminal_sn` | The terminal's serial number. |
 | `deadline_ms` | Epoch milliseconds. **Do not start a hand-over after this time** — answer `FAILED`. |
 
@@ -77,8 +79,14 @@ or
 
 | `result` | What the terminal does |
 |---|---|
-| `DISPENSED` | Keeps the payment. "TAKE YOUR ITEM". |
+| `DISPENSED` | Keeps the payment. "TAKE YOUR ITEM". On a `PREAUTH` order, optional `amount_cents` = what to charge of the hold (e.g. by weight; never more than held; absent = all of it; `0` = release). |
 | `FAILED` | Voids the payment (the customer is not charged). |
+
+For example, a held order settled at what was actually taken:
+
+```json
+{ "order_id": "FLX-1793906821219", "result": "DISPENSED", "amount_cents": 1250 }
+```
 
 ## Money rules (why the API is shaped like this)
 
