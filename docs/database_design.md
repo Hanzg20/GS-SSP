@@ -97,6 +97,7 @@ schema and its name does not repeat the domain: `dine.checks`, not
 | `retail` | retail extension tables: stock_moves (2026-11-01, `docs/migrations/2026-11-01_inventory.sql`); drawer_sessions / drawer_moves (cash drawer, 2026-11-02, `docs/migrations/2026-11-02_cash_drawer.sql`) | **started 2026-11-01** |
 | `wash`, `ev`, `parking`, `vending`, `timer` | each vertical's own extension tables | as each is built or migrated |
 | `member` | loyalty (2026-11-01); VIP tables to move | **started 2026-11-01** |
+| `testsim` | the shared test simulator (Cael Ops → Test simulator): controllers, requests; terminals and Cael only via `public.testsim_*` (`docs/migrations/2026-11-05_testsim.sql`) | **done 2026-11-05** |
 | `media`, `apex`, `ops` | see §2 | to migrate |
 | `legacy` | the pending `gp_*`, `jc_*`, `e_*` (§2) | pending |
 

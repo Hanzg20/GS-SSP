@@ -128,6 +128,49 @@ interface FlexController {
         }
     }
 
+    /**
+     * Cael's shared Test simulator stands in for the machine (owner 2026-11-05): the request goes to
+     * the cloud and a person answers DISPENSED / FAILED on the page; READY / NOT READY is set there
+     * too. For tests anywhere -- no PC on the terminal's LAN needed. Payments stay real.
+     */
+    object CaelSim : FlexController {
+        override val description = "Cael 测试模拟器（在 Cael 的“测试模拟器”页面操作）"
+        override val connected = true
+
+        override suspend fun ready(detail: (String) -> Unit): Boolean {
+            val s = com.goldsky.ssp.payment.TestSimRepository.status()
+            if (s == null || !s.success) {
+                detail("连不上 Cael${s?.message?.let { "：$it" } ?: ""}")
+                return false
+            }
+            detail(if (s.ready) "就绪（Cael 测试模拟器）" else "未就绪${s.message?.let { "：$it" } ?: "（Cael 测试模拟器）"}")
+            return s.ready
+        }
+
+        override suspend fun dispense(request: DispenseRequest): Boolean {
+            val payload = json.encodeToJsonElement(DispenseRequest.serializer(), request) as kotlinx.serialization.json.JsonObject
+            if (!com.goldsky.ssp.payment.TestSimRepository.submit(KIND, request.order_id, payload, request.deadline_ms)) {
+                Log.e(TAG, "Simulator: ${request.order_id} not delivered")
+                return false
+            }
+            // A person answers on the page; asked every second until the deadline (+ grace).
+            val until = request.deadline_ms + ANSWER_GRACE_MS
+            while (System.currentTimeMillis() < until) {
+                val a = com.goldsky.ssp.payment.TestSimRepository.answerOf(KIND, request.order_id)
+                if (a?.answered == true) {
+                    val result = (a.answer?.get("result") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                    Log.i(TAG, "Simulator: ${request.order_id} -> $result")
+                    return result == "DISPENSED"
+                }
+                kotlinx.coroutines.delay(1_000)
+            }
+            Log.e(TAG, "Simulator: ${request.order_id} unanswered")
+            return false
+        }
+
+        private const val KIND = "FLEX_DISPENSE"
+    }
+
     companion object {
         private const val TAG = "FlexController"
         private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -140,9 +183,13 @@ interface FlexController {
 
         private fun prefs(context: Context) = context.getSharedPreferences("flex_controller", Context.MODE_PRIVATE)
 
+        /** The address that means [CaelSim] instead of a machine on the LAN. */
+        const val CAEL_SIM = "cael"
+
         /** This terminal's controller, set in the technician panel (it's per site, not per store). */
         fun load(context: Context): FlexController {
             val url = prefs(context).getString("url", null)?.takeIf { it.isNotBlank() } ?: return NotConnected
+            if (url == CAEL_SIM) return CaelSim
             return Http(url, prefs(context).getString("token", null))
         }
 
@@ -151,7 +198,7 @@ interface FlexController {
 
         /** Blank [url] = none (back to [NotConnected]). "192.168.1.50:8080" gets http:// in front. */
         fun save(context: Context, url: String, token: String) {
-            val u = url.trim().let { if (it.isBlank() || it.contains("://")) it else "http://$it" }
+            val u = url.trim().let { if (it.isBlank() || it == CAEL_SIM || it.contains("://")) it else "http://$it" }
             prefs(context).edit().putString("url", u).putString("token", token.trim()).apply()
         }
     }

@@ -54,6 +54,8 @@ fun FlexTechScreen(
             )
         }
         TechButton("设置控制器地址", { editing = true })
+        // The shared simulator on Cael: tests anywhere, a person answers on the page.
+        TechButton("使用 Cael 测试模拟器", { onSetController(com.goldsky.ssp.flex.logic.FlexController.CAEL_SIM, "") })
         if (controllerReady != null) TechButton("测试连接", onTestController)
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(KioskCard).padding(10.dp)) {
             Text("商品", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -88,7 +90,7 @@ private fun ControllerDialog(url: String, token: String, onDismiss: () -> Unit, 
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("出货控制器", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Text("地址，如 192.168.1.50:8080；留空 = 不接控制器", color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+            Text("地址，如 192.168.1.50:8080；cael = Cael 测试模拟器；留空 = 不接控制器", color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
             Field(u, "控制器地址") { u = it }
             Text("令牌（控制器要求时填写）", color = TextSecondary, fontSize = 12.sp)
             Field(t, "令牌") { t = it }
