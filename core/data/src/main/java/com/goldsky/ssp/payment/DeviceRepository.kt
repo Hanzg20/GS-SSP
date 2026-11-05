@@ -6,6 +6,7 @@ import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.rpc
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
@@ -80,6 +81,12 @@ object DeviceRepository {
      */
     fun init(context: Context) {
         appContext = context.applicationContext
+        // Every approved card answer (sanitised) onto its transaction row: the bank's own ids.
+        com.goldsky.ssp.payment.hardware.PaymentResponses.listener = { ref, type, answer ->
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                TransactionRepository.recordAcquirerResponse(ref, type, answer)
+            }
+        }
         cachedToken = prefs()?.getString(KEY_TOKEN, null)
         com.goldsky.ssp.common.CoreConfig.region = getRegion()
         com.goldsky.ssp.payment.wizarpos.WizarPosSocketClient.targetHost = getTerminalIp()

@@ -37,8 +37,25 @@ interface FlexPayment {
     /** See IPaymentProvider.rememberSale. */
     fun rememberSale(ref: String, cents: Int, trace: String?, invoice: String?, transId: String?, rrn: String?) {}
 
+    /**
+     * The payment app's approved answers for [ref] so far, by TransType (sanitised; e.g. PreAuth +
+     * AuthCompletion) -- sent with the order's row (transactions.acquirer_response).
+     */
+    fun answers(ref: String): kotlinx.serialization.json.JsonObject? = null
+
     class Real(private val provider: IPaymentProvider) : FlexPayment {
-        private fun callback(done: (Result) -> Unit) = object : IPaymentProvider.PaymentCallback {
+        private val raws = java.util.concurrent.ConcurrentHashMap<String, MutableMap<String, kotlinx.serialization.json.JsonElement>>()
+
+        private fun keep(ref: String, type: String, json: String) {
+            runCatching { kotlinx.serialization.json.Json.parseToJsonElement(json) }.getOrNull()?.let {
+                raws.getOrPut(ref) { java.util.concurrent.ConcurrentHashMap() }[type] = it
+            }
+        }
+
+        override fun answers(ref: String) = raws[ref]?.let { kotlinx.serialization.json.JsonObject(it.toMap()) }
+
+        private fun callback(ref: String, type: String, done: (Result) -> Unit) = object : IPaymentProvider.PaymentCallback {
+            override fun onRawResponse(json: String) = keep(ref, type, json)
             private var card: IPaymentProvider.CardInfo? = null
             private var finished = false
             private fun finish(r: Result) { if (!finished) { finished = true; done(r) } }
@@ -53,7 +70,8 @@ interface FlexPayment {
             override fun onProgress(message: String) {}
         }
 
-        private fun yesNo(done: (Boolean) -> Unit) = object : IPaymentProvider.PaymentCallback {
+        private fun yesNo(ref: String?, type: String, done: (Boolean) -> Unit) = object : IPaymentProvider.PaymentCallback {
+            override fun onRawResponse(json: String) { if (ref != null) keep(ref, type, json) }
             override fun onSuccess(authCode: String, refNum: String, entryMode: String) = done(true)
             override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
                 Log.e("FlexPayment", "Follow-up failed: $errorMsg")
@@ -62,10 +80,10 @@ interface FlexPayment {
             override fun onProgress(message: String) {}
         }
 
-        override fun hold(cents: Int, ref: String, done: (Result) -> Unit) = provider.startPreAuth(cents, ref, callback(done))
-        override fun sale(cents: Int, ref: String, done: (Result) -> Unit) = provider.startSale(cents, ref, callback(done))
-        override fun complete(ref: String, cents: Int, done: (Boolean) -> Unit) = provider.completeAuth(ref, cents, yesNo(done))
-        override fun release(ref: String, done: (Boolean) -> Unit) = provider.voidAuth(ref, yesNo(done))
+        override fun hold(cents: Int, ref: String, done: (Result) -> Unit) = provider.startPreAuth(cents, ref, callback(ref, "PreAuth", done))
+        override fun sale(cents: Int, ref: String, done: (Result) -> Unit) = provider.startSale(cents, ref, callback(ref, "Purchase", done))
+        override fun complete(ref: String, cents: Int, done: (Boolean) -> Unit) = provider.completeAuth(ref, cents, yesNo(ref, "AuthCompletion", done))
+        override fun release(ref: String, done: (Boolean) -> Unit) = provider.voidAuth(ref, yesNo(null, "AuthVoid", done))
         override fun reverse(ref: String, cents: Int, done: (Boolean) -> Unit) =
             provider.voidOrRefund(ref, cents) { ok, _ -> done(ok) }
         override fun undo(ref: String, cents: Int, done: (Boolean, String) -> Unit) =

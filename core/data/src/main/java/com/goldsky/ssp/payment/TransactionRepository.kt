@@ -40,6 +40,8 @@ data class TransactionRecord(
     val card_brand: String? = null,
     // Dual-bay Aegis Timer: unit '1'/'2' (docs/migrations/2026-10-04_transactions_service_bay.sql)
     val service_bay: String? = null,
+    /** Approved payment-app answers by TransType, sanitised (see PaymentResponses). */
+    val acquirer_response: kotlinx.serialization.json.JsonObject? = null,
     // "VIP_LOAD" for money loaded onto a VIP card; null = the column default
     // 'SERVICE' (docs/migrations/2026-10-06_vip_terminal_load.sql)
     val txn_kind: String? = null,
@@ -404,6 +406,22 @@ object TransactionRepository {
     /**
      * Raw network write, no offline queueing.
      */
+    @kotlinx.serialization.Serializable
+    private data class AcquirerParams(val p_ref: String, val p_type: String, val p_response: kotlinx.serialization.json.JsonObject)
+
+    /**
+     * Adds an approved payment-app answer to the row [ref] (transactions.acquirer_response, by
+     * TransType). No row yet = nothing (an app that writes its row after the payment sends the
+     * answers with it). Best effort: never blocks or fails a sale.
+     */
+    suspend fun recordAcquirerResponse(ref: String, type: String, answer: kotlinx.serialization.json.JsonObject) =
+        withContext(Dispatchers.IO) {
+            if (CoreConfig.isMock) return@withContext
+            runCatching {
+                SupabaseClientProvider.client.postgrest.rpc("device_record_acquirer_response", AcquirerParams(ref, type, answer))
+            }.onFailure { Log.w(TAG, "Acquirer answer for $ref not recorded: ${it.message}") }
+        }
+
     suspend fun recordTransactionRemote(record: TransactionRecord): Boolean = withContext(Dispatchers.IO) {
         if (CoreConfig.isMock) {
             Log.i(TAG, "MOCK: Transaction recorded (skipped remote)")

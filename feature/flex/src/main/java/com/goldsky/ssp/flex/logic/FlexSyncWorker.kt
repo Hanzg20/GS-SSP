@@ -51,6 +51,7 @@ class FlexSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineW
                 payment_method = if (order.vipCardUid != null) "VIP_CARD" else "CREDIT_CARD",
                 vip_card_uid = order.vipCardUid,
                 product_id = order.productId,
+                acquirer_response = order.acquirerResponse,
                 entry_mode = order.entryMode,
                 card_brand = order.cardBrand,
                 card_aid = order.cardAid,

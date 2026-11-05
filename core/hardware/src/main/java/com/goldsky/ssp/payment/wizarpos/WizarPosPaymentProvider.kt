@@ -8,6 +8,7 @@ import com.goldsky.ssp.common.HardwareConfig
 import com.goldsky.ssp.common.CoreConfig
 import com.goldsky.ssp.payment.hardware.CardBrands
 import com.goldsky.ssp.payment.hardware.IPaymentProvider
+import com.goldsky.ssp.payment.hardware.PaymentResponses
 import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -351,6 +352,14 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                     val authNo = root["AuthCode"]?.jsonPrimitive?.content ?: "OK"
                     val rrn = root["RRN"]?.jsonPrimitive?.content
                     Log.i(TAG, "Approved: TransIndexCode=$originalRef RRN=$rrn")
+                    // The whole answer (sanitised), for reconciliation / refunds: the bank's own ids are in it.
+                    if (request.TransType != "Settle") {
+                        PaymentResponses.sanitize(response)?.let { clean ->
+                            Log.i(TAG, "${request.TransType} answer for $originalRef: $clean")
+                            callback.onRawResponse(clean.toString())
+                            runCatching { PaymentResponses.listener?.invoke(originalRef, request.TransType, clean) }
+                        }
+                    }
                     if (request.TransType == "Purchase" || request.TransType == "PreAuth") {
                         saleIds[originalRef] = SaleIds(field("TraceNum"), field("InvoiceNum"), field("TransID"), rrn)
                     }

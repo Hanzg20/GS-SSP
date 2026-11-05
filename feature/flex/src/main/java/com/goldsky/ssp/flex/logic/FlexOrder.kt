@@ -31,4 +31,6 @@ data class FlexOrder(
     val productId: String? = null,
     /** HOLD: the AuthCompletion's TransIndexCode that settled it -- what a void reverses. */
     val settleRef: String? = null,
+    /** The payment app's approved answers by TransType (sanitised) -- the bank's own ids are in them. */
+    val acquirerResponse: kotlinx.serialization.json.JsonObject? = null,
 )

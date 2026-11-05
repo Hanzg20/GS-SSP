@@ -453,8 +453,10 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
     /** [chargedCents]: what a settled hold came to (the row's amount), else the price stays. */
     private fun finishOrder(ref: String, dispense: String, payment: String, chargedCents: Int? = null) {
         if (simulated) return
+        val answers = this.payment?.answers(ref)
         OrderRepository.update(getApplication(), ref) {
-            it.copy(dispenseStatus = dispense, paymentStatus = payment, amountCents = chargedCents ?: it.amountCents)
+            it.copy(dispenseStatus = dispense, paymentStatus = payment, amountCents = chargedCents ?: it.amountCents,
+                acquirerResponse = answers ?: it.acquirerResponse)
         }
         triggerSync()
     }
