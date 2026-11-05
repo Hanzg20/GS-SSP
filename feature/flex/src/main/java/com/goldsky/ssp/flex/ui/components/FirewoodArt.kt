@@ -78,7 +78,7 @@ fun FirewoodArt(quantity: Int, selected: Boolean, modifier: Modifier = Modifier)
         val glow = 0.20f + 0.10f * breath + 0.30f * heat
         drawCircle(
             Brush.radialGradient(
-                listOf(Color(0xFFFF8A1F).copy(alpha = glow), Color(0xFFFF5A00).copy(alpha = glow * 0.35f), Color.Transparent),
+                listOf(Color(0xFFFF8A1F).alpha(glow), Color(0xFFFF5A00).alpha(glow * 0.35f), Color.Transparent),
                 center = Offset(w / 2, ground - h * 0.30f), radius = maxOf(w, h) * 0.55f,
             ),
             radius = maxOf(w, h) * 0.55f, center = Offset(w / 2, ground - h * 0.30f),
@@ -112,7 +112,7 @@ fun FirewoodArt(quantity: Int, selected: Boolean, modifier: Modifier = Modifier)
             val fl = 0.75f + 0.25f * sin((flicker * 3 + i * 0.4f) * 2 * PI).toFloat()
             drawCircle(
                 Brush.verticalGradient(
-                    listOf(Color.Transparent, Color(0xFFFF6A10).copy(alpha = (0.22f + 0.25f * heat) * fl)),
+                    listOf(Color.Transparent, Color(0xFFFF6A10).alpha((0.22f + 0.25f * heat) * fl)),
                     startY = at.y - r * 0.2f, endY = at.y + r * 1.15f,
                 ),
                 radius = r * 1.12f, center = at,
@@ -138,11 +138,11 @@ fun FirewoodArt(quantity: Int, selected: Boolean, modifier: Modifier = Modifier)
             val prev = y + h * 0.05f
             val px = x - sin((p * 2.5f + s.phase) * 2 * PI).toFloat() * w * 0.008f * s.sway
             drawLine(
-                Brush.verticalGradient(listOf(hot.copy(alpha = a * 0.7f), Color.Transparent), startY = y, endY = prev),
+                Brush.verticalGradient(listOf(hot.alpha(a * 0.7f), Color.Transparent), startY = y, endY = prev),
                 Offset(x, y), Offset(px, prev), strokeWidth = rad * 1.1f, cap = StrokeCap.Round,
             )
-            drawCircle(Color(0xFFFF6A1A).copy(alpha = a * 0.35f), rad * 2.8f, Offset(x, y))
-            drawCircle(hot.copy(alpha = a), rad, Offset(x, y))
+            drawCircle(Color(0xFFFF6A1A).alpha(a * 0.35f), rad * 2.8f, Offset(x, y))
+            drawCircle(hot.alpha(a), rad, Offset(x, y))
         }
     }
 }
@@ -155,7 +155,7 @@ private fun DrawScope.emberBed(c: Offset, width: Float, depth: Float, coals: Lis
     // The heat haze over the bed.
     val haze = 0.30f + 0.25f * heat + 0.08f * sin(flicker * 4 * PI).toFloat()
     drawOval(
-        Brush.radialGradient(listOf(Color(0xFFFF4A00).copy(alpha = haze), Color.Transparent), center = c, radius = width * 0.55f),
+        Brush.radialGradient(listOf(Color(0xFFFF4A00).alpha(haze), Color.Transparent), center = c, radius = width * 0.55f),
         topLeft = Offset(c.x - width * 0.6f, c.y - depth * 1.6f), size = Size(width * 1.2f, depth * 3.2f),
     )
     // The bed itself: charcoal, darker at the edge.
@@ -174,7 +174,7 @@ private fun DrawScope.emberBed(c: Offset, width: Float, depth: Float, coals: Lis
         drawOval(Color(0xFF1C0D06), topLeft = Offset(at.x - size, at.y - size * 0.6f), size = Size(size * 2, size * 1.2f))
         drawOval(
             Brush.radialGradient(
-                listOf(Color(0xFFFFE08A).copy(alpha = f), Color(0xFFFF7A1A).copy(alpha = f * 0.9f), Color(0xFFB02A08).copy(alpha = 0f)),
+                listOf(Color(0xFFFFE08A).alpha(f), Color(0xFFFF7A1A).alpha(f * 0.9f), Color(0xFFB02A08).alpha(0f)),
                 center = at, radius = size,
             ),
             topLeft = Offset(at.x - size, at.y - size * 0.6f), size = Size(size * 2, size * 1.2f),
@@ -219,7 +219,7 @@ private fun DrawScope.flames(c: Offset, width: Float, height: Float, flicker: Fl
             drawPath(
                 path,
                 Brush.verticalGradient(
-                    listOf(cols[0].copy(alpha = 0f), cols[0].copy(alpha = alpha), cols[1].copy(alpha = alpha)),
+                    listOf(cols[0].alpha(0f), cols[0].alpha(alpha), cols[1].alpha(alpha)),
                     startY = top, endY = c.y,
                 ),
                 blendMode = androidx.compose.ui.graphics.BlendMode.Plus,
@@ -258,7 +258,7 @@ private fun DrawScope.piece(c: Offset, size: Float, turn: Float, seed: Int, warm
         close()
     }
     // Drop shadow onto what's behind.
-    drawPath(wedge(radius).apply { translate(Offset(size * 0.08f, size * 0.12f)) }, Color.Black.copy(alpha = 0.5f))
+    drawPath(wedge(radius).apply { translate(Offset(size * 0.08f, size * 0.12f)) }, Color.Black.alpha(0.5f))
     // Bark on the outer curve: dark, lit from the top-left.
     drawPath(wedge(radius), Brush.linearGradient(
         listOf(Color(0xFF6E4628), Color(0xFF3A2414), Color(0xFF1E1208)),
@@ -273,7 +273,7 @@ private fun DrawScope.piece(c: Offset, size: Float, turn: Float, seed: Int, warm
     for (k in 1..6) {
         val rr = radius * 0.86f * k / 7f
         drawArc(
-            Color(0xFF8A5528).copy(alpha = 0.22f + 0.08f * (k % 2)), turn, sweep, false,
+            Color(0xFF8A5528).alpha(0.22f + 0.08f * (k % 2)), turn, sweep, false,
             topLeft = Offset(pith.x - rr, pith.y - rr), size = Size(rr * 2, rr * 2), style = Stroke(size * 0.035f),
         )
     }
@@ -282,11 +282,11 @@ private fun DrawScope.piece(c: Offset, size: Float, turn: Float, seed: Int, warm
     val a = Math.toRadians((turn + sweep * (0.25f + rnd.nextFloat() * 0.5f)).toDouble())
     val crack = Offset(cos(a).toFloat(), sin(a).toFloat())
     drawLine(
-        Color(0xFF4A2810).copy(alpha = 0.75f), pith + crack * (radius * 0.18f), pith + crack * (radius * 0.70f),
+        Color(0xFF4A2810).alpha(0.75f), pith + crack * (radius * 0.18f), pith + crack * (radius * 0.70f),
         strokeWidth = size * 0.05f, cap = StrokeCap.Round,
     )
     // Light catching the split faces' edge.
-    drawPath(wedge(radius * 0.86f), Color.White.copy(alpha = 0.10f), style = Stroke(size * 0.04f))
+    drawPath(wedge(radius * 0.86f), Color.White.alpha(0.10f), style = Stroke(size * 0.04f))
 }
 
 /** Twine round the bundle, hugging its outline, with a knot on top. */
@@ -304,7 +304,7 @@ private fun DrawScope.rope(pieces: List<Pair<Offset, Float>>, r: Float) {
     }
     path.close()
     val width = r * 0.055f
-    drawPath(path, Color.Black.copy(alpha = 0.40f), style = Stroke(width * 1.8f))
+    drawPath(path, Color.Black.alpha(0.40f), style = Stroke(width * 1.8f))
     drawPath(path, Color(0xFFCDA56A), style = Stroke(width))
     // The twist: short dark strokes along it.
     drawPath(path, Color(0xFF6E4E24), style = Stroke(width * 0.6f,
@@ -316,6 +316,12 @@ private fun DrawScope.rope(pieces: List<Pair<Offset, Float>>, r: Float) {
         drawLine(Color(0xFFCDA56A), top, top + Offset(side * r * 0.16f, -r * 0.10f), width * 0.9f, StrokeCap.Round)
     }
 }
+
+/**
+ * The colour at [a] opacity, kept in 0..1: the picked tile's "fire comes up" multiplies some of
+ * them past 1, and Compose throws on that (crashed 255 on the first tap, 2026-11-05).
+ */
+private fun Color.alpha(a: Float) = copy(alpha = a.coerceIn(0f, 1f))
 
 private fun lerp(a: Color, b: Color, f: Float) = Color(
     a.red + (b.red - a.red) * f, a.green + (b.green - a.green) * f, a.blue + (b.blue - a.blue) * f, 1f,
