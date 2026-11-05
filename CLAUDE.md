@@ -88,9 +88,12 @@ app/aegis-flex -- Aegis Flex (`com.goldsky.ssp.aegis.flex`, feature:flex), added
                   PARTNER's own machine -- the customer picks and pays on the terminal, the partner's controller hands the
                   product over (first lead: Outdoor Vend's firewood kiosk on an InHand EC3320). Copied from Aegis Vend without
                   MDB / big screen / VMC simulator; the sale screen is Vend's showcase grid. Only the controller's "dispensed"
-                  keeps the money (`FlexController`); none is built yet (`NotConnected`), so every sale is reversed at once and
-                  a TEST strip says so. Next: the LAN link (HTTP, later Modbus TCP) as a DispenseEngine protocol. No
-                  vertical of its own in the DB yet (products / devices CHECK): sells the store's VEND products.
+                  keeps the money (`FlexController`): `Http` = our LAN API (`docs/flex_controller_api.md`, status + dispense,
+                  address per terminal in the technician panel; `tools/flex-controller-sim` stands in for the machine); none
+                  set = `NotConnected`, every sale reversed at once under a TEST strip. Tiles can be drawn and animated
+                  (`attributes.art`, e.g. "firewood"). No vertical of its own in the DB yet (products / devices CHECK): sells
+                  the store's VEND products, and on a terminal shared with Wash its registerDevice overwrites
+                  devices.app_version (blocks a Wash config publish via guard_qr_payment_mode until Wash reports again).
 app/aegis-timer -- Aegis Timer (`com.goldsky.ssp.aegis.timer`, feature:timer), added 2026-09-23: the time-based product family
                   (pay -> terminal times the session and HOLDS an output ON, countdown on screen) -- first product is the
                   self-service vacuum beside the wash ($2/4min, $3/5min, card-only, alarm-only on fault). Deliberately NOT a
