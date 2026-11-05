@@ -131,14 +131,19 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         watchController()
     }
 
-    /** Technician panel: a new controller address (blank = none). Checked at once. */
+    /** Technician panel / Cael (SET_CONTROLLER): a new controller address (blank = none). Checked at once. */
     fun setController(url: String, token: String) {
         FlexController.save(getApplication(), url, token)
         controller = FlexController.load(getApplication())
         Log.i(TAG, "Controller: ${controller.description}")
         _controllerReady.value = null
+        _controllerVersion.value++
         viewModelScope.launch { checkController() }
     }
+
+    /** Bumped on every change of [controller], so the screens redraw with it. */
+    private val _controllerVersion = MutableStateFlow(0)
+    val controllerVersion: StateFlow<Int> = _controllerVersion.asStateFlow()
 
     /**
      * A controller that's off or unreachable means nothing can be handed over: the grid goes

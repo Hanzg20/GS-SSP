@@ -98,6 +98,19 @@ class MainActivity : ComponentActivity() {
                 // A LOCK mid-sale lets that sale finish; it only blocks new ones.
                 override fun onLockRequested(locked: Boolean) = applyLock()
                 override fun isIdleForScannerTest() = idle
+                // Cael sets the controller remotely (device page), as the technician panel does.
+                override suspend fun onSetControllerRequested(url: String, token: String): Pair<Boolean, String> {
+                    if (!idle) return false to "Not changed: a sale is in progress -- try again"
+                    viewModel.setController(url, token)
+                    viewModel.checkController()
+                    val c = viewModel.controller
+                    val state = when (viewModel.controllerReady.value) {
+                        true -> "ready"
+                        false -> "NOT ready (sales paused): ${viewModel.controllerDetail.value}"
+                        null -> "no controller: every sale is voided (TEST)"
+                    }
+                    return true to "${c.description} -- $state"
+                }
                 override suspend fun onBringToFrontRequested(): Pair<Boolean, String>? {
                     if (!com.goldsky.ssp.ui.KioskRecall.handles(application)) return null
                     if (!idle) return false to "Not run: a payment is in progress"
@@ -120,12 +133,14 @@ class MainActivity : ComponentActivity() {
             val items by viewModel.items.collectAsState()
             val controllerReady by viewModel.controllerReady.collectAsState()
             val controllerDetail by viewModel.controllerDetail.collectAsState()
+            // Read through its version, so a controller changed from Cael redraws the screen.
+            val ctrl = viewModel.controllerVersion.collectAsState().value.let { viewModel.controller }
             BackHandler(enabled = true) { if (tech) tech = false } // kiosk: back never leaves the app
             if (tech) {
                 FlexTechScreen(
                     version = version,
                     deviceSn = deviceSn,
-                    controller = viewModel.controller.description,
+                    controller = ctrl.description,
                     controllerReady = controllerReady,
                     controllerDetail = controllerDetail,
                     controllerUrl = com.goldsky.ssp.flex.logic.FlexController.url(this),
@@ -142,7 +157,7 @@ class MainActivity : ComponentActivity() {
                     viewModel, french, viewModel::toggleLanguage,
                     card = payMode != com.goldsky.ssp.model.PaymentMethodMode.SCAN_ONLY,
                     vip = payMode != com.goldsky.ssp.model.PaymentMethodMode.CARD_ONLY,
-                    controller = viewModel.controller.connected,
+                    controller = ctrl.connected,
                 )
             }
             if (showPin) {

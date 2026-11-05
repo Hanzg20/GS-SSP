@@ -43,7 +43,10 @@ object RemoteCommandManager {
     // START_SERVICE / REBOOT older than this are not run by the poll.
     private const val FRESH_MS = 60_000L
     private const val SCANNER_TEST_MS = 4_000L
-    private val KNOWN_COMMANDS = setOf("REBOOT", "SYNC_CONFIG", "LOCK", "UNLOCK", "FETCH_LOGS", "START_SERVICE", "SCANNER_TEST", "BRING_TO_FRONT")
+    private val KNOWN_COMMANDS = setOf(
+        "REBOOT", "SYNC_CONFIG", "LOCK", "UNLOCK", "FETCH_LOGS", "START_SERVICE", "SCANNER_TEST", "BRING_TO_FRONT",
+        "SET_CONTROLLER",
+    )
 
     // Command ids already taken by this process (Realtime or poll), so a
     // command seen by both paths runs once. Bounded: old ids fall out.
@@ -80,6 +83,14 @@ object RemoteCommandManager {
          * on a two-app terminal) -- the status is then left for the app that does.
          */
         suspend fun onBringToFrontRequested(): Pair<Boolean, String>? = null
+
+        /**
+         * Remote SET_CONTROLLER (Aegis Flex, 2026-11-05): the partner controller this terminal hands
+         * products over through -- payload "url" (an address on the LAN, "cael" = Cael's test
+         * simulator, blank = none) and "token". Returns whether it was taken and what the terminal
+         * now sees, or null if this app has no controller (status left for the app that does).
+         */
+        suspend fun onSetControllerRequested(url: String, token: String): Pair<Boolean, String>? = null
     }
 
     private var commandListener: CommandListener? = null
@@ -232,6 +243,17 @@ object RemoteCommandManager {
         // the one that does -- an older Timer marked SCANNER_TEST FAILED (2026-10-21).
         if (cmd !in KNOWN_COMMANDS) {
             Log.d(TAG, "Not handled here, status left alone: $cmd")
+            return
+        }
+        if (cmd == "SET_CONTROLLER") {
+            CoroutineScope(Dispatchers.Main).launch {
+                val url = deviceCommand.payload?.get("url")?.jsonPrimitive?.contentOrNull.orEmpty()
+                val token = deviceCommand.payload?.get("token")?.jsonPrimitive?.contentOrNull.orEmpty()
+                val outcome = commandListener?.onSetControllerRequested(url, token)
+                if (outcome == null) { Log.d(TAG, "SET_CONTROLLER not taken here, status left alone"); return@launch }
+                Log.i(TAG, "Remote SET_CONTROLLER -> ${outcome.second}")
+                withContext(Dispatchers.IO) { updateCommandStatus(deviceCommand.id, if (outcome.first) "SUCCESS" else "FAILED", outcome.second) }
+            }
             return
         }
         if (cmd == "BRING_TO_FRONT") {
