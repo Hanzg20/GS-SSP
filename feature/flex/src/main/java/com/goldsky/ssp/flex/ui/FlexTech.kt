@@ -26,11 +26,19 @@ fun FlexTechScreen(
     version: String,
     deviceSn: String,
     controller: String,
+    /** The last check: true ready, false not, null none set up. */
+    controllerReady: Boolean?,
+    controllerDetail: String,
+    controllerUrl: String,
+    controllerToken: String,
+    onSetController: (url: String, token: String) -> Unit,
+    onTestController: () -> Unit,
     products: Int,
     onSystemCheck: () -> Unit,
     onPaymentTests: () -> Unit,
     onExit: () -> Unit,
 ) {
+    var editing by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxSize().background(KioskBg).verticalScroll(rememberScrollState()).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -40,7 +48,13 @@ fun FlexTechScreen(
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(KioskCard).padding(10.dp)) {
             Text("出货控制器", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Text(controller, color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+            if (controllerReady != null) Text(
+                (if (controllerReady) "● " else "● 暂停售卖 · ") + controllerDetail,
+                color = if (controllerReady) KioskEmerald else KioskRed, fontSize = 12.sp, lineHeight = 16.sp,
+            )
         }
+        TechButton("设置控制器地址", { editing = true })
+        if (controllerReady != null) TechButton("测试连接", onTestController)
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(KioskCard).padding(10.dp)) {
             Text("商品", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Text(
@@ -52,6 +66,52 @@ fun FlexTechScreen(
         TechButton("支付测试（真实交易）", onPaymentTests)
         TechButton("返回售卖界面", onExit, primary = true)
     }
+    if (editing) {
+        ControllerDialog(controllerUrl, controllerToken, onDismiss = { editing = false }) { url, token ->
+            editing = false
+            onSetController(url, token)
+        }
+    }
+}
+
+/**
+ * The controller's address on the site LAN (e.g. 192.168.1.50:8080) and its shared token, if
+ * it asks for one. Blank address = no controller (every sale given back, the TEST strip).
+ */
+@Composable
+private fun ControllerDialog(url: String, token: String, onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
+    var u by remember { mutableStateOf(url) }
+    var t by remember { mutableStateOf(token) }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.width(300.dp).background(KioskCard, RoundedCornerShape(16.dp)).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("出货控制器", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text("地址，如 192.168.1.50:8080；留空 = 不接控制器", color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+            Field(u, "控制器地址") { u = it }
+            Text("令牌（控制器要求时填写）", color = TextSecondary, fontSize = 12.sp)
+            Field(t, "令牌") { t = it }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.weight(1f)) { TechButton("取消", onDismiss) }
+                Box(Modifier.weight(1f)) { TechButton("保存", { onSave(u, t) }, primary = true) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Field(value: String, hint: String, onChange: (String) -> Unit) {
+    androidx.compose.foundation.text.BasicTextField(
+        value = value, onValueChange = onChange, singleLine = true,
+        textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 16.sp),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(KioskAmber),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(KioskBg).padding(10.dp),
+        decorationBox = { inner ->
+            if (value.isEmpty()) Text(hint, color = TextSecondary, fontSize = 16.sp)
+            inner()
+        },
+    )
 }
 
 @Composable

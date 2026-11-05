@@ -41,7 +41,10 @@
         android:label="GoldSky Aegis Flex"
         android:roundIcon="@drawable/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.SSP">
+        android:theme="@style/Theme.SSP"
+        android:usesCleartextTraffic="true">
+        <!-- Cleartext: the partner's controller answers plain HTTP on the site LAN
+             (FlexController.Http, docs/flex_controller_api.md); no card data goes to it. -->
 
         <activity
             android:name="com.goldsky.ssp.flex.MainActivity"

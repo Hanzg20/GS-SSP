@@ -118,12 +118,20 @@ class MainActivity : ComponentActivity() {
             val french by viewModel.french.collectAsState()
             val payMode by viewModel.payMode.collectAsState()
             val items by viewModel.items.collectAsState()
+            val controllerReady by viewModel.controllerReady.collectAsState()
+            val controllerDetail by viewModel.controllerDetail.collectAsState()
             BackHandler(enabled = true) { if (tech) tech = false } // kiosk: back never leaves the app
             if (tech) {
                 FlexTechScreen(
                     version = version,
                     deviceSn = deviceSn,
                     controller = viewModel.controller.description,
+                    controllerReady = controllerReady,
+                    controllerDetail = controllerDetail,
+                    controllerUrl = com.goldsky.ssp.flex.logic.FlexController.url(this),
+                    controllerToken = com.goldsky.ssp.flex.logic.FlexController.token(this),
+                    onSetController = viewModel::setController,
+                    onTestController = { lifecycleScope.launch { viewModel.checkController() } },
                     products = items.size,
                     onSystemCheck = { openAway(com.goldsky.ssp.ui.SystemCheckActivity::class.java) },
                     onPaymentTests = { openAway(com.goldsky.ssp.ui.PaymentTestActivity::class.java) },

@@ -89,9 +89,17 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
     private val _payMode = MutableStateFlow(com.goldsky.ssp.model.PaymentMethodMode.CARD_ONLY)
     val payMode: StateFlow<Int> = _payMode.asStateFlow()
 
-    /** The partner's controller; none until the LAN link is built. */
-    var controller: FlexController = FlexController.NotConnected
+    /** The partner's controller, set in the technician panel (FlexController.load). */
+    var controller: FlexController = FlexController.load(application)
         private set
+
+    /** Is the controller there and ready (null = none set up)? Checked every [CONTROLLER_CHECK_MS]. */
+    private val _controllerReady = MutableStateFlow<Boolean?>(null)
+    val controllerReady: StateFlow<Boolean?> = _controllerReady.asStateFlow()
+
+    /** The last check's words, for the technician panel. */
+    private val _controllerDetail = MutableStateFlow("")
+    val controllerDetail: StateFlow<String> = _controllerDetail.asStateFlow()
 
     private val onQ3mini = DeviceAdapter.getModel() == DeviceAdapter.HardwareModel.WIZARPOS_Q3MINI
     /** Emulator (debuggable, off the Q3mini): a stand-in payment, nothing recorded. */
@@ -118,6 +126,42 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         if (payment != null && !simulated) {
             FlexRecovery.run(application, payment) { triggerSync() }
             triggerSync()
+        }
+        applyAvailability()
+        watchController()
+    }
+
+    /** Technician panel: a new controller address (blank = none). Checked at once. */
+    fun setController(url: String, token: String) {
+        FlexController.save(getApplication(), url, token)
+        controller = FlexController.load(getApplication())
+        Log.i(TAG, "Controller: ${controller.description}")
+        _controllerReady.value = null
+        viewModelScope.launch { checkController() }
+    }
+
+    /**
+     * A controller that's off or unreachable means nothing can be handed over: the grid goes
+     * Unavailable until it answers again (a sale in progress is left alone).
+     */
+    private fun watchController() {
+        viewModelScope.launch {
+            while (true) {
+                checkController()
+                delay(CONTROLLER_CHECK_MS)
+            }
+        }
+    }
+
+    suspend fun checkController() {
+        val c = controller
+        if (!c.connected) {
+            _controllerReady.value = null
+            _controllerDetail.value = ""
+        } else {
+            val ready = c.ready { _controllerDetail.value = it } == true
+            if (ready != _controllerReady.value) Log.i(TAG, "Controller ${if (ready) "ready" else "NOT ready"}: ${_controllerDetail.value}")
+            _controllerReady.value = ready
         }
         applyAvailability()
     }
@@ -163,7 +207,8 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Idle <-> Unavailable; a sale in progress is left alone. */
     private fun applyAvailability() {
-        val canSell = payment != null && _items.value.isNotEmpty() && !locked && !away
+        val controllerOk = !controller.connected || _controllerReady.value == true
+        val canSell = payment != null && _items.value.isNotEmpty() && !locked && !away && controllerOk
         val s = _state.value
         if (!canSell && s is State.Choosing) {
             _selected.value = null
@@ -204,7 +249,7 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
                             cardBrand = r.card?.brand, cardAid = r.card?.aid, cardBin = r.card?.bin)
                     }
                     _state.value = State.Dispensing(item)
-                    if (dispense(ref, item)) {
+                    if (dispense(ref, item, "CARD")) {
                         finishOrder(ref, "SUCCESS", "PAID")
                         show(State.Done(item))
                     } else {
@@ -250,7 +295,7 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
                 is VipDeductResult.Success -> {
                     if (!simulated) OrderRepository.update(getApplication(), ref) { it.copy(paymentStatus = "PAID") }
                     _state.value = State.Dispensing(item)
-                    if (dispense(ref, item)) {
+                    if (dispense(ref, item, "VIP")) {
                         finishOrder(ref, "SUCCESS", "PAID")
                         show(State.Done(item, vip = true))
                     } else {
@@ -279,8 +324,16 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         show(State.Declined(s.item, SaleReason.CANCELLED))
     }
 
-    private suspend fun dispense(ref: String, item: Item): Boolean =
-        runCatching { controller.dispense(ref, item.productId, item.quantity, item.cents) }
+    private suspend fun dispense(ref: String, item: Item, method: String): Boolean =
+        runCatching {
+            controller.dispense(FlexController.DispenseRequest(
+                order_id = ref, product_id = item.productId, slot = item.number, name = item.name,
+                quantity = item.quantity, amount_cents = item.cents,
+                currency = if (com.goldsky.ssp.common.CoreConfig.region == "CA") "CAD" else "USD",
+                payment_method = method, terminal_sn = DeviceRepository.getPersistedDeviceSn().orEmpty(),
+                deadline_ms = System.currentTimeMillis() + FlexController.DISPENSE_WINDOW_MS,
+            ))
+        }
             .onFailure { Log.e(TAG, "Controller failed on $ref: ${it.message}") }
             .getOrDefault(false)
 
@@ -341,6 +394,7 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         const val PRODUCT_VERTICAL = "VEND"
         const val CHOICE_MS = 60_000L
         const val RESULT_MS = 6_000L
+        const val CONTROLLER_CHECK_MS = 10_000L
 
         /** Natural order: A2 before A10, 9 before 12 (runs of digits compared as numbers). */
         val SLOT_ORDER = Comparator<String> { a, b ->
