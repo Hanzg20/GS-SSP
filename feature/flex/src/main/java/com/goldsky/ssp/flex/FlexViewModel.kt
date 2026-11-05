@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -45,10 +46,14 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 class FlexViewModel(application: Application) : AndroidViewModel(application) {
 
-    /** [number]: shown on its tile. [quantity]: units the controller hands over (attributes.quantity, else 1). */
+    /**
+     * [number]: shown on its tile. [quantity]: units the controller hands over (attributes.quantity,
+     * else 1). [art]: a drawn, animated picture for the tile (attributes.art, e.g. "firewood"),
+     * used before [imageUrl].
+     */
     data class Item(
         val number: String, val name: String, val cents: Int,
-        val imageUrl: String? = null, val productId: String? = null, val quantity: Int = 1,
+        val imageUrl: String? = null, val productId: String? = null, val quantity: Int = 1, val art: String? = null,
     )
 
     sealed class State {
@@ -128,7 +133,8 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
             .sortedWith(compareBy(nullsLast(SLOT_ORDER)) { it.slot })
             .mapIndexed { i, p ->
                 val qty = p.attributes?.get("quantity")?.jsonPrimitive?.intOrNull?.takeIf { it > 0 } ?: 1
-                Item(p.slot ?: number(i), p.name, p.price_cents, p.image_url, p.id, qty)
+                val art = p.attributes?.get("art")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                Item(p.slot ?: number(i), p.name, p.price_cents, p.image_url, p.id, qty, art)
             }
         if (_selected.value !in _items.value) _selected.value = null
         applyAvailability()

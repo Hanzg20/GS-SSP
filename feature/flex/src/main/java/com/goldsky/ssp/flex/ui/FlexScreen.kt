@@ -28,6 +28,7 @@ import com.goldsky.ssp.flex.FlexViewModel
 import com.goldsky.ssp.flex.FlexViewModel.Item
 import com.goldsky.ssp.flex.FlexViewModel.State
 import com.goldsky.ssp.flex.ui.components.CardTapAnim
+import com.goldsky.ssp.flex.ui.components.FirewoodArt
 import com.goldsky.ssp.flex.ui.components.ItemDropAnim
 import com.goldsky.ssp.flex.ui.components.QrScanAnim
 import com.goldsky.ssp.flex.ui.components.ResultAnim
@@ -151,7 +152,8 @@ private fun Choosing(
         }
         Spacer(Modifier.height(4.dp))
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val tileHeight = (maxHeight - GAP) / 2
+            // Up to three: one row, the full height (bigger pictures); more: two rows, scrolling.
+            val tileHeight = if (items.size <= 3) maxHeight else (maxHeight - GAP) / 2
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3), state = grid, modifier = Modifier.fillMaxSize(),
                 horizontalArrangement = Arrangement.spacedBy(GAP), verticalArrangement = Arrangement.spacedBy(GAP),
@@ -200,6 +202,8 @@ private fun Choosing(
 }
 
 private val GAP = 6.dp
+/** products.attributes.art for [FirewoodArt]. */
+private const val ART_FIREWOOD = "firewood"
 private val SPACED = 0.08.em
 
 /** Like a VIP plan tile: dark, gold-edged when picked; number, picture, name, gold price. */
@@ -217,7 +221,8 @@ private fun Tile(item: Item, selected: Boolean, money: (Int) -> String, modifier
                 Text(item.name.take(1).uppercase(), fontSize = 44.sp, color = KioskAmber,
                     fontWeight = FontWeight.Bold)
             }
-            if (item.imageUrl.isNullOrBlank()) fallback()
+            if (item.art == ART_FIREWOOD) FirewoodArt(item.quantity, selected, Modifier.fillMaxSize())
+            else if (item.imageUrl.isNullOrBlank()) fallback()
             else SubcomposeAsyncImage(
                 model = item.imageUrl, contentDescription = item.name, contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(), error = { fallback() }, loading = { fallback() },
