@@ -59,6 +59,15 @@ github.com/SmartPOSSamples/MDBTestForCloudSDK (cloudpossdk 1.8.2.28):
 - The second answer contradicts the first on ending a session (VEND_CANCEL vs "depends")
   and says Begin Session carries no amount (MDB 4.3 and their demo say it does). Settle it on
   the wire: MDB232 box + `setEnableSniffer(true)` / `snifferMDBData` to see the bytes sent.
+- **Third answer (Maggie, 2026-11-05)**, with MDB 4.3's "Example vend session #1": a normal
+  session ends with the VMC's SESSION COMPLETE (0x04), the reader answering END SESSION (0x07)
+  -- the board does it, the SDK has no event for either. VEND_CANCEL is the VMC cancelling a
+  vend request (reader answers VEND DENIED); SEL_DENIED is a poll answer, neither ends a
+  session. BEGIN SESSION carries no amount; the charge goes in VEND APPROVED's eventAmount
+  (done). So the app no longer sends anything after VEND SUCCESS. Still open: how the reader
+  ends a session it opened when nobody chooses (card-first timeout / CANCEL) -- MDB's SESSION
+  CANCEL REQUEST (0x04 poll answer); the app still sends VEND_CANCEL then (the first answer:
+  the board turns it into Session Cancel). The funds in our BEGIN_SESSION are then ignored.
 - The MDB232 converter box for the PC simulator: on Taobao.
 - `setConfig` is not kept by the board: after a restart it reads 0x1840 (USD) again, so
   the app sets CAD on every open.

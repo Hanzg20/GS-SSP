@@ -295,9 +295,9 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
                 val hold = holdRef
                 holdRef = null
                 val balance = vipBalanceAfter
-                if (vipSession) mdbController.endSession()
+                // The session ends by itself: the machine sends SESSION COMPLETE and the board answers
+                // END SESSION (WizarPOS 2026-11-05) -- VEND_CANCEL is the machine's word, not ours.
                 if (hold != null) {
-                    mdbController.endSession()
                     // Card first: the customer has the item; now take the price from the hold.
                     payment?.complete(hold, s.amountCents) { ok ->
                         if (!ok) Log.e(TAG, "Completion of $hold failed: item given, money not settled -- check PAYWizard")
@@ -589,12 +589,11 @@ class VendingViewModel(application: Application) : AndroidViewModel(application)
             record(txnId, if (ok) "VOIDED" else "PAID", "FAILED")
         }
         val vip = vipUid
+        // After VEND FAILURE too the machine ends the session (SESSION COMPLETE -> END SESSION).
         if (vip != null) {
             // Paid from the balance: it goes back to the card.
-            if (vipSession) mdbController.endSession()
             viewModelScope.launch { done(simulated || com.goldsky.ssp.payment.VipRepository.refund(vip, txnId)) }
         } else if (hold != null) {
-            mdbController.endSession()
             payment?.release(hold, done)
         } else {
             payment?.reverse(txnId, amount, done)

@@ -56,7 +56,11 @@ interface VendPayment {
         override fun hold(cents: Int, ref: String, done: (Result) -> Unit) = provider.startPreAuth(cents, ref, callback(done))
         override fun sale(cents: Int, ref: String, done: (Result) -> Unit) = provider.startSale(cents, ref, callback(done))
         override fun complete(ref: String, cents: Int, done: (Boolean) -> Unit) = provider.completeAuth(ref, cents, yesNo(done))
-        override fun release(ref: String, done: (Boolean) -> Unit) = provider.voidAuth(ref, yesNo(done))
+        // Nuvei answers AuthVoid "transType not supported" (WizarPOS 2026-11-05: the unattended app
+        // has Reversal in place of Void): then a Reversal of the PreAuth -- never a Refund.
+        override fun release(ref: String, done: (Boolean) -> Unit) = provider.voidAuth(ref, yesNo { ok ->
+            if (ok) done(true) else provider.voidTransaction(ref, yesNo(done))
+        })
         override fun reverse(ref: String, cents: Int, done: (Boolean) -> Unit) =
             provider.voidOrRefund(ref, cents) { ok, _ -> done(ok) }
     }
