@@ -371,6 +371,9 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         if (!idle) return false to "Not done: a payment is in progress -- try again"
         if (order.vipCardUid != null) return false to "A VIP payment: give it back from the VIP card ledger"
         if (order.paymentStatus != "PAID") return false to "Nothing to give back: the order is ${order.paymentStatus}"
+        // WizarPOS 2026-11-05: a completed pre-authorization can't be reversed (only a PreAuth or a
+        // Purchase can), and the unattended payment app has no Refund.
+        if (order.kind == "HOLD") return false to "Not sent: a completed pre-authorization can't be reversed on this terminal -- refund it in the WizarPOS merchant back-office"
         // The original's ids: Cael's payload, else the payment app's saved answer (the completion
         // is the charge). Without them PAYWizard asks for OriTransId on screen -- never on a kiosk.
         val saved = (pay.answers(ref) ?: order.acquirerResponse)?.let { it["AuthCompletion"] ?: it["Purchase"] }
