@@ -359,10 +359,16 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         if (!idle) return false to "Not done: a payment is in progress -- try again"
         if (order.vipCardUid != null) return false to "A VIP payment: give it back from the VIP card ledger"
         if (order.paymentStatus != "PAID") return false to "Nothing to give back: the order is ${order.paymentStatus}"
-        val target = ids["ori_index"] ?: order.settleRef ?: pay.settledRef(ref) ?: ref
-        if (ids["trace"] != null || ids["rrn"] != null) {
-            pay.rememberSale(target, order.amountCents, ids["trace"], ids["invoice"], ids["trans_id"], ids["rrn"])
-        }
+        // The original's ids: Cael's payload, else the payment app's saved answer (the completion
+        // is the charge). Without them PAYWizard asks for OriTransId on screen -- never on a kiosk.
+        val saved = (pay.answers(ref) ?: order.acquirerResponse)?.let { it["AuthCompletion"] ?: it["Purchase"] }
+            as? kotlinx.serialization.json.JsonObject
+        fun id(key: String, field: String) = ids[key]
+            ?: (saved?.get(field) as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+        val target = id("ori_index", "TransIndexCode") ?: order.settleRef ?: pay.settledRef(ref) ?: ref
+        val transId = id("trans_id", "TransID")
+        if (transId == null) return false to "Not sent: the original's OriTransId is unknown on this terminal -- give it in the command (trans_id)"
+        pay.rememberSale(target, order.amountCents, id("trace", "TraceNum"), id("invoice", "InvoiceNum"), transId, id("rrn", "RRN"))
         away = true // no new sale while the card terminal works on it
         applyAvailability()
         val (ok, how) = kotlinx.coroutines.suspendCancellableCoroutine<Pair<Boolean, String>> { c ->
