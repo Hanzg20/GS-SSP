@@ -92,7 +92,7 @@ app/aegis-flex -- Aegis Flex (`com.goldsky.ssp.aegis.flex`, feature:flex), added
                   address per terminal in the technician panel; `tools/flex-controller-sim` stands in for the machine); none
                   set = `NotConnected`, every sale reversed at once under a TEST strip. Tiles can be drawn and animated
                   (`attributes.art`, e.g. "firewood"). The controller's status can list `sold_out` slots (grey SOLD OUT
-                  tile, the rest still sell); idle 45 s with no Cael ads = Flex's own attract screen (TOUCH TO START). No vertical of its own in the DB yet (products / devices CHECK): sells
+                  tile, the rest still sell); idle = Wash's ad rotation (BaseAdActivity, 3 min). No vertical of its own in the DB yet (products / devices CHECK): sells
                   the store's VEND products, and on a terminal shared with Wash its registerDevice overwrites
                   devices.app_version (blocks a Wash config publish via guard_qr_payment_mode until Wash reports again).
 app/aegis-timer -- Aegis Timer (`com.goldsky.ssp.aegis.timer`, feature:timer), added 2026-09-23: the time-based product family
