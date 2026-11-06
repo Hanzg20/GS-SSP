@@ -93,8 +93,8 @@ WITH orgs AS (
   WHERE d.org_id IS NOT NULL
     AND NOT EXISTS (SELECT 1 FROM public.products f WHERE f.org_id = d.org_id AND f.vertical_type = 'FLEX')
 ), ins AS (
-  INSERT INTO public.products (org_id, name, price_cents, image_url, vertical_type, attributes, is_active)
-  SELECT p.org_id, p.name, p.price_cents, p.image_url, 'FLEX', p.attributes, p.is_active
+  INSERT INTO public.products (org_id, name, price_cents, vertical_type, attributes, is_active)
+  SELECT p.org_id, p.name, p.price_cents, 'FLEX', p.attributes, p.is_active
   FROM public.products p JOIN orgs USING (org_id)
   WHERE p.vertical_type = 'VEND' AND p.is_active AND coalesce(p.attributes ->> 'slot', '') <> ''
   RETURNING *
@@ -105,8 +105,8 @@ SELECT * FROM ins;
 UPDATE public.app_configurations a
 SET products = coalesce(a.products, '[]'::jsonb)
              || (SELECT jsonb_agg(to_jsonb(f)) FROM flex_copies f WHERE f.org_id = a.org_id)
-WHERE a.id IN (SELECT DISTINCT ON (org_id) id FROM public.app_configurations
-               WHERE org_id IN (SELECT org_id FROM flex_copies) ORDER BY org_id, created_at DESC);
+WHERE (a.org_id, a.created_at) IN (SELECT org_id, max(created_at) FROM public.app_configurations
+                                   WHERE org_id IN (SELECT org_id FROM flex_copies) GROUP BY org_id);
 
 SELECT org_id, count(*) AS flex_products FROM flex_copies GROUP BY org_id;
 
