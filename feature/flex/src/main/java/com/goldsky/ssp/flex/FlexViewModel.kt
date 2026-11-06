@@ -369,13 +369,17 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         val pay = payment ?: return false to "No card terminal on this device"
         if (!idle) return false to "Not done: a payment is in progress -- try again"
         if (order.vipCardUid != null) return false to "A VIP payment: give it back from the VIP card ledger"
-        if (order.paymentStatus != "PAID") return false to "Nothing to give back: the order is ${order.paymentStatus}"
+        val answers = pay.answers(ref) ?: order.acquirerResponse
+        // A pre-authorization never completed (nothing dispensed, and the release then failed: the
+        // order says VOIDED but the hold may still sit on the card) -- released again on request.
+        val openHold = order.kind == "HOLD" && answers?.get("AuthCompletion") == null && answers?.get("PreAuth") != null
+        if (!openHold && order.paymentStatus != "PAID") return false to "Nothing to give back: the order is ${order.paymentStatus}"
         // WizarPOS 2026-11-05: a completed pre-authorization can't be reversed (only a PreAuth or a
         // Purchase can), and the unattended payment app has no Refund.
-        if (order.kind == "HOLD") return false to "Not sent: a completed pre-authorization can't be reversed on this terminal -- refund it in the WizarPOS merchant back-office"
+        if (order.kind == "HOLD" && !openHold) return false to "Not sent: a completed pre-authorization can't be reversed on this terminal -- refund it in the WizarPOS merchant back-office"
         // The original's ids: Cael's payload, else the payment app's saved answer (the completion
         // is the charge). Without them PAYWizard asks for OriTransId on screen -- never on a kiosk.
-        val saved = (pay.answers(ref) ?: order.acquirerResponse)?.let { it["AuthCompletion"] ?: it["Purchase"] }
+        val saved = answers?.let { if (openHold) it["PreAuth"] else it["AuthCompletion"] ?: it["Purchase"] }
             as? kotlinx.serialization.json.JsonObject
         fun id(key: String, field: String) = ids[key]
             ?: (saved?.get(field) as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
@@ -386,11 +390,18 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         away = true // no new sale while the card terminal works on it
         applyAvailability()
         val (ok, how) = kotlinx.coroutines.suspendCancellableCoroutine<Pair<Boolean, String>> { c ->
-            pay.undo(target, order.amountCents) { ok, how -> if (c.isActive) c.resumeWith(Result.success(ok to how)) }
+            // A hold: AuthVoid, else Reversal -- never a Refund (it would pay back money never taken).
+            if (openHold) pay.release(target) { ok -> if (c.isActive) c.resumeWith(Result.success(ok to "RELEASE")) }
+            else pay.undo(target, order.amountCents) { ok, how -> if (c.isActive) c.resumeWith(Result.success(ok to how)) }
         }
         away = false
         applyAvailability()
         val money = String.format(java.util.Locale.US, "$%.2f", order.amountCents / 100.0)
+        if (openHold) {
+            Log.w(TAG, "Remote hold release $ref ($target): ${if (ok) "released" else "refused"} ($money)")
+            return if (ok) true to "Hold of $money released ($target) -- nothing was charged"
+            else false to "Card terminal refused to release the $money hold ($target): it expires by itself"
+        }
         if (!ok) return false to "Card terminal refused to give back $money ($target): void and refund both failed"
         val status = if (how == "REFUND") "REFUNDED" else "VOIDED"
         OrderRepository.update(getApplication(), ref) { it.copy(paymentStatus = status) }
