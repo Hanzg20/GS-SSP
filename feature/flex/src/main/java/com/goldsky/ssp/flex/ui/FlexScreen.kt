@@ -1,11 +1,6 @@
 package com.goldsky.ssp.flex.ui
 
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,10 +50,6 @@ fun FlexContainer(
     controller: Boolean = false,
     /** The card is held at the price and settled after the hand-over: prices read as a hold. */
     preauth: Boolean = false,
-    /** Idle with no Cael ads: the attract screen over the grid ([Attract]); any touch wakes it. */
-    attract: Boolean = false,
-    /** Cael's brand name for the attract screen (branding.brand_name), if set. */
-    brand: String? = null,
 ) {
     val state by viewModel.state.collectAsState()
     val items by viewModel.items.collectAsState()
@@ -78,10 +69,6 @@ fun FlexContainer(
                 modifier = Modifier.align(Alignment.CenterHorizontally).clip(RoundedCornerShape(10.dp))
                     .background(KioskAmber).padding(horizontal = 14.dp, vertical = 1.dp),
             )
-            if (attract && state == State.Choosing) {
-                Attract(items.filter { it.number !in soldOut }, brand, preauth, Modifier.weight(1f))
-                return@Column
-            }
             Crossfade(targetState = state, label = "flex", modifier = Modifier.weight(1f)) { st ->
                 when (st) {
                     State.Unavailable -> Column(
@@ -315,50 +302,3 @@ private fun Line(text: String) =
     Text(text, color = TextSecondary, fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
         modifier = Modifier.padding(top = 6.dp))
 
-/**
- * The idle screen when Cael has no ads for this terminal (owner 2026-11-05, for showing the
- * machine): the brand, each item lit in turn with its price, and TOUCH TO START -- a round in
- * English, the next in French. Any touch goes back to the grid (MainActivity).
- */
-@Composable
-private fun Attract(items: List<Item>, brand: String?, preauth: Boolean, modifier: Modifier) {
-    if (items.isEmpty()) return
-    var n by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(ATTRACT_STEP_MS)
-            n++
-        }
-    }
-    val item = items[n % items.size]
-    val french = (n / items.size) % 2 == 1
-    val s = if (french) FlexStrings.FR else FlexStrings.EN
-    val pulse by rememberInfiniteTransition(label = "attract").animateFloat(
-        initialValue = 0.45f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "pulse",
-    )
-    Column(modifier.fillMaxWidth().padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (!brand.isNullOrBlank()) Text(
-            brand.uppercase(), color = KioskAmber, fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = SPACED,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
-        Crossfade(targetState = item to french, label = "attract-item", modifier = Modifier.weight(1f).fillMaxWidth()) { (it, fr) ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Picture(it, true, Modifier.weight(1f).fillMaxWidth())
-                Text(
-                    "${it.name} · ${if (preauth) (if (fr) FlexStrings.FR else FlexStrings.EN).upTo + " " else ""}${FlexStrings.money(it.cents, fr)}",
-                    color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1,
-                )
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            s.touchToStart, color = KioskAmber.copy(alpha = pulse), fontSize = 28.sp, fontWeight = FontWeight.Bold,
-            letterSpacing = SPACED, maxLines = 1, textAlign = TextAlign.Center,
-        )
-        Text(s.payByCard, color = TextSecondary, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-    }
-}
-
-/** How long each item is shown on the attract screen. */
-private const val ATTRACT_STEP_MS = 3_500L

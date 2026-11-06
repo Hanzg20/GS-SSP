@@ -48,7 +48,7 @@ import kotlin.system.exitProcess
  * config / technician PIN from Cael, remote commands (lock, sync, bring to front), heartbeat,
  * idle ads, crash restart, and the technician panel behind the four corners + PIN.
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : com.goldsky.ssp.ui.BaseAdActivity() {
 
     private val viewModel: FlexViewModel by viewModels()
     private val lockedState = mutableStateOf(false)
@@ -58,12 +58,7 @@ class MainActivity : ComponentActivity() {
 
     private val showPinState = mutableStateOf(false)
     private val techState = mutableStateOf(false)
-    /** Idle with no Cael ads: the attract screen (FlexContainer); [swallowing] = the touch that woke it. */
-    private val attractState = mutableStateOf(false)
-    private var swallowing = false
     private val techEntry = com.goldsky.ssp.ui.CornerSequence()
-    private val adHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val adRunnable = Runnable { launchAdsIfIdle() }
     private var watchdogJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -133,6 +128,7 @@ class MainActivity : ComponentActivity() {
         AdManager.init(this)
         startWatchdog(hardware)
         speakScreens()
+        lifecycleScope.launch { viewModel.state.collect { if (idle) resetAdTimer() } }
 
         val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
         setContent {
@@ -143,7 +139,6 @@ class MainActivity : ComponentActivity() {
             val items by viewModel.items.collectAsState()
             val controllerReady by viewModel.controllerReady.collectAsState()
             val controllerDetail by viewModel.controllerDetail.collectAsState()
-            val attract by attractState
             // Read through its version, so a controller changed from Cael redraws the screen.
             val ctrl = viewModel.controllerVersion.collectAsState().value.let { viewModel.controller }
             BackHandler(enabled = true) { if (tech) tech = false } // kiosk: back never leaves the app
@@ -172,8 +167,6 @@ class MainActivity : ComponentActivity() {
                     vip = payMode != com.goldsky.ssp.model.PaymentMethodMode.CARD_ONLY,
                     controller = ctrl.connected,
                     preauth = ctrl.let { com.goldsky.ssp.flex.logic.FlexController.preauth(this) },
-                    attract = attract,
-                    brand = ConfigManager.getConfig()?.branding?.brand_name?.takeIf { it.isNotBlank() },
                 )
             }
             if (showPin) {
@@ -285,17 +278,6 @@ class MainActivity : ComponentActivity() {
     // ---- idle ad screen (same rule as wash's BaseAdActivity) ----------------
 
     override fun dispatchTouchEvent(ev: android.view.MotionEvent?): Boolean {
-        com.goldsky.ssp.ui.BootFrontGuard.onTouch()
-        resetAdTimer()
-        // The attract screen: the touch that wakes it only wakes it (it never picks a tile).
-        if (ev?.actionMasked == android.view.MotionEvent.ACTION_DOWN && attractState.value) {
-            attractState.value = false
-            swallowing = true
-        }
-        if (swallowing) {
-            if (ev?.actionMasked == android.view.MotionEvent.ACTION_UP || ev?.actionMasked == android.view.MotionEvent.ACTION_CANCEL) swallowing = false
-            return true
-        }
         // Technician screen: the four corners in order within 5 s, only while idle, then the
         // PIN (com.goldsky.ssp.ui.CornerSequence). Only watches -- the touch still lands.
         if (ev?.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
@@ -311,34 +293,13 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.setAway(false)
-        resetAdTimer()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        adHandler.removeCallbacks(adRunnable)
-    }
-
-    private fun resetAdTimer() {
-        adHandler.removeCallbacks(adRunnable)
-        adHandler.postDelayed(adRunnable, AD_IDLE_MS)
     }
 
     /**
-     * Only from the idle screen -- never mid-payment or in the technician panel. Cael's ads when
-     * this terminal has any, else Flex's own attract screen (the items, TOUCH TO START).
+     * BaseAdActivity's hook, as Wash's: no ads mid-sale, in the technician panel or its PIN --
+     * only from the idle grid.
      */
-    private fun launchAdsIfIdle() {
-        if (!idle || techState.value || showPinState.value) {
-            resetAdTimer()
-            return
-        }
-        if (AdManager.getCachedPlaylist(this).isEmpty()) {
-            attractState.value = true
-            return
-        }
-        startActivity(Intent(this, com.goldsky.ssp.ui.AdActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-    }
+    override fun isCarWashSessionActive(): Boolean = !idle || techState.value || showPinState.value
 
     // ---- kiosk ----------------------------------------------------------------
 
@@ -403,7 +364,5 @@ class MainActivity : ComponentActivity() {
         val KEEP = String(charArrayOf('-'))
         const val VOICE_SWITCH_MS = 500L
         const val TTS_READY_MS = 10_000L
-        /** Idle this long on the grid: ads / the attract screen (shorter than Wash's 3 min: it sells on sight). */
-        const val AD_IDLE_MS = 45_000L
     }
 }
