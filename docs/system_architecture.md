@@ -3,6 +3,13 @@
 > [!NOTE]
 > **版本号说明**: 本文档实际由两条独立演进线合并而成（CMP/Supabase 后端的 RLS 修复线，与 Android HAL/产品线的架构演进线），两条线各自独立递增版本号，合并后出现了 `v2.23`/`v2.24`/`v2.27` 各被使用两次、且部分条目未按日期严格排序的情况（例如 `v2.27 (2026-08-20)` 实际是全文最新的一次修改，却排在 `v2.28 (2026-08-09)` 之后）。**版本号不是可靠的时间/依赖排序依据，请以每条目标题里的日期为准**；正文中散落的 `[v2.1]` 等内联标记同理，指的是该版本条目引入的变更，不代表这是当前最新状态。
 
+### v2.54 (2026-11-05) — 自助支付能力澄清（WizarPOS 正式答复）+ Aegis Flex + Cael 测试模拟器 + MDB 会话结束方式 (Unattended Payment Limits Confirmed, Aegis Flex, Shared Test Simulator, MDB Session End)
+
+*   新增 **§20**：PAYWizard 自助版（UnAttend）+ Nuvei 的真实能力——**只有撤销（Reversal），没有 Void / Refund**；撤销只对预授权和消费有效，预授权完成后不可撤销；Interac 预授权 2 小时有效，部分完成后余额 7–10 天才释放；Nuvei 不支持 Deferred（离线刷卡）。附 255 实测记录与运营规则。
+*   新增 **§21**：Aegis Flex（`app/aegis-flex`）——终端收钱、合作方控制器出货（首个线索 Outdoor Vend 柴火机，InHand EC3320）：局域网 HTTP 接口、SALE / PREAUTH 两种收款方式、按套餐售罄、远程设置控制器、远程撤销、保存支付程序完整返回。
+*   新增 **§22**：Cael 公共测试模拟器（Ops → 测试模拟器，`testsim` schema）——以后所有"机器那一侧"的测试都在这里操作，付款始终是真的。
+*   **§19 修正**（WizarPOS 第三次答复，2026-11-05）：正常结束会话由售货机发 SESSION COMPLETE、板子自动回 END SESSION，终端出货成功 / 失败后不再发 VEND_CANCEL；Begin Session 不带金额；释放预授权在 AuthVoid 被拒后改用撤销（Reversal）。§19.6 待确认项更新。
+
 ### v2.53 (2026-11-03) — Aegis Vend：MDB 售货机流程成文 + 终端选货展示模式 (Aegis Vend MDB Flow Documented, Showcase Sale Mode)
 
 *   新增 **§19**：开机准备、先刷卡 / 先选货两种流程、异常处理（不出货就不收钱）、记账与重启恢复、待现场确认项。
@@ -1325,7 +1332,7 @@ sequenceDiagram
 | 2 | — | 获批：向售货机开始会话（Begin Session，额度 $10），屏幕倒计时 **60 秒**（`SESSION_MS`） |
 | 3 | 在售货机上选货 | 售货机发 Vend Request（价格、货道） |
 | 4 | — | 未超额度且未售罄：批准出货，屏幕「出货中」 |
-| 5 | 取货 | 售货机报 Vend Success → 按**实际价格**完成预授权（AuthCompletion），结束会话 |
+| 5 | 取货 | 售货机报 Vend Success → 按**实际价格**完成预授权（AuthCompletion）；会话由售货机结束（SESSION COMPLETE → 板子回 END SESSION，终端不发任何事件） |
 
 **B. 先选货（直接在售货机上按）**
 
@@ -1342,17 +1349,17 @@ sequenceDiagram
 |---|---|
 | 卡被拒 | 拒绝出货，「未扣款」 |
 | 支付程序无回应 | 当作未付；若其实已扣，下次启动由 `VendRecovery` 撤销 |
-| 先刷卡后 60 秒没选货 | 结束会话，释放预授权（AuthVoid） |
+| 先刷卡后 60 秒没选货 | 结束会话（发 VEND_CANCEL，见 §19.6），释放预授权（AuthVoid，被拒则撤销 Reversal，§20） |
 | 先选货后 60 秒不付款 | 拒绝这次出货，回空闲 |
 | 选的货超过额度 | 拒绝，释放预授权，「超出限额」 |
 | 售罄 | 拒绝，「售罄」 |
 | 顾客点终端 CANCEL | 结束会话 / 拒绝出货，释放预授权 |
 | 顾客在售货机上取消（VEND_CANCEL） | 板子按 demo 回 VEND_CANCEL（result 0）；终端结束会话，有钱就退；出货中则等售货机结果 |
-| 出货失败，或 30 秒没结果（`DISPENSE_TIMEOUT_MS`） | 释放预授权 / 撤销消费，「出货失败 · 未扣款」 |
+| 出货失败，或 30 秒没结果（`DISPENSE_TIMEOUT_MS`） | 释放预授权 / 撤销消费，「出货失败 · 未扣款」；Vend Failure 后会话同样由售货机结束 |
 | 付款过程中屏幕已切走 | 获批的钱立即撤销 / 释放 |
 | 撤销或退款本身失败 | 记为 PAID / FAILED 上报 Cael，人工退款 |
 
-结果画面停 6 秒回空闲。批准 / 拒绝按 WizarPOS demo 发新的 `MDBEvent`（批准 eventResult 1 带请求金额；拒绝 -1，金额 0）。
+结果画面停 6 秒回空闲。批准 / 拒绝按 WizarPOS demo 发新的 `MDBEvent`（批准 eventResult 1 带请求金额；拒绝 -1，金额 0）。扣款金额只在 VEND APPROVED 的 `eventAmount` 里（WizarPOS 2026-11-05：Begin Session 不带金额）。
 
 ### 19.4 屏幕与外围
 *   **语言**：英 / 法切换，回空闲恢复英文。
@@ -1371,12 +1378,17 @@ sequenceDiagram
 *   每笔在**问卡之前**先写本地日志（`orders_v2.json`，状态 PENDING），崩溃不丢账。
 *   结束后由 `VendingSyncWorker` 上云：付款状态（PAID / VOIDED）、出货状态（SUCCESS / FAILED）、卡品牌 / AID / BIN。
 *   被拒、或预授权已释放（没扣钱）：删除，不留记录。
-*   重启时（`VendRecovery`）：预授权一律释放；消费一律撤销（void，不行就 refund）；都不成的上报人工处理。
+*   重启时（`VendRecovery`）：预授权一律释放；消费一律撤销；不成的上报人工处理（自助版没有 Refund，§20——代码里的 refund 兜底在 Nuvei 自助版上不会成功）。
 
-### 19.6 待现场确认（WizarPOS 两次答复矛盾，用 MDB232 盒子 + 板子 sniffer 在线路上核实）
-1. 我方发 VEND_CANCEL 后会话是否真的结束。
-2. Begin Session 带的金额售货机是否使用（MDB 4.3 与 demo 说带，第二次答复说不带）。
-3. 先刷卡全流程（PreAuth → AuthCompletion / AuthVoid）尚未与**真实售货机**跑通；目前只在模拟售货机 + 真卡 $0.10 上测过。Interac 借记卡是否接受预授权也未知。
+### 19.6 MDB 会话：已澄清 / 待现场确认
+**WizarPOS 第三次答复（Maggie，2026-11-05，对照 MDB 4.3「Example Vend Session #1」）已澄清：**
+*   正常结束：售货机发 **SESSION COMPLETE (0x04)**，刷卡器回 **END SESSION (0x07)**，回到 Enabled。这一步由板子完成，SDK 没有对应事件；终端在 Vend Success / Failure 之后**什么都不发**（2026-11-05 已改，此前会多发一个 VEND_CANCEL）。
+*   **VEND_CANCEL (0x01)** 是售货机在 Vend Request 之后、批准 / 拒绝之前取消本次选货的命令，刷卡器回 VEND DENIED 回到 Session Idle。**SEL_DENIED** 是刷卡器在 POLL 应答里拒绝选择，两者都不是结束会话的命令。
+*   **BEGIN SESSION 不带金额**，只表示刷卡器准备好、售货机进入 Session Idle；扣款金额在 VEND APPROVED 的 `eventAmount` 里。我方 Begin Session 里填的额度被忽略，无影响。
+
+**仍待确认：**
+1. 刷卡器主动结束自己开的会话（先刷卡后没人选货、超时或按 CANCEL）——MDB 里是 SESSION CANCEL REQUEST（POLL 应答 0x04）。终端目前发 `TYPE_VEND_CANCEL`（WizarPOS 第一次答复：板子转成 Session Cancel），需 WizarPOS 确认或用 MDB232 盒子 + sniffer 在线路上核实。
+2. 先刷卡全流程尚未与**真实售货机**跑通；目前只在模拟售货机 + 真卡 $0.10 上测过。预授权释放与 Interac 的限制见 §20。
 
 ### 19.7 销售模式：终端选货（展示）
 技术员面板「销售模式」可切到「终端选货（展示）」（`ShowcaseViewModel` / `ShowcaseScreen`，2026-11-03），给潜在客户展示以刷卡机为中心的售卖方式；**真实站点一律用 MDB**。
@@ -1394,3 +1406,71 @@ sequenceDiagram
 *   **记账**：交易 `payment_method = VIP_CARD`、`vip_card_uid`、`entry_mode = QR`，与 Wash 相同。
 *   **六宫格展示模式**：选货后 PAY 旁边有 VIP 按钮 → 扫码 → 真实扣款 → 显示出货 3 秒 → 立即 `vip_refund` 退回（等同刷卡演示的撤销）；退回未确认时留给 `VendRecovery` 下次启动再退。
 *   **终端类型**：Vend / Wash / Timer 每次启动（Wash 报 WASH，Timer 报 TIMER）（`sync_device_identity` 之后）调用 `device_set_vertical`，把自己那一行的 `devices.vertical_type` 改成本 App 的类型（`docs/migrations/2026-11-03_device_set_vertical.sql`；只能改自己，只接受 WASH/VEND/TIMER/EV/LAUNDRY）。起因：255 从 Wash 改装成 Vend 后仍是 WASH，发布「刷卡 + 扫码」被当成旧版洗车机拦下。
+
+## 20. 自助终端的支付能力：PAYWizard 自助版 + Nuvei (Unattended Payment Capabilities, WizarPOS Confirmed 2026-11-05)
+
+Q3mini UPT 上的收单程序是 PAYWizard 自助版（UnAttend）+ Nuvei SmartPay，Aegis 全系（Wash / Timer / Vend / Flex）都受下面这些限制。来源：WizarPOS 正式答复（2026-11-05 20:28、20:42）+ 255 实测。
+
+### 20.1 能做什么
+
+| 交易类型 | 自助版 + Nuvei | 实测（255，2026-11-05） |
+|---|---|---|
+| Purchase（消费） | ✅ | Wash / Flex 日常使用 |
+| PreAuth（预授权） | ✅ | 5¢ / 8¢ / $8.00 获批，BatchNum 000000（不进批次） |
+| AuthCompletion（预授权完成，含部分完成） | ✅ | 8¢ 预授权按 1¢ 完成获批，进批次 |
+| Reversal（撤销）**消费或预授权** | ✅ 替代 Void | 撤销 5¢ 预授权：`00 REVERSAL_SUCCESS`，走主机，不用刷卡，约 5 秒 |
+| Reversal **预授权完成** | ❌ | `-191 Original transaction not found`（WizarPOS：完成交易不支持撤销） |
+| AuthVoid | ❌ | `FF transType not supported` |
+| Refund（退款） | ❌ 只有有人值守版（Attend）有 | `FF transType not supported`，本地 1 秒内返回，不连主机 |
+| Deferred（离线刷卡） | ❌ Nuvei 不支持 | 未测 |
+
+### 20.2 规则
+*   **撤销只对"消费"和"预授权"有效，且要在批次关闭前**（Wash 每天 03:30 关批次）。请求里必须带原交易的 OriTransId（以及 Trace / Invoice / RRN）；不带时 PAYWizard 会在屏幕上弹框要人手动输入——自助机上不允许出现，终端缺编号时直接拒绝发送。
+*   **预授权一旦完成就退不了**：既不能撤销，也没有退款。只能在 WizarPOS 商户后台退款，或找 Nuvei。
+*   **批次关闭后的消费同样退不了**（没有 Refund）：商户后台处理。`IPaymentProvider.voidOrRefund` 里的 refund 兜底在自助版上永远失败（无害，1 秒内返回）。
+*   **释放预授权 = 撤销**：先试 AuthVoid（别的收单行可用），被拒再发 Reversal——**绝不发 Refund**（预授权本来没扣钱，退款等于白给）。Flex / Vend 均已如此（2026-11-05）。
+*   **Interac**：预授权有效 **2 小时**，过时自动释放；**部分完成后剩余额度 7–10 天才释放**——借记卡占用的是顾客银行账户里的真钱。
+*   **Nuvei Attend（有人值守版）** 有 Void / Refund，但它是收银台流程，不用于自助机。
+
+### 20.3 由此得出的产品决策
+*   **固定价格的商品用 SALE（直接消费）**：出货失败当场撤销全额，Wash 已长期验证。预授权只留给真正按量收费的场景（称重、计时、充电），并事先说明 Interac 部分完成的 7–10 天占用。
+*   **远程撤销（Cael）只在当天、批次关闭前、且原交易是消费时有效**；预授权完成后的交易终端直接拒绝，提示到商户后台退款。
+*   **对账 ID**：PAYWizard 的 TransID 是终端本地流水号（= Trace），不是全局唯一；唯一标识用 InvoiceNum（12 位）+ RRN + BatchNum + MID/TID。每笔获批交易的完整返回（卡号脱敏）存进 `transactions.acquirer_response`（按 TransType 分键，`docs/migrations/2026-11-05_acquirer_response.sql`），Cael 交易记录「详情」可看。
+*   离线刷卡（Iris / Ourea 的 Deferred）在 Nuvei 门店不可用。
+*   **事故记录**：FLX-1793915920480，$8.00 预授权完成（测试本应 $0.10：旧的模拟器页面没带扣款金额，已加服务器校验）。终端撤销 -191、退款 FF，只能商户后台退（RRN 000074，Invoice 396493916009）。
+
+## 21. Aegis Flex：刷卡在本机、出货在合作方机器 (Aegis Flex — Pay Here, Partner Dispenses, 2026-11-05)
+
+`app/aegis-flex` + `feature/flex`（包 `com.goldsky.ssp.aegis.flex`，从 Aegis Vend 复制，去掉 MDB / 大屏 / VMC 模拟）。顾客在终端上选、在终端上付，**合作方自己的控制器**负责出货。首个线索：Outdoor Vend（Alberta）户外柴火售卖机，控制器是 InHand EC3320，1 / 2 / 3 捆三个套餐。
+
+### 21.1 与控制器的接口（`docs/flex_controller_api.md`，英文，可直接发给合作方）
+*   局域网 HTTP，终端是客户端；地址和 Bearer token 每台终端单独设置（技术员面板，或 Cael 远程 `SET_CONTROLLER`）。v1 用 HTTP，不用 socket。
+*   `GET /flex/v1/status`：每 10 秒一次，3 秒超时。`ready=false` 或连不上 → 整机「暂不可用」。可选 `sold_out: ["3"]`：这些货道变灰显示 SOLD OUT 不能买，其余照常；全部售罄 = 暂不可用。
+*   `POST /flex/v1/dispense`：付款获批后发送（order_id、product_id、slot、quantity、amount_cents、payment_flow、deadline_ms = 现在 + 90 秒）。控制器**交接完成后**再回答；终端等到 deadline + 10 秒。只有对同一 order_id 明确回 `DISPENSED` 才留下这笔钱，其余（FAILED、HTTP 错误、超时）一律退还。
+*   PREAUTH 时控制器可回 `amount_cents` 表示实际扣多少：终端限制在 0 到预授权金额之间（不会多扣），不给 = 全额，0 = 释放。
+*   未设置控制器（`NotConnected`）：顶部 TEST 条，每笔获批立即撤销。
+
+### 21.2 两种收款方式（每台终端，技术员面板 / Cael「收款方式」）
+*   **SALE（推荐，固定价格套餐）**：直接消费；没出货 → 撤销全额（`voidOrRefund`）；撤销也失败 → PAID / FAILED 上报 CRITICAL，人工退款。
+*   **PREAUTH**：按套餐价预授权（屏幕标「UP TO」、付款页「HOLD $x」、提示「这是预授权不是实际价格」），出货后按控制器给的金额完成，结果页显示实际扣款和释放的差额；没出货 → 释放（AuthVoid → Reversal）。完成被拒 → 不扣款，记 CANCELLED 并上报。限制见 §20（完成后不可退、Interac 部分完成 7–10 天）。
+
+### 21.3 其余要点
+*   **记账**：与 Vend 相同——问卡前先写本地日志（`flex_orders.json`），`FlexRecovery` 重启恢复，`FlexSyncWorker` 上云（含 product_id、acquirer_response）。暂无 FLEX 行业：卖门店的 VEND 商品（`attributes.slot / quantity / art`）。
+*   **远程撤销**（Cael 交易记录「撤销」→ `VOID_PAYMENT`）：Cael 从保存的支付返回里取原交易 OriTransId / Trace / Invoice / RRN 一起下发；终端两边都找不到 OriTransId 就拒绝发送（不让 PAYWizard 弹手动输入框）；预授权完成的订单直接拒绝（§20）。
+*   **画面**：Vend 展示模式的宫格，≤3 个商品时一行满高；`attributes.art = "firewood"` 画成会燃烧的柴火（1 / 2 / 3 捆逐次变多，余烬与火焰）；英 / 法；语音三遍。
+*   **待机**：与 Wash 完全相同——继承 `BaseAdActivity`，空闲 3 分钟打开 `AdActivity` 播 Cael 广告，交易中 / 技术员面板不播（`isCarWashSessionActive`）。曾做过 Flex 自带待机画面，录成视频（`C:\goldsky\store\aegis-flex\flex_attract_firewood.mp4`）后删除，视频作为广告放进播放列表。
+*   **与 Wash 共用 255 时**：Flex 的 `registerDevice` 会覆盖 `devices.app_version`，使 Wash 的配置发布被 `guard_qr_payment_mode` 拦下；测试后改回 `1.1.12`。
+
+### 21.4 演示 / 试点前
+*   用 Interac 借记卡测一遍（目前只测过 Mastercard）。
+*   向 WizarPOS 确认：Q3mini UPT 户外 -30°C；有没有不刷卡的退款接口（云模式）。
+*   在 Cael 品牌名里填合作方名称（Ember 是 Outdoor Vend 的产品名，需对方同意）。
+
+## 22. Cael 公共测试模拟器 (Shared Test Simulator in Cael, 2026-11-05)
+
+Cael → Ops → 测试模拟器（`/ops/testsim`，系统管理员）。**以后所有"机器那一侧"的测试都在这一页操作**，新机器类型就加一种 kind；**付款始终是真的**（Aegis 不做假支付模式），只模拟机器。
+
+*   **终端侧**：控制器地址填 `cael` 即用模拟器（`FlexController.CaelSim`），也可在 Cael 设备页远程设置。终端调 `testsim_status`（每 10 秒，同时登记"在用模拟器"）、`testsim_submit`（发请求）、`testsim_answer_of`（每秒取答复）。
+*   **页面**：每台终端的就绪 / 未就绪开关、各货道有货 / 售罄（`testsim_set_sold_out`）；待答复的请求倒计时，点「已出货」/「失败」。PREAUTH 订单要输入实际扣款金额（默认 min($0.10, 预授权)），页面和服务器都拒绝超出预授权的金额（`amount_required`）。
+*   **数据库**：`testsim.controllers`（ready、message、sold_out、last_seen）、`testsim.requests`（kind = FLEX_DISPENSE，payload、deadline、answer）；只经 `public.testsim_*` RPC 访问（`docs/migrations/2026-11-05_testsim*.sql`）。超过 deadline 未答复 = FAILED。
+*   本地替代：`tools/flex-controller-sim`（浏览器控制台，localhost:8080，手动或 `--auto`），终端与电脑同网段时用。
