@@ -193,8 +193,7 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * The store's products from Cael (those with a price), in slot order and numbered by
-     * attributes.slot, else in order. Flex has no vertical of its own in the database yet
-     * (products / devices CHECK constraints): it sells the store's VEND products for now.
+     * attributes.slot, else in order: the store's FLEX products (Cael "partner machine").
      */
     fun refreshItems() {
         _items.value = ConfigManager.getConfig()?.products.orEmpty().forVertical(PRODUCT_VERTICAL)
@@ -512,7 +511,7 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
     private companion object {
         const val TAG = "FlexVM"
         /** See [refreshItems]. */
-        const val PRODUCT_VERTICAL = "VEND"
+        const val PRODUCT_VERTICAL = "FLEX"
         const val CHOICE_MS = 60_000L
         const val RESULT_MS = 6_000L
         const val CONTROLLER_CHECK_MS = 10_000L

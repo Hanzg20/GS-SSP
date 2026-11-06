@@ -191,7 +191,9 @@ class MainActivity : com.goldsky.ssp.ui.BaseAdActivity() {
             val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
             DeviceRepository.registerDevice(deviceSn, version)
             val identity = DeviceRepository.syncDeviceIdentity(deviceSn)
-            // No devices.vertical_type for Flex yet (its CHECK constraint): left as it is.
+            // This terminal runs Aegis Flex, whatever it ran before (devices.vertical_type): a terminal
+            // shared with Wash then isn't checked as a Wash older than 1.1.6 by guard_qr_payment_mode.
+            if (identity != null) DeviceRepository.reportVertical("FLEX")
             DeviceAccessManager.applyActiveState(identity?.is_active)
             applyLock()
             identity?.org_id?.let { loadConfig(it) }

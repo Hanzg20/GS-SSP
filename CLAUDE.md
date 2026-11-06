@@ -92,9 +92,10 @@ app/aegis-flex -- Aegis Flex (`com.goldsky.ssp.aegis.flex`, feature:flex), added
                   address per terminal in the technician panel; `tools/flex-controller-sim` stands in for the machine); none
                   set = `NotConnected`, every sale reversed at once under a TEST strip. Tiles can be drawn and animated
                   (`attributes.art`, e.g. "firewood"). The controller's status can list `sold_out` slots (grey SOLD OUT
-                  tile, the rest still sell); idle = Wash's ad rotation (BaseAdActivity, 3 min). No vertical of its own in the DB yet (products / devices CHECK): sells
-                  the store's VEND products, and on a terminal shared with Wash its registerDevice overwrites
-                  devices.app_version (blocks a Wash config publish via guard_qr_payment_mode until Wash reports again).
+                  tile, the rest still sell); idle = Wash's ad rotation (BaseAdActivity, 3 min). Vertical FLEX (2026-11-06,
+                  `docs/migrations/2026-11-06_flex_vertical.sql`): sells the store's FLEX products (Cael "partner machine":
+                  slot, quantity, art) and reports FLEX as devices.vertical_type with its version, so a terminal shared with
+                  Wash is never read as an old Wash by guard_qr_payment_mode.
 app/aegis-timer -- Aegis Timer (`com.goldsky.ssp.aegis.timer`, feature:timer), added 2026-09-23: the time-based product family
                   (pay -> terminal times the session and HOLDS an output ON, countdown on screen) -- first product is the
                   self-service vacuum beside the wash ($2/4min, $3/5min, card-only, alarm-only on fault). Deliberately NOT a

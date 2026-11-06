@@ -3,6 +3,13 @@
 > [!NOTE]
 > **版本号说明**: 本文档实际由两条独立演进线合并而成（CMP/Supabase 后端的 RLS 修复线，与 Android HAL/产品线的架构演进线），两条线各自独立递增版本号，合并后出现了 `v2.23`/`v2.24`/`v2.27` 各被使用两次、且部分条目未按日期严格排序的情况（例如 `v2.27 (2026-08-20)` 实际是全文最新的一次修改，却排在 `v2.28 (2026-08-09)` 之后）。**版本号不是可靠的时间/依赖排序依据，请以每条目标题里的日期为准**；正文中散落的 `[v2.1]` 等内联标记同理，指的是该版本条目引入的变更，不代表这是当前最新状态。
 
+### v2.55 (2026-11-06) — Aegis Flex 独立业务类型 FLEX (Flex Vertical)
+
+*   `products` / `devices` 的 `vertical_type` CHECK 加 `FLEX`；`device_set_vertical` 接受 FLEX，Aegis Flex 启动时上报（与 `app_version` 一起，二者始终说的是同一个 app）。迁移 `docs/migrations/2026-11-06_flex_vertical.sql`。
+*   Flex 只卖门店的 FLEX 商品；Cael 商品编辑新增「合作方机器 (FLEX)」：货道号（本店 FLEX 内唯一）、每份数量（`attributes.quantity`）、格子画面（`attributes.art`：商品图片 / 柴火动画）。
+*   测试模拟器的货道列表改读 FLEX 商品；跑过 Flex 的门店，其 VEND 商品复制一份 FLEX（VEND 原行留给 Aegis Vend），并补进最新发布的配置。
+*   解决的问题：Flex 与 Wash 共用 255 时，`app_version` 被写成 Flex 版本而 `vertical_type` 仍是 WASH，Cael 发布「刷卡 + 扫码」被 `guard_qr_payment_mode` 拒绝。
+
 ### v2.54 (2026-11-05) — 自助支付能力澄清（WizarPOS 正式答复）+ Aegis Flex + Cael 测试模拟器 + MDB 会话结束方式 (Unattended Payment Limits Confirmed, Aegis Flex, Shared Test Simulator, MDB Session End)
 
 *   新增 **§20**：PAYWizard 自助版（UnAttend）+ Nuvei 的真实能力——**只有撤销（Reversal），没有 Void / Refund**；撤销只对预授权和消费有效，预授权完成后不可撤销；Interac 预授权 2 小时有效，部分完成后余额 7–10 天才释放；Nuvei 不支持 Deferred（离线刷卡）。附 255 实测记录与运营规则。
@@ -1455,11 +1462,11 @@ Q3mini UPT 上的收单程序是 PAYWizard 自助版（UnAttend）+ Nuvei SmartP
 *   **PREAUTH**：按套餐价预授权（屏幕标「UP TO」、付款页「HOLD $x」、提示「这是预授权不是实际价格」），出货后按控制器给的金额完成，结果页显示实际扣款和释放的差额；没出货 → 释放（AuthVoid → Reversal）。完成被拒 → 不扣款，记 CANCELLED 并上报。限制见 §20（完成后不可退、Interac 部分完成 7–10 天）。
 
 ### 21.3 其余要点
-*   **记账**：与 Vend 相同——问卡前先写本地日志（`flex_orders.json`），`FlexRecovery` 重启恢复，`FlexSyncWorker` 上云（含 product_id、acquirer_response）。暂无 FLEX 行业：卖门店的 VEND 商品（`attributes.slot / quantity / art`）。
+*   **记账**：与 Vend 相同——问卡前先写本地日志（`flex_orders.json`），`FlexRecovery` 重启恢复，`FlexSyncWorker` 上云（含 product_id、acquirer_response）。卖门店的 **FLEX** 商品（v2.55；Cael「合作方机器」，`attributes.slot / quantity / art`）。
 *   **远程撤销**（Cael 交易记录「撤销」→ `VOID_PAYMENT`）：Cael 从保存的支付返回里取原交易 OriTransId / Trace / Invoice / RRN 一起下发；终端两边都找不到 OriTransId 就拒绝发送（不让 PAYWizard 弹手动输入框）；预授权完成的订单直接拒绝（§20）。
 *   **画面**：Vend 展示模式的宫格，≤3 个商品时一行满高；`attributes.art = "firewood"` 画成会燃烧的柴火（1 / 2 / 3 捆逐次变多，余烬与火焰）；英 / 法；语音三遍。
 *   **待机**：与 Wash 完全相同——继承 `BaseAdActivity`，空闲 3 分钟打开 `AdActivity` 播 Cael 广告，交易中 / 技术员面板不播（`isCarWashSessionActive`）。曾做过 Flex 自带待机画面，录成视频（`C:\goldsky\store\aegis-flex\flex_attract_firewood.mp4`）后删除，视频作为广告放进播放列表。
-*   **与 Wash 共用 255 时**：Flex 的 `registerDevice` 会覆盖 `devices.app_version`，使 Wash 的配置发布被 `guard_qr_payment_mode` 拦下；测试后改回 `1.1.12`。
+*   **与 Wash 共用 255 时**：Flex 启动时连同版本号上报 `devices.vertical_type = FLEX`（v2.55），`guard_qr_payment_mode` 只查 WASH 终端，不再把它当成旧版 Wash 拦下发布；Wash 再启动时报回 WASH + 它的版本。
 
 ### 21.4 演示 / 试点前
 *   用 Interac 借记卡测一遍（目前只测过 Mastercard）。

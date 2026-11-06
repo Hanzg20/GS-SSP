@@ -72,7 +72,7 @@ fun FlexTechScreen(
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(KioskCard).padding(10.dp)) {
             Text("商品", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Text(
-                if (products > 0) "$products 个（Cael 中本店的 VEND 商品）" else "没有商品：请在 Cael 中给本店添加 VEND 商品",
+                if (products > 0) "$products 个（Cael 中本店的「合作方机器 FLEX」商品）" else "没有商品：请在 Cael 中给本店添加「合作方机器 FLEX」商品",
                 color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp,
             )
         }
