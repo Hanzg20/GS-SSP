@@ -53,9 +53,10 @@ interface FlexController {
 
     /**
      * Is it there and able to sell? True / false, or null when it can't be asked (none set up).
-     * [detail] gets the controller's own words, for the technician panel.
+     * [detail] gets the controller's own words, for the technician panel; [soldOut] the slots it
+     * has run out of (those tiles go grey, the rest still sell).
      */
-    suspend fun ready(detail: (String) -> Unit = {}): Boolean? = null
+    suspend fun ready(detail: (String) -> Unit = {}, soldOut: (Set<String>) -> Unit = {}): Boolean? = null
 
     /**
      * Hand over [request]. Dispensed = the controller confirmed it; otherwise it refused, failed or
@@ -83,14 +84,14 @@ interface FlexController {
         override val connected = true
 
         @Serializable
-        private data class Status(val ready: Boolean = false, val message: String? = null)
+        private data class Status(val ready: Boolean = false, val message: String? = null, val sold_out: List<String> = emptyList())
 
         @Serializable
         private data class DispenseAnswer(
             val order_id: String? = null, val result: String? = null, val reason: String? = null, val amount_cents: Int? = null,
         )
 
-        override suspend fun ready(detail: (String) -> Unit): Boolean = withContext(Dispatchers.IO) {
+        override suspend fun ready(detail: (String) -> Unit, soldOut: (Set<String>) -> Unit): Boolean = withContext(Dispatchers.IO) {
             runCatching {
                 val (code, body) = call("GET", "/flex/v1/status", null, STATUS_TIMEOUT_MS)
                 if (code != 200) {
@@ -99,6 +100,7 @@ interface FlexController {
                 }
                 val s = json.decodeFromString<Status>(body)
                 detail(if (s.ready) "就绪${s.message?.let { "：$it" } ?: ""}" else "未就绪${s.message?.let { "：$it" } ?: ""}")
+                soldOut(s.sold_out.toSet())
                 s.ready
             }.getOrElse {
                 detail("连不上：${it.message ?: it.javaClass.simpleName}")
@@ -153,13 +155,14 @@ interface FlexController {
         override val description = "Cael 测试模拟器（在 Cael 的“测试模拟器”页面操作）"
         override val connected = true
 
-        override suspend fun ready(detail: (String) -> Unit): Boolean {
+        override suspend fun ready(detail: (String) -> Unit, soldOut: (Set<String>) -> Unit): Boolean {
             val s = com.goldsky.ssp.payment.TestSimRepository.status()
             if (s == null || !s.success) {
                 detail("连不上 Cael${s?.message?.let { "：$it" } ?: ""}")
                 return false
             }
             detail(if (s.ready) "就绪（Cael 测试模拟器）" else "未就绪${s.message?.let { "：$it" } ?: "（Cael 测试模拟器）"}")
+            soldOut(s.sold_out.toSet())
             return s.ready
         }
 

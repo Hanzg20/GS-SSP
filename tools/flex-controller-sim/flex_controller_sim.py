@@ -20,7 +20,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-state = {"ready": True}
+state = {"ready": True, "sold_out": []}  # sold_out: slots run out of (grey tiles on the terminal)
 orders = {}  # order_id -> {"req", "answer", "event", "at"}; also the idempotency record
 lock = threading.Lock()
 
@@ -34,6 +34,9 @@ button{{font:bold 16px system-ui;padding:10px 18px;border:0;border-radius:8px;ma
 <h1>EC3320 controller (simulated) &middot; port {port}</h1>
 <form method="post" action="/console/ready"><b>Status:</b> {ready}
 <button class="gray">switch to {other}</button></form>
+<form method="post" action="/console/sold_out" style="margin-top:8px"><b>Sold out slots:</b>
+<input name="slots" value="{sold_out}" placeholder="e.g. 3 or 1,3" style="font:16px system-ui;width:120px">
+<button class="gray">set</button> <span class="muted">empty = all in stock</span></form>
 <h3>Waiting for you</h3>{waiting}
 <h3>Done</h3>{done}
 <p class="muted">Terminal setting: this PC's IP:{port}. {mode}</p></body></html>"""
@@ -63,7 +66,7 @@ def render():
                         f" <span class='muted'>{html.escape(o['answer'].get('reason', ''))}</span></div>")
     return PAGE.format(
         port=ARGS.port, ready="<b style='color:#10b981'>READY</b>" if state["ready"] else "<b style='color:#ef4444'>NOT READY</b>",
-        other="NOT READY" if state["ready"] else "READY",
+        other="NOT READY" if state["ready"] else "READY", sold_out=html.escape(",".join(state["sold_out"])),
         waiting="".join(waiting) or "<p class='muted'>none</p>", done="".join(done[:20]) or "<p class='muted'>none</p>",
         mode=f"Auto: answers DISPENSED after {ARGS.delay}s." if ARGS.auto else "Manual: you answer each order.",
     )
@@ -94,7 +97,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {"error": "not found"})
         if not self._auth_ok():
             return self._send(401, {"error": "unauthorized"})
-        self._send(200, {"ready": state["ready"], "message": "simulator" if state["ready"] else "simulator: not ready"})
+        self._send(200, {"ready": state["ready"], "message": "simulator" if state["ready"] else "simulator: not ready",
+                         "sold_out": state["sold_out"]})
 
     def do_POST(self):
         path = urlparse(self.path).path
@@ -102,6 +106,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/console/ready":
             state["ready"] = not state["ready"]
             print("status:", "READY" if state["ready"] else "NOT READY")
+            return self._redirect()
+        if path == "/console/sold_out":
+            slots = parse_qs(body.decode("utf-8")).get("slots", [""])[0]
+            state["sold_out"] = [x.strip() for x in slots.split(",") if x.strip()]
+            print("sold out:", state["sold_out"] or "none")
             return self._redirect()
         if path == "/console/answer":
             form = {k: v[0] for k, v in parse_qs(body.decode("utf-8")).items()}

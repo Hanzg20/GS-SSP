@@ -35,6 +35,11 @@ class FlexStrings(
     val unavailableBody: String,
     /** Top strip while no controller is connected: every sale is given back. */
     val noController: String,
+    /** Over a tile the controller has run out of. */
+    val soldOut: String,
+    // The idle (attract) screen: what to do, and how to pay.
+    val touchToStart: String,
+    val payByCard: String,
     val cancelled: String,
     val declined: String,
     val noCode: String,
@@ -88,6 +93,9 @@ class FlexStrings(
             unavailableTitle = "NOT AVAILABLE",
             unavailableBody = "Please try later",
             noController = "TEST · NOT CHARGED",
+            soldOut = "SOLD OUT",
+            touchToStart = "TOUCH TO START",
+            payByCard = "TAP · INSERT · INTERAC",
             cancelled = "CANCELLED",
             declined = "CARD DECLINED",
             noCode = "NO CODE SCANNED",
@@ -129,6 +137,9 @@ class FlexStrings(
             unavailableTitle = "NON DISPONIBLE",
             unavailableBody = "Réessayez plus tard",
             noController = "TEST · AUCUN DÉBIT",
+            soldOut = "ÉPUISÉ",
+            touchToStart = "TOUCHEZ POUR COMMENCER",
+            payByCard = "SANS CONTACT · PUCE · INTERAC",
             cancelled = "ANNULÉ",
             declined = "CARTE REFUSÉE",
             noCode = "AUCUN CODE LU",

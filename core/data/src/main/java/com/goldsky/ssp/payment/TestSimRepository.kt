@@ -18,7 +18,11 @@ object TestSimRepository {
     private const val TAG = "TestSim"
 
     @Serializable
-    data class Status(val success: Boolean = false, val ready: Boolean = false, val message: String? = null)
+    data class Status(
+        val success: Boolean = false, val ready: Boolean = false, val message: String? = null,
+        /** Slots run out of (2026-11-05_testsim_sold_out.sql). */
+        val sold_out: List<String> = emptyList(),
+    )
 
     @Serializable
     data class Answer(val success: Boolean = false, val answered: Boolean = false, val answer: JsonObject? = null, val message: String? = null)

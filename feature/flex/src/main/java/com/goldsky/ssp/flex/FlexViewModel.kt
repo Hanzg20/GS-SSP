@@ -101,6 +101,10 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
     private val _controllerReady = MutableStateFlow<Boolean?>(null)
     val controllerReady: StateFlow<Boolean?> = _controllerReady.asStateFlow()
 
+    /** The slots the controller has run out of: grey tiles, not sold (none set up = none). */
+    private val _soldOut = MutableStateFlow<Set<String>>(emptySet())
+    val soldOut: StateFlow<Set<String>> = _soldOut.asStateFlow()
+
     /** The last check's words, for the technician panel. */
     private val _controllerDetail = MutableStateFlow("")
     val controllerDetail: StateFlow<String> = _controllerDetail.asStateFlow()
@@ -174,8 +178,13 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         if (!c.connected) {
             _controllerReady.value = null
             _controllerDetail.value = ""
+            _soldOut.value = emptySet()
         } else {
-            val ready = c.ready { _controllerDetail.value = it } == true
+            var out = emptySet<String>()
+            val ready = c.ready({ _controllerDetail.value = it }, { out = it }) == true
+            if (out != _soldOut.value) Log.i(TAG, "Sold out: ${out.ifEmpty { setOf("none") }.joinToString()}")
+            _soldOut.value = out
+            _selected.value?.let { if (it.number in out) _selected.value = null }
             if (ready != _controllerReady.value) Log.i(TAG, "Controller ${if (ready) "ready" else "NOT ready"}: ${_controllerDetail.value}")
             _controllerReady.value = ready
         }
@@ -224,7 +233,8 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
     /** Idle <-> Unavailable; a sale in progress is left alone. */
     private fun applyAvailability() {
         val controllerOk = !controller.connected || _controllerReady.value == true
-        val canSell = payment != null && _items.value.isNotEmpty() && !locked && !away && controllerOk
+        // Everything sold out = nothing to sell.
+        val canSell = payment != null && _items.value.any { it.number !in _soldOut.value } && !locked && !away && controllerOk
         val s = _state.value
         if (!canSell && s is State.Choosing) {
             _selected.value = null
@@ -235,7 +245,7 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun select(item: Item) {
-        if (_state.value !is State.Choosing) return
+        if (_state.value !is State.Choosing || item.number in _soldOut.value) return
         _selected.value = item
         // Walked away: clear the choice.
         timer?.cancel()
@@ -251,6 +261,7 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         val item = _selected.value ?: return
         _selected.value = null
         timer?.cancel()
+        if (item.number in _soldOut.value) return
         val ref = newRef()
         // Technician panel / Cael: held at the price and settled after the hand-over, or charged at once.
         val preauth = FlexController.preauth(getApplication())
@@ -295,6 +306,7 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         val item = _selected.value ?: return
         _selected.value = null
         timer?.cancel()
+        if (item.number in _soldOut.value) return
         val scanning = State.Scanning(item)
         _state.value = scanning
         timer = viewModelScope.launch {

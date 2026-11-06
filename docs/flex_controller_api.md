@@ -22,13 +22,14 @@ mode) or doesn't answer within 3 seconds, the terminal stops selling and shows "
 Response `200`:
 
 ```json
-{ "ready": true, "message": "OK" }
+{ "ready": true, "message": "OK", "sold_out": ["3"] }
 ```
 
 | Field | Type | Meaning |
 |---|---|---|
 | `ready` | boolean | `true` = able to hand over products now |
 | `message` | string, optional | shown to the technician, e.g. `"door sensor fault"` |
+| `sold_out` | array of strings, optional | the `slot`s you have run out of: those products are shown greyed out as "SOLD OUT" and can't be bought, the others still sell. Absent or empty = everything in stock. When every product is sold out the terminal shows "NOT AVAILABLE". |
 
 ## 2. Dispense — `POST /flex/v1/dispense`
 
