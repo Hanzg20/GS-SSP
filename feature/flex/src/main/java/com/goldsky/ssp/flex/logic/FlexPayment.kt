@@ -83,7 +83,11 @@ interface FlexPayment {
         override fun hold(cents: Int, ref: String, done: (Result) -> Unit) = provider.startPreAuth(cents, ref, callback(ref, "PreAuth", done))
         override fun sale(cents: Int, ref: String, done: (Result) -> Unit) = provider.startSale(cents, ref, callback(ref, "Purchase", done))
         override fun complete(ref: String, cents: Int, done: (Boolean) -> Unit) = provider.completeAuth(ref, cents, yesNo(ref, "AuthCompletion", done))
-        override fun release(ref: String, done: (Boolean) -> Unit) = provider.voidAuth(ref, yesNo(null, "AuthVoid", done))
+        // Nuvei answers AuthVoid "transType not supported" (255, 2026-11-05): then a Reversal of the
+        // PreAuth -- never a Refund, which would pay back money the hold never took.
+        override fun release(ref: String, done: (Boolean) -> Unit) = provider.voidAuth(ref, yesNo(null, "AuthVoid") { ok ->
+            if (ok) done(true) else provider.voidTransaction(ref, yesNo(null, "Reversal", done))
+        })
         override fun reverse(ref: String, cents: Int, done: (Boolean) -> Unit) =
             provider.voidOrRefund(ref, cents) { ok, _ -> done(ok) }
         override fun undo(ref: String, cents: Int, done: (Boolean, String) -> Unit) =
