@@ -99,3 +99,82 @@ export function checkSuggestions(raw: unknown[], dishes: Dish[]): Suggestion[] {
   }
   return out;
 }
+
+// ---------------------------------------------------------------- one-sentence ordering
+
+/** A line Beaver heard: becomes a cart line only when the customer confirms it on the phone. */
+export type OrderLine = { product_id: string; quantity: number; option_ids: string[]; note?: string; needs_options?: boolean };
+/** A phrase that fits more than one dish ("a cold dish"): the phone asks which. */
+export type OrderChoice = { heard: string; product_ids: string[] };
+
+export function orderPrompt(store: string, table: string, dishes: Dish[], browserLang: string): string {
+  return `You are Beaver (小海狸), the order taker of "${store}", table ${table}. The customer said or typed what they want in ONE message, in any language. Turn it into order lines.
+
+MENU (the only dishes that exist):
+${menuLines(dishes)}
+
+RULES (never break):
+1. Use only menu ids. Never invent a dish or option. A dish that isn't on the menu or is SOLD OUT goes in "missing" in the customer's words.
+2. A phrase that matches exactly one dish (by name in any language, or a category with one dish) -> a line. A phrase that fits several dishes ("a cold dish", "dumplings", "a drink") -> "choices" with those ids (max 4); never pick for them.
+3. Quantities as said ("two bowls", "两碗", "a couple" = 2); unsaid = 1. Max 10 per line.
+4. Options: only option ids the customer asked for ("mild", "微辣", "add egg"). Never choose a required option yourself; leave it out and the phone asks.
+5. Notes: kitchen wishes that aren't options ("no green onion", "不要葱", "sauce on the side") go in "note", short, in the customer's words. If only some of the portions differ, split: "two noodles, one without onion" -> one line quantity 1 with the note, one line quantity 1 without.
+6. "reply": one short sentence in the customer's language saying what you got (and asking about choices/missing if any). Language: the customer's message; too short to tell -> "${browserLang}".
+
+ANSWER FORMAT: a JSON object only:
+{"reply": "...", "language": "<BCP 47>",
+ "lines": [{"product_id": "<id>", "quantity": <1-10>, "option_ids": ["<option id>"], "note": "<or empty>"}],
+ "choices": [{"heard": "<customer's words>", "product_ids": ["<id>", "<id>"]}],
+ "missing": ["<customer's words>"]}`;
+}
+
+/** The model's order answer, or null when it isn't one. */
+export function parseOrder(raw: string): { reply: string; language: string; lines: unknown[]; choices: unknown[]; missing: unknown[] } | null {
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    const o = JSON.parse(m[0]);
+    if (typeof o?.reply !== "string" || !o.reply.trim()) return null;
+    const arr = (v: unknown) => (Array.isArray(v) ? v : []);
+    return { reply: o.reply.trim(), language: typeof o.language === "string" ? o.language.slice(0, 20) : "", lines: arr(o.lines), choices: arr(o.choices), missing: arr(o.missing) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Only lines the phone can put in the cart: real dish, not sold out, quantity
+ * 1-10, options that belong to it. Options that break the dish's rules are
+ * dropped and the line says so (the customer picks them). The same dish may
+ * come twice (different notes). Choices keep only real, orderable dishes.
+ */
+export function checkOrder(raw: { lines: unknown[]; choices: unknown[]; missing: unknown[] }, dishes: Dish[]):
+  { lines: OrderLine[]; choices: OrderChoice[]; missing: string[] } {
+  const byId = new Map(dishes.map((d) => [d.id, d]));
+  const lines: OrderLine[] = [];
+  const missing: string[] = raw.missing.filter((x) => typeof x === "string" && x.trim()).map((x) => (x as string).trim().slice(0, 60)).slice(0, 5);
+  for (const s of raw.lines.slice(0, 12)) {
+    const o = s as Record<string, unknown>;
+    const d = byId.get(String(o?.product_id ?? ""));
+    if (!d) continue;
+    if (d.sold_out) { if (!missing.includes(d.name)) missing.push(d.name); continue; }
+    const quantity = Math.min(10, Math.max(1, Math.round(Number(o.quantity) || 1)));
+    const groups = d.modifier_groups ?? [];
+    const valid = new Set(groups.flatMap((g) => g.options.map((x) => x.id)));
+    let optionIds = [...new Set((Array.isArray(o.option_ids) ? o.option_ids.map(String) : []).filter((id) => valid.has(id)))];
+    const tooMany = groups.some((g) => g.max_select && g.options.filter((x) => optionIds.includes(x.id)).length > g.max_select);
+    if (tooMany) optionIds = [];
+    const needs = groups.some((g) => g.required && !g.options.some((x) => optionIds.includes(x.id)));
+    const note = typeof o.note === "string" ? o.note.trim().slice(0, 100) : "";
+    lines.push({ product_id: d.id, quantity, option_ids: optionIds, ...(note ? { note } : {}), ...(needs || tooMany ? { needs_options: true } : {}) });
+  }
+  const choices: OrderChoice[] = [];
+  for (const c of raw.choices.slice(0, 4)) {
+    const o = c as Record<string, unknown>;
+    const ids = [...new Set((Array.isArray(o?.product_ids) ? o.product_ids.map(String) : []))]
+      .filter((id) => byId.has(id) && !byId.get(id)!.sold_out).slice(0, 4);
+    if (ids.length === 1) lines.push({ product_id: ids[0], quantity: 1, option_ids: [], ...((byId.get(ids[0])!.modifier_groups ?? []).some((g) => g.required) ? { needs_options: true } : {}) });
+    else if (ids.length > 1) choices.push({ heard: String(o.heard ?? "").slice(0, 40), product_ids: ids });
+  }
+  return { lines, choices, missing };
+}

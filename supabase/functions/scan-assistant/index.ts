@@ -4,11 +4,13 @@
 // confirms the order). Called from web/ourea-scan without a login: the table's
 // QR secret is the credential. docs/migrations/2026-10-13_scan_assistant.sql.
 //
-// Actions: ask {token, question, history[], browserLang}, transcribe {token, audio, mime}.
+// Actions: ask {token, question, history[], browserLang}, transcribe {token, audio, mime},
+// order {token, text, browserLang}: one sentence ("two beef noodles, one without onion")
+// -> lines the phone shows on Beaver's card; nothing reaches the cart until the customer taps.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
-import { checkSuggestions, parseAnswer, systemPrompt, type Dish } from "./guide.ts";
+import { checkOrder, checkSuggestions, orderPrompt, parseAnswer, parseOrder, systemPrompt, type Dish } from "./guide.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -120,8 +122,8 @@ Deno.serve(async (req) => {
       return text === null ? json({ error: "no_speech_service" }, 503) : json({ text });
     }
 
-    if (body.action !== "ask") return json({ error: "unknown_action" }, 400);
-    const question = String(body.question ?? "").trim().slice(0, MAX_QUESTION);
+    if (body.action !== "ask" && body.action !== "order") return json({ error: "unknown_action" }, 400);
+    const question = String((body.action === "order" ? body.text : body.question) ?? "").trim().slice(0, MAX_QUESTION);
     if (!question) return json({ error: "empty" }, 400);
 
     const { data: gate } = await db.rpc("scan_chat_allowed", { p_token: token, p_per_10min: PER_TABLE_10MIN, p_store_per_day: PER_STORE_DAY });
@@ -132,6 +134,24 @@ Deno.serve(async (req) => {
 
     const dishes: Dish[] = menu.products ?? [];
     const browserLang = typeof body.browserLang === "string" ? body.browserLang.slice(0, 20) : "en";
+
+    if (body.action === "order") {
+      const system = orderPrompt(menu.store.name, menu.table.name, dishes, browserLang);
+      let order = null;
+      for (let attempt = 0; attempt < 2 && !order; attempt++) {
+        try {
+          order = parseOrder(await llm.call(system, [{ role: "user", content: question }]));
+          if (!order) console.warn("[scan-assistant] unparsable order, attempt", attempt + 1);
+        } catch (e) {
+          if (e instanceof BusyError || attempt === 1) throw e;
+          console.warn("[scan-assistant] model error, retrying:", (e as Error).message);
+        }
+      }
+      if (!order) throw new Error("unparsable order");
+      const checked = checkOrder(order, dishes);
+      await db.rpc("scan_chat_record", { p_token: token, p_question: "[order] " + question, p_reply: order.reply, p_language: order.language, p_model: llm.name });
+      return json({ reply: order.reply, language: order.language, ...checked });
+    }
     const history: Turn[] = (Array.isArray(body.history) ? body.history : [])
       .filter((t: Turn) => (t?.role === "user" || t?.role === "assistant") && typeof t.content === "string")
       .slice(-HISTORY_TURNS)

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { Plus, Minus, X, Edit3, ChevronRight, ChevronDown, XCircle, Loader2, Bell, Search, ShieldAlert, Check, ClipboardList, Menu as MenuIcon, Globe } from 'lucide-react'
+import { Plus, Minus, X, Mic, Edit3, ChevronRight, ChevronDown, XCircle, Loader2, Bell, Search, ShieldAlert, Check, ClipboardList, Menu as MenuIcon, Globe } from 'lucide-react'
 import Guide from './Guide.jsx'
+import VoiceOrder from './VoiceOrder.jsx'
 import Bill from './Bill.jsx'
 
 /*
@@ -69,6 +70,12 @@ const T = zh ? {
   guideHint: '例如：我对花生过敏，哪些能吃？', ask: '发送', listening: '正在听…点一下停止', addSuggestion: '加入',
   guideErrors: { busy: '小海狸有点忙，请过半分钟再试', table_limit: '问得有点多，请稍后再试', store_limit: '今天的提问已达上限，请问服务员', no_model: 'AI 向导暂时不可用，请问服务员', offline: '连不上网络，请稍后再试', failed: '没听明白，请换个说法再试', no_speech_service: '语音暂不可用，请打字', too_long: '录音太长了' },
   aiNote: 'AI 回答仅供参考，过敏请务必告诉服务员。',
+  voiceTitle: '说一句话点菜', voiceEntry: '说一句话点菜', voiceEntrySub: '按一下说出想吃的，小海狸帮你放进购物车',
+  voiceHint: '点一下话筒，说出你想吃的', voiceExample: '例如：两碗牛肉面，一碗不要葱，再来个凉菜',
+  voiceHearing: '正在听清你说的…', voiceThinking: '小海狸正在对照菜单…', voiceNothing: '没听到声音，请再说一次',
+  voiceNoLines: '菜单上没找到对应的菜，换个说法试试？', youSaid: '你说', fromMenu: '来自本店菜单 · 小海狸',
+  whichOne: (h) => `「${h}」想要哪一道？`, notOnMenu: '菜单上没有：', pickOptions: '选口味',
+  addAll: (n, m) => `全部加入购物车 · ${n} 份 ${m}`, addedN: (n) => `已加入 ${n} 份`, sayMore: '再说', typeInstead: '打字', tapToStop: '说完点一下停止',
   bill: '买单', billTitle: '账单', noBill: '这桌还没有账单', taxActual: '税', alreadyPaid: '已付', balance: '待付',
   payServer: '请找服务员买单', allPaid: '这桌已经付清了，谢谢！', howMuch: '付多少', payAll: '全部', split: 'AA 平分', customAmount: '自定金额',
   perPerson: (m) => `每人 ${m}`, tipTitle: '小费', tipBasis: (m) => `按税前 ${m} 计算`, customTip: '自定', noTip: '不加小费',
@@ -108,6 +115,12 @@ const T = zh ? {
   guideHint: "e.g. I'm allergic to peanuts, what can I eat?", ask: 'Send', listening: 'Listening… tap to stop', addSuggestion: 'Add',
   guideErrors: { busy: 'Beaver is busy, try again in half a minute', table_limit: 'Lots of questions! Please wait a moment', store_limit: "Today's questions are used up, please ask your server", no_model: 'The AI guide is unavailable, please ask your server', offline: 'No connection, try again', failed: "Sorry, I didn't get that, try rephrasing", no_speech_service: 'Voice is unavailable, please type', too_long: 'That recording is too long' },
   aiNote: 'AI answers are a guide only. Always tell your server about allergies.',
+  voiceTitle: 'Order in one sentence', voiceEntry: 'Order in one sentence', voiceEntrySub: 'Tap, say what you want, Beaver fills the cart',
+  voiceHint: 'Tap the mic and say what you want', voiceExample: 'e.g. Two beef noodles, one without onion, and a cold dish',
+  voiceHearing: 'Getting your words…', voiceThinking: 'Beaver is checking the menu…', voiceNothing: "Didn't hear anything, try again",
+  voiceNoLines: "Couldn't match that to the menu. Try saying it another way?", youSaid: 'You said', fromMenu: "From this store's menu · Beaver",
+  whichOne: (h) => `Which "${h}"?`, notOnMenu: 'Not on the menu:', pickOptions: 'Choose options',
+  addAll: (n, m) => `Add all to cart · ${n} for ${m}`, addedN: (n) => `${n} added`, sayMore: 'Say more', typeInstead: 'Type', tapToStop: 'Tap when you are done',
   bill: 'Bill', billTitle: 'Bill', noBill: 'No bill at this table yet', taxActual: 'Tax', alreadyPaid: 'Paid', balance: 'Balance due',
   payServer: 'Please pay your server', allPaid: 'This table is all paid. Thank you!', howMuch: 'How much', payAll: 'All of it', split: 'Split evenly', customAmount: 'Other amount',
   perPerson: (m) => `${m} each`, tipTitle: 'Tip', tipBasis: (m) => `Of ${m} before tax`, customTip: 'Custom', noTip: 'No tip',
@@ -217,11 +230,12 @@ function Sheet({ onClose, children, tall = false }) {
  * pick-one groups act as radios, others as toggles up to max; required ones must
  * be answered before Add lights up.
  */
-function DishSheet({ product, avoid, onAdd, onClose }) {
+function DishSheet({ product, avoid, onAdd, onClose, start }) {
   const groups = product.modifier_groups || []
-  const [picked, setPicked] = useState({})
-  const [note, setNote] = useState('')
-  const [qty, setQty] = useState(1)
+  // [start]: a line Beaver heard (voice order) -- its options, note and quantity carry over.
+  const [picked, setPicked] = useState(() => Object.fromEntries(groups.map((g) => [g.id, g.options.filter((o) => (start?.option_ids || []).includes(o.id)).map((o) => o.id)])))
+  const [note, setNote] = useState(start?.note || '')
+  const [qty, setQty] = useState(start?.quantity || 1)
   const toggle = (g, o) => setPicked((p) => {
     const now = p[g.id] || []
     let next
@@ -634,6 +648,9 @@ export default function App() {
   const [toast, setToast] = useState(null)
   const [clientRef, setClientRef] = useState(newRef)  // kept across retries: one send = one order
   const [guideOpen, setGuideOpen] = useState(false)
+  const [voiceOpen, setVoiceOpen] = useState(false)
+  const dishDone = useRef(null)   // a voice-order line waiting for its options
+  const [dishStart, setDishStart] = useState(null)
   const [billOpen, setBillOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [catsOpen, setCatsOpen] = useState(false)
@@ -775,9 +792,10 @@ export default function App() {
       p_token: token, p_guest_id: guest.id, p_guest_name: guest.name || null, p_product_id: product.id,
       p_option_ids: optionIds, p_note: note || null, p_quantity: Math.min(qty, 20),
     })
-    if (e) { flash(T.cartErrors.offline); return }
-    if (!data?.success) { cartError(data); return }
+    if (e) { flash(T.cartErrors.offline); return false }
+    if (!data?.success) { cartError(data); return false }
     setCart(data.cart); setError(null)
+    return true
   }
   const setQty = async (line, quantity) => {
     const { data, error: e } = await supabase.rpc('scan_cart_set', { p_token: token, p_line_id: line.id, p_quantity: quantity })
@@ -898,6 +916,17 @@ export default function App() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 pt-2">
+        {/* Beaver takes the order: say it once, check the card, add. */}
+        {!q && (
+          <button onClick={() => setVoiceOpen(true)} className="ai-card w-full mt-4 !p-3 !pt-3 flex items-center gap-3 text-left">
+            <span className="w-14 h-14 shrink-0 rounded-2xl bg-gold-50 flex items-end justify-center overflow-hidden"><Beaver mood="listening" className="w-12 translate-y-1" /></span>
+            <span className="flex-1 min-w-0">
+              <span className="block font-black text-ink">{T.voiceEntry}</span>
+              <span className="block text-xs text-ink-soft mt-0.5">{T.voiceEntrySub}</span>
+            </span>
+            <span className="btn-gold w-12 h-12 shrink-0 rounded-full flex items-center justify-center"><Mic className="w-6 h-6" strokeWidth={2.5} /></span>
+          </button>
+        )}
         {sections.length === 0 && (
           <div className="flex flex-col items-center py-16 text-center">
             <Beaver mood="thinking" className="w-28" />
@@ -1035,11 +1064,24 @@ export default function App() {
             const p = menu.products.find((x) => x.id === s.product_id)
             if (!p) return
             // Options the guide couldn't settle: the customer picks them.
-            if (s.needs_options || (p.modifier_groups?.length && !s.option_ids.length)) { setGuideOpen(false); setDishFor(p); return }
+            if (s.needs_options || (p.modifier_groups?.length && !s.option_ids.length)) { setGuideOpen(false); setDishStart(s); setDishFor(p); return }
             addLine(p, { optionIds: s.option_ids }, s.quantity)
           }} />
       )}
 
+      {voiceOpen && (
+        <VoiceOrder token={token} products={menu.products} T={T} askGuide={askGuide}
+          onClose={(n) => { setVoiceOpen(false); if (n) flash(T.addedN(n)) }}
+          onAddAll={async (ls) => {
+            const done = []
+            for (const l of ls) {
+              const p = menu.products.find((x) => x.id === l.product_id)
+              if (p && await addLine(p, { optionIds: l.option_ids, note: l.note || '' }, l.quantity)) done.push(l.key)
+            }
+            return done
+          }}
+          onPickOptions={(p, l, done) => { dishDone.current = done; setDishStart(l); setDishFor(p) }} />
+      )}
       {billOpen && <Bill token={token} T={T} supabase={supabase} callPay={callPay} onClose={() => setBillOpen(false)} />}
       {callOpen && <CallSheet call={callOpenNow || callAckedNow ? call : null} busy={callBusy} error={callError}
         onCall={callWaiter} onCancel={cancelCall} onClose={() => setCallOpen(false)} />}
@@ -1047,8 +1089,13 @@ export default function App() {
       {menuOpen && <MenuSheet guest={guest} onName={setGuestName} onClose={() => setMenuOpen(false)} />}
       {catsOpen && <CategorySheet sections={sections} active={activeCat} onPick={(c) => { setCatsOpen(false); jumpTo(c) }} onClose={() => setCatsOpen(false)} />}
       {dishFor && (
-        <DishSheet product={dishFor} avoid={avoid} onClose={() => setDishFor(null)}
-          onAdd={(choice, qty) => { addLine(dishFor, choice, qty); setDishFor(null) }} />
+        <DishSheet product={dishFor} avoid={avoid} start={dishStart} onClose={() => { setDishFor(null); setDishStart(null); dishDone.current = null }}
+          onAdd={async (choice, qty) => {
+            const p = dishFor
+            setDishFor(null); setDishStart(null)
+            if (await addLine(p, choice, qty) && dishDone.current) { dishDone.current(); flash(T.addedN(qty)) }
+            dishDone.current = null
+          }} />
       )}
     </div>
   )

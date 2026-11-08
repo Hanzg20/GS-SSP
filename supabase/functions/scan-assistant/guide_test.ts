@@ -1,5 +1,5 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { checkSuggestions, menuLines, parseAnswer, type Dish } from "./guide.ts";
+import { checkOrder, checkSuggestions, menuLines, parseAnswer, parseOrder, type Dish } from "./guide.ts";
 
 const noodle: Dish = {
   id: "n1", name: "牛肉面 Beef Noodle Soup", price_cents: 1299, allergens: ["wheat", "soy"], dietary: ["halal"], spice_level: 2,
@@ -42,4 +42,25 @@ Deno.test("suggestions: unknown, sold out and duplicates dropped; bad options ->
   const missingRequired = checkSuggestions([{ product_id: "n1", quantity: 1, option_ids: ["egg"] }], [noodle]);
   assertEquals(missingRequired[0].needs_options, true);
   assertEquals(missingRequired[0].option_ids, []);
+});
+
+Deno.test("order: same dish twice with different notes, required option left -> needs_options", () => {
+  const raw = parseOrder('{"reply":"好的","language":"zh","lines":[{"product_id":"n1","quantity":1,"option_ids":["s1"],"note":"不要葱"},{"product_id":"n1","quantity":1,"option_ids":[]},{"product_id":"t1","quantity":"2"}],"choices":[],"missing":[]}')!;
+  const o = checkOrder(raw, [noodle, tofu, gone]);
+  assertEquals(o.lines.length, 3);
+  assertEquals(o.lines[0], { product_id: "n1", quantity: 1, option_ids: ["s1"], note: "不要葱" });
+  assertEquals(o.lines[1].needs_options, true);
+  assertEquals(o.lines[2], { product_id: "t1", quantity: 2, option_ids: [] });
+});
+
+Deno.test("order: invented and sold-out dishes never become lines; foreign options dropped; quantity capped", () => {
+  const o = checkOrder({ lines: [{ product_id: "zzz" }, { product_id: "g1" }, { product_id: "t1", quantity: 99, option_ids: ["s1"] }], choices: [], missing: ["龙虾"] }, [noodle, tofu, gone]);
+  assertEquals(o.lines, [{ product_id: "t1", quantity: 10, option_ids: [] }]);
+  assertEquals(o.missing, ["龙虾", "Gone"]);
+});
+
+Deno.test("order: choices keep only orderable dishes; one left -> becomes a line", () => {
+  const o = checkOrder({ lines: [], choices: [{ heard: "面", product_ids: ["n1", "t1", "g1", "x"] }, { heard: "汤", product_ids: ["t1", "g1"] }], missing: [] }, [noodle, tofu, gone]);
+  assertEquals(o.choices, [{ heard: "面", product_ids: ["n1", "t1"] }]);
+  assertEquals(o.lines, [{ product_id: "t1", quantity: 1, option_ids: [] }]);
 });

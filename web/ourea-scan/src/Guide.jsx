@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { X, Send, Mic, Square } from 'lucide-react'
+import { AiCard } from './ai.jsx'
 
 const money = (c) => '$' + (c / 100).toFixed(2)
 
@@ -66,6 +67,24 @@ export default function Guide({ token, products, T, askGuide, onClose, onAdd }) 
   }
 
   const byId = Object.fromEntries(products.map((p) => [p.id, p]))
+  // Dishes Beaver suggested, each with its own Add (nothing goes in the cart without a tap).
+  const renderSuggestions = (t, i) => (t.suggestions || []).map((s) => {
+    const p = byId[s.product_id]
+    if (!p) return null
+    const k = i + ':' + s.product_id
+    return (
+      <div key={k} className="mt-2 bg-paper rounded-xl p-3 flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-slate-900 text-sm">{s.quantity} × {p.name}</p>
+          {s.why && <p dir="auto" className="text-xs text-slate-500">{s.why}</p>}
+        </div>
+        <button disabled={added[k]} onClick={() => { onAdd(s); setAdded((a) => ({ ...a, [k]: true })) }}
+          className="shrink-0 bg-gold-500 text-ink disabled:bg-sky-100 disabled:text-sky-800 text-sm font-black px-3 py-2 rounded-lg">
+          {added[k] ? '✓' : `${T.addSuggestion} ${money(p.price_cents * s.quantity)}`}
+        </button>
+      </div>
+    )
+  })
   return (
     <div className="fixed inset-0 z-50 bg-ink/60 flex items-end sm:items-center sm:justify-center">
       <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl h-[85vh] flex flex-col overflow-hidden">
@@ -77,27 +96,18 @@ export default function Guide({ token, products, T, askGuide, onClose, onAdd }) 
           <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-sm px-4 py-3 text-sm text-slate-800 max-w-[85%]">{T.guideHello}</div>
           {turns.map((t, i) => (
             <div key={i} className={`flex flex-col ${t.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <div dir="auto" lang={t.lang || undefined}
-                className={`px-4 py-3 rounded-2xl text-sm max-w-[85%] whitespace-pre-wrap ${t.role === 'user' ? 'bg-sky-600 text-white rounded-br-sm' : t.error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-sm'}`}>
-                {t.content}
-              </div>
-              {(t.suggestions || []).map((s) => {
-                const p = byId[s.product_id]
-                if (!p) return null
-                const k = i + ':' + s.product_id
-                return (
-                  <div key={k} className="mt-2 w-[85%] bg-white border border-sky-200 rounded-xl p-3 flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-slate-900 text-sm">{s.quantity} × {p.name}</p>
-                      {s.why && <p dir="auto" className="text-xs text-slate-500">{s.why}</p>}
-                    </div>
-                    <button disabled={added[k]} onClick={() => { onAdd(s); setAdded((a) => ({ ...a, [k]: true })) }}
-                      className="shrink-0 bg-gold-500 text-ink disabled:bg-sky-100 disabled:text-sky-800 text-sm font-black px-3 py-2 rounded-lg">
-                      {added[k] ? '✓' : `${T.addSuggestion} ${money(p.price_cents * s.quantity)}`}
-                    </button>
-                  </div>
-                )
-              })}
+              {t.role === 'assistant' && !t.error ? (
+                // Beaver's answers wear GoldSky's AI card (src/ai.jsx); suggestions sit inside it.
+                <AiCard className="w-[88%] mt-3" source={t.suggestions?.length ? T.fromMenu : null}>
+                  <div dir="auto" lang={t.lang || undefined} className="text-sm text-slate-800 whitespace-pre-wrap">{t.content}</div>
+                  {renderSuggestions(t, i)}
+                </AiCard>
+              ) : (
+                <div dir="auto" lang={t.lang || undefined}
+                  className={`px-4 py-3 rounded-2xl text-sm max-w-[85%] whitespace-pre-wrap ${t.role === 'user' ? 'bg-sky-600 text-white rounded-br-sm' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  {t.content}
+                </div>
+              )}
             </div>
           ))}
           {busy && <div className="flex items-center gap-2 text-sky-700 text-sm font-bold"><img src="/beaver/thinking.webp" alt="" className="w-10 beaver-bob" />…</div>}

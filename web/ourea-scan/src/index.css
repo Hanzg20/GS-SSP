@@ -21,3 +21,23 @@
 @keyframes ring { 0%, 100% { transform: rotate(0) } 20% { transform: rotate(14deg) } 40% { transform: rotate(-12deg) } 60% { transform: rotate(8deg) } 80% { transform: rotate(-4deg) } }
 .bell-ring { animation: ring 1.2s ease-in-out infinite; transform-origin: 50% 10%; }
 @media (prefers-reduced-motion: reduce) { .beaver-bob, .bell-ring { animation: none; } }
+
+/* GoldSky's AI look (src/ai.jsx): a gold-to-sky edge, Beaver's badge, the source underneath. */
+@layer components {
+  .ai-card {
+    @apply relative rounded-3xl p-4 pt-5 shadow-card;
+    border: 1.5px solid transparent;
+    background: linear-gradient(#fff, #fff) padding-box, linear-gradient(135deg, theme('colors.gold.400'), theme('colors.sky.400')) border-box;
+  }
+  .ai-badge {
+    @apply absolute -top-4 -left-1 w-10 h-10 rounded-full bg-white shadow-card flex items-end justify-center overflow-hidden;
+    border: 1.5px solid theme('colors.gold.300');
+  }
+  .ai-badge img { @apply w-9 translate-y-1 select-none; }
+  .ai-source {
+    @apply mt-3 pt-2 border-t border-dashed border-slate-200 text-[11px] font-black bg-gradient-to-r from-gold-600 to-sky-600 bg-clip-text text-transparent;
+  }
+}
+@keyframes mic-ring { 0% { box-shadow: 0 0 0 0 rgba(255, 159, 0, .55) } 100% { box-shadow: 0 0 0 22px rgba(255, 159, 0, 0) } }
+.mic-ring { animation: mic-ring 1.2s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .mic-ring { animation: none; } }
