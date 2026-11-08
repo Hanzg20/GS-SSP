@@ -385,13 +385,8 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
                     if (_state.value.screen !is Screen.Paying) return@launch
                     onPaid(order, ref = "DEMO_" + System.currentTimeMillis(), bankRef = "", entryMode = "DEMO", authCode = null, demo = true)
                 }
-                pending is Pending.Coupon -> cardSale(order, simulate, price) {
-                    // Paid by card already: use the coupon up now. A lost race (used elsewhere
-                    // meanwhile) still starts the machine -- they paid.
-                    if (CouponRepository.redeemCoupon(pending.code, deviceSn) !is CouponRedeemResult.Success) {
-                        DiagnosticManager.reportError(deviceSn, "COUPON_REDEEM_AFTER_PAY_FAILED", severity = "WARNING", trace = "code=${pending.code}")
-                    }
-                }
+                // The coupon is used before the card is asked for, given back if the sale fails.
+                pending is Pending.Coupon -> cardSale(order, simulate, price, couponCode = pending.code)
                 else -> cardSale(order, simulate, price)
             }
         }
@@ -405,7 +400,17 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun starter(demo: Boolean) = if (demo) DemoStarter else starter
 
-    private fun cardSale(order: LaundryMachineConfig.Order, simulate: Boolean, amountCents: Int, afterApproved: (suspend () -> Unit)? = null) {
+    // The coupon used for the sale in progress (coupon_redeem's redemption id, 2026-11-08): given
+    // back when the card fails or nothing reached the machine; cleared once it started.
+    private var activeCouponRedemption: String? = null
+
+    private fun giveCouponBack(reason: String) {
+        val id = activeCouponRedemption ?: return
+        activeCouponRedemption = null
+        viewModelScope.launch { CouponRepository.releaseCoupon(id, reason, deviceSn) }
+    }
+
+    private fun cardSale(order: LaundryMachineConfig.Order, simulate: Boolean, amountCents: Int, couponCode: String? = null) {
         val m = order.machine
         val pay = payment ?: run { showThenHome(Screen.Declined("Card payment is not available"), 5000); return }
         val testCents = TestSale.consume()
@@ -413,7 +418,16 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         val ref = (if (testCents != null) TestSale.REF_PREFIX + "LAUNDRY_" else "LAUNDRY_") + System.currentTimeMillis()
         _state.update { it.copy(screen = Screen.Paying(m, "Tap, insert or swipe your card", charge, test = testCents != null)) }
         TtsManager.speak("Please present your card")
+        activeCouponRedemption = null
         viewModelScope.launch {
+            // Used BEFORE the card (2026-11-08): used after it, a dropped network or app left it
+            // unused and it could be used again.
+            if (couponCode != null) {
+                when (val used = CouponRepository.redeemCoupon(couponCode, deviceSn, ref)) {
+                    is CouponRedeemResult.Success -> activeCouponRedemption = used.redemptionId
+                    else -> { _state.update { it.copy(screen = Screen.Home) }; notice("This coupon can't be used. Please see the attendant."); return@launch }
+                }
+            }
             TransactionRepository.recordTransaction(
                 getApplication(),
                 TransactionRecord(
@@ -432,11 +446,11 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
                 override fun onCancelled() { cancelled = true }
                 override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
                     viewModelScope.launch {
-                        afterApproved?.invoke()
                         onPaid(order, ref, refNum, entryMode, authCode, demo = false, simulate = simulate, chargeCents = charge)
                     }
                 }
                 override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
+                    giveCouponBack("card not completed")
                     viewModelScope.launch {
                         TransactionRepository.recordFailedCardSale(getApplication(), ref, cardInfo.also { cardInfo = null }, cancelled)
                     }
@@ -474,6 +488,7 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         val result = starter(demo || simulate).start(m, order.pulses)
         if (result.ok) {
             if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ref, if (simulate) "SIMULATED" else "ACK_RECEIVED")
+            activeCouponRedemption = null
             markRunning(order)
             TtsManager.speak("Payment approved. ${startPhrase(order)}")
             showThenHome(Screen.Started(m, startSummary(order)), 12000)
@@ -481,6 +496,7 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         }
         // Didn't (fully) start. Some pulses may have reached the machine: never send more.
         Log.e(TAG, "Machine ${m.machineNo} start failed: $result")
+        if (result.delivered == 0 && !result.uncertain) giveCouponBack("machine did not start") else activeCouponRedemption = null
         TtsManager.speak("Sorry, the machine could not start. Please contact the attendant.")
         showThenHome(Screen.StartFailed(m, paid = !demo), 12000)
         if (demo) return
@@ -551,9 +567,10 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
                 startPrepaid(order, "DEMO_COUPON_" + System.currentTimeMillis(), demo = true, simulate = true, paidWith = "coupon", spoken = "Your coupon covers it.")
                 return@launch
             }
-            when (CouponRepository.redeemCoupon(coupon.code, deviceSn)) {
+            val ref = "COUPON_${System.currentTimeMillis()}"
+            when (val used = CouponRepository.redeemCoupon(coupon.code, deviceSn, ref)) {
                 is CouponRedeemResult.Success -> {
-                    val ref = "COUPON_${System.currentTimeMillis()}"
+                    activeCouponRedemption = used.redemptionId
                     TransactionRepository.recordTransaction(
                         getApplication(),
                         TransactionRecord(
@@ -580,11 +597,13 @@ class LaundryViewModel(app: Application) : AndroidViewModel(app) {
         val result = starter(demo || simulate).start(m, order.pulses)
         if (result.ok) {
             if (!demo) TransactionRepository.updateHardwareStatus(getApplication(), ref, if (simulate) "SIMULATED" else "ACK_RECEIVED")
+            activeCouponRedemption = null
             markRunning(order)
             TtsManager.speak("$spoken ${startPhrase(order)}")
             showThenHome(Screen.Started(m, startSummary(order)), 12000)
             return
         }
+        if (result.delivered == 0 && !result.uncertain) giveCouponBack("machine did not start") else activeCouponRedemption = null
         TtsManager.speak("Sorry, the machine could not start. Please contact the attendant.")
         showThenHome(Screen.StartFailed(m, paid = true), 12000)
         if (demo) return

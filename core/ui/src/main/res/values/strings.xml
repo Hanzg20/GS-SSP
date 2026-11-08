@@ -171,6 +171,7 @@
     <string name="toast_member_code_invalid">Member code not recognized</string>
     <string name="toast_coupon_applied">Coupon applied! Please select your wash package.</string>
     <string name="toast_coupon_invalid">This coupon can\'t be used, please see staff</string>
+    <string name="toast_coupon_network">No connection. Please try the coupon again.</string>
     <string name="toast_coupon_see_staff">This coupon needs staff assistance to redeem</string>
     <string name="toast_code_unrecognized">Unrecognized code — not issued by this location</string>
     <string name="toast_scan_failed">Couldn\'t read that code, please try again</string>

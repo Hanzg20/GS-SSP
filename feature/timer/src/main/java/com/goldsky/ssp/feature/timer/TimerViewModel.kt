@@ -355,11 +355,10 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Card payment of [amountCents] for [pkg] (the package price, or what a
-     * coupon leaves to pay). [afterApproved] runs once the card is approved,
-     * before the machine starts -- a discount coupon is consumed there, so a
-     * declined card never uses it up. Time / pulses always follow [pkg].
+     * coupon leaves to pay). [couponCode]: used before the card is asked for, given back
+     * if the card or the machine fails (giveCouponBack). Time / pulses always follow [pkg].
      */
-    private fun cardSale(pkg: TimerPackage, side: Bay?, amountCents: Int, afterApproved: (suspend () -> Unit)? = null) {
+    private fun cardSale(pkg: TimerPackage, side: Bay?, amountCents: Int, couponCode: String? = null) {
         // Technician small real test (TestSale): charge the armed amount, run
         // the full package -- pulses/time below follow pkg, not the charge.
         val testCents = TestSale.consume()
@@ -370,7 +369,17 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         val auto = cardAutoStarted.also { cardAutoStarted = false }
         _state.update { it.copy(screen = Screen.Paying(pkg, "Tap, insert or swipe your card", side, chargeCents)) }
         TtsManager.speakRepeated("Please tap, insert or swipe your card.")
+        activeCouponRedemption = null
         viewModelScope.launch {
+            // A coupon is used BEFORE the card (2026-11-08): used after it, a dropped network or
+            // app left it unused and it could be used again.
+            if (couponCode != null) {
+                when (val used = CouponRepository.redeemCoupon(couponCode, deviceSn, ecrRefNum)) {
+                    is CouponRedeemResult.Success -> activeCouponRedemption = used.redemptionId
+                    is CouponRedeemResult.NetworkError -> { backToPayment(pkg, side, "Network problem. Please try again."); return@launch }
+                    else -> { backToPayment(pkg, side, "This coupon can't be used."); return@launch }
+                }
+            }
             // PENDING before the bank call, same as wash: a crash between
             // approval and our own write must never leave an untracked charge.
             TransactionRepository.recordTransaction(
@@ -394,12 +403,12 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
                     // Deliberately ignores whether the customer hit Cancel in
                     // the meantime: money moved, so they get their time.
                     viewModelScope.launch {
-                        afterApproved?.invoke()
                         onPaid(pkg, ecrRefNum, refNum, entryMode, side, chargeCents, authCode)
                     }
                 }
 
                 override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
+                    giveCouponBack("card not completed")
                     viewModelScope.launch {
                         val card = pendingCardInfo.also { pendingCardInfo = null }
                         TransactionRepository.recordFailedCardSale(getApplication(), ecrRefNum, card, cancelled)
@@ -468,14 +477,20 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             is Pending.Vip -> payWithVip(c.pkg, c.bay, pending)
             is Pending.Coupon ->
                 if (c.chargeCents <= 0) redeemFree(c.pkg, c.bay, pending)
-                else cardSale(c.pkg, c.bay, c.chargeCents) {
-                    // Paid by card already: use the coupon up now. A lost race
-                    // (used elsewhere meanwhile) still runs -- they paid.
-                    if (CouponRepository.redeemCoupon(pending.code, deviceSn) !is CouponRedeemResult.Success) {
-                        DiagnosticManager.reportError(deviceSn, "COUPON_REDEEM_AFTER_PAY_FAILED", severity = "WARNING", trace = "code=${pending.code}")
-                    }
-                }
+                // The coupon is used before the card is asked for (cardSale), given back if the sale fails.
+                else cardSale(c.pkg, c.bay, c.chargeCents, couponCode = pending.code)
         }
+    }
+
+    // The coupon used for the sale in progress (coupon_redeem's redemption id, 2026-11-08):
+    // given back (giveCouponBack) when the card is declined / cancelled or the machine does not
+    // start; cleared once it has started.
+    private var activeCouponRedemption: String? = null
+
+    private fun giveCouponBack(reason: String) {
+        val id = activeCouponRedemption ?: return
+        activeCouponRedemption = null
+        viewModelScope.launch { CouponRepository.releaseCoupon(id, reason, deviceSn) }
     }
 
     private fun payWithVip(pkg: TimerPackage, bay: Bay?, vip: Pending.Vip) {
@@ -511,9 +526,10 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
     private fun redeemFree(pkg: TimerPackage, bay: Bay?, coupon: Pending.Coupon) {
         _state.update { it.copy(screen = Screen.Working("Applying your coupon…")) }
         viewModelScope.launch {
-            when (CouponRepository.redeemCoupon(coupon.code, deviceSn)) {
+            val ref = "COUPON_${System.currentTimeMillis()}"
+            when (val used = CouponRepository.redeemCoupon(coupon.code, deviceSn, ref)) {
                 is CouponRedeemResult.Success -> {
-                    val ref = "COUPON_${System.currentTimeMillis()}"
+                    activeCouponRedemption = used.redemptionId
                     TransactionRepository.recordTransaction(
                         getApplication(),
                         TransactionRecord(
@@ -544,9 +560,11 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         if (started) {
+            activeCouponRedemption = null
             TransactionRepository.updateHardwareStatus(getApplication(), ref, "ACK_RECEIVED")
             TtsManager.speakRepeated(if (bay != null) "$spoken ${pkg.name} ${bay.number} is on." else "$spoken Your ${pkg.name.lowercase()} is on.")
         } else {
+            giveCouponBack("machine did not start")
             TransactionRepository.updateHardwareStatus(getApplication(), ref, "HARDWARE_ERROR")
             DiagnosticManager.reportError(
                 deviceSn, "TIMER_PREPAID_NOT_STARTED", severity = "CRITICAL",
@@ -618,6 +636,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         if (bay != null) {
             val extended = _state.value.bays.containsKey(bay)
             if (startBay(bay, pkg, ecrRefNum)) {
+                activeCouponRedemption = null
                 TransactionRepository.updateHardwareStatus(getApplication(), ecrRefNum, "ACK_RECEIVED")
                 showThenHome(Screen.BayStarted(bay, pkg, extended), BAY_STARTED_MS)
                 TtsManager.speakRepeated(
@@ -634,6 +653,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
         // late left the screen showing 0:02 after the relay had already dropped.
         val issuedAt = SystemClock.elapsedRealtime()
         if (startOutput(pkg.durationMs, pkg.priceCents, ecrRefNum, pkg.productId)) {
+            activeCouponRedemption = null
             runSession(pkg, pkg.durationMs - (SystemClock.elapsedRealtime() - issuedAt), pkg.durationMs)
             TtsManager.speakRepeated("Payment approved. Your ${pkg.name.lowercase()} is on.")
             // startOutput only returns true once the board accepted the hold
@@ -704,6 +724,7 @@ class TimerViewModel(app: Application) : AndroidViewModel(app) {
 
     /** [chargeCents]: what the card was actually charged -- the reversal must match it (a test sale charges less than the package). */
     private suspend fun onStartFailed(pkg: TimerPackage, ecrRefNum: String, bankRef: String, chargeCents: Int = pkg.priceCents) {
+        giveCouponBack("machine did not start")
         val autoReverse = com.goldsky.ssp.payment.RefundPolicy.AUTO_REVERSAL
         _state.update { it.copy(screen = Screen.StartFailed(refunded = if (autoReverse) null else false)) }
         TtsManager.speakRepeated(

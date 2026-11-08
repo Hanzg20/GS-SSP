@@ -153,6 +153,10 @@ class MainActivity : BaseAdActivity() {
     // a declined card must never use the coupon up (same as Aegis Timer).
     private data class PendingCoupon(val code: String, val type: String, val value: Int, val productId: String? = null)
     private var pendingCoupon: PendingCoupon? = null
+    // The coupon used for the sale in progress (coupon_redeem's redemption id, 2026-11-08):
+    // used BEFORE the card is asked for, given back (giveCouponBack) when the card is declined /
+    // cancelled or the wash does not start; cleared once the wash has started.
+    private var activeCouponRedemption: String? = null
 
     // Technician/Maintenance Variables
     private val techEntry = com.goldsky.ssp.ui.CornerSequence()
@@ -1595,10 +1599,12 @@ class MainActivity : BaseAdActivity() {
         serviceCents: Int, startHex: String, productId: String?, onRejected: () -> Unit,
     ) {
         val base = freeCouponBase(type, value, boundProductId, serviceCents)
-        if (CouponRepository.redeemCoupon(code, deviceSn) !is CouponRedeemResult.Success) {
+        val used = CouponRepository.redeemCoupon(code, deviceSn)
+        if (used !is CouponRedeemResult.Success) {
             onRejected()
             return
         }
+        activeCouponRedemption = used.redemptionId
         if (base == null) {
             startFreeWashFlow(serviceCents, startHex, productId)
             return
@@ -1610,17 +1616,30 @@ class MainActivity : BaseAdActivity() {
     }
 
     /**
-     * Consumes a discount coupon once the rest has been paid. The wash runs
-     * either way -- the customer paid; a lost race (the coupon used on
-     * another terminal meanwhile) is only reported.
+     * Uses the coupon for a sale that still has something to pay, BEFORE the card / phone is
+     * asked for (2026-11-08: used after the payment, a dropped network or app left it unused
+     * and it could be used again). False = it can't be used: the customer is told and sent
+     * Home, nothing was charged.
      */
-    private fun redeemPaidCoupon(code: String?) {
-        if (code == null) return
-        CoroutineScope(Dispatchers.Main).launch {
-            if (CouponRepository.redeemCoupon(code, deviceSn) !is CouponRedeemResult.Success) {
-                DiagnosticManager.reportError(deviceSn, "COUPON_REDEEM_AFTER_PAY_FAILED", severity = "WARNING", trace = "code=$code")
-            }
+    private suspend fun useCouponBeforePaying(code: String?, ref: String, dialog: Dialog): Boolean {
+        if (code == null) return true
+        val used = CouponRepository.redeemCoupon(code, deviceSn, ref)
+        if (used is CouponRedeemResult.Success) {
+            activeCouponRedemption = used.redemptionId
+            return true
         }
+        paymentInFlight = false
+        dialog.dismiss()
+        showScanFeedback(getString(if (used is CouponRedeemResult.NetworkError) R.string.toast_coupon_network else couponRejectionMessageRes(code)))
+        resetAdTimer()
+        return false
+    }
+
+    /** The sale did not go through: the coupon used for it is given back (see activeCouponRedemption). */
+    private fun giveCouponBack(reason: String) {
+        val id = activeCouponRedemption ?: return
+        activeCouponRedemption = null
+        CoroutineScope(Dispatchers.Main).launch { CouponRepository.releaseCoupon(id, reason, deviceSn) }
     }
 
     private fun initCardPayment(priceInCents: Int, startHex: String, dialog: Dialog, productId: String? = null, serviceCents: Int = priceInCents, couponCode: String? = null) {
@@ -1636,6 +1655,7 @@ class MainActivity : BaseAdActivity() {
         paymentInFlight = true
 
         CoroutineScope(Dispatchers.Main).launch {
+            if (!useCouponBeforePaying(couponCode, txRefNum, dialog)) return@launch
             // Pre-write PENDING before calling the bank so a crash between
             // approval and our own audit write never leaves a
             // charged-but-untracked transaction (docs/card_payment_integration.md #3).
@@ -1662,7 +1682,6 @@ class MainActivity : BaseAdActivity() {
                 }
                 override fun onCancelled() { cancelled = true }
                 override fun onSuccess(authCode: String, refNum: String, entryMode: String) {
-                    redeemPaidCoupon(couponCode)
                     startFinalizationSequence(chargeCents, startHex, refNum, dialog, txRefNum, entryMode = entryMode, pulseAmountCents = serviceCents, authCode = authCode)
                 }
                 override fun onFailure(errorMsg: String, isHardwareFault: Boolean) {
@@ -1671,6 +1690,7 @@ class MainActivity : BaseAdActivity() {
                     // (-139)") stays in the log; the customer gets plain words.
                     Log.w("MainActivity", "Card sale failed: $errorMsg (hardwareFault=$isHardwareFault)")
                     val reason = DeclineReason.classify(errorMsg, isHardwareFault)
+                    giveCouponBack("card $reason")
                     runOnUiThread {
                         val msg = getString(
                             when (reason) {
@@ -1760,7 +1780,7 @@ class MainActivity : BaseAdActivity() {
                                 back(getString(couponRejectionMessageRes(code)))
                             }
                         } else {
-                            // Consumed after the card for the rest is approved (redeemPaidCoupon).
+                            // Used right before the card is asked for, given back if the sale doesn't go through (useCouponBeforePaying).
                             startPaymentFlow(true, restCents, startHex, productId, serviceCents, couponCode = code,
                                 cardGuide = getString(R.string.tts_coupon_pay_rest))
                         }
@@ -1796,6 +1816,7 @@ class MainActivity : BaseAdActivity() {
         // the app never finds out about.
         paymentInFlight = true
         pollingJob = CoroutineScope(Dispatchers.Main).launch {
+            if (!useCouponBeforePaying(couponCode, txId, dialog)) return@launch
             // create-qr-session (Edge Function) is the only thing that talks
             // to the payment gateway and is the only writer of this session
             // row -- status can only flip to PAID from the server side
@@ -1833,7 +1854,6 @@ class MainActivity : BaseAdActivity() {
                 // comment below) -- needed so EdgeNexusRemoteAdapter can find the matching
                 // device_commands row. refNum stays "" as before (it gates the card
                 // void/refund path on hardware failure, which doesn't apply to QR).
-                redeemPaidCoupon(couponCode)
                 startFinalizationSequence(priceInCents, startHex, "", dialog, pulseAmountCents = serviceCents, productId = productId, paymentMethod = "QR_CODE", qrTxId = txId)
             } else {
                 // Polling gave up (customer never completed payment, or it's
@@ -1841,6 +1861,7 @@ class MainActivity : BaseAdActivity() {
                 // this branch did nothing at all, leaving the dialog sitting
                 // open forever with no way for the kiosk to recover on its own.
                 paymentInFlight = false
+                giveCouponBack("phone payment not completed")
                 Toast.makeText(this@MainActivity, getString(R.string.toast_pay_timeout), Toast.LENGTH_LONG).show()
                 dialog.dismiss()
                 resetAdTimer()
@@ -2007,6 +2028,7 @@ class MainActivity : BaseAdActivity() {
             layoutWashStepper?.visibility = View.GONE
 
             if (outcome !is DispenseOutcome.Failed) {
+                activeCouponRedemption = null // the wash started: the coupon stays used
                 if (scene != null) {
                     scene.progress = 1f
                     scene.phase = WashPhase.DONE
@@ -2080,6 +2102,7 @@ class MainActivity : BaseAdActivity() {
                 // reaches this branch -- DeliveredUnconfirmed is handled above and
                 // deliberately does NOT auto-void (see DispenseOutcome's doc comment).
                 val failReason = (outcome as? DispenseOutcome.Failed)?.reason ?: "unknown"
+                giveCouponBack("wash did not start ($failReason)")
                 DiagnosticManager.reportError(deviceSn, "HARDWARE_PULSE_FAIL", severity = "CRITICAL", trace = failReason)
                 TransactionRepository.updateHardwareStatus(this@MainActivity, ecrRefNum, "HARDWARE_ERROR")
                 if (refNum.isNotEmpty() && !autoReverse) {
