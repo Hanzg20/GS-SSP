@@ -4,6 +4,7 @@
 
 BEGIN;
 DELETE FROM dine.scan_orders WHERE org_id = 'e2e5ca00-0000-4000-8000-000000000001';
+DELETE FROM dine.service_calls WHERE org_id = 'e2e5ca00-0000-4000-8000-000000000001';
 DELETE FROM dine.payments    WHERE check_id IN (SELECT id FROM dine.checks WHERE org_id = 'e2e5ca00-0000-4000-8000-000000000001');
 DELETE FROM dine.check_items WHERE check_id IN (SELECT id FROM dine.checks WHERE org_id = 'e2e5ca00-0000-4000-8000-000000000001');
 DELETE FROM dine.checks      WHERE org_id = 'e2e5ca00-0000-4000-8000-000000000001';

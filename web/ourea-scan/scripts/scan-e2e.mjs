@@ -88,6 +88,27 @@ for (let i = 1; i <= 3; i++) {
 }
 await expectMsg('T4 第 4 单 -> too_many_orders', 4, [{ product_id: ZHAJIANG, quantity: 1 }], 'too_many_orders')
 
+// ---- menu extras (2026-11-08): store logo, dish photo / translated names keys present
+check('菜单带门店 logo 字段', menu.store && 'logo_url' in menu.store, menu.store)
+check('菜品带图片 / 译名字段', 'image_url' in menu.products[0] && 'names' in menu.products[0], Object.keys(menu.products[0]))
+
+// ---- call a server (T3): one open call, cancel, limits, staff function closed to anon
+check('T3 起初没有呼叫', (await rpc('scan_call_state', { p_token: T(3) })) === null)
+const call = await rpc('scan_call_waiter', { p_token: T(3), p_reason: 'WATER' })
+check('呼叫服务员成功', call?.success === true && !!call.id, call)
+const again = await rpc('scan_call_waiter', { p_token: T(3), p_reason: 'BILL' })
+check('再按一次 -> 同一个呼叫 (already)', again?.success === true && again.already === true && again.id === call.id, again)
+check('呼叫状态 OPEN、原因 WATER', (await rpc('scan_call_state', { p_token: T(3) }))?.status === 'OPEN')
+check('不认识的原因 -> bad_reason', (await rpc('scan_call_waiter', { p_token: T(3), p_reason: 'X' }))?.message === 'bad_reason')
+check('停用桌台呼叫 -> unknown_table', (await rpc('scan_call_waiter', { p_token: T(9), p_reason: 'HELP' }))?.message === 'unknown_table')
+check('别的桌看不到这个呼叫', (await rpc('scan_call_state', { p_token: T(2) }))?.id !== call.id)
+check('取消呼叫', (await rpc('scan_cancel_call', { p_token: T(3) }))?.cancelled === 1)
+check('取消后状态 CANCELLED', (await rpc('scan_call_state', { p_token: T(3) }))?.status === 'CANCELLED')
+for (let i = 2; i <= 6; i++) { await rpc('scan_call_waiter', { p_token: T(3), p_reason: 'HELP' }); await rpc('scan_cancel_call', { p_token: T(3) }) }
+check('30 分钟内第 7 次 -> too_many_calls', (await rpc('scan_call_waiter', { p_token: T(3), p_reason: 'HELP' }))?.message === 'too_many_calls')
+const staff = await sb.rpc('dine_service_calls')
+check('店员接口不对顾客开放', !!staff.error, staff.error?.code)
+
 console.log(failed ? `\n${failed} 项失败` : '\n全部通过')
 console.log(`T1 待接单: ${ok?.id}  (终端 4 秒内应出现横幅)`)
 process.exit(failed ? 1 : 0)

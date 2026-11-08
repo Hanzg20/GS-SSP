@@ -3,6 +3,12 @@
 > [!NOTE]
 > **版本号说明**: 本文档实际由两条独立演进线合并而成（CMP/Supabase 后端的 RLS 修复线，与 Android HAL/产品线的架构演进线），两条线各自独立递增版本号，合并后出现了 `v2.23`/`v2.24`/`v2.27` 各被使用两次、且部分条目未按日期严格排序的情况（例如 `v2.27 (2026-08-20)` 实际是全文最新的一次修改，却排在 `v2.28 (2026-08-09)` 之后）。**版本号不是可靠的时间/依赖排序依据，请以每条目标题里的日期为准**；正文中散落的 `[v2.1]` 等内联标记同理，指的是该版本条目引入的变更，不代表这是当前最新状态。
 
+### v2.56 (2026-11-08) — Ourea Scan 第二版：GoldSky 品牌、小海狸、菜单导航、呼叫服务员、菜品照片 (Ourea Scan v2)
+
+*   参考 Chowbus 扫码点餐（2026-11-08 实地看过一家店），借鉴其菜单导航与呼叫服务员，保留并放大我们自己的：店员确认、服务端定价、AI 小海狸、诚实状态。详见 §17.5。
+*   迁移 `docs/migrations/2026-11-08_scan_calls_brand.sql`（已应用）：新表 `dine.service_calls`；`scan_call_waiter` / `scan_call_state` / `scan_cancel_call`（顾客）、`dine_service_calls` / `dine_ack_call`（终端）；`dine_floor` 增加 `service_calls`；`scan_menu` 增加门店 logo、菜品照片与译名。
+*   顺带：删掉本文第 17/18 节中一段重复错位的内容。
+
 ### v2.55 (2026-11-06) — Aegis Flex 独立业务类型 FLEX (Flex Vertical)
 
 *   `products` / `devices` 的 `vertical_type` CHECK 加 `FLEX`；`device_set_vertical` 接受 FLEX，Aegis Flex 启动时上报（与 `app_version` 一起，二者始终说的是同一个 app）。迁移 `docs/migrations/2026-11-06_flex_vertical.sql`。
@@ -1188,6 +1194,18 @@ sequenceDiagram
 | 厨房网络打印机不通 | — | 自动改在终端本机打印 |
 | 店里没有开着桌台图的终端 | 一直「等待店员确认」 | 没人接单；Cael 现场页能看到待处理单，但不能在 Cael 里接单（只读，见 v2.51） |
 
+### 17.5 第二版：品牌与借鉴 (2026-11-08)
+
+*   **品牌**：门店是主角（顶部 logo `organizations.logo_url` + 店名，没有 logo 用店名首字的金色方块），GoldSky 只在页脚落款「Powered by GoldSky Ourea」（金→蓝渐变）。颜色取自 logo：**金**＝要顾客动手和钱（主按钮、价格、合计；金底配深色字，白字对比度不够），**天蓝**＝信息和状态（进度、小海狸、提示）。Tailwind 色板在 `web/ourea-scan/tailwind.config.js`。
+*   **小海狸**（`public/beaver/*.webp`，由 `docs/mascot` 转出）：加载眨眼、出错提醒、等店员确认拿点单板、送厨房比赞、AI 回答时思考、语音时倾听、搜不到菜时思考。
+*   **菜单**：整页按分类连续排列，分类标签吸顶并随滚动高亮；搜索（菜名 / 译名 / 描述 / 配料）；有加料的价格带「⁺」；这台手机已点过的菜标「已点 ×n」；加号上显示购物车里的份数；点整行打开菜品页（大图、资料、加料、数量）。
+*   **我的忌口**：顾客勾选过敏原（只存在手机上），含这些的菜标红「含花生」；没有过敏原资料的菜标「过敏原未标注」，不当作安全。
+*   **订单进度**：每张单三步——已提交 → 店员确认 → 已送厨房；被拒显示原因。
+*   **呼叫服务员**：加水 / 要买单 / 叫服务员。每桌同时只有一个未处理的呼叫（再按＝同一个），30 分钟内最多 6 次，顾客可取消；终端桌台图顶部琥珀色横幅「T2 桌呼叫：加水」+ 提示音，桌卡显示铃铛并呼吸发光，任一终端点「这就去」后所有终端消失、顾客手机显示「服务员已经在路上」。超过 30 分钟没人处理的呼叫视为过期，不再显示。
+*   **菜品照片与译名**：Cael 菜品资料里上传照片（缩到 1200px JPEG，存 `ad-media/dish-photos/`，写 `attributes.image_url`）、填中文名 / 英文名（`attributes.name_i18n`）。顾客页右上角可切换中文 / English（存在手机上），选中语言有译名就显示译名，店里原名小字在下。
+*   **没有照搬的**：顾客填名字入桌、整桌共享购物车（复杂，先不做）；自助餐限量、开台控制、菜单时段（以后有客户要再做）；结账付款（已有 Nuvei 桌边付款，优先级靠后）。
+*   **测试**：`web/ourea-scan/scripts/scan-e2e.mjs` 47 项（新增菜单字段与呼叫 15 项），`tools/scan-e2e/reset.sql` 也清呼叫。
+
 ---
 
 ## 18. Aegis Nexus 中央多工位洗衣中控终端与 EdgeNexus 边缘网关 (Aegis Nexus Central Laundromat Kiosk & EdgeNexus Integration, 2026-10-14)
@@ -1226,90 +1244,6 @@ sequenceDiagram
     *   🔴 **玫瑰红 (Rose)**：故障报修/维护中 (Out of Order)。
 3.  **无感支付引导 (Contactless Payment Guide)**:
     *   支付等待状态下展示动态 NFC 感应动画，提示 `Please tap, insert or swipe card on terminal`，降低顾客操作焦虑。
-
-顾客扫桌上的二维码，在手机网页上点菜；订单**先等店员确认**，店员在店内 Ourea（或 Iris）上接单后才进厨房、成为这桌的新一轮。表结构与 RPC 清单见 `docs/database_design.md` §5；测试方法见 `tools/scan-e2e/README.md`。
-
-### 17.1 参与方
-
-| 参与方 | 是什么 | 身份 |
-|---|---|---|
-| 顾客手机 | `web/ourea-scan`（Vite + React 网页，站点默认 `scan-order.si-sky.com`，Ourea 设置 > 桌台 / Cael 可配置） | 无需登录：桌台二维码里的 `qr_token`（128 位随机）就是凭证，只能看这家店的菜单、下这张桌的单、查自己下的单 |
-| 店内终端 | Ourea（桌面收银）、Iris（手持），业务类型为 DINE_IN | 设备身份（§2.1.1），门店由服务端从 `device_auth_map` 取 |
-
----
-
-## 18. Aegis Nexus 中央多工位洗衣中控终端与 EdgeNexus 边缘网关 (Aegis Nexus Central Laundromat Kiosk & EdgeNexus Integration, 2026-10-14)
-
-针对商业自助洗衣房（Laundromat）或多机共享洗衣场景，系统引入了 **`app:aegis-nexus` (Aegis Nexus)** 中央多工位收费中控终端与 **`gs-EdgeNexus` (EdgeNexus™)** 边缘硬件网关协同架构。实现**一台收费终端（如 WizarPOS Q3mini / 触控平板）通过边缘网关统一纳管 10 台洗衣机/烘干机**。
-
-### 18.1 架构拓扑与分工
-*   **Aegis Nexus (`app:aegis-nexus`)**: 
-    *   作为中央收费终端（Central Kiosk App），提供全屏触控 UI。
-    *   顾客在屏幕上选择工位（如 `Bay #3`）、洗涤程序，并通过 Nuvei / PAYWizard / Interac 完成无现金支付。
-    *   支付成功后，向 Supabase 云端下发控制指令，或直接与本地 EdgeNexus 网关进行通信。
-*   **EdgeNexus (gs-EdgeNexus)**:
-    *   部署在边缘的硬件网关（基于 ESP32 固件），通过串口、Modbus 或 USB 直连多路物理继电器板（Relay 1 ~ 10）。
-    *   轮询云端 `device_commands` 表或接收网关信令，物理闭合对应工位的继电器，输出 12V 脉冲驱动洗衣机启动。
-*   **云端协同 (Supabase / CMP)**:
-    *   通过 `devices`、`transactions`、`device_commands` 和 `products` 表实现全链路状态同步、设备心跳（Heartbeat）与混合营收对账。
-| 云端 | Supabase：`dine` schema（不对外暴露，只能经 `public.scan_*` / `dine_*` 函数访问） | — |
-| AI 点餐向导 | Edge Function `scan-assistant` | 同样以 `qr_token` 为凭证 |
-| Cael | 管理桌台、打印台卡、换码；现场页**只读** | 门店成员 / `dine.manage` |
-
-### 17.2 流程
-
-```mermaid
-sequenceDiagram
-    participant P as 顾客手机 (Ourea Scan)
-    participant DB as Supabase (dine)
-    participant T as Ourea / Iris (桌台图)
-    participant K as 厨房打印机
-
-    P->>DB: scan_menu(token) → 店名、桌号、菜单（价格/加料/税率/售罄）
-    P->>P: 选菜、选加料（必选/上限在页面上先校验）
-    P->>DB: scan_submit_order(token, 菜品, 备注, client_ref)
-    Note over DB: 服务端重新定价与校验：菜品属于本店且在售、未售罄、加料合法、数量 1–20；<br/>同一 client_ref 只算一单；每桌待处理 ≤ 3、10 分钟内 ≤ 8
-    DB-->>P: 订单号 + 服务端算的小计/税 → 页面显示「等待店员确认」
-    loop 每 4 秒
-        T->>DB: dine_floor() 含待处理扫码单
-    end
-    DB-->>T: 新扫码单 → 横幅 + 提示音，桌台显示「QR n」
-    alt 店员接单
-        T->>DB: dine_accept_scan(id)（锁行，只能成功一次）
-        DB-->>T: 开台（若没开）→ 订单成为该桌下一轮，返回小票内容
-        T->>K: 厨房单（网络厨打 9100 / 不通则本机打印），标「扫码 QR」
-    else 店员拒单
-        T->>DB: dine_reject_scan(id, 原因)
-    end
-    loop 每 5 秒
-        P->>DB: scan_orders(token, 本机记录的订单号)
-    end
-    DB-->>P: 「已送厨房」或「未被接受 · 原因」
-```
-
-### 17.3 关键规则与原因
-
-*   **先确认、后进厨房**：扫码单不会自动进厨房。桌号可能扫错、顾客可能误点，菜也可能刚卖完，由店员把关。页面在店员接单前只显示「等待店员确认」，**绝不显示服务端没确认的成功**。
-*   **价格以服务端为准**：手机只提交菜品 ID、数量、加料 ID 和备注；单价、加料价、税（按税率汇总、四舍五入一次，与 `SalesTax.kt` 同规则）都由 `scan_submit_order` 从 `products` 重新计算。手机页面上的税额只是预估。
-*   **防刷与防重复**：每次提交带随机 `client_ref`，网络重试或连点只会生成一单；每桌待处理最多 3 单、10 分钟内最多 8 单，超出返回 `too_many_orders`。
-*   **并发**：同一店多台终端会同时看到同一张扫码单。`dine_accept_scan` 锁行，只有一台能接单成功，另一台提示「已被其他终端接单」，不会重复出票。
-*   **售罄**：三处都拦——手机菜单置灰、`scan_submit_order` 拒绝 `sold_out`；店员手动点菜时终端列表置灰、`dine_send_items` 也拒绝（2026-10-14）。
-*   **顾客只看得到自己的单**：下单后订单 ID 存在手机浏览器的 localStorage（按桌台 token 分开），`scan_orders` 只返回「这张桌 + 这些 ID」的订单；换手机或清浏览器数据就看不到之前的单，但订单本身不受影响。
-*   **二维码失效**：桌台停用或在 Ourea/Cael 里换码后，旧台卡立即失效，页面提示「二维码已失效，请找服务员」。
-*   **AI 点餐向导**：只依据菜品资料（描述、成分、过敏原、饮食标签、辣度）回答，资料里没记录的过敏原明确说「未记录」，不编造；按顾客的语言回答；推荐的菜要顾客自己点「加入」才进购物车。每桌 10 分钟、每店每天有次数上限，问答全部记在 `dine.scan_chats`。
-*   **付款**：扫码点餐不在手机上付款，吃完由店员在 Ourea / Iris 上按桌结账（可分单），付款记在 `dine.payments` 与 `transactions`。
-
-### 17.4 失败与降级
-
-| 情况 | 顾客看到 | 店内 |
-|---|---|---|
-| 二维码无效 / 桌台停用 | 「二维码已失效，请找服务员」 | — |
-| 菜刚售罄 / 下架 / 加料不合法 | 具体提示（哪道菜），菜单自动刷新，购物车保留，可改后重提 | — |
-| 提交太频繁 | 「请等店员处理后再点」 | 待处理单堆积，横幅提示 |
-| 手机断网 | 提交失败提示，不会显示成功；恢复后用同一 `client_ref` 重试不会重复下单 | — |
-| 终端断网 | 订单一直「等待店员确认」 | 离线横幅，恢复后自动补上待处理单 |
-| 厨房网络打印机不通 | — | 自动改在终端本机打印 |
-| 店里没有开着桌台图的终端 | 一直「等待店员确认」 | 没人接单；Cael 现场页能看到待处理单，但不能在 Cael 里接单（只读，见 v2.51） |
 
 ---
 

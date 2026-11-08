@@ -256,6 +256,11 @@
     <string name="dine_round_stay">留下</string>
     <string name="scan_pending_banner">有 %1$d 张扫码新单待处理</string>
     <string name="scan_review">查看</string>
+    <string name="call_banner">%1$s 桌呼叫：%2$s</string>
+    <string name="call_reason_water">加水</string>
+    <string name="call_reason_bill">要买单</string>
+    <string name="call_reason_help">服务员</string>
+    <string name="call_ack">这就去</string>
     <string name="scan_dialog_title">扫码点单（%1$d）</string>
     <string name="scan_table">%1$s 桌</string>
     <string name="scan_note">备注：%1$s</string>

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { X, Loader2, Send, Mic, Square, Sparkles } from 'lucide-react'
+import { X, Send, Mic, Square } from 'lucide-react'
 
 const money = (c) => '$' + (c / 100).toFixed(2)
 
@@ -67,18 +67,18 @@ export default function Guide({ token, products, T, askGuide, onClose, onAdd }) 
 
   const byId = Object.fromEntries(products.map((p) => [p.id, p]))
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-end sm:items-center sm:justify-center">
+    <div className="fixed inset-0 z-50 bg-ink/60 flex items-end sm:items-center sm:justify-center">
       <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl h-[85vh] flex flex-col overflow-hidden">
-        <div className="px-5 py-4 bg-indigo-600 text-white flex items-center justify-between">
-          <div className="flex items-center gap-2 font-black"><Sparkles className="w-5 h-5" />{T.guideTitle}</div>
-          <button onClick={onClose} className="p-1 text-indigo-100" aria-label="close"><X className="w-6 h-6" /></button>
+        <div className="px-5 py-3 bg-gradient-to-r from-sky-500 to-sky-600 text-white flex items-center justify-between">
+          <div className="flex items-center gap-2 font-black"><span className="w-10 h-10 rounded-full bg-white flex items-end justify-center overflow-hidden"><img src={`/beaver/${recording ? 'listening' : busy ? 'thinking' : 'idle'}.webp`} alt="" className="w-9 translate-y-1" /></span>{T.guideTitle}</div>
+          <button onClick={onClose} className="p-1 text-sky-50" aria-label="close"><X className="w-6 h-6" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
           <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-sm px-4 py-3 text-sm text-slate-800 max-w-[85%]">{T.guideHello}</div>
           {turns.map((t, i) => (
             <div key={i} className={`flex flex-col ${t.role === 'user' ? 'items-end' : 'items-start'}`}>
               <div dir="auto" lang={t.lang || undefined}
-                className={`px-4 py-3 rounded-2xl text-sm max-w-[85%] whitespace-pre-wrap ${t.role === 'user' ? 'bg-indigo-600 text-white rounded-br-sm' : t.error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-sm'}`}>
+                className={`px-4 py-3 rounded-2xl text-sm max-w-[85%] whitespace-pre-wrap ${t.role === 'user' ? 'bg-sky-600 text-white rounded-br-sm' : t.error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-sm'}`}>
                 {t.content}
               </div>
               {(t.suggestions || []).map((s) => {
@@ -86,13 +86,13 @@ export default function Guide({ token, products, T, askGuide, onClose, onAdd }) 
                 if (!p) return null
                 const k = i + ':' + s.product_id
                 return (
-                  <div key={k} className="mt-2 w-[85%] bg-white border border-indigo-200 rounded-xl p-3 flex items-center gap-3">
+                  <div key={k} className="mt-2 w-[85%] bg-white border border-sky-200 rounded-xl p-3 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-slate-900 text-sm">{s.quantity} × {p.name}</p>
                       {s.why && <p dir="auto" className="text-xs text-slate-500">{s.why}</p>}
                     </div>
                     <button disabled={added[k]} onClick={() => { onAdd(s); setAdded((a) => ({ ...a, [k]: true })) }}
-                      className="shrink-0 bg-slate-900 disabled:bg-emerald-600 text-white text-sm font-bold px-3 py-2 rounded-lg">
+                      className="shrink-0 bg-gold-500 text-ink disabled:bg-sky-100 disabled:text-sky-800 text-sm font-black px-3 py-2 rounded-lg">
                       {added[k] ? '✓' : `${T.addSuggestion} ${money(p.price_cents * s.quantity)}`}
                     </button>
                   </div>
@@ -100,7 +100,7 @@ export default function Guide({ token, products, T, askGuide, onClose, onAdd }) 
               })}
             </div>
           ))}
-          {busy && <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" />…</div>}
+          {busy && <div className="flex items-center gap-2 text-sky-700 text-sm font-bold"><img src="/beaver/thinking.webp" alt="" className="w-10 beaver-bob" />…</div>}
           <div ref={endRef} />
         </div>
         <p className="px-4 pt-2 text-[11px] text-slate-400">{T.aiNote}</p>
@@ -111,7 +111,7 @@ export default function Guide({ token, products, T, askGuide, onClose, onAdd }) 
           </button>
           <input dir="auto" value={text} onChange={(e) => setText(e.target.value.slice(0, 400))} placeholder={recording ? T.listening : T.guideHint}
             className="flex-1 min-w-0 px-4 py-3 rounded-xl border border-slate-300 text-sm" />
-          <button type="submit" disabled={busy || !text.trim()} aria-label={T.ask} className="p-3 rounded-xl bg-indigo-600 disabled:opacity-40 text-white">
+          <button type="submit" disabled={busy || !text.trim()} aria-label={T.ask} className="p-3 rounded-xl bg-sky-600 disabled:opacity-40 text-white">
             <Send className="w-5 h-5" />
           </button>
         </form>

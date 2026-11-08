@@ -73,8 +73,23 @@ object DineRepository {
         val created_at: String? = null
     )
 
-    /** The floor, the customer orders waiting on it, and the recent online payments. */
-    data class Floor(val tables: List<FloorTable>, val scanPending: List<ScanOrder>, val onlinePaid: List<OnlinePaid> = emptyList())
+    /** A customer called a server from the table QR (dine.service_calls); reason WATER / BILL / HELP. */
+    @Serializable
+    data class ServiceCall(
+        val id: String,
+        val table_id: String,
+        val table_name: String = "?",
+        val reason: String = "HELP",
+        val created_at: String? = null
+    )
+
+    /** The floor, the customer orders waiting on it, open server calls, and the recent online payments. */
+    data class Floor(
+        val tables: List<FloorTable>,
+        val scanPending: List<ScanOrder>,
+        val onlinePaid: List<OnlinePaid> = emptyList(),
+        val serviceCalls: List<ServiceCall> = emptyList()
+    )
 
     @Serializable
     data class Check(
@@ -169,7 +184,8 @@ object DineRepository {
     @Serializable private data class FloorRpc(
         val tables: List<DiningTable> = emptyList(), val checks: List<FloorCheck> = emptyList(),
         val scan_pending: List<ScanOrder> = emptyList(),
-        val online_paid: List<OnlinePaid> = emptyList()
+        val online_paid: List<OnlinePaid> = emptyList(),
+        val service_calls: List<ServiceCall> = emptyList()
     )
     @Serializable private data class CheckRpc(
         val check: Check, val table: DiningTable? = null,
@@ -193,7 +209,7 @@ object DineRepository {
             val f = SupabaseClientProvider.client.postgrest.rpc("dine_floor").decodeAs<FloorRpc>()
             val byTable = f.checks.associateBy { it.table_id }
             Floor(f.tables.map { t -> byTable[t.id].let { c -> FloorTable(t, c?.check(), c?.total_cents ?: 0, c?.paid_cents ?: 0) } },
-                f.scan_pending, f.online_paid)
+                f.scan_pending, f.online_paid, f.service_calls)
         } catch (e: Exception) {
             Log.w(TAG, "floor failed: ${e.message}"); null
         }
@@ -326,6 +342,11 @@ object DineRepository {
 
     suspend fun rejectScan(orderId: String, staffName: String?, reason: String?): Result =
         call("dine_reject_scan", RejectParams(orderId, staffName, reason))
+
+    @Serializable private data class AckCallParams(val p_id: String, val p_staff_name: String?)
+
+    /** A server is on the way: the call leaves every terminal's floor and the customer's phone says so. */
+    suspend fun ackCall(callId: String, staffName: String?): Result = call("dine_ack_call", AckCallParams(callId, staffName))
 
     /** A new QR secret for a table: codes already printed stop working. */
     suspend fun rotateQr(tableId: String): Result = call("dine_rotate_table_qr", TableIdParams(tableId))

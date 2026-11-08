@@ -110,6 +110,16 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
             com.goldsky.ssp.common.FeedbackManager.vibrate(context, 300)
         }
     }
+    // A customer calling a server: a longer, two-tone chime so it isn't mistaken for an order.
+    LaunchedEffect(dine.callArrivals) {
+        if (dine.callArrivals > 0) {
+            runCatching {
+                android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 90)
+                    .startTone(android.media.ToneGenerator.TONE_PROP_PROMPT, 700)
+            }
+            com.goldsky.ssp.common.FeedbackManager.vibrate(context, 500)
+        }
+    }
     // A different chime when a customer paid online (Ourea Scan).
     LaunchedEffect(dine.onlinePaidArrivals) {
         if (dine.onlinePaidArrivals > 0) {
@@ -148,6 +158,25 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
                     )
                     Spacer(Modifier.width(12.dp))
                     Text(stringResource(R.string.dine_online_paid_ok), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                }
+            }
+        }
+        dine.serviceCalls.forEach { call ->
+            val warning = com.goldsky.ssp.ui.theme.GsTheme.colors.warning
+            Surface(color = warning, contentColor = scheme.surface, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Notifications, null)
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        stringResource(R.string.call_banner, call.table_name, stringResource(callReasonRes(call.reason))) +
+                            (minutesSince(call.created_at)?.takeIf { it > 0 }?.let { " · " + stringResource(R.string.dine_minutes, it) } ?: ""),
+                        fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = { dine.ackCall(call, staffName) },
+                        colors = ButtonDefaults.buttonColors(containerColor = scheme.surface, contentColor = scheme.onSurface)
+                    ) { Text(stringResource(R.string.call_ack), fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
                 }
             }
         }
@@ -195,7 +224,7 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(floor.filter { area == null || it.table.area == area }, key = { it.table.id }) { ft ->
-                        TableCard(ft, dine.scanPending.count { it.table_id == ft.table.id }) {
+                        TableCard(ft, dine.scanPending.count { it.table_id == ft.table.id }, dine.serviceCalls.any { it.table_id == ft.table.id }) {
                             val c = ft.check
                             if (c != null) dine.openCheck(c.id) else seating = ft.table
                         }
@@ -220,8 +249,14 @@ fun DineFloor(dine: DineViewModel, staffId: String?, staffName: String?, modifie
     }
 }
 
+private fun callReasonRes(reason: String) = when (reason) {
+    "WATER" -> R.string.call_reason_water
+    "BILL" -> R.string.call_reason_bill
+    else -> R.string.call_reason_help
+}
+
 @Composable
-private fun TableCard(ft: DineRepository.FloorTable, scanPending: Int, onClick: () -> Unit) {
+private fun TableCard(ft: DineRepository.FloorTable, scanPending: Int, calling: Boolean, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val c = ft.check
     val (bgTarget, fgTarget) = when (c?.status) {
@@ -238,7 +273,7 @@ private fun TableCard(ft: DineRepository.FloorTable, scanPending: Int, onClick: 
     // with a QR order waiting for staff does the same in the accent colour.
     val billed = c?.status == "BILLED"
     val glow = when {
-        billed -> com.goldsky.ssp.ui.theme.GsTheme.colors.warning
+        billed || calling -> com.goldsky.ssp.ui.theme.GsTheme.colors.warning
         scanPending > 0 -> scheme.tertiary
         else -> null
     }
@@ -252,6 +287,10 @@ private fun TableCard(ft: DineRepository.FloorTable, scanPending: Int, onClick: 
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(ft.table.name, fontSize = 22.sp, fontWeight = FontWeight.Black, color = fg, modifier = Modifier.weight(1f))
+                if (calling) {
+                    Icon(Icons.Default.Notifications, null, tint = com.goldsky.ssp.ui.theme.GsTheme.colors.warning, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                }
                 if (scanPending > 0) {
                     Surface(color = scheme.tertiary, shape = RoundedCornerShape(50)) {
                         Text("QR $scanPending", color = scheme.onTertiary, style = MaterialTheme.typography.labelSmall,

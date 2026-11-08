@@ -72,7 +72,7 @@ erDiagram
 | Sales & payment (each vertical's transactions move to its own schema, §4) | transactions, transaction_items, transaction_refunds, transaction_payment_answers (payment-app answers, SYS_ADMIN read only, filled by trigger from `transactions.acquirer_response`, `2026-11-08_payment_answers_void_sys_admin.sql`), qr_payment_sessions, acquirer_settlement_records, merchant_acquirer_accounts, hardware_acquirer_map | apps (sales), back office (settlement) |
 | Retail inventory | **`retail`.stock_moves** -- every stock change (SALE / RETURN by triggers on PAID / refunded `transaction_items`, RECEIVE / COUNT / ADJUST by staff) | triggers; Iris / Ourea via `retail_stock_*`, Cael via `cmp_retail_stock_*` |
 | Retail delivery → `retail` | delivery_orders (status = money OPEN / PAID / CANCELLED; delivery_stage = trip WAITING / OUT / DELIVERED, an OUT order is listed only on the driver's terminal), delivery_order_items | CMP / Apex (create), Iris (take out via `delivery_order_out` / `delivery_order_back`, collect = delivered) |
-| Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders, `dine`.scan_chats** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
+| Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders, `dine`.scan_chats, `dine`.service_calls** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
 | Members → `member` | **`member`.settings, `member`.members, `member`.points_ledger** (retail loyalty, 2026-11-01, `docs/migrations/2026-11-01_loyalty.sql`: member by phone per store; points earned on a PAID sale's subtotal through `member_record_sale`, a reward = an order discount; a whole refund undoes them by trigger, a partial refund takes back its pre-tax share of the earned points (`2026-11-01_loyalty_partial_refunds.sql`, REVERSE rows keyed `<sale>#r<n>`); `transactions.member_id`); vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions, coupon_attempts (still `public`; since 2026-11-08 created only through `cmp_create_coupons`, used through `coupon_check` / `coupon_redeem` / `coupon_release`, `2026-11-08_coupon_*.sql`) | Iris / Ourea via `member_*`, Cael via `cmp_member_*`; apps, CMP |
 | Ads → `media` | advertisements, playlists, ad_playback_logs | CMP (ads), apps (playback) |
 | Store back office → `office` | **`office`.checklists, `office`.checklist_items, `office`.checklist_ticks, `office`.shifts, `office`.settings** (§5b); expenses, reminders, notes (still `public`) | Iris / Ourea / Apex via `office_*` RPCs; Cael via `cmp_office_*` (time clock) |
@@ -179,6 +179,7 @@ Partial refunds (Iris / Ourea, 2026-11-01, `docs/migrations/2026-11-01_partial_r
 
 | `dine.online_payments` | pay-at-table attempts from Ourea Scan (Nuvei): amount (food + tax), its tax part, tip, Nuvei session / transaction, OPEN → PAID / FAILED | only the scan-pay edge functions write it; PAID only once Nuvei confirmed it to the server, then it is also a `dine.payments` row (method `ONLINE`, `ecr_ref_num` `NUVEI-<TransactionID>`, `device_sn` the store's Ourea: app_version `*-ourea`, the one that opened the check, else the last seen); never a `public.transactions` row |
 | `dine.scan_orders` | customer QR orders (Ourea Scan, `web/ourea-scan`): server-priced lines, note, PENDING → ACCEPTED / REJECTED, the check and round it became | never reaches the kitchen without staff; ≤ 3 pending and ≤ 8 per 10 min per table; a double tap (same `client_ref`) is one order |
+| `dine.service_calls` | a customer calling a server from the table QR: reason WATER / BILL / HELP, OPEN → ACKED (staff, `acked_by`) / CANCELLED (customer) | one OPEN call per table (a second tap returns it); ≤ 6 per table per 30 min; an OPEN call older than 30 min is stale and shown nowhere |
 
 QR ordering: each `dine.tables` row has a secret `qr_token` (128-bit); the table's
 QR is `<scan site>/?t=<qr_token>` (scan site set in Ourea Settings > Tables).
@@ -188,6 +189,11 @@ the phone), `scan_orders(token, ids)` (status for the customer's page). Staff:
 `dine_scan_pending`, `dine_accept_scan` (opens the check if needed, adds the order
 as the next round, returns the kitchen ticket's content), `dine_reject_scan`
 (reason shown to the customer), `dine_rotate_table_qr` (old printed codes stop working).
+Calling a server (2026-11-08): customers `scan_call_waiter(token, reason)`, `scan_call_state(token)`
+(the table's latest call of the last 30 min), `scan_cancel_call(token)`; staff `dine_service_calls`
+(also in `dine_floor.service_calls`) and `dine_ack_call(id, staff_name)`. `scan_menu` also returns
+`store.logo_url` and each dish's `image_url` (`attributes.image_url`, uploaded in Cael to
+`ad-media/dish-photos/`) and `names` (`attributes.name_i18n`, e.g. `{"zh": "…", "en": "…"}`).
 
 Cael (CMP, signed-in users; read = org member, write = `dine.manage`): `cmp_dine_tables`,
 `cmp_dine_save_table`, `cmp_dine_rotate_qr` (tables and table cards), `cmp_dine_floor` (live floor,
@@ -231,7 +237,7 @@ writes `dine_save_table`, `dine_open_check`, `dine_send_items` (refuses a dish w
 `dine_check_total` (tax once per rate, half up, as `SalesTax.kt`).
 `transactions.check_id` links each payment's transaction to its check.
 Migrations: `docs/migrations/2026-10-13_dine_in.sql`, `_dine_in_payment_tax.sql`, `_dine_schema.sql`, `_dine_scan_orders.sql`,
-`_cmp_dine.sql`, `_cmp_dine_console.sql`, `2026-10-14_dine_send_sold_out.sql`.
+`_cmp_dine.sql`, `_cmp_dine_console.sql`, `2026-10-14_dine_send_sold_out.sql`, `2026-11-08_scan_calls_brand.sql`.
 End-to-end test kit (test store, server checks, fake kitchen printer): `tools/scan-e2e/`.
 
 ## 5b. Store back office (`office` schema)

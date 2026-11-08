@@ -37,6 +37,12 @@ class DineViewModel : ViewModel() {
     /** Bumped when a new QR order arrives, so the screen can chime once. */
     var scanArrivals by mutableStateOf(0)
         private set
+    /** Customers calling a server from the table QR, oldest first (open on every terminal until one taps "on my way"). */
+    var serviceCalls by mutableStateOf<List<DineRepository.ServiceCall>>(emptyList())
+        private set
+    /** Bumped when a new call comes in, so the screen can chime once. */
+    var callArrivals by mutableStateOf(0)
+        private set
     /** Online payments (Ourea Scan) that came in while this terminal watched, not yet dismissed. */
     var onlinePaidNotices by mutableStateOf<List<DineRepository.OnlinePaid>>(emptyList())
         private set
@@ -95,6 +101,8 @@ class DineViewModel : ViewModel() {
             if (f.scanPending.any { new -> scanPending.none { it.id == new.id } }) scanArrivals++
             scanPending = f.scanPending
             acceptApproved(f.scanPending)
+            if (f.serviceCalls.any { new -> serviceCalls.none { it.id == new.id } }) callArrivals++
+            serviceCalls = f.serviceCalls
             noticeOnlinePaid(f.onlinePaid)
         }
         check?.let { c ->
@@ -113,6 +121,16 @@ class DineViewModel : ViewModel() {
         seen += fresh.map { it.ecr_ref_num }
         onlinePaidNotices = fresh + onlinePaidNotices
         onlinePaidArrivals++
+    }
+
+    /** "On my way": the call leaves every terminal and the customer's phone says a server is coming. */
+    fun ackCall(call: DineRepository.ServiceCall, staffName: String?) {
+        serviceCalls = serviceCalls.filter { it.id != call.id }
+        viewModelScope.launch {
+            val r = DineRepository.ackCall(call.id, staffName)
+            if (!r.ok) message = r.message ?: OFFLINE
+            refreshNow()
+        }
     }
 
     fun dismissOnlinePaid(ref: String) { onlinePaidNotices = onlinePaidNotices.filter { it.ecr_ref_num != ref } }

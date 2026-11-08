@@ -155,13 +155,13 @@ export default function Bill({ token, T, supabase, callPay, onClose }) {
     body = (
       <div className="py-12 text-center">
         <p className="font-bold text-slate-700">{T.offline}</p>
-        <button onClick={load} className="mt-4 bg-slate-900 text-white font-bold px-6 py-3 rounded-full">{T.retry}</button>
+        <button onClick={load} className="mt-4 btn-gold px-6 py-3 rounded-full">{T.retry}</button>
       </div>
     )
   } else if (!check) {
     body = <p className="py-12 text-center font-bold text-slate-600">{T.noBill}</p>
   } else if (state === 'paid' || state === 'failed' || state === 'review' || state === 'pending' || state === 'confirming') {
-    const icon = state === 'paid' ? <CheckCircle2 className="w-14 h-14 text-emerald-600" />
+    const icon = state === 'paid' ? <CheckCircle2 className="w-14 h-14 text-sky-600" />
       : state === 'confirming' ? <Loader2 className="w-14 h-14 text-slate-400 animate-spin" />
       : <AlertTriangle className="w-14 h-14 text-amber-500" />
     const text = state === 'paid' ? T.paidOk(money(amount + tipCents))
@@ -174,8 +174,8 @@ export default function Bill({ token, T, supabase, callPay, onClose }) {
         <p className="font-bold text-slate-800 text-lg">{text}</p>
         {state === 'paid' && balanceAfter > 0 && <p className="text-slate-600">{T.stillOwed(money(balanceAfter))}</p>}
         {state === 'paid' && balanceAfter === 0 && <p className="text-slate-600">{T.allPaid}</p>}
-        {state === 'failed' && <button onClick={() => { setSession(null); load() }} className="bg-slate-900 text-white font-bold px-6 py-3 rounded-full">{T.retry}</button>}
-        {(state === 'paid' && balanceAfter > 0) && <button onClick={() => { setSession(null); setTip(null); load() }} className="bg-slate-900 text-white font-bold px-6 py-3 rounded-full">{T.payMore}</button>}
+        {state === 'failed' && <button onClick={() => { setSession(null); load() }} className="btn-gold px-6 py-3 rounded-full">{T.retry}</button>}
+        {(state === 'paid' && balanceAfter > 0) && <button onClick={() => { setSession(null); setTip(null); load() }} className="btn-gold px-6 py-3 rounded-full">{T.payMore}</button>}
       </div>
     )
   } else if (state === 'paying') {
@@ -208,7 +208,7 @@ export default function Bill({ token, T, supabase, callPay, onClose }) {
         {!bill.online_pay ? (
           <p className="mt-5 text-center font-bold text-slate-600">{T.payServer}</p>
         ) : balance === 0 ? (
-          <p className="mt-5 text-center font-bold text-emerald-700">{T.allPaid}</p>
+          <p className="mt-5 text-center font-bold text-sky-700">{T.allPaid}</p>
         ) : (
           <div className="mt-5 space-y-5">
             <div>
@@ -216,14 +216,14 @@ export default function Bill({ token, T, supabase, callPay, onClose }) {
               <div className="flex flex-wrap gap-2">
                 {[['all', T.payAll], ['split', T.split], ['custom', T.customAmount]].map(([k, label]) => (
                   <button key={k} onClick={() => setMode(k)}
-                    className={`px-4 py-2 rounded-full text-sm font-bold border ${mode === k ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}`}>{label}</button>
+                    className={`px-4 py-2 rounded-full text-sm font-bold border ${mode === k ? 'bg-ink text-white border-ink' : 'bg-white text-slate-700 border-slate-300'}`}>{label}</button>
                 ))}
               </div>
               {mode === 'split' && (
                 <div className="mt-3 flex items-center gap-2 flex-wrap">
                   {[2, 3, 4, 5, 6].map((n) => (
                     <button key={n} onClick={() => setWays(n)}
-                      className={`w-11 h-11 rounded-full font-bold border ${ways === n ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-slate-300'}`}>{n}</button>
+                      className={`w-11 h-11 rounded-full font-bold border ${ways === n ? 'bg-gold-50 text-ink border-gold-500 border-2' : 'bg-white border-slate-300'}`}>{n}</button>
                   ))}
                   <span className="text-sm text-slate-600 ml-1">{T.perPerson(money(amount))}</span>
                 </div>
@@ -244,15 +244,15 @@ export default function Bill({ token, T, supabase, callPay, onClose }) {
                     const c = percentOf(basis, pct * 100)
                     return (
                       <button key={pct} onClick={() => setTip(c)}
-                        className={`py-3 rounded-xl border font-bold ${tip === c ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-slate-300'}`}>
+                        className={`py-3 rounded-xl border font-bold ${tip === c ? 'bg-gold-50 text-ink border-gold-500 border-2' : 'bg-white border-slate-300'}`}>
                         {pct}%<span className="block text-xs font-normal">{money(c)}</span>
                       </button>
                     )
                   })}
                   <button onClick={() => setTip('custom')}
-                    className={`py-3 rounded-xl border font-bold ${tip === 'custom' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-slate-300'}`}>{T.customTip}</button>
+                    className={`py-3 rounded-xl border font-bold ${tip === 'custom' ? 'bg-gold-50 text-ink border-gold-500 border-2' : 'bg-white border-slate-300'}`}>{T.customTip}</button>
                   <button onClick={() => setTip('none')}
-                    className={`col-span-2 py-3 rounded-xl border font-bold ${tip === 'none' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300'}`}>{T.noTip}</button>
+                    className={`col-span-2 py-3 rounded-xl border font-bold ${tip === 'none' ? 'bg-ink text-white border-ink' : 'bg-white border-slate-300'}`}>{T.noTip}</button>
                 </div>
                 {tip === 'custom' && (
                   <input inputMode="decimal" value={customTip ?? ''} placeholder="0.00"
@@ -280,7 +280,7 @@ export default function Bill({ token, T, supabase, callPay, onClose }) {
   const emailOk = isEmail(email.trim())
   const canPay = state === 'ready' && check && bill.online_pay && amount > 0 && tip !== null && emailOk
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-end sm:items-center sm:justify-center">
+    <div className="fixed inset-0 z-50 bg-ink/60 flex items-end sm:items-center sm:justify-center">
       <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <h2 className="font-black text-xl flex items-center gap-2"><Receipt className="w-5 h-5" />{T.billTitle}{check ? ` · #${check.check_no}` : ''}</h2>
@@ -291,7 +291,7 @@ export default function Bill({ token, T, supabase, callPay, onClose }) {
           <div className="p-5 bg-slate-50 border-t border-slate-200">
             {error && <p className="text-sm font-bold text-red-600 mb-2">{error}</p>}
             <button onClick={pay} disabled={!canPay}
-              className="w-full bg-emerald-600 disabled:bg-slate-300 text-white font-black py-4 rounded-2xl text-lg">
+              className="btn-gold w-full py-4 rounded-2xl text-lg">
               {tip === null && amount > 0 ? T.chooseTip : !emailOk ? T.enterEmail : T.payButton(money(amount + tipCents))}
             </button>
           </div>

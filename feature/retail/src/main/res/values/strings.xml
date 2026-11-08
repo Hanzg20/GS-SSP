@@ -257,6 +257,11 @@
     <string name="dine_round_stay">Stay</string>
     <string name="scan_pending_banner">QR orders waiting: %1$d</string>
     <string name="scan_review">Review</string>
+    <string name="call_banner">%1$s is calling: %2$s</string>
+    <string name="call_reason_water">water</string>
+    <string name="call_reason_bill">ready to pay</string>
+    <string name="call_reason_help">a server</string>
+    <string name="call_ack">On my way</string>
     <string name="scan_dialog_title">QR orders (%1$d)</string>
     <string name="scan_table">Table %1$s</string>
     <string name="scan_note">Note: %1$s</string>
