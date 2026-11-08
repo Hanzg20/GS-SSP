@@ -69,7 +69,9 @@ app/ourea      -- Desktop POS, first real build 2026-08-27 (see `docs/system_arc
                   states, sticky category tabs / search / allergy filter, order progress, call a server (`dine.service_calls`,
                   floor banner + "On my way"), dish photos and translated names from Cael (`attributes.image_url` / `name_i18n`).
                   Table ordering (2026-11-08, Chowbus-style): door screen, the table's order first, ONE shared cart per table
-                  (`dine.scan_cart_items`, `scan_cart_rev` guard), per-store "straight to the kitchen" (`dine.settings`).
+                  (`dine.scan_cart_items`, `scan_cart_rev` guard), per-store "straight to the kitchen" (`dine.settings`, default ON since 2026-11-08).
+                  One-sentence ordering (2026-11-08): `scan-assistant` action `order` -> lines on Beaver's AI card (`src/ai.jsx`,
+                  the look for everything AI says), cart only on the customer's "Add all"; never a dish that isn't on the menu.
                   Pay at the table (2026-10-28): the same page's Bill shows the check and takes the card on Nuvei Simply
                   Connect (`supabase/functions/scan-pay`, `scan-pay-dmn`, `dine.online_payments`); the store's Nuvei account is
                   its `merchant_acquirer_accounts` row (ACTIVE, env int = sandbox). PAID only on Nuvei's server-side word.

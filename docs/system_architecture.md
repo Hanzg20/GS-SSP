@@ -8,6 +8,11 @@
 *   扫码单默认直接进厨房（迁移 `docs/migrations/2026-11-08_scan_auto_kitchen_on.sql`，已应用），店家仍可在 Ourea 关掉；顾客手机上是「已提交 → 正在送厨房 → 已送厨房」。
 *   一句话点菜：`scan-assistant` 新动作 `order`，把顾客一句话变成菜单里真实的菜，在小海狸的 AI 卡片上确认后才进购物车。详见 §17.7。**Edge Function 待店主部署**（`supabase functions deploy scan-assistant --project-ref ttbtxxpnvkcbyugzdqfw`），部署前点菜卡片会显示「没听明白」。
 
+### v2.58 (2026-11-08) — Ourea Scan：扫码单默认直接进厨房；一句话点菜与 AI 卡片 (Straight to Kitchen, One-Sentence Ordering)
+
+*   扫码单默认直接进厨房（迁移 `docs/migrations/2026-11-08_scan_auto_kitchen_on.sql`，已应用），店家仍可在 Ourea 关掉；顾客手机上是「已提交 → 正在送厨房 → 已送厨房」。
+*   一句话点菜：`scan-assistant` 新动作 `order`，把顾客一句话变成菜单里真实的菜，在小海狸的 AI 卡片上确认后才进购物车。详见 §17.7。**Edge Function 待店主部署**（`supabase functions deploy scan-assistant --project-ref ttbtxxpnvkcbyugzdqfw`），部署前点菜卡片会显示「没听明白」。
+
 ### v2.57 (2026-11-08) — Ourea Scan 整桌一起点 (Table Ordering, Chowbus-style)
 
 *   点餐模式改成「一桌一张单」：入口页、整桌点单页、整桌共享购物车、整桌「已点」标记；每家店可选扫码单直接进厨房。详见 §17.6。
@@ -1227,6 +1232,13 @@ sequenceDiagram
 *   **测试**：`scan-e2e.mjs` 新增共享购物车 15 项；测试店菜品照片 `tools/scan-e2e/demo-photos.sql`（图片在 `web/ourea-scan/public/demo/`，Wikimedia Commons，出处见 `CREDITS.txt`，随扫码网站发布）。
 
 ---
+
+### 17.7 一句话点菜与 AI 卡片 (2026-11-08)
+
+*   **为什么**：扫码点餐已是标配，我们的差异是「小海狸当这桌的服务员」，而且只说菜单里真有的东西（业界趋势：AI 推荐 / 语音 / 按意图组织界面）。
+*   **一句话点菜**（`web/ourea-scan/src/VoiceOrder.jsx`）：菜单顶部「说一句话点菜」卡片 → 大话筒（或打字）→ 语音转文字（Whisper）→ `scan-assistant` `order` → 小海狸的卡片列出各行（数量可改、可删）、「凉菜想要哪一道？」让顾客挑、「菜单上没有：…」、需要选口味的菜点「选口味」打开菜品页（说过的备注、数量、加料带过去）。只有「全部加入购物车」才写进整桌购物车（`scan_cart_add`）。再说一句会追加到同一张卡片。
+*   **服务器把关**（`guide.ts` `checkOrder`，有单元测试）：只认菜单 id；售罄和编出来的菜进「没有」；不属于这道菜的选项丢掉；必选项模型不替顾客选（`needs_options`）；一个短语对应多道菜时只给候选，不猜。同一道菜可以出现两行（不同备注）。和问答共用限流（`scan_chat_allowed`），记录在 `scan_chat_record`，问题前缀 `[order]`。
+*   **AI 卡片**（`src/ai.jsx` `AiCard`，`index.css` `.ai-card`）：小海狸说的、建议的内容统一用金→天蓝细边 + 左上角小海狸徽章 + 底部「来自本店菜单 · 小海狸」；店家定的内容（菜单、价格、订单状态）不用这个样式，顾客一眼分得清。AI 向导的回答也改用这张卡片。
 
 ### 17.7 一句话点菜与 AI 卡片 (2026-11-08)
 
