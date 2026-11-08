@@ -44,6 +44,8 @@
     <string name="pay_vip_short">VIP %1$s: balance %2$s, this wash is %3$s. Please top up, or pay by card.</string>
     <string name="pay_vip_inactive">This VIP card has been deactivated. Please pay by card.</string>
     <string name="tts_coupon_pay_rest">Coupon applied. Please tap your card to pay the rest.</string>
+    <string name="free_coupon_basic">FREE WASH · %1$d MIN</string>
+    <string name="tts_free_coupon_basic">Free wash coupon. %1$d minutes.</string>
     <string name="btn_back">Back</string>
     <string name="prompt_tap_card">Tap Card</string>
 

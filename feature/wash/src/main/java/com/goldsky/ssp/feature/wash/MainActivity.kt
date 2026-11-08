@@ -151,7 +151,7 @@ class MainActivity : BaseAdActivity() {
     // It is consumed (redeem_coupon) only when it actually pays: right before
     // a free wash, or after the card / QR payment for the rest is approved --
     // a declined card must never use the coupon up (same as Aegis Timer).
-    private data class PendingCoupon(val code: String, val type: String, val value: Int)
+    private data class PendingCoupon(val code: String, val type: String, val value: Int, val productId: String? = null)
     private var pendingCoupon: PendingCoupon? = null
 
     // Technician/Maintenance Variables
@@ -623,7 +623,7 @@ class MainActivity : BaseAdActivity() {
                                     // afterward, discount applied on top of it.
                                     // Checked only; consumed when it pays (see pendingCoupon).
                                     pendingVipCardUid = null
-                                    pendingCoupon = PendingCoupon(scanned, peek.type, peek.value)
+                                    pendingCoupon = PendingCoupon(scanned, peek.type, peek.value, peek.applicableProductId)
                                     showScanPending(
                                         getString(R.string.pending_coupon_title, couponLabel(peek.type, peek.value)),
                                         getString(R.string.tts_pending_coupon),
@@ -881,7 +881,7 @@ class MainActivity : BaseAdActivity() {
             dialog.dismiss()
             // Not consumed yet: startPackagePurchaseFlow consumes it when it
             // pays (before a free wash, or after the card payment for the rest).
-            pendingCoupon = PendingCoupon(code, peek.type, peek.value)
+            pendingCoupon = PendingCoupon(code, peek.type, peek.value, peek.applicableProductId)
             startPackagePurchaseFlow(originalPriceCents, serialHexOf(product), product.id, creditCentsOf(product))
         }
         dialog.findViewById<Button>(R.id.btn_coupon_cancel).setOnClickListener {
@@ -998,9 +998,8 @@ class MainActivity : BaseAdActivity() {
             if (finalPriceCents <= 0) {
                 // Free wash: the coupon is the payment -- consume it first.
                 CoroutineScope(Dispatchers.Main).launch {
-                    when (CouponRepository.redeemCoupon(coupon.code, deviceSn)) {
-                        is CouponRedeemResult.Success -> startFreeWashFlow(serviceCents, startHex, productId)
-                        else -> showScanFeedback(getString(couponRejectionMessageRes(coupon.code)))
+                    redeemAndWashFree(coupon.code, coupon.type, coupon.value, coupon.productId, serviceCents, startHex, productId) {
+                        showScanFeedback(getString(couponRejectionMessageRes(coupon.code)))
                     }
                 }
             } else {
@@ -1541,14 +1540,14 @@ class MainActivity : BaseAdActivity() {
      * keeps "money charged" (0, for the transaction record) and "wash
      * dispensed" (the full package) as separate concerns.
      */
-    private fun startFreeWashFlow(originalPriceCents: Int, startHex: String, productId: String? = null) {
+    private fun startFreeWashFlow(originalPriceCents: Int, startHex: String, productId: String? = null, subtitle: String? = null) {
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         dialog.setContentView(R.layout.dialog_payment)
         paymentDialog = dialog
 
         dialog.findViewById<ConstraintLayout>(R.id.layout_card_guidance).visibility = View.GONE
         dialog.findViewById<ConstraintLayout>(R.id.layout_qr_guidance).visibility = View.GONE
-        dialog.findViewById<TextView>(R.id.shared_subtitle).text = getString(R.string.prompt_pay_subtitle, "$0")
+        dialog.findViewById<TextView>(R.id.shared_subtitle).text = subtitle ?: getString(R.string.prompt_pay_subtitle, "$0")
 
         dialog.setOnShowListener { applyKioskWindowFlags() }
         dialog.setOnDismissListener {
@@ -1559,6 +1558,55 @@ class MainActivity : BaseAdActivity() {
 
         paymentInFlight = true
         startFinalizationSequence(0, startHex, "", dialog, pulseAmountCents = originalPriceCents, productId = productId, paymentMethod = "COUPON")
+    }
+
+    /**
+     * A free coupon (FREE_WASH, or 100% off) washes the basic package only (owner,
+     * 2026-11-08): the cheapest regular package -- e.g. $8 picked, free coupon scanned,
+     * the $4 package's 4 minutes are run. A promotion's bonus is never free. A package
+     * cheaper than the basic one is run as picked. Null = not a free coupon, or bound by
+     * Cael to one package (applicable_product_id), which is then run as picked.
+     */
+    private fun freeCouponBase(type: String, value: Int, boundProductId: String?, pickedServiceCents: Int): Product? {
+        if (boundProductId != null) return null
+        if (type != "FREE_WASH" && !(type == "PERCENT_OFF" && value >= 100)) return null
+        val active = ConfigManager.getConfig()?.products?.forVertical(WASH_VERTICAL)
+            ?.filter { it.is_active && it.price_cents > 0 } ?: return null
+        val base = active.filter { creditCentsOf(it) == it.price_cents }.minByOrNull { it.price_cents }
+            ?: active.minByOrNull { it.price_cents } ?: return null
+        return base.takeIf { it.price_cents < pickedServiceCents }
+    }
+
+    /** Minutes a package runs for -- same rule as the package cards in refreshProductsUI(). */
+    private fun minutesOf(product: Product): Int {
+        val credit = creditCentsOf(product)
+        val durationSec = (if (credit > product.price_cents) null
+            else product.attributes?.get("duration_sec")?.jsonPrimitive?.intOrNull) ?: (credit / 100 * 60)
+        return durationSec / 60
+    }
+
+    /**
+     * The coupon pays the whole wash: consume it, then run the wash -- the basic package
+     * for a free coupon ([freeCouponBase]), else the package as picked. [onRejected] when
+     * the coupon can't be consumed.
+     */
+    private suspend fun redeemAndWashFree(
+        code: String, type: String, value: Int, boundProductId: String?,
+        serviceCents: Int, startHex: String, productId: String?, onRejected: () -> Unit,
+    ) {
+        val base = freeCouponBase(type, value, boundProductId, serviceCents)
+        if (CouponRepository.redeemCoupon(code, deviceSn) !is CouponRedeemResult.Success) {
+            onRejected()
+            return
+        }
+        if (base == null) {
+            startFreeWashFlow(serviceCents, startHex, productId)
+            return
+        }
+        val minutes = minutesOf(base)
+        Log.i("MainActivity", "Free coupon: picked ${serviceCents}c, runs basic ${base.price_cents}c ($minutes min)")
+        TtsManager.speak(getString(R.string.tts_free_coupon_basic, minutes))
+        startFreeWashFlow(base.price_cents, serialHexOf(base), base.id, subtitle = getString(R.string.free_coupon_basic, minutes))
     }
 
     /**
@@ -1708,9 +1756,8 @@ class MainActivity : BaseAdActivity() {
                         val restCents = couponPrice(priceInCents, peek.type, peek.value)
                         if (restCents <= 0) {
                             // Free wash: the coupon is the payment -- consume it first.
-                            when (CouponRepository.redeemCoupon(code, deviceSn)) {
-                                is CouponRedeemResult.Success -> startFreeWashFlow(serviceCents, startHex, productId)
-                                else -> back(getString(couponRejectionMessageRes(code)))
+                            redeemAndWashFree(code, peek.type, peek.value, forProduct, serviceCents, startHex, productId) {
+                                back(getString(couponRejectionMessageRes(code)))
                             }
                         } else {
                             // Consumed after the card for the rest is approved (redeemPaidCoupon).
