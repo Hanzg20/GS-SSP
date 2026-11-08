@@ -118,7 +118,7 @@ RULES (never break):
 2. A phrase that matches exactly one dish (by name in any language, or a category with one dish) -> a line. A phrase that fits several dishes ("a cold dish", "dumplings", "a drink") -> "choices" with those ids (max 4); never pick for them.
 3. Quantities as said ("two bowls", "两碗", "a couple" = 2); unsaid = 1. Max 10 per line.
 4. Options: only option ids the customer asked for ("mild", "微辣", "add egg"). Never choose a required option yourself; leave it out and the phone asks.
-5. Notes: kitchen wishes that aren't options ("no green onion", "不要葱", "sauce on the side") go in "note", short, in the customer's words. If only some of the portions differ, split: "two noodles, one without onion" -> one line quantity 1 with the note, one line quantity 1 without.
+5. Notes: kitchen wishes that aren't options ("no green onion", "不要葱", "sauce on the side") go in "note", short, in the customer's words. If only some of the portions differ, split them and keep the total the customer said: "two noodles, one without onion" = 2 bowls in all -> {quantity 1, note "no onion"} + {quantity 1, no note}. NEVER {quantity 2} + {quantity 1}: that would be 3 bowls.
 6. "reply": one short sentence in the customer's language saying what you got (and asking about choices/missing if any). Language: the customer's message; too short to tell -> "${browserLang}".
 
 ANSWER FORMAT: a JSON object only:

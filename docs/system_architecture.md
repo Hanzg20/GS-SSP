@@ -6,12 +6,12 @@
 ### v2.58 (2026-11-08) — Ourea Scan：扫码单默认直接进厨房；一句话点菜与 AI 卡片 (Straight to Kitchen, One-Sentence Ordering)
 
 *   扫码单默认直接进厨房（迁移 `docs/migrations/2026-11-08_scan_auto_kitchen_on.sql`，已应用），店家仍可在 Ourea 关掉；顾客手机上是「已提交 → 正在送厨房 → 已送厨房」。
-*   一句话点菜：`scan-assistant` 新动作 `order`，把顾客一句话变成菜单里真实的菜，在小海狸的 AI 卡片上确认后才进购物车。详见 §17.7。**Edge Function 待店主部署**（`supabase functions deploy scan-assistant --project-ref ttbtxxpnvkcbyugzdqfw`），部署前点菜卡片会显示「没听明白」。
+*   一句话点菜：`scan-assistant` 新动作 `order`，把顾客一句话变成菜单里真实的菜，在小海狸的 AI 卡片上确认后才进购物车。详见 §17.7。`scan-assistant` 已部署（2026-11-08，Groq gpt-oss-120b）；真实句子测过：中文拆分「两碗、一碗不要葱」= 1+1、英文选项（mild + egg）、阿拉伯语、法语、售罄与菜单外的菜、「饺子和喝的」给候选。
 
 ### v2.58 (2026-11-08) — Ourea Scan：扫码单默认直接进厨房；一句话点菜与 AI 卡片 (Straight to Kitchen, One-Sentence Ordering)
 
 *   扫码单默认直接进厨房（迁移 `docs/migrations/2026-11-08_scan_auto_kitchen_on.sql`，已应用），店家仍可在 Ourea 关掉；顾客手机上是「已提交 → 正在送厨房 → 已送厨房」。
-*   一句话点菜：`scan-assistant` 新动作 `order`，把顾客一句话变成菜单里真实的菜，在小海狸的 AI 卡片上确认后才进购物车。详见 §17.7。**Edge Function 待店主部署**（`supabase functions deploy scan-assistant --project-ref ttbtxxpnvkcbyugzdqfw`），部署前点菜卡片会显示「没听明白」。
+*   一句话点菜：`scan-assistant` 新动作 `order`，把顾客一句话变成菜单里真实的菜，在小海狸的 AI 卡片上确认后才进购物车。详见 §17.7。`scan-assistant` 已部署（2026-11-08，Groq gpt-oss-120b）；真实句子测过：中文拆分「两碗、一碗不要葱」= 1+1、英文选项（mild + egg）、阿拉伯语、法语、售罄与菜单外的菜、「饺子和喝的」给候选。
 
 ### v2.57 (2026-11-08) — Ourea Scan 整桌一起点 (Table Ordering, Chowbus-style)
 
