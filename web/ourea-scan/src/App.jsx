@@ -153,6 +153,17 @@ function Beaver({ mood = 'idle', className = 'w-24', bob = false }) {
   return <img src={`/beaver/${mood}.webp`} alt="" aria-hidden="true" draggable="false" className={`${className} select-none ${bob ? 'beaver-bob' : ''}`} />
 }
 
+/**
+ * A dish photo that never shows the browser's broken-image mark: if it can't
+ * load (bad link, a phone's stale cache, no network) it gives way to [fallback].
+ */
+function DishImg({ src, className, fallback = null, lazy = false }) {
+  const [broken, setBroken] = useState(false)
+  useEffect(() => setBroken(false), [src])
+  if (!src || broken) return fallback
+  return <img src={src} alt="" loading={lazy ? 'lazy' : undefined} onError={() => setBroken(true)} className={className} />
+}
+
 /** The customer's allergy list as words, against one dish: null = nothing to warn about. */
 function avoidWarning(p, avoid) {
   if (!avoid.length) return null
@@ -229,7 +240,7 @@ function DishSheet({ product, avoid, onAdd, onClose }) {
       <div className="overflow-y-auto flex-1">
         {product.image_url ? (
           <div className="relative">
-            <img src={product.image_url} alt="" className="w-full aspect-[4/3] object-cover bg-slate-100" />
+            <DishImg src={product.image_url} className="w-full aspect-[4/3] object-cover bg-slate-100" fallback={<div className="h-14" />} />
             <button onClick={onClose} aria-label={T.close} className="absolute top-3 left-3 bg-white/90 rounded-full p-2 shadow"><X className="w-5 h-5" /></button>
           </div>
         ) : (
@@ -517,7 +528,7 @@ function OrdersView({ menu, data, onMore, onBill, onClose }) {
                     const p = byId[l.product_id]
                     return (
                       <div key={i} className="flex items-center gap-3 py-2 border-t border-slate-100 first:border-t-0">
-                        {p?.image_url ? <img src={p.image_url} alt="" className="w-12 h-12 rounded-xl object-cover bg-slate-100 shrink-0" /> : <div className="w-12 h-12 rounded-xl bg-gold-50 shrink-0" />}
+                        <DishImg src={p?.image_url} className="w-12 h-12 rounded-xl object-cover bg-slate-100 shrink-0" fallback={<div className="w-12 h-12 rounded-xl bg-gold-50 shrink-0" />} />
                         <div className="min-w-0 flex-1">
                           <p className="font-bold text-ink leading-snug">{p ? dishName(p) : l.name}</p>
                           {Array.isArray(l.options) && l.options.length > 0 && <p className="text-xs text-ink-mute">{l.options.join(', ')}</p>}
@@ -906,7 +917,7 @@ export default function App() {
                 return (
                   <div key={p.id} role="button" tabIndex={0} onClick={() => setDishFor(p)}
                     className={`flex gap-3 p-3 active:bg-slate-50 ${p.sold_out ? 'opacity-50' : ''}`}>
-                    {p.image_url && <img src={p.image_url} alt="" loading="lazy" className="w-24 h-24 rounded-2xl object-cover bg-slate-100 shrink-0" />}
+                    <DishImg src={p.image_url} lazy className="w-24 h-24 rounded-2xl object-cover bg-slate-100 shrink-0" />
                     <div className="min-w-0 flex-1 flex flex-col">
                       <h3 className="font-black text-ink leading-snug">{dishName(p)}</h3>
                       {sub && <p className="text-xs text-ink-mute">{sub}</p>}
@@ -965,7 +976,7 @@ export default function App() {
             {lines.map((l) => (
               <div key={l.id} className="py-3 flex items-center justify-between gap-3">
                 <div className="relative shrink-0">
-                  {l.p?.image_url ? <img src={l.p.image_url} alt="" className="w-14 h-14 rounded-xl object-cover bg-slate-100" /> : <div className="w-14 h-14 rounded-xl bg-gold-50" />}
+                  <DishImg src={l.p?.image_url} className="w-14 h-14 rounded-xl object-cover bg-slate-100" fallback={<div className="w-14 h-14 rounded-xl bg-gold-50" />} />
                   <span className="absolute -bottom-1 -right-1"><Avatar id={l.guest_id} name={l.guest_name} mine={l.guest_id === guest.id} size="w-5 h-5 text-[10px]" /></span>
                 </div>
                 <div className="min-w-0 flex-1">
