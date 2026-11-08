@@ -88,6 +88,26 @@ fun TableSettings() {
             singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             modifier = Modifier.fillMaxWidth()
         )
+        // QR orders straight to the kitchen (store-wide, dine.settings) or wait for a staff tap (default).
+        var autoKitchen by remember { mutableStateOf<Boolean?>(null) }
+        LaunchedEffect(Unit) { autoKitchen = DineRepository.settings()?.scan_auto_kitchen }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.scan_auto_kitchen), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.scan_auto_kitchen_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(
+                checked = autoKitchen == true, enabled = autoKitchen != null,
+                onCheckedChange = { on ->
+                    val before = autoKitchen
+                    autoKitchen = on
+                    scope.launch {
+                        val r = DineRepository.setScanAutoKitchen(on, null)
+                        if (!r.ok) { autoKitchen = before; message = r.message }
+                    }
+                }
+            )
+        }
         val list = tables
         when {
             list == null -> Text(stringResource(R.string.retail_tables_loading), style = MaterialTheme.typography.bodySmall)

@@ -261,6 +261,8 @@
     <string name="call_reason_bill">要买单</string>
     <string name="call_reason_help">服务员</string>
     <string name="call_ack">这就去</string>
+    <string name="scan_auto_kitchen">扫码单直接进厨房</string>
+    <string name="scan_auto_kitchen_hint">关：每张扫码单先由店员确认。开：开着桌台图的第一台终端自动接单并打印厨房单。</string>
     <string name="scan_dialog_title">扫码点单（%1$d）</string>
     <string name="scan_table">%1$s 桌</string>
     <string name="scan_note">备注：%1$s</string>

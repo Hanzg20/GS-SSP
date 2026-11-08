@@ -1,0 +1,10 @@
+Demo dish photos for the Ourea Scan test store (ZZ 扫码点餐测试 Scan E2E). From Wikimedia Commons:
+
+cucumber.jpg  --  Pine and Crane DTLA - smashed cucumber salad.jpg  --  Benoît Prieur  --  CC0  --  https://commons.wikimedia.org/wiki/File:Pine_and_Crane_DTLA_-_smashed_cucumber_salad.jpg
+zhajiang.jpg  --  Zhajiangmian 20180501.jpg  --  Hal_0005  --  CC BY-SA 4.0  --  https://commons.wikimedia.org/wiki/File:Zhajiangmian_20180501.jpg
+beefnoodle.jpg  --  Beef Noodle Soup (braised beef shank, mustard greens, baby bok choy) July 2023.JPG  --  Benoît Prieur  --  CC0  --  https://commons.wikimedia.org/wiki/File:Beef_Noodle_Soup_(braised_beef_shank,_mustard_greens,_baby_bok_choy)_July_2023.JPG
+xiaolongbao.jpg  --  Xiaolongbao-breakfast.jpg  --  Darrylsnow  --  CC BY-SA 4.0  --  https://commons.wikimedia.org/wiki/File:Xiaolongbao-breakfast.jpg
+pork_jiaozi.jpg  --  Jiaozi with Pork & Chive by Banej.jpg  --  Banej  --  CC BY-SA 3.0  --  https://commons.wikimedia.org/wiki/File:Jiaozi_with_Pork_%26_Chive_by_Banej.jpg
+veg_jiaozi.jpg  --  Vegetable jiaozi, fried, with soy sauce - Massachusetts.jpg  --  Daderot  --  CC0  --  https://commons.wikimedia.org/wiki/File:Vegetable_jiaozi,_fried,_with_soy_sauce_-_Massachusetts.jpg
+cola.jpg  --  Glass cola.jpg  --  pic_p_ter  --  Public domain  --  https://commons.wikimedia.org/wiki/File:Glass_cola.jpg
+water.jpg  --  Blue glass with carbonated water.jpg  --  W.carter  --  CC0  --  https://commons.wikimedia.org/wiki/File:Blue_glass_with_carbonated_water.jpg

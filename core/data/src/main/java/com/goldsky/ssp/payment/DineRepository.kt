@@ -41,7 +41,9 @@ object DineRepository {
         val quantity: Int,
         val unit_price_cents: Int,
         val tax_rate_bps: Int = 0,
-        val note: String? = null
+        val note: String? = null,
+        /** Who at the table added it (Ourea Scan shared cart, optional name). */
+        val guest: String? = null
     )
 
     /** A customer's order from the table QR, waiting for staff (dine.scan_orders). */
@@ -58,7 +60,9 @@ object DineRepository {
         val created_at: String? = null,
         /** Approved by a manager in Cael: a terminal on the floor accepts and prints it. */
         val approved_at: String? = null,
-        val approved_by: String? = null
+        val approved_by: String? = null,
+        /** Who at the table sent it (optional name typed on the phone). */
+        val guest_name: String? = null
     )
 
     /** A customer paid online (Ourea Scan) in the last 30 minutes: staff get a chime and a banner. */
@@ -342,6 +346,23 @@ object DineRepository {
 
     suspend fun rejectScan(orderId: String, staffName: String?, reason: String?): Result =
         call("dine_reject_scan", RejectParams(orderId, staffName, reason))
+
+    @Serializable data class Settings(val scan_auto_kitchen: Boolean = false)
+    @Serializable private data class AutoKitchenParams(val p_on: Boolean, val p_staff_name: String?)
+
+    /** The store's dine-in settings (dine.settings); null when the cloud can't be reached. */
+    suspend fun settings(): Settings? = withContext(Dispatchers.IO) {
+        try {
+            SupabaseClientProvider.ensureAuthenticated()
+            SupabaseClientProvider.client.postgrest.rpc("dine_settings").decodeAs<Settings>()
+        } catch (e: Exception) {
+            Log.w(TAG, "dine_settings failed: ${e.message}"); null
+        }
+    }
+
+    /** QR orders straight to the kitchen (the first terminal on the floor accepts and prints them), or wait for staff. */
+    suspend fun setScanAutoKitchen(on: Boolean, staffName: String?): Result =
+        call("dine_set_scan_auto_kitchen", AutoKitchenParams(on, staffName))
 
     @Serializable private data class AckCallParams(val p_id: String, val p_staff_name: String?)
 

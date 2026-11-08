@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { Plus, Minus, X, Edit3, ChevronRight, XCircle, Loader2, Receipt, Bell, Search, ShieldAlert, Check } from 'lucide-react'
+import { Plus, Minus, X, Edit3, ChevronRight, ChevronDown, XCircle, Loader2, Bell, Search, ShieldAlert, Check, ClipboardList, Menu as MenuIcon, Globe } from 'lucide-react'
 import Guide from './Guide.jsx'
 import Bill from './Bill.jsx'
 
@@ -88,6 +88,12 @@ const T = zh ? {
   callSent: '已通知服务员，马上过来', callAck: '服务员已经在路上', callCancel: '取消呼叫', callAgain: '再叫一次',
   callErrors: { too_many_calls: '叫得有点多，服务员马上就来', offline: '连不上网络，请举手示意服务员', failed: '没有叫到，请举手示意服务员' },
   poweredBy: '技术支持', lang: 'EN', details: '详情', close: '关闭', ingredients: '配料',
+  yourTable: '你的桌号是', pickLang: '选择语言', yourName: '你的名字（选填）', nameHint: '同桌的人会看到是谁点的菜', start: '开始点餐',
+  tableOrders: '这桌的点单', checkNo: (n) => `账单 #${n}`, nothingYet: '这桌还没有点菜', inKitchen: '已下厨', roundN: (n) => `第 ${n} 轮`,
+  orderMoreBtn: '继续加菜', payBtn: '买单', sentBy: (n) => `${n} 提交`, me: '我', guest: '客人',
+  tableCart: '这桌的购物车', clearCart: '清空', confirmClear: '确定清空？', cartChanged: '同桌刚改了购物车，请再看一眼再提交',
+  cartErrors: { sold_out: '刚刚售完：', item_unavailable: '这道菜已下架', bad_option: '请重新选择口味：', cart_full: '购物车满了，先提交一部分吧', offline: '连不上网络，请稍后重试', failed: '没有加上，请再试一次' },
+  autoKitchen: '已直接送到厨房', allCategories: '全部分类', menuTitle: '设置', language: '语言', changeName: '我的名字', saveName: '保存',
 } : {
   scanFirst: 'Scan the QR code on your table to order', badCode: 'This QR code is no longer valid. Please ask a server.', loading: 'Loading the menu…', offline: 'No connection. Please try again.',
   table: 'Table', all: 'All', soldOut: 'Sold out', add: 'Add', required: 'Required', pickOne: 'Pick one', upTo: (n) => `Up to ${n}`, optional: 'Optional',
@@ -121,6 +127,12 @@ const T = zh ? {
   callSent: 'A server has been told and is coming', callAck: 'A server is on the way', callCancel: 'Cancel the call', callAgain: 'Call again',
   callErrors: { too_many_calls: 'Lots of calls! A server is coming', offline: 'No connection. Please wave to a server.', failed: 'The call did not go through. Please wave to a server.' },
   poweredBy: 'Powered by', lang: '中文', details: 'Details', close: 'Close', ingredients: 'Ingredients',
+  yourTable: 'Your table is', pickLang: 'Language', yourName: 'Your name (optional)', nameHint: 'So your table can see who ordered what', start: 'Start ordering',
+  tableOrders: "Your table's order", checkNo: (n) => `Check #${n}`, nothingYet: 'Nothing ordered at this table yet', inKitchen: 'In the kitchen', roundN: (n) => `Round ${n}`,
+  orderMoreBtn: 'Order more', payBtn: 'Bill', sentBy: (n) => `Sent by ${n}`, me: 'Me', guest: 'Guest',
+  tableCart: "Your table's cart", clearCart: 'Clear', confirmClear: 'Clear it all?', cartChanged: 'Someone at your table just changed the cart. Please check it, then send.',
+  cartErrors: { sold_out: 'Just sold out: ', item_unavailable: 'That dish is no longer available', bad_option: 'Please choose the options again: ', cart_full: 'The cart is full. Send some first.', offline: 'No connection. Please try again.', failed: "That didn't go in. Please try again." },
+  autoKitchen: 'Sent straight to the kitchen', allCategories: 'All categories', menuTitle: 'Settings', language: 'Language', changeName: 'My name', saveName: 'Save',
 }
 
 // Canada's priority allergens (products.attributes.allergens codes).
@@ -176,9 +188,6 @@ const store = {
 
 const newRef = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2))
 
-function lineKey(productId, optionIds, note) {
-  return productId + '|' + [...optionIds].sort().join(',') + '|' + (note || '')
-}
 
 /** A sheet that slides up from the bottom (centred on a wide screen). */
 function Sheet({ onClose, children, tall = false }) {
@@ -287,6 +296,7 @@ function DishSheet({ product, avoid, onAdd, onClose }) {
 
 /** One order's way to the kitchen: sent -> server confirms -> kitchen, or the refusal and its reason. */
 function OrderProgress({ o, n }) {
+  const who = o.guest_name ? T.sentBy(o.guest_name) : null
   const rejected = o.status === 'REJECTED'
   const step = o.status === 'ACCEPTED' ? 3 : 2   // 1 sent (done), 2 waiting for the server, 3 in the kitchen
   const steps = [T.stepSent, T.stepConfirm, T.stepKitchen]
@@ -325,7 +335,7 @@ function OrderProgress({ o, n }) {
           })}
         </div>
       )}
-      <p className="text-xs text-ink-mute mt-3 line-clamp-2">{o.items.map((l) => `${l.quantity}× ${l.name}`).join(' · ')}</p>
+      <p className="text-xs text-ink-mute mt-3 line-clamp-2">{who && <span className="font-bold text-ink-soft">{who} · </span>}{o.items.map((l) => `${l.quantity}× ${l.name}`).join(' · ')}</p>
     </div>
   )
 }
@@ -416,21 +426,205 @@ function Signature({ className = '' }) {
   )
 }
 
+/** A guest's round mark: their initial on a colour of their own (from the phone's id). */
+const AVATAR_COLORS = ['#F59E0B', '#0EA5E9', '#10B981', '#8B5CF6', '#EF4444', '#EC4899', '#14B8A6', '#6366F1']
+function Avatar({ name, id, mine, size = 'w-6 h-6 text-[11px]' }) {
+  let h = 0
+  for (const ch of String(id || name || '?')) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  const letter = mine ? T.me.charAt(0) : (name || '').trim().charAt(0).toUpperCase() || T.guest.charAt(0)
+  return (
+    <span title={mine ? T.me : name || T.guest} style={{ background: AVATAR_COLORS[h % AVATAR_COLORS.length] }}
+      className={`${size} rounded-full text-white font-black flex items-center justify-center shrink-0 ring-2 ring-white`}>{letter}</span>
+  )
+}
+
+/** The door: the store, the table, language and an optional name -- then the menu. */
+function JoinScreen({ menu, guest, onJoin }) {
+  const [name, setName] = useState(guest.name || '')
+  const [logoBroken, setLogoBroken] = useState(false)
+  const pick = (l) => { if ((l === 'zh') !== zh) { try { localStorage.setItem(LANG_KEY, l) } catch { /* fine */ } window.location.reload() } }
+  return (
+    <div className="relative min-h-screen bg-paper flex flex-col">
+      <div className="bg-gradient-to-b from-gold-50 to-paper px-6 pt-10 pb-6 flex flex-col items-center text-center">
+        {menu.store.logo_url && !logoBroken
+          ? <img src={menu.store.logo_url} alt="" onError={() => setLogoBroken(true)} className="w-20 h-20 rounded-3xl object-cover bg-white shadow-card" />
+          : <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-gold-400 to-gold-600 text-ink font-black text-4xl flex items-center justify-center shadow-card">{menu.store.name.trim().charAt(0)}</div>}
+        <h1 className="mt-4 font-black text-2xl text-ink">{menu.store.name}</h1>
+        <p className="mt-3 text-ink-soft font-bold">{T.yourTable}</p>
+        <p className="text-5xl font-black text-sky-700 tracking-tight">{menu.table.name}</p>
+      </div>
+      <div className="px-6 max-w-md w-full mx-auto space-y-5">
+        <div>
+          <p className="text-sm font-black text-ink-soft mb-2">{T.pickLang}</p>
+          <div className="grid grid-cols-2 gap-3">
+            {[['zh', '中文'], ['en', 'English']].map(([l, label]) => {
+              const on = (l === 'zh') === zh
+              return <button key={l} onClick={() => pick(l)} className={`py-3.5 rounded-2xl font-black border-2 ${on ? 'bg-ink text-white border-ink' : 'bg-white text-ink-soft border-slate-200'}`}>{label}</button>
+            })}
+          </div>
+        </div>
+        <div>
+          <input value={name} onChange={(e) => setName(e.target.value.slice(0, 30))} placeholder={T.yourName}
+            className="w-full px-4 py-4 rounded-2xl bg-white border-2 border-slate-200 focus:border-gold-500 outline-none text-lg font-bold" />
+          <p className="text-xs text-ink-mute mt-1.5 px-1">{T.nameHint}</p>
+        </div>
+        <button onClick={() => onJoin(name.trim())} className="btn-gold w-full py-4 rounded-2xl text-lg">{T.start}</button>
+      </div>
+      <div className="flex-1" />
+      <div className="flex justify-center pb-2"><Beaver mood="idle" className="w-20" bob /></div>
+      <Signature className="pb-6" />
+    </div>
+  )
+}
+
+/** The table's order, for everyone at it: waiting / refused QR orders, then what's on the check, round by round. */
+function OrdersView({ menu, data, onMore, onBill, onClose }) {
+  const orders = data?.orders || []
+  const open = orders.filter((o) => o.status !== 'ACCEPTED')
+  const lines = data?.check?.lines || []
+  const rounds = [...new Set(lines.map((l) => l.round))].sort((a, b) => a - b)
+  const byId = Object.fromEntries(menu.products.map((p) => [p.id, p]))
+  const n = orders.length
+  return (
+    <div className="fixed inset-0 z-40 bg-paper flex flex-col">
+      <div className="bg-white border-b border-slate-100 px-4 py-3 flex items-center gap-3">
+        <button onClick={onClose} aria-label={T.close} className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center"><X className="w-5 h-5" /></button>
+        <div className="min-w-0">
+          <h1 className="font-black text-lg text-ink leading-tight">{T.tableOrders}</h1>
+          <p className="text-xs font-bold text-ink-mute">{T.table} {menu.table.name}{data?.check ? ` · ${T.checkNo(data.check.check_no)}` : ''}</p>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-4 py-4 space-y-3">
+          {open.length === 0 && lines.length === 0 && (
+            <div className="flex flex-col items-center text-center py-14">
+              <Beaver mood="idle" className="w-32" bob />
+              <p className="mt-3 font-black text-ink-soft">{T.nothingYet}</p>
+            </div>
+          )}
+          {open.map((o) => <OrderProgress key={o.id} o={o} n={n - orders.indexOf(o)} />)}
+          {lines.length > 0 && (
+            <div className="bg-white rounded-3xl shadow-card overflow-hidden">
+              <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+                <Beaver mood="done" className="w-10" />
+                <h2 className="font-black text-ink">{T.inKitchen}</h2>
+                <span className="ml-auto text-sm font-bold text-ink-mute">{T.items(lines.reduce((s, l) => s + l.quantity, 0))}</span>
+              </div>
+              {rounds.map((r) => (
+                <div key={r} className="px-4 pb-3">
+                  {rounds.length > 1 && <p className="text-[11px] font-black text-sky-700 bg-sky-50 inline-block px-2 py-0.5 rounded-full mt-1 mb-1">{T.roundN(r)}</p>}
+                  {lines.filter((l) => l.round === r).map((l, i) => {
+                    const p = byId[l.product_id]
+                    return (
+                      <div key={i} className="flex items-center gap-3 py-2 border-t border-slate-100 first:border-t-0">
+                        {p?.image_url ? <img src={p.image_url} alt="" className="w-12 h-12 rounded-xl object-cover bg-slate-100 shrink-0" /> : <div className="w-12 h-12 rounded-xl bg-gold-50 shrink-0" />}
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-ink leading-snug">{p ? dishName(p) : l.name}</p>
+                          {Array.isArray(l.options) && l.options.length > 0 && <p className="text-xs text-ink-mute">{l.options.join(', ')}</p>}
+                        </div>
+                        <span className="font-black text-ink-soft">×{l.quantity}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="bg-white border-t border-slate-100 p-4 flex gap-3 w-full max-w-3xl mx-auto">
+        <button onClick={onMore} className="flex-1 py-4 rounded-2xl font-black text-lg border-2 border-gold-500 text-gold-800 bg-white">{T.orderMoreBtn}</button>
+        <button onClick={onBill} className="btn-gold flex-1 py-4 rounded-2xl text-lg">{T.payBtn}</button>
+      </div>
+    </div>
+  )
+}
+
+/** Every category at once, to jump straight to one. */
+function CategorySheet({ sections, active, onPick, onClose }) {
+  return (
+    <Sheet onClose={onClose}>
+      <div className="px-5 pt-5 pb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-black text-xl text-ink">{T.allCategories}</h2>
+          <button onClick={onClose} aria-label={T.close} className="p-1 text-ink-mute"><X className="w-6 h-6" /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {sections.map(({ c, items }) => (
+            <button key={c} onClick={() => onPick(c)}
+              className={`text-left px-4 py-3 rounded-2xl border-2 font-black ${active === c ? 'border-gold-500 bg-gold-50 text-ink' : 'border-slate-200 text-ink-soft'}`}>
+              {c}<span className="block text-xs font-bold text-ink-mute">{T.items(items.length)}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </Sheet>
+  )
+}
+
+/** The ≡ menu: language and the name shown to the table. */
+function MenuSheet({ guest, onName, onClose }) {
+  const [name, setName] = useState(guest.name || '')
+  const pick = (l) => { if ((l === 'zh') !== zh) { try { localStorage.setItem(LANG_KEY, l) } catch { /* fine */ } window.location.reload() } }
+  return (
+    <Sheet onClose={onClose}>
+      <div className="px-5 pt-5 pb-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="font-black text-xl text-ink">{T.menuTitle}</h2>
+          <button onClick={onClose} aria-label={T.close} className="p-1 text-ink-mute"><X className="w-6 h-6" /></button>
+        </div>
+        <div>
+          <p className="text-sm font-black text-ink-soft mb-2 flex items-center gap-1"><Globe className="w-4 h-4" />{T.language}</p>
+          <div className="grid grid-cols-2 gap-3">
+            {[['zh', '中文'], ['en', 'English']].map(([l, label]) => {
+              const on = (l === 'zh') === zh
+              return <button key={l} onClick={() => pick(l)} className={`py-3 rounded-2xl font-black border-2 ${on ? 'bg-ink text-white border-ink' : 'bg-white text-ink-soft border-slate-200'}`}>{label}</button>
+            })}
+          </div>
+        </div>
+        <div>
+          <p className="text-sm font-black text-ink-soft mb-2">{T.changeName}</p>
+          <div className="flex gap-2">
+            <input value={name} onChange={(e) => setName(e.target.value.slice(0, 30))} placeholder={T.yourName}
+              className="flex-1 px-4 py-3 rounded-2xl bg-paper border border-slate-200 focus:border-gold-500 outline-none font-bold" />
+            <button onClick={() => { onName(name.trim()); onClose() }} className="btn-gold px-5 rounded-2xl">{T.saveName}</button>
+          </div>
+        </div>
+        <Signature />
+      </div>
+    </Sheet>
+  )
+}
+
 export default function App() {
   const token = useMemo(() => new URLSearchParams(window.location.search).get('t') || '', [])
   const [menu, setMenu] = useState(null)        // {table, store, products}
   const [state, setState] = useState(token ? 'loading' : 'no-token')  // loading | ready | bad-code | offline | no-token
-  const [cart, setCart] = useState([])          // [{key, product, optionIds, optionNames, unit, qty, note}]
+  // This phone at the table: a random id (marks its cart lines) and the optional name.
+  const [guest, setGuestState] = useState(() => {
+    const g = store.get('ourea_scan_guest')
+    if (g?.id) return g
+    const fresh = { id: newRef(), name: '' }
+    store.set('ourea_scan_guest', fresh)
+    return fresh
+  })
+  const setGuestName = (name) => { const g = { ...guest, name }; setGuestState(g); store.set('ourea_scan_guest', g) }
+  const [joined, setJoined] = useState(() => !!store.get('ourea_scan_joined_' + token))
+  const [cart, setCart] = useState({ rev: 0, lines: [] })   // the table's shared cart (scan_cart)
+  const [table, setTable] = useState(null)      // the table's orders and check (scan_table_orders)
+  const [view, setView] = useState(null)        // null until the first read decides; 'menu' | 'orders'
   const [dishFor, setDishFor] = useState(null)
   const [cartOpen, setCartOpen] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
   const [orderNote, setOrderNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
-  const [orderIds, setOrderIds] = useState(() => store.get('scan_orders_' + token) || [])
-  const [orders, setOrders] = useState([])
-  const [clientRef, setClientRef] = useState(newRef)  // kept across retries: one submit = one order
+  const [toast, setToast] = useState(null)
+  const [clientRef, setClientRef] = useState(newRef)  // kept across retries: one send = one order
   const [guideOpen, setGuideOpen] = useState(false)
   const [billOpen, setBillOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [catsOpen, setCatsOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [avoid, setAvoidState] = useState(() => store.get('ourea_scan_avoid') || [])
   const [avoidOpen, setAvoidOpen] = useState(false)
@@ -447,6 +641,7 @@ export default function App() {
   const headerBottom = () => (headerRef.current?.getBoundingClientRect().bottom || 140) + 12
 
   const setAvoid = (a) => { setAvoidState(a); store.set('ourea_scan_avoid', a) }
+  const flash = (msg) => { setToast(msg); setTimeout(() => setToast((t) => (t === msg ? null : t)), 3500) }
 
   const loadMenu = useCallback(async () => {
     setState('loading')
@@ -457,23 +652,35 @@ export default function App() {
     setState('ready')
     document.title = `${data.store.name} · ${T.table} ${data.table.name}`
   }, [token])
-
   useEffect(() => { if (token) loadMenu() }, [token, loadMenu])
 
-  // The status of this phone's orders at this table, every few seconds.
-  useEffect(() => {
-    if (!token || orderIds.length === 0) return
-    let stop = false
-    const poll = async () => {
-      const { data } = await supabase.rpc('scan_orders', { p_token: token, p_ids: orderIds })
-      if (!stop && Array.isArray(data)) setOrders(data)
-    }
-    poll()
-    const id = setInterval(poll, 5000)
-    return () => { stop = true; clearInterval(id) }
-  }, [token, orderIds])
+  const readCart = useCallback(async () => {
+    const { data, error: e } = await supabase.rpc('scan_cart', { p_token: token })
+    if (!e && data) setCart(data)
+  }, [token])
+  const readTable = useCallback(async () => {
+    const { data, error: e } = await supabase.rpc('scan_table_orders', { p_token: token })
+    if (!e && data) setTable(data)
+    return !e ? data : undefined
+  }, [token])
 
-  // The table's server call: read once, then followed while one is open (or was just answered).
+  // The table's cart and orders, kept fresh: everyone at the table changes them.
+  useEffect(() => {
+    if (state !== 'ready' || !joined) return
+    let stop = false
+    const tick = async () => { if (!stop && document.visibilityState === 'visible') { await Promise.all([readCart(), readTable()]) } }
+    tick()
+    const id = setInterval(tick, 4000)
+    return () => { stop = true; clearInterval(id) }
+  }, [state, joined, readCart, readTable])
+
+  // First look after joining: a table that already ordered opens on its order (like a waiter's pad), else the menu.
+  useEffect(() => {
+    if (view || !joined || state !== 'ready' || table === null) return
+    setView(((table.orders || []).length || (table.check?.lines || []).length) ? 'orders' : 'menu')
+  }, [view, joined, state, table])
+
+  // The table's server call: read once, then followed while one is open.
   const readCall = useCallback(async () => {
     const { data, error: e } = await supabase.rpc('scan_call_state', { p_token: token })
     if (!e) setCall(data || null)
@@ -510,17 +717,19 @@ export default function App() {
   const sections = useMemo(() => menu ? categories.map((c) => ({ c, items: menu.products.filter((p) => (p.category || '—') === c && matches(p)) })).filter((s) => s.items.length) : [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [menu, categories, q])
+  const byId = useMemo(() => Object.fromEntries((menu?.products || []).map((p) => [p.id, p])), [menu])
 
-  // How many of each dish this phone already sent (waiting or in the kitchen): the "Ordered ×n" mark.
+  // What the whole table already has, per dish: lines on the check plus QR orders still waiting.
   const orderedCount = useMemo(() => {
     const m = {}
-    for (const o of orders) if (o.status !== 'REJECTED') for (const l of o.items) m[l.product_id] = (m[l.product_id] || 0) + l.quantity
+    for (const l of table?.check?.lines || []) if (l.product_id) m[l.product_id] = (m[l.product_id] || 0) + l.quantity
+    for (const o of table?.orders || []) if (o.status === 'PENDING') for (const l of o.items) m[l.product_id] = (m[l.product_id] || 0) + l.quantity
     return m
-  }, [orders])
+  }, [table])
 
   // Category tabs follow the scroll (the section nearest the top is the active one).
   useEffect(() => {
-    if (!sections.length) return
+    if (!sections.length || view !== 'menu') return
     const onScroll = () => {
       let cur = sections[0].c
       for (const s of sections) {
@@ -532,7 +741,7 @@ export default function App() {
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
-  }, [sections])
+  }, [sections, view])
   useEffect(() => {
     const tab = tabsRef.current?.querySelector(`[data-cat="${CSS.escape(activeCat || '')}"]`)
     tab?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
@@ -542,45 +751,66 @@ export default function App() {
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - headerBottom(), behavior: 'smooth' })
   }
 
-  const addLine = (product, { optionIds = [], optionNames = [], unit = product.price_cents, note = '' } = {}, qty = 1) => {
-    const key = lineKey(product.id, optionIds, note)
-    setCart((c) => c.some((l) => l.key === key)
-      ? c.map((l) => l.key === key ? { ...l, qty: Math.min(l.qty + qty, 20) } : l)
-      : [...c, { key, product, optionIds, optionNames, unit, qty: Math.min(qty, 20), note }])
-    setError(null)
+  // ---- the shared cart: every change goes to the server, which answers with the table's cart
+  const cartError = (data) => {
+    const m = data?.message
+    if (m === 'unknown_table') { setState('bad-code'); return }
+    flash((T.cartErrors[m] || T.cartErrors.failed) + (data?.product && (m === 'sold_out' || m === 'bad_option') ? data.product : ''))
+    if (m === 'item_unavailable' || m === 'sold_out') loadMenu()
   }
-  const bump = (key, d) => setCart((c) => c.map((l) => l.key === key ? { ...l, qty: l.qty + d } : l).filter((l) => l.qty > 0))
-  const inCart = (pid) => cart.filter((l) => l.product.id === pid).reduce((s, l) => s + l.qty, 0)
-  const count = cart.reduce((s, l) => s + l.qty, 0)
-  const subtotal = cart.reduce((s, l) => s + l.unit * l.qty, 0)
+  const addLine = async (product, { optionIds = [], note = '' } = {}, qty = 1) => {
+    const { data, error: e } = await supabase.rpc('scan_cart_add', {
+      p_token: token, p_guest_id: guest.id, p_guest_name: guest.name || null, p_product_id: product.id,
+      p_option_ids: optionIds, p_note: note || null, p_quantity: Math.min(qty, 20),
+    })
+    if (e) { flash(T.cartErrors.offline); return }
+    if (!data?.success) { cartError(data); return }
+    setCart(data.cart); setError(null)
+  }
+  const setQty = async (line, quantity) => {
+    const { data, error: e } = await supabase.rpc('scan_cart_set', { p_token: token, p_line_id: line.id, p_quantity: quantity })
+    if (e) { flash(T.cartErrors.offline); return }
+    if (data?.success) setCart(data.cart); else cartError(data)
+  }
+  const clearCart = async () => {
+    setConfirmClear(false)
+    const { data, error: e } = await supabase.rpc('scan_cart_clear', { p_token: token })
+    if (e) { flash(T.cartErrors.offline); return }
+    if (data?.success) setCart(data.cart)
+  }
+
+  // A cart line with what it shows: the dish, its option names, the display price.
+  const lines = cart.lines.map((l) => {
+    const p = byId[l.product_id]
+    const opts = (p?.modifier_groups || []).flatMap((g) => g.options).filter((o) => l.option_ids.includes(o.id))
+    return { ...l, p, optionNames: opts.map((o) => o.name), unit: (p?.price_cents || 0) + opts.reduce((s, o) => s + (o.price_cents || 0), 0) }
+  })
+  const inCart = (pid) => lines.filter((l) => l.product_id === pid).reduce((s, l) => s + l.quantity, 0)
+  const count = lines.reduce((s, l) => s + l.quantity, 0)
+  const subtotal = lines.reduce((s, l) => s + l.unit * l.quantity, 0)
   // Display estimate; the server prices the order (same rule: per rate, rounded once).
-  const tax = Object.entries(cart.reduce((m, l) => ({ ...m, [l.product.tax_rate_bps]: (m[l.product.tax_rate_bps] || 0) + l.unit * l.qty }), {}))
+  const tax = Object.entries(lines.reduce((m, l) => { const b = l.p?.tax_rate_bps ?? 0; return { ...m, [b]: (m[b] || 0) + l.unit * l.quantity } }, {}))
     .reduce((s, [bps, amt]) => s + Math.round(amt * Number(bps) / 10000), 0)
 
   const submit = async () => {
     setSubmitting(true); setError(null)
-    const { data, error: e } = await supabase.rpc('scan_submit_order', {
-      p_token: token,
-      p_items: cart.map((l) => ({ product_id: l.product.id, quantity: l.qty, option_ids: l.optionIds, note: l.note || null })),
-      p_note: orderNote.trim() || null,
-      p_client_ref: clientRef,
+    const { data, error: e } = await supabase.rpc('scan_submit_cart', {
+      p_token: token, p_rev: cart.rev, p_note: orderNote.trim() || null, p_client_ref: clientRef, p_guest_name: guest.name || null,
     })
     setSubmitting(false)
     if (e) { setError(T.offline); return }
     if (!data?.success) {
       const m = data?.message
+      if (m === 'cart_changed') { if (data.cart) setCart(data.cart); setError(T.cartChanged); return }
       setError((T.errors[m] || T.failed) + (data?.product && (m === 'sold_out' || m === 'bad_option') ? data.product : ''))
       if (m === 'unknown_table') setState('bad-code')
       if (m === 'item_unavailable' || m === 'sold_out') loadMenu()
       return
     }
-    const ids = [data.id, ...orderIds.filter((x) => x !== data.id)].slice(0, 20)
-    setOrderIds(ids); store.set('scan_orders_' + token, ids)
-    setCart([]); setOrderNote(''); setCartOpen(false); setClientRef(newRef())
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setOrderNote(''); setCartOpen(false); setClientRef(newRef())
+    await Promise.all([readCart(), readTable()])
+    setView('orders')
   }
-
-  const switchLang = () => { try { localStorage.setItem(LANG_KEY, zh ? 'en' : 'zh') } catch { /* fine */ } window.location.reload() }
 
   if (state === 'no-token') return <BeaverScreen mood="idle" text={T.scanFirst} />
   if (state === 'bad-code') return <BeaverScreen mood="alert" text={T.badCode} />
@@ -589,11 +819,14 @@ export default function App() {
       action={<button onClick={loadMenu} className="btn-gold mt-6 px-8 py-3.5 rounded-2xl">{T.retry}</button>} />
   }
   if (state === 'loading' || !menu) return <BeaverScreen mood="blink" text={T.loading} />
+  if (!joined) {
+    return <JoinScreen menu={menu} guest={guest} onJoin={(name) => { setGuestName(name); store.set('ourea_scan_joined_' + token, true); setJoined(true) }} />
+  }
+  if (view === null) return <BeaverScreen mood="blink" text={T.loading} />
 
   const callOpenNow = call?.status === 'OPEN'
   const callAckedNow = call?.status === 'ACKED' && call.closed_at && Date.now() - new Date(call.closed_at).getTime() < 3 * 60 * 1000
-  // Orders shown oldest = 1; the list itself is newest first.
-  const numbered = orders.map((o, i) => ({ o, n: orders.length - i }))
+  const waiting = (table?.orders || []).filter((o) => o.status === 'PENDING').length
 
   return (
     <div className="min-h-screen pb-32 bg-paper">
@@ -607,13 +840,16 @@ export default function App() {
             <h1 className="font-black text-[17px] text-ink truncate leading-tight">{menu.store.name}</h1>
             <span className="inline-block mt-0.5 bg-sky-50 text-sky-800 font-black text-xs px-2 py-0.5 rounded-full">{T.table} {menu.table.name}</span>
           </div>
-          <button onClick={switchLang} className="shrink-0 text-xs font-black text-ink-soft border border-slate-200 rounded-full px-2.5 py-1.5">{T.lang}</button>
           <button onClick={() => { setCallError(null); setCallOpen(true) }} aria-label={T.call}
-            className={`shrink-0 relative w-10 h-10 rounded-full flex items-center justify-center ${callOpenNow ? 'bg-gold-500 text-ink' : 'bg-slate-100 text-ink'}`}>
+            className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${callOpenNow ? 'bg-gold-500 text-ink' : 'bg-slate-100 text-ink'}`}>
             <Bell className={`w-5 h-5 ${callOpenNow ? 'bell-ring' : ''}`} />
           </button>
-          <button onClick={() => setBillOpen(true)} aria-label={T.bill} className="shrink-0 w-10 h-10 rounded-full bg-slate-100 text-ink flex items-center justify-center">
-            <Receipt className="w-5 h-5" />
+          <button onClick={() => setView('orders')} aria-label={T.tableOrders} className="shrink-0 relative w-10 h-10 rounded-full bg-slate-100 text-ink flex items-center justify-center">
+            <ClipboardList className="w-5 h-5" />
+            {waiting > 0 && <span className="absolute -top-1 -right-1 bg-gold-500 text-ink text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">{waiting}</span>}
+          </button>
+          <button onClick={() => setMenuOpen(true)} aria-label={T.menuTitle} className="shrink-0 w-10 h-10 rounded-full bg-slate-100 text-ink flex items-center justify-center">
+            <MenuIcon className="w-5 h-5" />
           </button>
         </div>
         {(callOpenNow || callAckedNow) && (
@@ -634,23 +870,20 @@ export default function App() {
           </button>
         </div>
         {categories.length > 1 && !q && (
-          <nav ref={tabsRef} className="max-w-3xl mx-auto px-4 pb-2.5 overflow-x-auto no-scrollbar flex gap-2">
-            {sections.map(({ c }) => (
-              <button key={c} data-cat={c} onClick={() => jumpTo(c)}
-                className={`px-4 py-1.5 rounded-full text-sm font-black whitespace-nowrap transition-colors ${activeCat === c ? 'bg-ink text-white' : 'bg-slate-100 text-ink-soft'}`}>
-                {c}
-              </button>
-            ))}
-          </nav>
+          <div className="max-w-3xl mx-auto pl-4 pb-2.5 flex items-center gap-2">
+            <nav ref={tabsRef} className="flex-1 overflow-x-auto no-scrollbar flex gap-2">
+              {sections.map(({ c }) => (
+                <button key={c} data-cat={c} onClick={() => jumpTo(c)}
+                  className={`px-4 py-1.5 rounded-full text-sm font-black whitespace-nowrap transition-colors ${activeCat === c ? 'bg-ink text-white' : 'bg-slate-100 text-ink-soft'}`}>
+                  {c}
+                </button>
+              ))}
+            </nav>
+            <button onClick={() => setCatsOpen(true)} aria-label={T.allCategories}
+              className="shrink-0 mr-4 w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm"><ChevronDown className="w-5 h-5" /></button>
+          </div>
         )}
       </header>
-
-      {numbered.length > 0 && !q && (
-        <section className="max-w-3xl mx-auto px-4 pt-4 space-y-3">
-          <h2 className="text-sm font-black text-ink-mute">{T.myOrders}</h2>
-          {numbered.slice(0, 3).map(({ o, n }) => <OrderProgress key={o.id} o={o} n={n} />)}
-        </section>
-      )}
 
       <main className="max-w-3xl mx-auto px-4 pt-2">
         {sections.length === 0 && (
@@ -705,11 +938,12 @@ export default function App() {
       </main>
 
       {count > 0 && (
-        <button onClick={() => setCartOpen(true)}
-          className="fixed bottom-4 left-4 right-4 z-40 max-w-xl mx-auto bg-ink text-white pl-3 pr-5 py-3 rounded-[22px] shadow-lift flex items-center justify-between">
+        <button onClick={() => { setError(null); setConfirmClear(false); setCartOpen(true) }}
+          className="fixed bottom-4 left-4 right-4 z-30 max-w-xl mx-auto bg-ink text-white pl-3 pr-5 py-3 rounded-[22px] shadow-lift flex items-center justify-between">
           <span className="flex items-center gap-3">
             <span className="bg-gradient-to-br from-gold-400 to-gold-600 text-ink font-black w-10 h-10 rounded-2xl flex items-center justify-center">{count}</span>
-            <span className="font-black">{T.order}</span>
+            <span className="flex -space-x-1.5">{[...new Map(lines.map((l) => [l.guest_id, l])).values()].slice(0, 4).map((l) => <Avatar key={l.guest_id} id={l.guest_id} name={l.guest_name} mine={l.guest_id === guest.id} />)}</span>
+            <span className="font-black">{T.tableCart}</span>
           </span>
           <span className="flex items-center gap-1 font-black text-lg text-gold-300">{money(subtotal + tax)}<ChevronRight className="w-5 h-5 text-slate-400" /></span>
         </button>
@@ -717,24 +951,33 @@ export default function App() {
 
       {cartOpen && (
         <Sheet onClose={() => setCartOpen(false)} tall>
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="font-black text-xl">{T.order} · {T.table} {menu.table.name}</h2>
-            <button onClick={() => setCartOpen(false)} aria-label={T.close} className="p-2 text-ink-mute"><X className="w-6 h-6" /></button>
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-2">
+            <h2 className="font-black text-xl min-w-0 truncate">{T.tableCart} · {T.table} {menu.table.name}</h2>
+            <div className="flex items-center gap-1 shrink-0">
+              {lines.length > 0 && (confirmClear
+                ? <button onClick={clearCart} className="text-sm font-black text-red-600 px-2 py-1">{T.confirmClear}</button>
+                : <button onClick={() => setConfirmClear(true)} className="text-sm font-bold text-ink-mute px-2 py-1">{T.clearCart}</button>)}
+              <button onClick={() => setCartOpen(false)} aria-label={T.close} className="p-2 text-ink-mute"><X className="w-6 h-6" /></button>
+            </div>
           </div>
           <div className="px-5 py-2 overflow-y-auto flex-1 divide-y divide-slate-100">
-            {cart.map((l) => (
-              <div key={l.key} className="py-3 flex items-center justify-between gap-3">
-                {l.product.image_url && <img src={l.product.image_url} alt="" className="w-14 h-14 rounded-xl object-cover bg-slate-100 shrink-0" />}
+            {lines.length === 0 && <div className="flex flex-col items-center py-10"><Beaver mood="idle" className="w-24" /></div>}
+            {lines.map((l) => (
+              <div key={l.id} className="py-3 flex items-center justify-between gap-3">
+                <div className="relative shrink-0">
+                  {l.p?.image_url ? <img src={l.p.image_url} alt="" className="w-14 h-14 rounded-xl object-cover bg-slate-100" /> : <div className="w-14 h-14 rounded-xl bg-gold-50" />}
+                  <span className="absolute -bottom-1 -right-1"><Avatar id={l.guest_id} name={l.guest_name} mine={l.guest_id === guest.id} size="w-5 h-5 text-[10px]" /></span>
+                </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-black text-ink">{dishName(l.product)}</p>
+                  <p className="font-black text-ink">{l.p ? dishName(l.p) : '…'}</p>
                   {l.optionNames.length > 0 && <p className="text-xs text-sky-800">+ {l.optionNames.join(', ')}</p>}
                   {l.note && <p className="text-xs text-ink-mute italic">* {l.note}</p>}
-                  <p className="text-xs text-ink-mute">{money(l.unit)} × {l.qty}</p>
+                  <p className="text-xs text-ink-mute">{money(l.unit)} × {l.quantity}{l.guest_id === guest.id ? ` · ${T.me}` : l.guest_name ? ` · ${l.guest_name}` : ''}</p>
                 </div>
                 <div className="flex items-center gap-2.5 shrink-0">
-                  <button onClick={() => bump(l.key, -1)} aria-label="-" className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center"><Minus className="w-4 h-4" /></button>
-                  <span className="font-black w-4 text-center">{l.qty}</span>
-                  <button onClick={() => bump(l.key, 1)} aria-label="+" disabled={l.qty >= 20} className="w-9 h-9 rounded-full bg-gold-500 text-ink flex items-center justify-center"><Plus className="w-4 h-4" strokeWidth={3} /></button>
+                  <button onClick={() => setQty(l, l.quantity - 1)} aria-label="-" className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center"><Minus className="w-4 h-4" /></button>
+                  <span className="font-black w-4 text-center">{l.quantity}</span>
+                  <button onClick={() => setQty(l, l.quantity + 1)} aria-label="+" disabled={l.quantity >= 20} className="w-9 h-9 rounded-full bg-gold-500 text-ink flex items-center justify-center"><Plus className="w-4 h-4" strokeWidth={3} /></button>
                 </div>
               </div>
             ))}
@@ -750,20 +993,29 @@ export default function App() {
             <div className="flex justify-between text-xl font-black pt-2 border-t border-slate-200"><span>{T.total}</span><span>{money(subtotal + tax)}</span></div>
             {error && <p className="text-sm font-bold text-red-600">{error}</p>}
             <p className="text-xs text-ink-mute">{T.confirmHint}</p>
-            <button onClick={submit} disabled={submitting || count === 0}
-              className="btn-gold w-full mt-2 py-4 rounded-2xl text-lg flex items-center justify-center gap-2">
-              {submitting && <Loader2 className="w-5 h-5 animate-spin" />}{submitting ? T.sending : T.send}
-            </button>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setCartOpen(false)} className="px-5 py-4 rounded-2xl font-black border-2 border-gold-500 text-gold-800 bg-white">{T.orderMoreBtn}</button>
+              <button onClick={submit} disabled={submitting || count === 0}
+                className="btn-gold flex-1 py-4 rounded-2xl text-lg flex items-center justify-center gap-2">
+                {submitting && <Loader2 className="w-5 h-5 animate-spin" />}{submitting ? T.sending : T.send}
+              </button>
+            </div>
           </div>
         </Sheet>
       )}
 
       {/* Beaver, the AI guide: GoldSky's own, found on no other ordering page. */}
       <button onClick={() => setGuideOpen(true)}
-        className={`fixed right-3 z-40 flex items-center gap-1 pl-1 pr-4 py-1 rounded-full bg-gradient-to-r from-sky-500 to-sky-600 text-white shadow-lift font-black ${count > 0 ? 'bottom-[92px]' : 'bottom-4'}`}>
+        className={`fixed right-3 z-30 flex items-center gap-1 pl-1 pr-4 py-1 rounded-full bg-gradient-to-r from-sky-500 to-sky-600 text-white shadow-lift font-black ${count > 0 ? 'bottom-[92px]' : 'bottom-4'}`}>
         <span className="w-11 h-11 rounded-full bg-white flex items-end justify-center overflow-hidden"><Beaver mood="idle" className="w-10 translate-y-1" /></span>
         {T.guide}
       </button>
+
+      {toast && <div className="fixed left-4 right-4 bottom-28 z-[60] max-w-md mx-auto bg-ink text-white text-sm font-bold px-4 py-3 rounded-2xl shadow-lift text-center">{toast}</div>}
+
+      {view === 'orders' && (
+        <OrdersView menu={menu} data={table} onClose={() => setView('menu')} onMore={() => setView('menu')} onBill={() => setBillOpen(true)} />
+      )}
 
       {guideOpen && (
         <Guide token={token} products={menu.products} T={T} askGuide={askGuide} onClose={() => setGuideOpen(false)}
@@ -772,9 +1024,7 @@ export default function App() {
             if (!p) return
             // Options the guide couldn't settle: the customer picks them.
             if (s.needs_options || (p.modifier_groups?.length && !s.option_ids.length)) { setGuideOpen(false); setDishFor(p); return }
-            const opts = (p.modifier_groups || []).flatMap((g) => g.options).filter((o) => s.option_ids.includes(o.id))
-            const choice = { optionIds: opts.map((o) => o.id), optionNames: opts.map((o) => o.name), unit: p.price_cents + opts.reduce((a, o) => a + (o.price_cents || 0), 0) }
-            addLine(p, choice, s.quantity)
+            addLine(p, { optionIds: s.option_ids }, s.quantity)
           }} />
       )}
 
@@ -782,6 +1032,8 @@ export default function App() {
       {callOpen && <CallSheet call={callOpenNow || callAckedNow ? call : null} busy={callBusy} error={callError}
         onCall={callWaiter} onCancel={cancelCall} onClose={() => setCallOpen(false)} />}
       {avoidOpen && <AvoidSheet avoid={avoid} setAvoid={setAvoid} onClose={() => setAvoidOpen(false)} />}
+      {menuOpen && <MenuSheet guest={guest} onName={setGuestName} onClose={() => setMenuOpen(false)} />}
+      {catsOpen && <CategorySheet sections={sections} active={activeCat} onPick={(c) => { setCatsOpen(false); jumpTo(c) }} onClose={() => setCatsOpen(false)} />}
       {dishFor && (
         <DishSheet product={dishFor} avoid={avoid} onClose={() => setDishFor(null)}
           onAdd={(choice, qty) => { addLine(dishFor, choice, qty); setDishFor(null) }} />

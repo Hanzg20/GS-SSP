@@ -262,6 +262,8 @@
     <string name="call_reason_bill">ready to pay</string>
     <string name="call_reason_help">a server</string>
     <string name="call_ack">On my way</string>
+    <string name="scan_auto_kitchen">QR orders go straight to the kitchen</string>
+    <string name="scan_auto_kitchen_hint">Off: a server accepts each QR order first. On: the first terminal showing the floor accepts it and prints the kitchen ticket.</string>
     <string name="scan_dialog_title">QR orders (%1$d)</string>
     <string name="scan_table">Table %1$s</string>
     <string name="scan_note">Note: %1$s</string>

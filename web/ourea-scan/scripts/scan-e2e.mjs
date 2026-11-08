@@ -109,6 +109,32 @@ check('30 分钟内第 7 次 -> too_many_calls', (await rpc('scan_call_waiter', 
 const staff = await sb.rpc('dine_service_calls')
 check('店员接口不对顾客开放', !!staff.error, staff.error?.code)
 
+// ---- shared table cart (2026-11-08, T3): two phones, one cart, one send
+const add = (guest, name, product, options, qty, note = null) =>
+  rpc('scan_cart_add', { p_token: T(3), p_guest_id: guest, p_guest_name: name, p_product_id: product, p_option_ids: options, p_note: note, p_quantity: qty })
+const a1 = await add('e2e-anna', 'Anna', ZHAJIANG, [], 1)
+check('Anna 加菜进这桌的购物车', a1?.success === true && a1.cart.lines.length === 1, a1)
+const a2 = await add('e2e-anna', 'Anna', ZHAJIANG, [], 2)
+check('同一人同一道菜 -> 合并成 3 份', a2?.cart?.lines?.length === 1 && a2.cart.lines[0].quantity === 3, a2?.cart)
+const b1 = await add('e2e-bob', null, NOODLE, ['spice2', 'egg'], 1, '少葱')
+check('Bob 的菜也在同一个购物车', b1?.cart?.lines?.length === 2, b1?.cart)
+check('别人的选项 -> bad_option', (await add('e2e-bob', null, NOODLE, ['nope'], 1))?.message === 'bad_option')
+check('售罄菜加不进购物车', (await add('e2e-bob', null, SOLD_OUT, [], 1))?.message === 'sold_out')
+check('别的桌看不到这个购物车', (await rpc('scan_cart', { p_token: T(2) }))?.lines?.every((l) => l.guest_id !== 'e2e-anna'))
+const cartNow = await rpc('scan_cart', { p_token: T(3) })
+check('旧版本的购物车不能提交 -> cart_changed',
+  (await rpc('scan_submit_cart', { p_token: T(3), p_rev: cartNow.rev - 1, p_note: null, p_client_ref: 'e2e-cart-old', p_guest_name: 'Anna' }))?.message === 'cart_changed')
+const sent = await rpc('scan_submit_cart', { p_token: T(3), p_rev: cartNow.rev, p_note: '一起上', p_client_ref: 'e2e-cart-1', p_guest_name: 'Anna' })
+check('整桌购物车提交成功', sent?.success === true && !!sent.id && sent.auto_kitchen === false, sent)
+check('购物车提交的小计由服务器算 (3×12.95 + 14.95 + 1.50)', sent?.subtotal_cents === 3 * 1295 + 1495 + 150, sent?.subtotal_cents)
+check('重复提交 -> 同一单', (await rpc('scan_submit_cart', { p_token: T(3), p_rev: cartNow.rev, p_note: null, p_client_ref: 'e2e-cart-1', p_guest_name: 'Anna' }))?.id === sent?.id)
+check('提交后购物车清空', (await rpc('scan_cart', { p_token: T(3) }))?.lines?.length === 0)
+const tbl = await rpc('scan_table_orders', { p_token: T(3) })
+const mine = tbl?.orders?.find((o) => o.id === sent?.id)
+check('整桌订单里有这张单、提交人 Anna', mine?.status === 'PENDING' && mine.guest_name === 'Anna', mine)
+check('每道菜记着是谁加的', mine?.items?.find((l) => l.product_id === ZHAJIANG)?.guest === 'Anna' && !mine?.items?.find((l) => l.product_id === NOODLE)?.guest, mine?.items)
+check('店员设置接口不对顾客开放', !!(await sb.rpc('dine_set_scan_auto_kitchen', { p_on: true, p_staff_name: 'x' })).error)
+
 console.log(failed ? `\n${failed} 项失败` : '\n全部通过')
 console.log(`T1 待接单: ${ok?.id}  (终端 4 秒内应出现横幅)`)
 process.exit(failed ? 1 : 0)

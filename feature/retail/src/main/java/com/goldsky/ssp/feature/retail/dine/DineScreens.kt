@@ -541,12 +541,12 @@ fun ScanOrdersDialog(
                     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(stringResource(R.string.scan_table, o.table_name), fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                                Text(stringResource(R.string.scan_table, o.table_name) + (o.guest_name?.let { " · $it" } ?: ""), fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.weight(1f))
                                 clock(o.created_at)?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
                             }
                             o.items.forEach { l ->
                                 Row {
-                                    Text("${l.quantity} × ${l.name}", modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium)
+                                    Text("${l.quantity} × ${l.name}" + (l.guest?.let { " · $it" } ?: ""), modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium)
                                     Text(money(l.unit_price_cents * l.quantity))
                                 }
                                 if (l.options.isNotEmpty()) Text("+ " + l.options.joinToString(", "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
