@@ -181,7 +181,7 @@ Partial refunds (Iris / Ourea, 2026-11-01, `docs/migrations/2026-11-01_partial_r
 | `dine.scan_orders` | customer QR orders (Ourea Scan, `web/ourea-scan`): server-priced lines, note, PENDING → ACCEPTED / REJECTED, the check and round it became | never reaches the kitchen without staff; ≤ 3 pending and ≤ 8 per 10 min per table; a double tap (same `client_ref`) is one order |
 | `dine.service_calls` | a customer calling a server from the table QR: reason WATER / BILL / HELP, OPEN → ACKED (staff, `acked_by`) / CANCELLED (customer) | one OPEN call per table (a second tap returns it); ≤ 6 per table per 30 min; an OPEN call older than 30 min is stale and shown nowhere |
 | `dine.scan_cart_items` | the table's shared QR cart: who added each line (`guest_id` per phone, optional `guest_name`), dish, option ids, note, quantity | everyone at the table sees and changes it; sent as one order by `scan_submit_cart`; `dine.tables.scan_cart_rev` + 1 on every change (a send with an older rev is refused: `cart_changed`); ≤ 40 lines, ≤ 20 each; untouched 6 h = dropped |
-| `dine.settings` | per-store dine-in settings: `scan_auto_kitchen` (QR orders approved at once; the first floor terminal accepts and prints them) | one row per org, default off; set from Ourea (`dine_set_scan_auto_kitchen`) |
+| `dine.settings` | per-store dine-in settings: `scan_auto_kitchen` (QR orders approved at once; the first floor terminal accepts and prints them) | one row per org; no row = on (default on since 2026-11-08); set from Ourea (`dine_set_scan_auto_kitchen`) |
 
 QR ordering: each `dine.tables` row has a secret `qr_token` (128-bit); the table's
 QR is `<scan site>/?t=<qr_token>` (scan site set in Ourea Settings > Tables).

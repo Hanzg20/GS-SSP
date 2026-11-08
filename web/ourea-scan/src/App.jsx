@@ -59,9 +59,9 @@ const T = zh ? {
   scanFirst: '请扫描餐桌上的二维码点餐', badCode: '这个二维码已失效，请找服务员', loading: '正在加载菜单…', offline: '连不上网络，请稍后重试',
   table: '桌', all: '全部', soldOut: '已售完', add: '加入', required: '必选', pickOne: '单选', upTo: (n) => `最多选 ${n} 项`, optional: '可选',
   order: '我的点单', items: (n) => `${n} 件`, subtotal: '小计', tax: '税（估算）', total: '合计', note: '给厨房的备注', notePh: '例如：少辣、走葱',
-  itemNote: '这道菜的备注', send: '提交给店员', sending: '提交中…', save: '保存', cancel: '取消',
-  confirmHint: '店员确认后才会送到厨房。吃完点「买单」看账单。', myOrders: '已提交的点单',
-  pending: '等待店员确认', accepted: '已送厨房', rejected: '未被接受', orderMore: '继续点菜',
+  itemNote: '这道菜的备注', send: '下单', sending: '提交中…', save: '保存', cancel: '取消',
+  confirmHint: '下单后送到厨房。吃完点「买单」看账单。', myOrders: '已提交的点单',
+  pending: '等待店员确认', toKitchen: '正在送厨房', accepted: '已送厨房', rejected: '未被接受', orderMore: '继续点菜',
   errors: { too_many_orders: '提交太频繁了，请等店员处理后再点', sold_out: '有菜刚刚售完：', item_unavailable: '有菜已下架，请刷新菜单', bad_option: '请重新选择口味：', unknown_table: '这个二维码已失效，请找服务员' },
   failed: '没有提交成功', retry: '重试',
   contains: '含', noAllergenData: '过敏原未标注，请问服务员',
@@ -98,9 +98,9 @@ const T = zh ? {
   scanFirst: 'Scan the QR code on your table to order', badCode: 'This QR code is no longer valid. Please ask a server.', loading: 'Loading the menu…', offline: 'No connection. Please try again.',
   table: 'Table', all: 'All', soldOut: 'Sold out', add: 'Add', required: 'Required', pickOne: 'Pick one', upTo: (n) => `Up to ${n}`, optional: 'Optional',
   order: 'Your order', items: (n) => `${n} items`, subtotal: 'Subtotal', tax: 'Tax (est.)', total: 'Total', note: 'Note for the kitchen', notePh: 'e.g. less spicy, no green onion',
-  itemNote: 'Note for this dish', send: 'Send to staff', sending: 'Sending…', save: 'Save', cancel: 'Cancel',
-  confirmHint: 'A server confirms your order before it goes to the kitchen. Tap Bill to see and pay your bill.', myOrders: 'Your orders',
-  pending: 'Waiting for a server to confirm', accepted: 'Sent to the kitchen', rejected: 'Not accepted', orderMore: 'Order more',
+  itemNote: 'Note for this dish', send: 'Place order', sending: 'Sending…', save: 'Save', cancel: 'Cancel',
+  confirmHint: 'Your order goes to the kitchen. Tap Bill to see and pay your bill.', myOrders: 'Your orders',
+  pending: 'Waiting for a server to confirm', toKitchen: 'Going to the kitchen', accepted: 'Sent to the kitchen', rejected: 'Not accepted', orderMore: 'Order more',
   errors: { too_many_orders: 'Too many orders at once. Please wait for a server.', sold_out: 'Just sold out: ', item_unavailable: 'An item is no longer available. Please reload the menu.', bad_option: 'Please choose the options again: ', unknown_table: 'This QR code is no longer valid. Please ask a server.' },
   failed: 'Your order was not sent', retry: 'Try again',
   contains: 'Contains', noAllergenData: 'Allergens not listed: ask your server',
@@ -309,8 +309,9 @@ function DishSheet({ product, avoid, onAdd, onClose }) {
 function OrderProgress({ o, n }) {
   const who = o.guest_name ? T.sentBy(o.guest_name) : null
   const rejected = o.status === 'REJECTED'
-  const step = o.status === 'ACCEPTED' ? 3 : 2   // 1 sent (done), 2 waiting for the server, 3 in the kitchen
-  const steps = [T.stepSent, T.stepConfirm, T.stepKitchen]
+  const step = o.status === 'ACCEPTED' ? 3 : 2   // 1 sent (done), 2 waiting for the server / the terminal, 3 in the kitchen
+  // Straight-to-kitchen stores (o.auto): no server step, just sent -> kitchen.
+  const steps = o.auto ? [T.stepSent, T.toKitchen, T.stepKitchen] : [T.stepSent, T.stepConfirm, T.stepKitchen]
   return (
     <div className={`bg-white rounded-3xl shadow-card p-4 ${rejected ? 'ring-1 ring-red-200' : ''}`}>
       <div className="flex items-center gap-3">
@@ -324,7 +325,7 @@ function OrderProgress({ o, n }) {
           </div>
           {rejected
             ? <p className="text-red-600 font-bold text-sm flex items-center gap-1"><XCircle className="w-4 h-4" />{T.rejected}{o.reject_reason ? ` · ${o.reject_reason}` : ''}</p>
-            : <p className={`text-sm font-bold ${step === 3 ? 'text-sky-700' : 'text-gold-700'}`}>{step === 3 ? T.accepted : T.pending}</p>}
+            : <p className={`text-sm font-bold ${step === 3 ? 'text-sky-700' : 'text-gold-700'}`}>{step === 3 ? T.accepted : o.auto ? T.toKitchen : T.pending}</p>}
         </div>
       </div>
       {!rejected && (

@@ -1218,7 +1218,7 @@ sequenceDiagram
 *   **首页**：这桌已有订单就先显示「这桌的点单」（等待确认 / 被拒的扫码单 + 账单上所有菜，按轮次，含店员点的），底部「继续加菜」「买单」；没点过就直接进菜单。
 *   **共享购物车**（`dine.scan_cart_items`）：同桌所有手机加到同一个购物车，每行记着谁加的；谁都能改数量、清空；任何一人提交整车。每次改动 `dine.tables.scan_cart_rev` 加一，提交时带上手机看到的版本，不一致返回 `cart_changed`，不提交（防止把别人刚加、自己没看到的菜发出去）。6 小时没动的行作废；每桌最多 40 行、每行最多 20 份。手机每 4 秒同步购物车和整桌订单。
 *   **提交**：`scan_submit_cart` 走原来的 `scan_submit_order` 服务端定价，订单记下提交人（`guest_name`），每道菜记下加的人（`items[].guest`，终端接单卡片显示）。
-*   **直接进厨房**（每店，`dine.settings.scan_auto_kitchen`，Ourea 设置 > 餐桌，默认关）：打开后订单提交即标记批准，开着桌台图的第一台终端自动接单、打印厨房单（与 Cael 批准同一条路径 `DineViewModel.acceptApproved`）。顾客手机只有终端真正接走后才显示「已送厨房」；店里没有终端开着桌台图时一直显示等待。
+*   **直接进厨房**（每店，`dine.settings.scan_auto_kitchen`，Ourea 设置 > 餐桌，2026-11-08 起默认开，迁移 `2026-11-08_scan_auto_kitchen_on.sql`）：订单提交即标记批准（顾客手机上只有「已提交 → 正在送厨房 → 已送厨房」，没有店员确认这一步），开着桌台图的第一台终端自动接单、打印厨房单（与 Cael 批准同一条路径 `DineViewModel.acceptApproved`）。顾客手机只有终端真正接走后才显示「已送厨房」；店里没有终端开着桌台图时一直显示等待。
 *   **测试**：`scan-e2e.mjs` 新增共享购物车 15 项；测试店菜品照片 `tools/scan-e2e/demo-photos.sql`（图片在 `web/ourea-scan/public/demo/`，Wikimedia Commons，出处见 `CREDITS.txt`，随扫码网站发布）。
 
 ---

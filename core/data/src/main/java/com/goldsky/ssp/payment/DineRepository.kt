@@ -347,7 +347,7 @@ object DineRepository {
     suspend fun rejectScan(orderId: String, staffName: String?, reason: String?): Result =
         call("dine_reject_scan", RejectParams(orderId, staffName, reason))
 
-    @Serializable data class Settings(val scan_auto_kitchen: Boolean = false)
+    @Serializable data class Settings(val scan_auto_kitchen: Boolean = true)
     @Serializable private data class AutoKitchenParams(val p_on: Boolean, val p_staff_name: String?)
 
     /** The store's dine-in settings (dine.settings); null when the cloud can't be reached. */
