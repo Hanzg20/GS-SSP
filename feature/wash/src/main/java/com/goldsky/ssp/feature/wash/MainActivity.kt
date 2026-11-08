@@ -1544,7 +1544,7 @@ class MainActivity : BaseAdActivity() {
      * keeps "money charged" (0, for the transaction record) and "wash
      * dispensed" (the full package) as separate concerns.
      */
-    private fun startFreeWashFlow(originalPriceCents: Int, startHex: String, productId: String? = null, subtitle: String? = null) {
+    private fun startFreeWashFlow(originalPriceCents: Int, startHex: String, productId: String? = null, subtitle: String? = null, refNum: String = "") {
         val dialog = Dialog(this, R.style.Theme_SSP_Fullscreen)
         dialog.setContentView(R.layout.dialog_payment)
         paymentDialog = dialog
@@ -1561,7 +1561,7 @@ class MainActivity : BaseAdActivity() {
         dialog.show()
 
         paymentInFlight = true
-        startFinalizationSequence(0, startHex, "", dialog, pulseAmountCents = originalPriceCents, productId = productId, paymentMethod = "COUPON")
+        startFinalizationSequence(0, startHex, refNum, dialog, pulseAmountCents = originalPriceCents, productId = productId, paymentMethod = "COUPON")
     }
 
     /**
@@ -1599,20 +1599,22 @@ class MainActivity : BaseAdActivity() {
         serviceCents: Int, startHex: String, productId: String?, onRejected: () -> Unit,
     ) {
         val base = freeCouponBase(type, value, boundProductId, serviceCents)
-        val used = CouponRepository.redeemCoupon(code, deviceSn)
+        // The sale's ref, made now so the redemption row names it (like a card sale's).
+        val ref = "QR_${System.currentTimeMillis()}"
+        val used = CouponRepository.redeemCoupon(code, deviceSn, ref)
         if (used !is CouponRedeemResult.Success) {
             onRejected()
             return
         }
         activeCouponRedemption = used.redemptionId
         if (base == null) {
-            startFreeWashFlow(serviceCents, startHex, productId)
+            startFreeWashFlow(serviceCents, startHex, productId, refNum = ref)
             return
         }
         val minutes = minutesOf(base)
         Log.i("MainActivity", "Free coupon: picked ${serviceCents}c, runs basic ${base.price_cents}c ($minutes min)")
         TtsManager.speak(getString(R.string.tts_free_coupon_basic, minutes))
-        startFreeWashFlow(base.price_cents, serialHexOf(base), base.id, subtitle = getString(R.string.free_coupon_basic, minutes))
+        startFreeWashFlow(base.price_cents, serialHexOf(base), base.id, subtitle = getString(R.string.free_coupon_basic, minutes), refNum = ref)
     }
 
     /**
