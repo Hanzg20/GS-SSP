@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { Plus, Minus, X, Mic, Edit3, ChevronRight, ChevronDown, XCircle, Loader2, Bell, Search, ShieldAlert, Check, ClipboardList, Menu as MenuIcon, Globe } from 'lucide-react'
 import VoiceOrder from './VoiceOrder.jsx'
-import { AiCard } from './ai.jsx'
+import { AiCard, BeaverImg } from './ai.jsx'
 import { PartyPicker, TablePicks, EnoughCheck } from './Plan.jsx'
 import Bill from './Bill.jsx'
 import { T, LANG, LANGS, zh, RTL, pickLang, ALLERGENS, DIETARY, joinList } from './i18n.js'
@@ -63,7 +63,7 @@ const dishSubName = (p) => (dishName(p) !== p.name ? p.name : null)
 
 /** Beaver, GoldSky's mascot: one picture per state (docs/mascot, web copies in public/beaver). */
 function Beaver({ mood = 'idle', className = 'w-24', bob = false }) {
-  return <img src={`/beaver/${mood}.webp`} alt="" aria-hidden="true" draggable="false" className={`${className} select-none ${bob ? 'beaver-bob' : ''}`} />
+  return <BeaverImg mood={mood} className={className} bob={bob} />
 }
 
 /**
@@ -182,7 +182,7 @@ function DishSheet({ product, token, avoid, onAdd, onClose, start }) {
           {!explained?.note && (
             <button onClick={explain} disabled={explaining}
               className="mt-3 flex items-center gap-2 text-sm font-black text-sky-700 bg-sky-50 rounded-full ps-1 pe-3 py-1">
-              <span className="w-7 h-7 rounded-full bg-white flex items-end justify-center overflow-hidden"><img src={`/beaver/${explaining ? 'thinking' : 'idle'}.webp`} alt="" className="w-6 translate-y-0.5" /></span>
+              <span className="w-7 h-7 rounded-full bg-white flex items-end justify-center overflow-hidden"><BeaverImg mood={explaining ? 'thinking' : 'idle'} className="w-6 translate-y-0.5" /></span>
               {explaining ? T.explaining : T.explain}
             </button>
           )}

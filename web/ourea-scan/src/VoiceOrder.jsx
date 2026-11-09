@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { X, Mic, Square, Send, Plus, Minus, Loader2, Keyboard } from 'lucide-react'
-import { AiCard, useVoice } from './ai.jsx'
+import { AiCard, BeaverImg, useVoice } from './ai.jsx'
 
 const money = (c) => '$' + (c / 100).toFixed(2)
 
@@ -91,14 +91,14 @@ export default function VoiceOrder({ token, products, T, askGuide, onClose, onAd
           {/* Before anything is heard: the big microphone and an example. */}
           {!result && !busy && !voice.recording && (
             <div className="flex flex-col items-center text-center pt-2">
-              <img src={`/beaver/${mood}.webp`} alt="" className="w-28 beaver-bob" />
+              <BeaverImg mood={mood} className="w-28" bob />
               <p className="mt-2 font-black text-ink">{T.voiceHint}</p>
               <p dir="auto" className="mt-1 text-sm text-ink-mute">{T.voiceExample}</p>
             </div>
           )}
           {(voice.recording || busy === 'hearing' || busy === 'thinking') && (
             <div className="flex flex-col items-center text-center pt-4 pb-2">
-              <img src={`/beaver/${mood}.webp`} alt="" className="w-28 beaver-bob" />
+              <BeaverImg mood={mood} className="w-28" bob />
               <p className="mt-2 font-black text-sky-700">{voice.recording ? T.listening : busy === 'hearing' ? T.voiceHearing : T.voiceThinking}</p>
               {busy === 'thinking' && heard && <p dir="auto" className="mt-1 text-sm text-ink-soft">“{heard}”</p>}
             </div>

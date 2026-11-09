@@ -33,7 +33,6 @@
     @apply absolute -top-4 -start-1 w-10 h-10 rounded-full bg-white shadow-card flex items-end justify-center overflow-hidden;
     border: 1.5px solid theme('colors.gold.300');
   }
-  .ai-badge img { @apply w-9 translate-y-1 select-none; }
   .ai-source {
     @apply mt-3 pt-2 border-t border-dashed border-slate-200 text-[11px] font-black bg-gradient-to-r from-gold-600 to-sky-600 bg-clip-text text-transparent;
   }
