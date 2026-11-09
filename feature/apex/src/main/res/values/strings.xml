@@ -119,4 +119,11 @@
     <string name="apex_ask_checklist_late">What\'s left on today\'s checklists?</string>
     <string name="apex_ask_todo_overdue">Which to-dos are overdue?</string>
     <string name="apex_ask_loss_check">What should I check for loss prevention?</string>
+    <string name="apex_alert_guest_missing">Customers asked for, not on the menu: %1$s</string>
+    <string name="apex_alert_guest_diet">Customers keep asking for %1$s, no dish labelled</string>
+    <string name="apex_ask_guest_missing">What have customers asked Beaver for this week that isn\'t on our menu?</string>
+    <string name="apex_ask_guest_diet">Which diets do customers ask about, and which of our dishes could be labelled for them?</string>
+    <string name="apex_diet_vegetarian">vegetarian</string>
+    <string name="apex_diet_halal">halal</string>
+    <string name="apex_diet_gluten_free">gluten-free</string>
 </resources>

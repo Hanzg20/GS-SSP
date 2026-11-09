@@ -177,6 +177,13 @@ export const TOOLS: ToolDef[] = [
     label: (_a, zh) => (zh ? "手账" : "Journal"),
   },
   {
+    name: "guest_questions",
+    description: "What dine-in customers asked Beaver (the AI on the table QR page) over a range of local days: how many questions, voice orders and table plans, languages, topics (allergy, vegetarian, halal, gluten_free, spicy, kids) with how many dishes are labelled for that diet, dishes talked about vs sold (and whether they have a photo), things asked for that are NOT on the menu, and the latest questions. Use it for \"what are customers asking / looking for\", menu gaps, and ideas for the menu (add a dish, label diets, add a photo). Point out concrete actions.",
+    parameters: { type: "object", properties: { from: DATE, to: DATE }, required: ["from", "to"] },
+    run: (a, c) => rpc(c, "apex_tool_guest_asks", { p_org: c.orgId, p_from: str(a.from), p_to: str(a.to) ?? str(a.from), p_tz: c.tz }),
+    label: (a, zh) => (zh ? "顾客在问什么 " : "What customers ask ") + range(a),
+  },
+  {
     name: "month_report",
     description: "A month closed out (month-end report): sales by payment method and by day, tax collected and tips, refunds, expenses by category and the largest, rough profit, stock in / out by reason and what was received, best sellers and categories, hours and tips per person, loyalty points, delivery orders, offline card sales. `complete` = false while the month is still going. Write it as a short report with headings.",
     parameters: { type: "object", properties: { month: { type: "string", description: "YYYY-MM" } }, required: ["month"] },

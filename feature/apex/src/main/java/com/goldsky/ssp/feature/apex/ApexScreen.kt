@@ -981,7 +981,17 @@ fun alertText(context: android.content.Context, a: com.goldsky.ssp.payment.ApexR
     "checklist_late" -> context.getString(R.string.apex_alert_checklist_late, alertNames(a))
     "todo_overdue" -> context.getString(R.string.apex_alert_todo_overdue, a.count)
     "loss_check" -> context.getString(R.string.apex_alert_loss_check, a.count)
+    "guest_missing" -> context.getString(R.string.apex_alert_guest_missing, alertNames(a))
+    "guest_diet" -> context.getString(R.string.apex_alert_guest_diet, a.names.joinToString("、") { dietName(context, it) })
     else -> a.kind
+}
+
+/** guest_diet names are diet keys from the server (vegetarian / halal / gluten_free). */
+private fun dietName(context: android.content.Context, key: String): String = when (key) {
+    "vegetarian" -> context.getString(R.string.apex_diet_vegetarian)
+    "halal" -> context.getString(R.string.apex_diet_halal)
+    "gluten_free" -> context.getString(R.string.apex_diet_gluten_free)
+    else -> key
 }
 
 /** What tapping an alert asks 小海狸. */
@@ -992,5 +1002,7 @@ fun alertQuestion(context: android.content.Context, a: com.goldsky.ssp.payment.A
     "offline_card" -> R.string.apex_ask_offline_card
     "checklist_late" -> R.string.apex_ask_checklist_late
     "todo_overdue" -> R.string.apex_ask_todo_overdue
+    "guest_missing" -> R.string.apex_ask_guest_missing
+    "guest_diet" -> R.string.apex_ask_guest_diet
     else -> R.string.apex_ask_loss_check
 })

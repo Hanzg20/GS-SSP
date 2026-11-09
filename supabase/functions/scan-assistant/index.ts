@@ -162,7 +162,10 @@ Deno.serve(async (req) => {
       if (!answer) throw new Error("unparsable plan");
       const suggestions = body.mode === "enough" && verdict !== "more" ? []
         : checkPlan(answer.suggestions, dishes, input.party, input.avoid, body.mode === "enough" ? Math.max(1, (input.party.size ?? 2) - 1) : 99);
-      await db.rpc("scan_chat_record", { p_token: token, p_question: `${question} party=${input.party.size ?? "?"}`, p_reply: answer.reply, p_language: answer.language, p_model: llm.name });
+      await db.rpc("scan_chat_record", {
+        p_token: token, p_question: `${question} party=${input.party.size ?? "?"}`, p_reply: answer.reply, p_language: answer.language, p_model: llm.name,
+        p_kind: "plan", p_product_ids: suggestions.map((x) => x.product_id), p_missing: [],
+      });
       return json({ reply: answer.reply, language: answer.language, ...(body.mode === "enough" ? { verdict } : {}), suggestions });
     }
 
@@ -180,7 +183,10 @@ Deno.serve(async (req) => {
       }
       if (!order) throw new Error("unparsable order");
       const checked = checkOrder(order, dishes);
-      await db.rpc("scan_chat_record", { p_token: token, p_question: "[order] " + question, p_reply: order.reply, p_language: order.language, p_model: llm.name });
+      await db.rpc("scan_chat_record", {
+        p_token: token, p_question: question, p_reply: order.reply, p_language: order.language, p_model: llm.name,
+        p_kind: "order", p_product_ids: [...new Set([...checked.lines.map((l) => l.product_id), ...checked.choices.flatMap((c) => c.product_ids)])], p_missing: checked.missing,
+      });
       return json({ reply: order.reply, language: order.language, ...checked });
     }
     const history: Turn[] = (Array.isArray(body.history) ? body.history : [])
@@ -205,7 +211,10 @@ Deno.serve(async (req) => {
     }
     if (!answer) throw new Error("unparsable answer");
     const suggestions = checkSuggestions(answer.suggestions, dishes);
-    await db.rpc("scan_chat_record", { p_token: token, p_question: question, p_reply: answer.reply, p_language: answer.language, p_model: llm.name });
+    await db.rpc("scan_chat_record", {
+      p_token: token, p_question: question, p_reply: answer.reply, p_language: answer.language, p_model: llm.name,
+      p_kind: "ask", p_product_ids: suggestions.map((x) => x.product_id), p_missing: [],
+    });
     return json({ reply: answer.reply, language: answer.language, suggestions });
   } catch (e) {
     console.error("[scan-assistant]", e);

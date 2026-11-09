@@ -225,6 +225,10 @@ gluten_free, no_pork, no_beef), `spice_level` 0-5, `guide` -- and never beyond t
 against the menu and only reach the cart when the customer taps Add. Every question and answer is kept in
 `dine.scan_chats` (limits: per table per 10 min, per store per day; service role only, via
 `scan_chat_allowed` / `scan_chat_record`). Migration `docs/migrations/2026-10-13_scan_assistant.sql`.
+Since 2026-11-08 each row also has `kind` (ask / order / plan), `product_ids` (dishes Beaver suggested or heard)
+and `missing` (asked for, not on the menu); the owner reads them through `apex_tool_guest_asks(org, from, to)` (小海狸
+tool `guest_questions`) and two `apex_alerts` kinds, `guest_missing` and `guest_diet`
+(`docs/migrations/2026-11-08_scan_guest_asks.sql`).
 
 Pay at the table (2026-10-28, `supabase/functions/scan-pay` + `scan-pay-dmn`, no login, the QR secret is the
 credential): `scan_bill(token)` (anon) shows the table's live check, the balance and whether the store takes online

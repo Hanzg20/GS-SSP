@@ -74,6 +74,8 @@ app/ourea      -- Desktop POS, first real build 2026-08-27 (see `docs/system_arc
                   the look for everything AI says), cart only on the customer's "Add all"; never a dish that isn't on the menu.
                   Table picks / enough-not-too-much (2026-11-08): party size + spice at the door, `plan` start (first round) and
                   `plan` enough (enough / more / less, one PORTION_RULE); allergies, no-spice and top-up size enforced server-side.
+                  What customers ask, for the owner (2026-11-08): `dine.scan_chats.kind/product_ids/missing`, Apex tool
+                  `guest_questions` (`apex_tool_guest_asks`), alerts `guest_missing` / `guest_diet` (Ourea/Iris + Cael).
                   Pay at the table (2026-10-28): the same page's Bill shows the check and takes the card on Nuvei Simply
                   Connect (`supabase/functions/scan-pay`, `scan-pay-dmn`, `dine.online_payments`); the store's Nuvei account is
                   its `merchant_acquirer_accounts` row (ACTIVE, env int = sandbox). PAID only on Nuvei's server-side word.

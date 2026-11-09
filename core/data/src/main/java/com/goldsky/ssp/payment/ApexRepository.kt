@@ -143,7 +143,7 @@ object ApexRepository {
             Result.History(turns, body["has_more"]?.jsonPrimitive?.booleanOrNull ?: false)
         }
 
-    /** One kind of thing worth a look (apex_alerts: low_stock, long_shift, delivery_out, offline_card, checklist_late, todo_overdue, loss_check). */
+    /** One kind of thing worth a look (apex_alerts: low_stock, long_shift, delivery_out, offline_card, checklist_late, todo_overdue, loss_check, guest_missing, guest_diet). */
     @Serializable data class Alert(val kind: String, val count: Int = 0, val names: List<String> = emptyList())
     @Serializable private data class TzParams(val p_tz: String)
 

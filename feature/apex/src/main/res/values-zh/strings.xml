@@ -119,4 +119,11 @@
     <string name="apex_ask_checklist_late">今天的清单还有哪些没做？</string>
     <string name="apex_ask_todo_overdue">有哪些过期的待办？</string>
     <string name="apex_ask_loss_check">防损方面有哪些要核对的？</string>
+    <string name="apex_alert_guest_missing">顾客想点、菜单上没有：%1$s</string>
+    <string name="apex_alert_guest_diet">顾客常问%1$s，菜单上没有标注</string>
+    <string name="apex_ask_guest_missing">这周顾客问小海狸要了哪些菜单上没有的东西？</string>
+    <string name="apex_ask_guest_diet">顾客常问哪些饮食要求？我们哪些菜可以标注？</string>
+    <string name="apex_diet_vegetarian">素食</string>
+    <string name="apex_diet_halal">清真</string>
+    <string name="apex_diet_gluten_free">无麸质</string>
 </resources>
