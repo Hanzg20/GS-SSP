@@ -1,5 +1,5 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { checkOrder, checkSuggestions, menuLines, parseAnswer, parseOrder, type Dish } from "./guide.ts";
+import { checkOrder, checkPlan, checkSuggestions, menuLines, parseAnswer, parseOrder, readPlanInput, readVerdict, type Dish } from "./guide.ts";
 
 const noodle: Dish = {
   id: "n1", name: "牛肉面 Beef Noodle Soup", price_cents: 1299, allergens: ["wheat", "soy"], dietary: ["halal"], spice_level: 2,
@@ -63,4 +63,28 @@ Deno.test("order: choices keep only orderable dishes; one left -> becomes a line
   const o = checkOrder({ lines: [], choices: [{ heard: "面", product_ids: ["n1", "t1", "g1", "x"] }, { heard: "汤", product_ids: ["t1", "g1"] }], missing: [] }, [noodle, tofu, gone]);
   assertEquals(o.choices, [{ heard: "面", product_ids: ["n1", "t1"] }]);
   assertEquals(o.lines, [{ product_id: "t1", quantity: 1, option_ids: [] }]);
+});
+
+Deno.test("plan: allergy hits and hot dishes dropped on the server; unknown allergens flagged", () => {
+  const hot: Dish = { id: "h1", name: "Mala", price_cents: 1500, spice_level: 4, allergens: [] };
+  const raw = [{ product_id: "n1", quantity: 2, option_ids: ["s0"] }, { product_id: "t1", quantity: 1 }, { product_id: "h1", quantity: 1 }];
+  const s = checkPlan(raw, [noodle, tofu, hot], { size: 2, spice: "none" }, ["wheat"]);
+  assertEquals(s.map((x) => x.product_id), ["t1"]);
+  assertEquals(s[0].allergens_unknown, true);
+  assertEquals(checkPlan(raw, [noodle, tofu, hot], { size: 2, spice: "any" }, []).map((x) => x.product_id), ["n1", "t1", "h1"]);
+});
+
+Deno.test("plan input: party, allergies and lines cleaned; verdict read", () => {
+  const i = readPlanInput({ party: { size: "4", spice: "hot" }, avoid: ["peanut", "DROP TABLE"], cart: [{ product_id: "n1", quantity: 2 }, { product_id: "zz" }] }, [noodle, tofu]);
+  assertEquals(i.party, { size: 4, spice: null });
+  assertEquals(i.avoid, ["peanut"]);
+  assertEquals(i.cart, [{ product_id: "n1", quantity: 2 }]);
+  assertEquals(readVerdict('{"reply":"x","verdict" : "less"}'), "less");
+  assertEquals(readVerdict('{"reply":"x"}'), null);
+});
+
+Deno.test("plan: a top-up never suggests more portions than allowed", () => {
+  const raw = [{ product_id: "t1", quantity: 2 }, { product_id: "n1", quantity: 2, option_ids: ["s0"] }, { product_id: "g1", quantity: 1 }];
+  const s = checkPlan(raw, [noodle, tofu, gone], { size: 4, spice: null }, [], 3);
+  assertEquals(s.map((x) => [x.product_id, x.quantity]), [["t1", 2], ["n1", 1]]);
 });

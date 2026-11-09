@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Plus, Minus, X, Mic, Edit3, ChevronRight, ChevronDown, XCircle, Loader2, Bell, Search, ShieldAlert, Check, ClipboardList, Menu as MenuIcon, Globe } from 'lucide-react'
 import Guide from './Guide.jsx'
 import VoiceOrder from './VoiceOrder.jsx'
+import { PartyPicker, TablePicks, EnoughCheck } from './Plan.jsx'
 import Bill from './Bill.jsx'
 
 /*
@@ -75,6 +76,11 @@ const T = zh ? {
   voiceHearing: '正在听清你说的…', voiceThinking: '小海狸正在对照菜单…', voiceNothing: '没听到声音，请再说一次',
   voiceNoLines: '菜单上没找到对应的菜，换个说法试试？', youSaid: '你说', fromMenu: '来自本店菜单 · 小海狸',
   whichOne: (h) => `「${h}」想要哪一道？`, notOnMenu: '菜单上没有：', pickOptions: '选口味',
+  locale: 'zh-CN', partyTitle: '几位用餐？', partySpice: '能吃辣吗？', spice: { none: '不吃辣', mild: '微辣可以', any: '都可以' }, partyHint: '选填：小海狸会按你们的人数和口味配菜',
+  peopleN: (n) => `${n} 位`, picksTitle: (n) => `小海狸为你们 ${n} 位配的`, picksBtn: '让小海狸为这桌配菜', picksGo: '配菜', picksLoading: '小海狸正在配菜…',
+  picksAgain: '换一换', picksAll: (m) => `全部加入 · ${m}`, partyDone: '好了',
+  enoughBtn: '小海狸看看够不够', enoughNeedSize: '几位用餐？小海狸好帮你们看', enoughThinking: '小海狸在看…', enoughAgain: '再看看',
+  verdict: { enough: '够了', more: '还差一点', less: '有点多' },
   addAll: (n, m) => `全部加入购物车 · ${n} 份 ${m}`, addedN: (n) => `已加入 ${n} 份`, sayMore: '再说', typeInstead: '打字', tapToStop: '说完点一下停止',
   bill: '买单', billTitle: '账单', noBill: '这桌还没有账单', taxActual: '税', alreadyPaid: '已付', balance: '待付',
   payServer: '请找服务员买单', allPaid: '这桌已经付清了，谢谢！', howMuch: '付多少', payAll: '全部', split: 'AA 平分', customAmount: '自定金额',
@@ -120,6 +126,11 @@ const T = zh ? {
   voiceHearing: 'Getting your words…', voiceThinking: 'Beaver is checking the menu…', voiceNothing: "Didn't hear anything, try again",
   voiceNoLines: "Couldn't match that to the menu. Try saying it another way?", youSaid: 'You said', fromMenu: "From this store's menu · Beaver",
   whichOne: (h) => `Which "${h}"?`, notOnMenu: 'Not on the menu:', pickOptions: 'Choose options',
+  locale: navigator.language && !navigator.language.toLowerCase().startsWith('zh') ? navigator.language : 'en', partyTitle: 'How many of you?', partySpice: 'Spice?', spice: { none: 'No spice', mild: 'Mild is OK', any: 'Anything' }, partyHint: 'Optional: Beaver sizes its picks to your table',
+  peopleN: (n) => `${n} ${n === 1 ? 'person' : 'people'}`, picksTitle: (n) => `Beaver's picks for ${n}`, picksBtn: 'Let Beaver set up your table', picksGo: 'Go', picksLoading: 'Beaver is picking…',
+  picksAgain: 'Others', picksAll: (m) => `Add all · ${m}`, partyDone: 'Done',
+  enoughBtn: 'Ask Beaver: is this enough?', enoughNeedSize: 'How many of you?', enoughThinking: 'Beaver is looking…', enoughAgain: 'Look again',
+  verdict: { enough: 'Enough', more: 'A bit short', less: 'Too much' },
   addAll: (n, m) => `Add all to cart · ${n} for ${m}`, addedN: (n) => `${n} added`, sayMore: 'Say more', typeInstead: 'Type', tapToStop: 'Tap when you are done',
   bill: 'Bill', billTitle: 'Bill', noBill: 'No bill at this table yet', taxActual: 'Tax', alreadyPaid: 'Paid', balance: 'Balance due',
   payServer: 'Please pay your server', allPaid: 'This table is all paid. Thank you!', howMuch: 'How much', payAll: 'All of it', split: 'Split evenly', customAmount: 'Other amount',
@@ -465,7 +476,7 @@ function Avatar({ name, id, mine, size = 'w-6 h-6 text-[11px]' }) {
 }
 
 /** The door: the store, the table, language and an optional name -- then the menu. */
-function JoinScreen({ menu, guest, onJoin }) {
+function JoinScreen({ menu, guest, party, setParty, onJoin }) {
   const [name, setName] = useState(guest.name || '')
   const [logoBroken, setLogoBroken] = useState(false)
   const pick = (l) => { if ((l === 'zh') !== zh) { try { localStorage.setItem(LANG_KEY, l) } catch { /* fine */ } window.location.reload() } }
@@ -493,6 +504,10 @@ function JoinScreen({ menu, guest, onJoin }) {
           <input value={name} onChange={(e) => setName(e.target.value.slice(0, 30))} placeholder={T.yourName}
             className="w-full px-4 py-4 rounded-2xl bg-white border-2 border-slate-200 focus:border-gold-500 outline-none text-lg font-bold" />
           <p className="text-xs text-ink-mute mt-1.5 px-1">{T.nameHint}</p>
+        </div>
+        <div>
+          <PartyPicker party={party} onChange={setParty} T={T} compact />
+          <p className="text-xs text-ink-mute mt-1.5 px-1">{T.partyHint}</p>
         </div>
         <button onClick={() => onJoin(name.trim())} className="btn-gold w-full py-4 rounded-2xl text-lg">{T.start}</button>
       </div>
@@ -589,7 +604,7 @@ function CategorySheet({ sections, active, onPick, onClose }) {
 }
 
 /** The ≡ menu: language and the name shown to the table. */
-function MenuSheet({ guest, onName, onClose }) {
+function MenuSheet({ guest, onName, party, setParty, onClose }) {
   const [name, setName] = useState(guest.name || '')
   const pick = (l) => { if ((l === 'zh') !== zh) { try { localStorage.setItem(LANG_KEY, l) } catch { /* fine */ } window.location.reload() } }
   return (
@@ -616,6 +631,7 @@ function MenuSheet({ guest, onName, onClose }) {
             <button onClick={() => { onName(name.trim()); onClose() }} className="btn-gold px-5 rounded-2xl">{T.saveName}</button>
           </div>
         </div>
+        <PartyPicker party={party} onChange={setParty} T={T} compact />
         <Signature />
       </div>
     </Sheet>
@@ -649,6 +665,9 @@ export default function App() {
   const [clientRef, setClientRef] = useState(newRef)  // kept across retries: one send = one order
   const [guideOpen, setGuideOpen] = useState(false)
   const [voiceOpen, setVoiceOpen] = useState(false)
+  const [party, setPartyState] = useState(() => store.get('ourea_scan_party_' + token) || { size: null, spice: null })
+  const setParty = (p) => { setPartyState(p); store.set('ourea_scan_party_' + token, p) }
+  const [partyOpen, setPartyOpen] = useState(false)
   const dishDone = useRef(null)   // a voice-order line waiting for its options
   const [dishStart, setDishStart] = useState(null)
   const [billOpen, setBillOpen] = useState(false)
@@ -797,6 +816,13 @@ export default function App() {
     setCart(data.cart); setError(null)
     return true
   }
+  // A dish Beaver suggested: options it still needs open the dish sheet (with what Beaver chose), else straight in.
+  const addSuggestion = async (s) => {
+    const p = menu.products.find((x) => x.id === s.product_id)
+    if (!p) return false
+    if (s.needs_options || (p.modifier_groups?.some((g) => g.required) && !s.option_ids?.length)) { setDishStart(s); setDishFor(p); return false }
+    return addLine(p, { optionIds: s.option_ids || [] }, s.quantity)
+  }
   const setQty = async (line, quantity) => {
     const { data, error: e } = await supabase.rpc('scan_cart_set', { p_token: token, p_line_id: line.id, p_quantity: quantity })
     if (e) { flash(T.cartErrors.offline); return }
@@ -850,7 +876,7 @@ export default function App() {
   }
   if (state === 'loading' || !menu) return <BeaverScreen mood="blink" text={T.loading} />
   if (!joined) {
-    return <JoinScreen menu={menu} guest={guest} onJoin={(name) => { setGuestName(name); store.set('ourea_scan_joined_' + token, true); setJoined(true) }} />
+    return <JoinScreen menu={menu} guest={guest} party={party} setParty={setParty} onJoin={(name) => { setGuestName(name); store.set('ourea_scan_joined_' + token, true); setJoined(true) }} />
   }
   if (view === null) return <BeaverScreen mood="blink" text={T.loading} />
 
@@ -916,6 +942,12 @@ export default function App() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 pt-2">
+        {/* Beaver sets the table up: a first round for this party, from the real menu. */}
+        {!q && party.size && table !== null && (
+          <TablePicks token={token} products={menu.products} party={party} avoid={avoid} T={T} askGuide={askGuide}
+            auto={lines.length === 0 && Object.keys(orderedCount).length === 0}
+            onEditParty={() => setPartyOpen(true)} onAdd={addSuggestion} />
+        )}
         {/* Beaver takes the order: say it once, check the card, add. */}
         {!q && (
           <button onClick={() => setVoiceOpen(true)} className="ai-card w-full mt-4 !p-3 !pt-3 flex items-center gap-3 text-left">
@@ -1022,6 +1054,12 @@ export default function App() {
                 </div>
               </div>
             ))}
+            {lines.length > 0 && (
+              <EnoughCheck token={token} products={menu.products} party={party} setParty={setParty} avoid={avoid}
+                cart={lines.map((l) => ({ product_id: l.product_id, quantity: l.quantity }))}
+                ordered={Object.entries(orderedCount).map(([product_id, quantity]) => ({ product_id, quantity }))}
+                rev={cart.rev} T={T} askGuide={askGuide} onAdd={addSuggestion} />
+            )}
             <div className="py-3">
               <label className="text-sm font-black text-ink-soft flex items-center gap-1 mb-2"><Edit3 className="w-4 h-4" />{T.note}</label>
               <input value={orderNote} onChange={(e) => setOrderNote(e.target.value.slice(0, 200))} placeholder={T.notePh}
@@ -1085,8 +1123,16 @@ export default function App() {
       {billOpen && <Bill token={token} T={T} supabase={supabase} callPay={callPay} onClose={() => setBillOpen(false)} />}
       {callOpen && <CallSheet call={callOpenNow || callAckedNow ? call : null} busy={callBusy} error={callError}
         onCall={callWaiter} onCancel={cancelCall} onClose={() => setCallOpen(false)} />}
+      {partyOpen && (
+        <Sheet onClose={() => setPartyOpen(false)}>
+          <div className="p-5 space-y-4">
+            <PartyPicker party={party} onChange={setParty} T={T} />
+            <button onClick={() => setPartyOpen(false)} className="btn-gold w-full py-3.5 rounded-2xl">{T.partyDone}</button>
+          </div>
+        </Sheet>
+      )}
       {avoidOpen && <AvoidSheet avoid={avoid} setAvoid={setAvoid} onClose={() => setAvoidOpen(false)} />}
-      {menuOpen && <MenuSheet guest={guest} onName={setGuestName} onClose={() => setMenuOpen(false)} />}
+      {menuOpen && <MenuSheet guest={guest} onName={setGuestName} party={party} setParty={setParty} onClose={() => setMenuOpen(false)} />}
       {catsOpen && <CategorySheet sections={sections} active={activeCat} onPick={(c) => { setCatsOpen(false); jumpTo(c) }} onClose={() => setCatsOpen(false)} />}
       {dishFor && (
         <DishSheet product={dishFor} avoid={avoid} start={dishStart} onClose={() => { setDishFor(null); setDishStart(null); dishDone.current = null }}

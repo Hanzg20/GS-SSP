@@ -7,10 +7,12 @@
 // Actions: ask {token, question, history[], browserLang}, transcribe {token, audio, mime},
 // order {token, text, browserLang}: one sentence ("two beef noodles, one without onion")
 // -> lines the phone shows on Beaver's card; nothing reaches the cart until the customer taps.
+// plan {token, mode: start|enough, party {size, spice}, avoid[], cart[], ordered[], browserLang}:
+// a first round sized for the table, or an honest enough / more / less on what they picked.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
-import { checkOrder, checkSuggestions, orderPrompt, parseAnswer, parseOrder, systemPrompt, type Dish } from "./guide.ts";
+import { checkOrder, checkPlan, checkSuggestions, enoughPrompt, orderPrompt, parseAnswer, parseOrder, readPlanInput, readVerdict, startPrompt, systemPrompt, type Dish } from "./guide.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -122,8 +124,10 @@ Deno.serve(async (req) => {
       return text === null ? json({ error: "no_speech_service" }, 503) : json({ text });
     }
 
-    if (body.action !== "ask" && body.action !== "order") return json({ error: "unknown_action" }, 400);
-    const question = String((body.action === "order" ? body.text : body.question) ?? "").trim().slice(0, MAX_QUESTION);
+    if (body.action !== "ask" && body.action !== "order" && body.action !== "plan") return json({ error: "unknown_action" }, 400);
+    const isPlan = body.action === "plan";
+    if (isPlan && body.mode !== "start" && body.mode !== "enough") return json({ error: "unknown_action" }, 400);
+    const question = isPlan ? `[plan:${body.mode}]` : String((body.action === "order" ? body.text : body.question) ?? "").trim().slice(0, MAX_QUESTION);
     if (!question) return json({ error: "empty" }, 400);
 
     const { data: gate } = await db.rpc("scan_chat_allowed", { p_token: token, p_per_10min: PER_TABLE_10MIN, p_store_per_day: PER_STORE_DAY });
@@ -134,6 +138,33 @@ Deno.serve(async (req) => {
 
     const dishes: Dish[] = menu.products ?? [];
     const browserLang = typeof body.browserLang === "string" ? body.browserLang.slice(0, 20) : "en";
+
+    if (isPlan) {
+      const input = readPlanInput(body, dishes);
+      if (body.mode === "enough" && !input.cart.length && !input.ordered.length) return json({ error: "empty" }, 400);
+      const lang = browserLang.toLowerCase().startsWith("zh") ? "zh" : browserLang;
+      const system = body.mode === "start"
+        ? startPrompt(menu.store.name, dishes, input.party, input.avoid, lang)
+        : enoughPrompt(menu.store.name, dishes, input.party, input.avoid, input.cart, input.ordered, lang);
+      let answer = null;
+      let verdict: string | null = null;
+      for (let attempt = 0; attempt < 2 && !answer; attempt++) {
+        try {
+          const raw = await llm.call(system, [{ role: "user", content: body.mode === "start" ? "Set us up, please." : "Is this enough?" }]);
+          answer = parseAnswer(raw);
+          verdict = readVerdict(raw);
+          if (!answer) console.warn("[scan-assistant] unparsable plan, attempt", attempt + 1);
+        } catch (e) {
+          if (e instanceof BusyError || attempt === 1) throw e;
+          console.warn("[scan-assistant] model error, retrying:", (e as Error).message);
+        }
+      }
+      if (!answer) throw new Error("unparsable plan");
+      const suggestions = body.mode === "enough" && verdict !== "more" ? []
+        : checkPlan(answer.suggestions, dishes, input.party, input.avoid, body.mode === "enough" ? Math.max(1, (input.party.size ?? 2) - 1) : 99);
+      await db.rpc("scan_chat_record", { p_token: token, p_question: `${question} party=${input.party.size ?? "?"}`, p_reply: answer.reply, p_language: answer.language, p_model: llm.name });
+      return json({ reply: answer.reply, language: answer.language, ...(body.mode === "enough" ? { verdict } : {}), suggestions });
+    }
 
     if (body.action === "order") {
       const system = orderPrompt(menu.store.name, menu.table.name, dishes, browserLang);

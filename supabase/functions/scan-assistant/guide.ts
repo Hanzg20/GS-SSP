@@ -178,3 +178,127 @@ export function checkOrder(raw: { lines: unknown[]; choices: unknown[]; missing:
   }
   return { lines, choices, missing };
 }
+
+// ---------------------------------------------------------------- the table's menu / enough, not too much
+
+export type Party = { size: number | null; spice: "none" | "mild" | "any" | null };
+export type PlanLine = { product_id: string; quantity: number };
+
+const spiceWords = { none: "no spice at all", mild: "mild is fine, nothing hot", any: "any spice is fine" } as const;
+
+function partyLines(party: Party, avoid: string[]): string {
+  return [
+    party.size ? `Party: ${party.size} ${party.size === 1 ? "person" : "people"}.` : "Party size: not given (assume 2).",
+    party.spice ? `Spice: ${spiceWords[party.spice]}.` : null,
+    avoid.length ? `Allergies to avoid: ${avoid.join(", ")}. Never suggest a dish whose allergens include these; a dish with allergens NOT RECORDED may be suggested only if you say it isn't labelled and the server must confirm.` : null,
+  ].filter(Boolean).join("\n");
+}
+
+function listLines(lines: PlanLine[], byId: Map<string, Dish>): string {
+  return lines.length ? lines.map((l) => `- ${l.quantity} x ${byId.get(l.product_id)?.name ?? l.product_id}`).join("\n") : "(nothing)";
+}
+
+/** One portion rule for both "set us up" and "is this enough?", so Beaver never contradicts itself. */
+const PORTION_RULE = `PORTIONS: a bowl of noodles, a rice dish or a plate of dumplings is one MAIN (a plate of 12 dumplings feeds one or two). Starters (cold dishes, small plates) are extra; drinks are not food.
+For N people: N mains is plenty; N-1 mains plus a shared starter is also enough for 4 or more. Short = fewer mains than that. Too much = more than N+1 mains, or more than 2 starters for 4 or fewer.`;
+
+const replyLang = (lang: string) => (lang === "zh" ? "Chinese" : `the language of the phone (${lang})`);
+
+/** "Set us up": a first round sized for the party, from the real menu. */
+export function startPrompt(store: string, dishes: Dish[], party: Party, avoid: string[], lang: string): string {
+  return `You are Beaver (小海狸), the server of "${store}". A table just sat down. Put together a sensible first order for them from the menu.
+
+MENU (the only dishes that exist):
+${menuLines(dishes)}
+
+THE TABLE:
+${partyLines(party, avoid)}
+
+${PORTION_RULE}
+
+RULES (never break):
+1. Only menu ids, never SOLD OUT. Never invent dishes or facts.
+2. Enough, not too much (see PORTIONS): for 4 or more people, N-1 mains plus one shared starter; otherwise N mains. Drinks: one kind, quantity = people, only if the menu has drinks. Most tables order more later, so lean towards less.
+   Example for 4 people: 1 cold starter + 2 noodles + 1 plate of dumplings + 4 drinks. NOT 4 noodles + 2 plates of dumplings.
+3. Spice: respect it. For "no spice" pick the not-spicy option when a dish has a spice choice; never suggest dishes with spice 2/5 or more.
+4. Variety: different dishes, not the same one twice.
+5. "reply": 1-2 short sentences in ${replyLang(lang)}, warm, saying why this fits them. No prices in the text.
+
+ANSWER FORMAT: a JSON object only:
+{"reply": "...", "language": "<BCP 47>",
+ "suggestions": [{"product_id": "<id>", "quantity": <1-10>, "option_ids": ["<option id>"], "why": "<a few words>"}]}`;
+}
+
+/** "Is this enough?": honest -- says so when it's enough or too much, suggests only when something is missing. */
+export function enoughPrompt(store: string, dishes: Dish[], party: Party, avoid: string[], cart: PlanLine[], ordered: PlanLine[], lang: string): string {
+  const byId = new Map(dishes.map((d) => [d.id, d]));
+  return `You are Beaver (小海狸), the server of "${store}". The table asks: is what we picked enough? Answer like an honest server who wants them to enjoy the meal and not waste food, never to sell more.
+
+MENU (the only dishes that exist):
+${menuLines(dishes)}
+
+THE TABLE:
+${partyLines(party, avoid)}
+
+ALREADY ORDERED (in the kitchen or on the way):
+${listLines(ordered, byId)}
+
+IN THE CART NOW (about to order):
+${listLines(cart, byId)}
+
+${PORTION_RULE}
+
+RULES (never break):
+1. Count the mains and starters in ordered + cart together and judge them with PORTIONS.
+2. "verdict": "enough" (meets PORTIONS), "more" (short by PORTIONS), or "less" (too much by PORTIONS: say which dish to cut and by how many). Borderline = "enough".
+3. Suggest dishes ONLY when the verdict is "more", and only what is missing to reach PORTIONS, no more (4 people with 1 main -> 2 more mains, or 2 mains + a starter; never 4). At most 3 lines, real menu ids, not SOLD OUT, respecting spice and allergies. For "enough" and "less", "suggestions" is [].
+4. "reply": 1-2 short sentences in ${replyLang(lang)}. Plain and kind. No prices. For "less", the reply MUST name the dish to cut and by how many (e.g. "Two noodles is plenty for two: drop one Braised Beef Noodle.").
+
+ANSWER FORMAT: a JSON object only:
+{"reply": "...", "language": "<BCP 47>", "verdict": "enough" | "more" | "less",
+ "suggestions": [{"product_id": "<id>", "quantity": <1-10>, "option_ids": ["<option id>"], "why": "<a few words>"}]}`;
+}
+
+/** The verdict word from the model's answer, or null. */
+export function readVerdict(raw: string): "enough" | "more" | "less" | null {
+  const m = raw.match(/"verdict"\s*:\s*"(enough|more|less)"/);
+  return m ? (m[1] as "enough" | "more" | "less") : null;
+}
+
+/** Plan suggestions: the usual checks, then the table's allergies and spice enforced here, not trusted to the model. */
+export function checkPlan(raw: unknown[], dishes: Dish[], party: Party, avoid: string[], maxTotal = 99): (Suggestion & { allergens_unknown?: boolean })[] {
+  const byId = new Map(dishes.map((d) => [d.id, d]));
+  let room = maxTotal;
+  return checkSuggestions(raw, dishes).filter((s) => {
+    const d = byId.get(s.product_id)!;
+    if (avoid.length && Array.isArray(d.allergens) && d.allergens.some((a) => avoid.includes(a))) return false;
+    if (party.spice === "none" && typeof d.spice_level === "number" && d.spice_level >= 2) return false;
+    return true;
+  }).flatMap((s) => {
+    // "A bit short" tops up, it never doubles the order: the portions suggested stay under [maxTotal].
+    if (room <= 0) return [];
+    const quantity = Math.min(s.quantity, room);
+    room -= quantity;
+    return [{ ...s, quantity }];
+  }).map((s) => {
+    const d = byId.get(s.product_id)!;
+    return avoid.length && !Array.isArray(d.allergens) ? { ...s, allergens_unknown: true } : s;
+  });
+}
+
+/** Party, allergies and order lists from the phone, cleaned. */
+export function readPlanInput(body: Record<string, unknown>, dishes: Dish[]): { party: Party; avoid: string[]; cart: PlanLine[]; ordered: PlanLine[] } {
+  const p = (body.party ?? {}) as Record<string, unknown>;
+  const size = Math.round(Number(p.size));
+  const spice = p.spice === "none" || p.spice === "mild" || p.spice === "any" ? p.spice : null;
+  const ids = new Set(dishes.map((d) => d.id));
+  const lines = (v: unknown): PlanLine[] => (Array.isArray(v) ? v : []).slice(0, 40)
+    .map((x) => x as Record<string, unknown>)
+    .filter((x) => ids.has(String(x?.product_id)))
+    .map((x) => ({ product_id: String(x.product_id), quantity: Math.min(50, Math.max(1, Math.round(Number(x.quantity) || 1))) }));
+  return {
+    party: { size: size >= 1 && size <= 30 ? size : null, spice },
+    avoid: (Array.isArray(body.avoid) ? body.avoid : []).map(String).filter((a) => /^[a-z_]{2,20}$/.test(a)).slice(0, 14),
+    cart: lines(body.cart), ordered: lines(body.ordered),
+  };
+}

@@ -24,7 +24,7 @@ export default function VoiceOrder({ token, products, T, askGuide, onClose, onAd
     const said = words.trim()
     if (!said) return
     setHeard(said); setText(''); setError(''); setBusy('thinking')
-    const r = await askGuide({ action: 'order', token, text: said, browserLang: navigator.language || 'en' })
+    const r = await askGuide({ action: 'order', token, text: said, browserLang: T.locale })
     setBusy(null)
     if (r.error) { setError(T.guideErrors[r.error] || T.guideErrors.failed); return }
     // A second sentence ("and two cokes") adds to what's on the card.
