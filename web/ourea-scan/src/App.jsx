@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { Plus, Minus, X, Mic, Edit3, ChevronRight, ChevronDown, XCircle, Loader2, Bell, Search, ShieldAlert, Check, ClipboardList, Menu as MenuIcon, Globe } from 'lucide-react'
-import Guide from './Guide.jsx'
 import VoiceOrder from './VoiceOrder.jsx'
 import { AiCard } from './ai.jsx'
 import { PartyPicker, TablePicks, EnoughCheck } from './Plan.jsx'
@@ -576,7 +575,6 @@ export default function App() {
   const [error, setError] = useState(null)
   const [toast, setToast] = useState(null)
   const [clientRef, setClientRef] = useState(newRef)  // kept across retries: one send = one order
-  const [guideOpen, setGuideOpen] = useState(false)
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [party, setPartyState] = useState(() => store.get('ourea_scan_party_' + token) || { size: null, spice: null })
   const setParty = (p) => { setPartyState(p); store.set('ourea_scan_party_' + token, p) }
@@ -997,7 +995,7 @@ export default function App() {
       )}
 
       {/* Beaver, the AI guide: GoldSky's own, found on no other ordering page. */}
-      <button onClick={() => setGuideOpen(true)}
+      <button onClick={() => setVoiceOpen(true)}
         className={`fixed end-3 z-30 flex items-center gap-1 ps-1 pe-4 py-1 rounded-full bg-gradient-to-r from-sky-500 to-sky-600 text-white shadow-lift font-black ${count > 0 ? 'bottom-[92px]' : 'bottom-4'}`}>
         <span className="w-11 h-11 rounded-full bg-white flex items-end justify-center overflow-hidden"><Beaver mood="idle" className="w-10 translate-y-1" /></span>
         {T.guide}
@@ -1009,16 +1007,6 @@ export default function App() {
         <OrdersView menu={menu} data={table} onClose={() => setView('menu')} onMore={() => setView('menu')} onBill={() => setBillOpen(true)} />
       )}
 
-      {guideOpen && (
-        <Guide token={token} products={menu.products} T={T} askGuide={askGuide} onClose={() => setGuideOpen(false)}
-          onAdd={(s) => {
-            const p = menu.products.find((x) => x.id === s.product_id)
-            if (!p) return
-            // Options the guide couldn't settle: the customer picks them.
-            if (s.needs_options || (p.modifier_groups?.length && !s.option_ids.length)) { setGuideOpen(false); setDishStart(s); setDishFor(p); return }
-            addLine(p, { optionIds: s.option_ids }, s.quantity)
-          }} />
-      )}
 
       {voiceOpen && (
         <VoiceOrder token={token} products={menu.products} T={T} askGuide={askGuide}
@@ -1031,7 +1019,8 @@ export default function App() {
             }
             return done
           }}
-          onPickOptions={(p, l, done) => { dishDone.current = done; setDishStart(l); setDishFor(p) }} />
+          onPickOptions={(p, l, done) => { dishDone.current = done; setDishStart(l); setDishFor(p) }}
+          onAdd={addSuggestion} />
       )}
       {billOpen && <Bill token={token} T={T} supabase={supabase} callPay={callPay} onClose={() => setBillOpen(false)} />}
       {callOpen && <CallSheet call={callOpenNow || callAckedNow ? call : null} busy={callBusy} error={callError}

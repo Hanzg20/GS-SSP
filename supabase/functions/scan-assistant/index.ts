@@ -9,11 +9,13 @@
 // -> lines the phone shows on Beaver's card; nothing reaches the cart until the customer taps.
 // plan {token, mode: start|enough, party {size, spice}, avoid[], cart[], ordered[], browserLang}:
 // a first round sized for the table, or an honest enough / more / less on what they picked.
+// chat {token, text, history[], browserLang}: ONE Beaver -- decides order vs question itself (the page's
+// single conversation); ask / order stay for older pages.
 // explain {token, product_id, lang}: the dish in zh / en / fr / ar, cached per dish + language (dine.dish_notes).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
-import { EXPLAIN_LANGS, checkOrder, checkPlan, explainPrompt, factsHash, parseExplain, checkSuggestions, enoughPrompt, orderPrompt, parseAnswer, parseOrder, readPlanInput, readVerdict, startPrompt, systemPrompt, type Dish } from "./guide.ts";
+import { EXPLAIN_LANGS, checkOrder, intentPrompt, parseIntent, checkPlan, explainPrompt, factsHash, parseExplain, checkSuggestions, enoughPrompt, orderPrompt, parseAnswer, parseOrder, readPlanInput, readVerdict, startPrompt, systemPrompt, type Dish } from "./guide.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -32,7 +34,7 @@ function json(data: unknown, status = 200): Response {
 class BusyError extends Error {}
 
 /** Same providers as the store's Beaver (apex-assistant), but its own Groq key (SCAN_ORDER_GROQ_API_KEY): customers' questions must not use up the owners' rate limit. */
-function provider(): { name: string; call: (system: string, turns: Turn[]) => Promise<string> } | null {
+function provider(): { name: string; call: (system: string, turns: Turn[], effort?: "low" | "medium") => Promise<string> } | null {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   const groqKey = Deno.env.get("SCAN_ORDER_GROQ_API_KEY") ?? Deno.env.get("SCAN_GROQ_API_KEY") ?? Deno.env.get("GROQ_API_KEY");
   const wanted = Deno.env.get("SCAN_PROVIDER") ?? Deno.env.get("APEX_PROVIDER") ?? (anthropicKey ? "anthropic" : groqKey ? "groq" : "");
@@ -40,7 +42,7 @@ function provider(): { name: string; call: (system: string, turns: Turn[]) => Pr
     const model = Deno.env.get("SCAN_ANTHROPIC_MODEL") ?? "claude-haiku-5-5";
     return {
       name: `anthropic/${model}`,
-      call: async (system, turns) => {
+      call: async (system, turns, effort = "low") => {
         const res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -58,7 +60,7 @@ function provider(): { name: string; call: (system: string, turns: Turn[]) => Pr
     const model = Deno.env.get("SCAN_GROQ_MODEL") ?? Deno.env.get("APEX_GROQ_MODEL") ?? "openai/gpt-oss-120b";
     return {
       name: `groq/${model}`,
-      call: async (system, turns) => {
+      call: async (system, turns, effort = "low") => {
         const send = () => fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" },
@@ -66,7 +68,7 @@ function provider(): { name: string; call: (system: string, turns: Turn[]) => Pr
           // limit: low effort is plenty for menu questions and keeps more customers in.
           body: JSON.stringify({
             model, max_tokens: 900, response_format: { type: "json_object" },
-            ...(model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
+            ...(model.includes("gpt-oss") ? { reasoning_effort: effort } : {}),
             messages: [{ role: "system", content: system }, ...turns],
           }),
         });
@@ -155,10 +157,10 @@ Deno.serve(async (req) => {
       return json(note);
     }
 
-    if (body.action !== "ask" && body.action !== "order" && body.action !== "plan") return json({ error: "unknown_action" }, 400);
+    if (!["ask", "order", "plan", "chat"].includes(body.action)) return json({ error: "unknown_action" }, 400);
     const isPlan = body.action === "plan";
     if (isPlan && body.mode !== "start" && body.mode !== "enough") return json({ error: "unknown_action" }, 400);
-    const question = isPlan ? `[plan:${body.mode}]` : String((body.action === "order" ? body.text : body.question) ?? "").trim().slice(0, MAX_QUESTION);
+    const question = isPlan ? `[plan:${body.mode}]` : String((body.action === "order" || body.action === "chat" ? body.text : body.question) ?? "").trim().slice(0, MAX_QUESTION);
     if (!question) return json({ error: "empty" }, 400);
 
     const { data: gate } = await db.rpc("scan_chat_allowed", { p_token: token, p_per_10min: PER_TABLE_10MIN, p_store_per_day: PER_STORE_DAY });
@@ -198,6 +200,51 @@ Deno.serve(async (req) => {
         p_kind: "plan", p_product_ids: suggestions.map((x) => x.product_id), p_missing: [],
       });
       return json({ reply: answer.reply, language: answer.language, ...(body.mode === "enough" ? { verdict } : {}), suggestions });
+    }
+
+    // One Beaver: whatever the customer says. A short first call sorts it (order / question / both),
+    // then the tested order and question prompts do the work -- one prompt for both made the model
+    // invent allergens and mix up dishes (tried 2026-11-08). Both -> run together, one answer.
+    if (body.action === "chat") {
+      const history: Turn[] = (Array.isArray(body.history) ? body.history : [])
+        .filter((t: Turn) => (t?.role === "user" || t?.role === "assistant") && typeof t.content === "string")
+        .slice(-HISTORY_TURNS)
+        .map((t: Turn) => ({ role: t.role, content: t.content.slice(0, 800) }));
+      while (history.length && history[0].role !== "user") history.shift();
+      const turns: Turn[] = [...history, { role: "user", content: question }];
+
+      const retry = async <A>(system: string, parse: (raw: string) => A | null, what: string, effort: "low" | "medium" = "low"): Promise<A> => {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const a = parse(await llm.call(system, turns, effort));
+            if (a) return a;
+            console.warn(`[scan-assistant] unparsable ${what}, attempt`, attempt + 1);
+          } catch (e) {
+            if (e instanceof BusyError || attempt === 1) throw e;
+            console.warn("[scan-assistant] model error, retrying:", (e as Error).message);
+          }
+        }
+        throw new Error(`unparsable ${what}`);
+      };
+
+      const intent = await retry(intentPrompt(), parseIntent, "intent").catch((e) => { if (e instanceof BusyError) throw e; return "ask" as const; });
+      const wantOrder = intent !== "ask", wantAnswer = intent !== "order";
+      const [order, answer] = await Promise.all([
+        // Splitting portions ("two, one without onion" = 1 + 1) needs more thought once a conversation comes along.
+        wantOrder ? retry(orderPrompt(menu.store.name, menu.table.name, dishes, browserLang), parseOrder, "order", "medium") : null,
+        wantAnswer ? retry(systemPrompt(menu.store.name, menu.table.name, dishes, browserLang), parseAnswer, "answer") : null,
+      ]);
+      const checked = order ? checkOrder(order, dishes) : { lines: [], choices: [], missing: [] };
+      const suggestions = answer && !order ? checkSuggestions(answer.suggestions, dishes) : [];
+      const reply = [answer?.reply, order?.reply].filter(Boolean).join("\n");
+      const language = (answer ?? order)!.language;
+      await db.rpc("scan_chat_record", {
+        p_token: token, p_question: question, p_reply: reply, p_language: language, p_model: llm.name,
+        p_kind: order ? "order" : "ask",
+        p_product_ids: [...new Set([...checked.lines.map((l) => l.product_id), ...checked.choices.flatMap((c) => c.product_ids), ...suggestions.map((x) => x.product_id)])],
+        p_missing: checked.missing,
+      });
+      return json({ intent: order ? "order" : "ask", reply, language, ...checked, suggestions });
     }
 
     if (body.action === "order") {

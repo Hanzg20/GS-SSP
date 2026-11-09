@@ -119,7 +119,8 @@ RULES (never break):
 3. Quantities as said ("two bowls", "两碗", "a couple" = 2); unsaid = 1. Max 10 per line.
 4. Options: only option ids the customer asked for ("mild", "微辣", "add egg"). Never choose a required option yourself; leave it out and the phone asks.
 5. Notes: kitchen wishes that aren't options ("no green onion", "不要葱", "sauce on the side") go in "note", short, in the customer's words. If only some of the portions differ, split them and keep the total the customer said: "two noodles, one without onion" = 2 bowls in all -> {quantity 1, note "no onion"} + {quantity 1, no note}. NEVER {quantity 2} + {quantity 1}: that would be 3 bowls.
-6. "reply": one short sentence in the customer's language saying what you got (and asking about choices/missing if any). Language: the customer's message; too short to tell -> "${browserLang}".
+6. "reply": one short sentence in the customer's language saying what you got (and asking about choices/missing if any). Only the order: never answer questions or state facts about dishes here -- another part of Beaver answers those.
+7. Earlier turns of the conversation are context only: what was ordered there is already on the card. Put in "lines" ONLY what the LATEST message asks for ("add two cokes" -> just the cokes). Use earlier turns only to understand references like "two of those" or "the first one". Language: the customer's message; too short to tell -> "${browserLang}".
 
 ANSWER FORMAT: a JSON object only:
 {"reply": "...", "language": "<BCP 47>",
@@ -344,4 +345,20 @@ export function parseExplain(raw: string): { name: string; note: string } | null
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------- one Beaver: order or ask, in one conversation
+
+/** The sorting call: tiny, no menu -- order, question, or both. */
+export function intentPrompt(): string {
+  return `Sort the customer's LATEST message at a restaurant table (any language; earlier turns are only context).
+"order": they say what they want to eat or drink now ("two beef noodles", "再来两瓶可乐", "I'll take the dumplings", "then two of those").
+"ask": a question or asking for advice ("what's not spicy?", "推荐一下", "is it halal?", "how much should 4 people order?").
+"both": a question and an order in the same message ("add two cokes, are the dumplings vegetarian?").
+Answer with a JSON object only: {"intent": "order" | "ask" | "both"}`;
+}
+
+export function parseIntent(raw: string): "order" | "ask" | "both" | null {
+  const m = raw.match(/"intent"\s*:\s*"(order|ask|both)"/);
+  return m ? (m[1] as "order" | "ask" | "both") : null;
 }

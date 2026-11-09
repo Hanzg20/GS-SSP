@@ -5,18 +5,23 @@ import { AiCard, useVoice } from './ai.jsx'
 const money = (c) => '$' + (c / 100).toFixed(2)
 
 /**
- * Order in one sentence: the customer says (or types) "two beef noodles, one
- * without onion, and a cold dish"; Beaver (scan-assistant, action "order")
- * turns it into lines from the real menu and shows them on its card. The
- * customer fixes quantities, answers "which one?", picks options a dish
- * needs, and only "Add all" puts anything in the table's cart.
+ * The one Beaver (owner 2026-11-08: ordering and asking are the same Beaver, in this form -- the
+ * big microphone and one card, not a chat). The customer says or types anything; scan-assistant
+ * (action "chat") decides:
+ *   - an order ("two beef noodles, one without onion") adds lines to the card: fix quantities,
+ *     answer "which one?", pick options a dish needs; only "Add all" puts anything in the cart;
+ *   - a question ("what isn't spicy?") puts the answer, and dishes to add, at the top of the card;
+ *     the lines already on the card stay.
+ * The last few exchanges go along, so "then two of those" works.
  */
-export default function VoiceOrder({ token, products, T, askGuide, onClose, onAddAll, onPickOptions }) {
+export default function VoiceOrder({ token, products, T, askGuide, onClose, onAddAll, onPickOptions, onAdd }) {
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(null)        // 'hearing' | 'thinking' | 'adding'
   const [heard, setHeard] = useState('')        // what the customer said, as Beaver understood the words
-  const [result, setResult] = useState(null)    // { reply, language, lines, choices, missing }
+  const [result, setResult] = useState(null)    // { reply, language, lines, choices, missing, suggestions }
+  const [history, setHistory] = useState([])    // the last exchanges, for "then two of those"
+  const [added, setAdded] = useState({})        // suggestions already added
   const [error, setError] = useState('')
   const byId = Object.fromEntries(products.map((p) => [p.id, p]))
 
@@ -24,17 +29,20 @@ export default function VoiceOrder({ token, products, T, askGuide, onClose, onAd
     const said = words.trim()
     if (!said) return
     setHeard(said); setText(''); setError(''); setBusy('thinking')
-    const r = await askGuide({ action: 'order', token, text: said, browserLang: T.locale })
+    const r = await askGuide({ action: 'chat', token, text: said, history: history.slice(-6), browserLang: T.locale })
     setBusy(null)
     if (r.error) { setError(T.guideErrors[r.error] || T.guideErrors.failed); return }
-    // A second sentence ("and two cokes") adds to what's on the card.
+    setHistory((h) => [...h, { role: 'user', content: said }, { role: 'assistant', content: r.reply }].slice(-6))
+    // An order adds to what's on the card; a question answers on top and leaves the lines alone.
     const stamp = Date.now()
     const lines = (r.lines || []).filter((l) => byId[l.product_id]).map((l, i) => ({ ...l, key: `l${stamp}-${i}` }))
+    setAdded({})
     setResult((prev) => ({
-      reply: r.reply, language: r.language,
+      reply: r.reply, language: r.language, intent: r.intent,
       lines: [...(prev?.lines || []), ...lines],
       choices: [...(prev?.choices || []), ...(r.choices || [])],
       missing: r.missing || [],
+      suggestions: (r.suggestions || []).filter((x) => byId[x.product_id]),
     }))
   }
 
@@ -101,7 +109,24 @@ export default function VoiceOrder({ token, products, T, askGuide, onClose, onAd
             <div className="pt-5">
               <p dir="auto" className="text-xs text-ink-mute mb-3"><span className="font-black">{T.youSaid}</span> “{heard}”</p>
               <AiCard mood="done" source={T.fromMenu}>
-                <p dir="auto" lang={result.language || undefined} className="text-sm font-bold text-ink">{result.reply}</p>
+                <p dir="auto" lang={result.language || undefined} className="text-sm font-bold text-ink whitespace-pre-wrap">{result.reply}</p>
+
+                {/* A question's answer may come with dishes to add (one tap each). */}
+                {result.suggestions.map((x) => {
+                  const p = byId[x.product_id]
+                  return (
+                    <div key={x.product_id} className="mt-2 bg-paper rounded-xl p-3 flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-ink text-sm">{x.quantity} × {p.name}</p>
+                        {x.why && <p dir="auto" className="text-xs text-ink-mute">{x.why}</p>}
+                      </div>
+                      <button disabled={added[x.product_id]} onClick={async () => { if (await onAdd(x)) setAdded((a) => ({ ...a, [x.product_id]: true })) }}
+                        className="shrink-0 bg-gold-500 text-ink disabled:bg-sky-100 disabled:text-sky-800 text-sm font-black px-3 py-2 rounded-lg">
+                        {added[x.product_id] ? '✓' : `${T.addSuggestion} ${money(p.price_cents * x.quantity)}`}
+                      </button>
+                    </div>
+                  )
+                })}
 
                 {result.lines.length > 0 && (
                   <div className="mt-3 divide-y divide-slate-100">
@@ -149,7 +174,7 @@ export default function VoiceOrder({ token, products, T, askGuide, onClose, onAd
                 {result.missing.length > 0 && (
                   <p dir="auto" className="mt-3 text-sm text-ink-soft"><span className="font-black">{T.notOnMenu}</span> {result.missing.join(zhSep(T))}</p>
                 )}
-                {result.lines.length === 0 && result.choices.length === 0 && (
+                {result.intent === 'order' && result.lines.length === 0 && result.choices.length === 0 && (
                   <p className="mt-2 text-sm text-ink-mute">{T.voiceNoLines}</p>
                 )}
               </AiCard>

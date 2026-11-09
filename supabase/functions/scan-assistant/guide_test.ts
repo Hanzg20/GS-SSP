@@ -1,5 +1,5 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { checkOrder, checkPlan, checkSuggestions, factsHash, menuLines, parseExplain, parseAnswer, parseOrder, readPlanInput, readVerdict, type Dish } from "./guide.ts";
+import { checkOrder, checkPlan, checkSuggestions, factsHash, menuLines, parseExplain, parseIntent, parseAnswer, parseOrder, readPlanInput, readVerdict, type Dish } from "./guide.ts";
 
 const noodle: Dish = {
   id: "n1", name: "牛肉面 Beef Noodle Soup", price_cents: 1299, allergens: ["wheat", "soy"], dietary: ["halal"], spice_level: 2,
@@ -95,4 +95,10 @@ Deno.test("explain: a change to the dish facts changes the hash; answer parsed",
   assert(a !== await factsHash({ ...noodle, allergens: ["wheat"] }));
   assertEquals(parseExplain('{"name":"Nouilles","note":"Un bol."}'), { name: "Nouilles", note: "Un bol." });
   assertEquals(parseExplain('{"name":"x"}'), null);
+});
+
+Deno.test("chat: the sorting answer is read; anything else is not trusted", () => {
+  assertEquals(parseIntent('{"intent":"both"}'), "both");
+  assertEquals(parseIntent('{"intent" : "order"}'), "order");
+  assertEquals(parseIntent('{"intent":"weird"}'), null);
 });
