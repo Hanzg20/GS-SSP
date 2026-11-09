@@ -225,7 +225,7 @@ export default function Bill({ token, T, supabase, callPay, onClose }) {
                     <button key={n} onClick={() => setWays(n)}
                       className={`w-11 h-11 rounded-full font-bold border ${ways === n ? 'bg-gold-50 text-ink border-gold-500 border-2' : 'bg-white border-slate-300'}`}>{n}</button>
                   ))}
-                  <span className="text-sm text-slate-600 ml-1">{T.perPerson(money(amount))}</span>
+                  <span className="text-sm text-slate-600 ms-1">{T.perPerson(money(amount))}</span>
                 </div>
               )}
               {mode === 'custom' && (

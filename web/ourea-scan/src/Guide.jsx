@@ -33,7 +33,7 @@ export default function Guide({ token, products, T, askGuide, onClose, onAdd }) 
     const history = turns.filter((t) => !t.error).map((t) => ({ role: t.role, content: t.content })).slice(-6)
     setTurns((ts) => [...ts, { role: 'user', content: question }])
     setBusy(true)
-    const r = await askGuide({ action: 'ask', token, question, history, browserLang: navigator.language || 'en' })
+    const r = await askGuide({ action: 'ask', token, question, history, browserLang: T.locale || navigator.language || 'en' })
     setBusy(false)
     if (r.error) say(T.guideErrors[r.error] || T.guideErrors.failed)
     else setTurns((ts) => [...ts, { role: 'assistant', content: r.reply, lang: r.language, suggestions: r.suggestions || [] }])
@@ -93,7 +93,7 @@ export default function Guide({ token, products, T, askGuide, onClose, onAdd }) 
           <button onClick={onClose} className="p-1 text-sky-50" aria-label="close"><X className="w-6 h-6" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
-          <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-sm px-4 py-3 text-sm text-slate-800 max-w-[85%]">{T.guideHello}</div>
+          <div className="bg-white border border-slate-200 rounded-2xl rounded-es-sm px-4 py-3 text-sm text-slate-800 max-w-[85%]">{T.guideHello}</div>
           {turns.map((t, i) => (
             <div key={i} className={`flex flex-col ${t.role === 'user' ? 'items-end' : 'items-start'}`}>
               {t.role === 'assistant' && !t.error ? (
@@ -104,7 +104,7 @@ export default function Guide({ token, products, T, askGuide, onClose, onAdd }) 
                 </AiCard>
               ) : (
                 <div dir="auto" lang={t.lang || undefined}
-                  className={`px-4 py-3 rounded-2xl text-sm max-w-[85%] whitespace-pre-wrap ${t.role === 'user' ? 'bg-sky-600 text-white rounded-br-sm' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  className={`px-4 py-3 rounded-2xl text-sm max-w-[85%] whitespace-pre-wrap ${t.role === 'user' ? 'bg-sky-600 text-white rounded-ee-sm' : 'bg-red-50 text-red-700 border border-red-200'}`}>
                   {t.content}
                 </div>
               )}

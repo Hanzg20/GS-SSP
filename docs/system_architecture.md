@@ -3,6 +3,10 @@
 > [!NOTE]
 > **版本号说明**: 本文档实际由两条独立演进线合并而成（CMP/Supabase 后端的 RLS 修复线，与 Android HAL/产品线的架构演进线），两条线各自独立递增版本号，合并后出现了 `v2.23`/`v2.24`/`v2.27` 各被使用两次、且部分条目未按日期严格排序的情况（例如 `v2.27 (2026-08-20)` 实际是全文最新的一次修改，却排在 `v2.28 (2026-08-09)` 之后）。**版本号不是可靠的时间/依赖排序依据，请以每条目标题里的日期为准**；正文中散落的 `[v2.1]` 等内联标记同理，指的是该版本条目引入的变更，不代表这是当前最新状态。
 
+### v2.61 (2026-11-08) — Ourea Scan：法语、阿拉伯语（从右到左）、小海狸讲解菜品 (French, Arabic RTL, Dish Explanations)
+
+*   页面语言 中文 / English / Français / العربية（`src/i18n.js`），阿拉伯语整页从右到左；菜品页「小海狸，这道菜是什么？」按页面语言讲解并按菜 + 语言缓存（`dine.dish_notes`，迁移 `2026-11-08_scan_dish_notes.sql`，已应用）。详见 §17.10。
+
 ### v2.60 (2026-11-08) — 店主能看到顾客问了什么 (What Customers Ask, for the Owner)
 
 *   顾客问小海狸的每条记录带上类型、涉及的菜、菜单上没有的东西；小海狸（Apex）新工具 `guest_questions` 和两种提醒 `guest_missing` / `guest_diet`。迁移 `2026-11-08_scan_guest_asks.sql`（已应用）。详见 §17.9。
@@ -1271,6 +1275,14 @@ sequenceDiagram
 *   **小海狸（Apex）工具 `guest_questions`**（`apex_tool_guest_asks`）：某段日期的提问数、语音点单数、配菜次数、语言分布、话题（过敏、素食、清真、无麸质、辣、小孩；饮食类同时给出菜单上标注了几道菜）、被问到的菜 vs 卖出份数（以及有没有照片）、菜单上没有的东西、最近 40 条原话。店主问「顾客最近在问什么」「菜单缺什么」时用，并给出具体建议（加菜、标注饮食、补照片）。
 *   **固定规则提醒**（`apex_alerts_for`，最近 7 天，不用模型）：`guest_missing` 同一样菜单上没有的东西被要了 2 次以上；`guest_diet` 素食 / 清真 / 无麸质被问了 3 次以上，而菜单上一道标注的菜都没有。Ourea / Iris 的小海狸举牌、Cael 小海狸页都会显示，点一下就问小海狸详情。
 *   话题用中英法阿关键词匹配（`dine.guest_topics`）；「龙虾」和「lobster」暂不合并。
+
+### 17.10 法语、阿拉伯语与菜品讲解 (2026-11-08)
+
+*   **为什么**：门店都在加拿大，顾客和店主里有讲法语、阿拉伯语的（见 memory「Customers in Canada, multilingual」）。
+*   **页面文字**：全部移到 `src/i18n.js`（zh / en / fr / ar，各 204 条，键完全一致；过敏原、饮食标签也有四种）。语言 = 入口页 / 设置里选的，否则手机语言，否则英语。小海狸在法语里叫 Castor，阿拉伯语里叫 القندس。
+*   **从右到左**：阿拉伯语时 `<html dir="rtl" lang="ar">`；页面里的左右间距 / 位置 / 对齐全部改成 Tailwind 的 start / end（ms/me/ps/pe/start/end/text-start/rounded-es…），箭头图标 `rtl:rotate-180`；字体加 Noto Sans Arabic。新代码不要再写 ml/mr/pl/pr/left/right。
+*   **小海狸讲解菜品**：菜品页按钮 → `scan-assistant` 动作 `explain`（product_id, lang）→ 这道菜在该语言里的名字 + 2–4 句「是什么、什么味道、怎么吃」，用 AI 卡片显示。只用店家给的事实说过敏原和饮食标签；店家没写的一律说「通常」，过敏原未标注就提醒问服务员。结果存 `dine.dish_notes`（菜 + 语言，`facts_hash` = 菜品事实的哈希，菜改了自动重写）；命中缓存不调模型、不占限额（实测 0.18 秒）。
+*   回答语言：配菜、够不够、一句话点菜都跟页面语言（`T.locale`）；问答跟顾客最后一句话的语言。
 
 ## 18. Aegis Nexus 中央多工位洗衣中控终端与 EdgeNexus 边缘网关 (Aegis Nexus Central Laundromat Kiosk & EdgeNexus Integration, 2026-10-14)
 

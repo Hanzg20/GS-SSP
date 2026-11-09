@@ -1,5 +1,5 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { checkOrder, checkPlan, checkSuggestions, menuLines, parseAnswer, parseOrder, readPlanInput, readVerdict, type Dish } from "./guide.ts";
+import { checkOrder, checkPlan, checkSuggestions, factsHash, menuLines, parseExplain, parseAnswer, parseOrder, readPlanInput, readVerdict, type Dish } from "./guide.ts";
 
 const noodle: Dish = {
   id: "n1", name: "牛肉面 Beef Noodle Soup", price_cents: 1299, allergens: ["wheat", "soy"], dietary: ["halal"], spice_level: 2,
@@ -87,4 +87,12 @@ Deno.test("plan: a top-up never suggests more portions than allowed", () => {
   const raw = [{ product_id: "t1", quantity: 2 }, { product_id: "n1", quantity: 2, option_ids: ["s0"] }, { product_id: "g1", quantity: 1 }];
   const s = checkPlan(raw, [noodle, tofu, gone], { size: 4, spice: null }, [], 3);
   assertEquals(s.map((x) => [x.product_id, x.quantity]), [["t1", 2], ["n1", 1]]);
+});
+
+Deno.test("explain: a change to the dish facts changes the hash; answer parsed", async () => {
+  const a = await factsHash(noodle);
+  assertEquals(a, await factsHash({ ...noodle, price_cents: 1 }));
+  assert(a !== await factsHash({ ...noodle, allergens: ["wheat"] }));
+  assertEquals(parseExplain('{"name":"Nouilles","note":"Un bol."}'), { name: "Nouilles", note: "Un bol." });
+  assertEquals(parseExplain('{"name":"x"}'), null);
 });

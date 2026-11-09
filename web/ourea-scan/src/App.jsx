@@ -3,8 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 import { Plus, Minus, X, Mic, Edit3, ChevronRight, ChevronDown, XCircle, Loader2, Bell, Search, ShieldAlert, Check, ClipboardList, Menu as MenuIcon, Globe } from 'lucide-react'
 import Guide from './Guide.jsx'
 import VoiceOrder from './VoiceOrder.jsx'
+import { AiCard } from './ai.jsx'
 import { PartyPicker, TablePicks, EnoughCheck } from './Plan.jsx'
 import Bill from './Bill.jsx'
+import { T, LANG, LANGS, zh, RTL, pickLang, ALLERGENS, DIETARY, joinList } from './i18n.js'
+export { LANG }
 
 /*
  * Ourea Scan: a customer scans the QR on their table and orders from their
@@ -52,120 +55,7 @@ async function callPay(body) {
 }
 
 const money = (c) => '$' + (c / 100).toFixed(2)
-// The customer's language: their own pick (header switch) wins, else the phone's.
-const LANG_KEY = 'ourea_scan_lang'
-const pickedLang = (() => { try { return localStorage.getItem(LANG_KEY) } catch { return null } })()
-const zh = pickedLang ? pickedLang === 'zh' : (navigator.language || '').toLowerCase().startsWith('zh')
-export const LANG = zh ? 'zh' : 'en'
-const T = zh ? {
-  scanFirst: '请扫描餐桌上的二维码点餐', badCode: '这个二维码已失效，请找服务员', loading: '正在加载菜单…', offline: '连不上网络，请稍后重试',
-  table: '桌', all: '全部', soldOut: '已售完', add: '加入', required: '必选', pickOne: '单选', upTo: (n) => `最多选 ${n} 项`, optional: '可选',
-  order: '我的点单', items: (n) => `${n} 件`, subtotal: '小计', tax: '税（估算）', total: '合计', note: '给厨房的备注', notePh: '例如：少辣、走葱',
-  itemNote: '这道菜的备注', send: '下单', sending: '提交中…', save: '保存', cancel: '取消',
-  confirmHint: '下单后送到厨房。吃完点「买单」看账单。', myOrders: '已提交的点单',
-  pending: '等待店员确认', toKitchen: '正在送厨房', accepted: '已送厨房', rejected: '未被接受', orderMore: '继续点菜',
-  errors: { too_many_orders: '提交太频繁了，请等店员处理后再点', sold_out: '有菜刚刚售完：', item_unavailable: '有菜已下架，请刷新菜单', bad_option: '请重新选择口味：', unknown_table: '这个二维码已失效，请找服务员' },
-  failed: '没有提交成功', retry: '重试',
-  contains: '含', noAllergenData: '过敏原未标注，请问服务员',
-  guide: '问小海狸', guideTitle: '小海狸 · AI 点餐向导', guideHello: '你好！我是小海狸 🦫 用任何语言问我：菜是什么、辣不辣、有没有过敏原、几个人点多少。',
-  guideHint: '例如：我对花生过敏，哪些能吃？', ask: '发送', listening: '正在听…点一下停止', addSuggestion: '加入',
-  guideErrors: { busy: '小海狸有点忙，请过半分钟再试', table_limit: '问得有点多，请稍后再试', store_limit: '今天的提问已达上限，请问服务员', no_model: 'AI 向导暂时不可用，请问服务员', offline: '连不上网络，请稍后再试', failed: '没听明白，请换个说法再试', no_speech_service: '语音暂不可用，请打字', too_long: '录音太长了' },
-  aiNote: 'AI 回答仅供参考，过敏请务必告诉服务员。',
-  voiceTitle: '说一句话点菜', voiceEntry: '说一句话点菜', voiceEntrySub: '按一下说出想吃的，小海狸帮你放进购物车',
-  voiceHint: '点一下话筒，说出你想吃的', voiceExample: '例如：两碗牛肉面，一碗不要葱，再来个凉菜',
-  voiceHearing: '正在听清你说的…', voiceThinking: '小海狸正在对照菜单…', voiceNothing: '没听到声音，请再说一次',
-  voiceNoLines: '菜单上没找到对应的菜，换个说法试试？', youSaid: '你说', fromMenu: '来自本店菜单 · 小海狸',
-  whichOne: (h) => `「${h}」想要哪一道？`, notOnMenu: '菜单上没有：', pickOptions: '选口味',
-  locale: 'zh-CN', partyTitle: '几位用餐？', partySpice: '能吃辣吗？', spice: { none: '不吃辣', mild: '微辣可以', any: '都可以' }, partyHint: '选填：小海狸会按你们的人数和口味配菜',
-  peopleN: (n) => `${n} 位`, picksTitle: (n) => `小海狸为你们 ${n} 位配的`, picksBtn: '让小海狸为这桌配菜', picksGo: '配菜', picksLoading: '小海狸正在配菜…',
-  picksAgain: '换一换', picksAll: (m) => `全部加入 · ${m}`, partyDone: '好了',
-  enoughBtn: '小海狸看看够不够', enoughNeedSize: '几位用餐？小海狸好帮你们看', enoughThinking: '小海狸在看…', enoughAgain: '再看看',
-  verdict: { enough: '够了', more: '还差一点', less: '有点多' },
-  addAll: (n, m) => `全部加入购物车 · ${n} 份 ${m}`, addedN: (n) => `已加入 ${n} 份`, sayMore: '再说', typeInstead: '打字', tapToStop: '说完点一下停止',
-  bill: '买单', billTitle: '账单', noBill: '这桌还没有账单', taxActual: '税', alreadyPaid: '已付', balance: '待付',
-  payServer: '请找服务员买单', allPaid: '这桌已经付清了，谢谢！', howMuch: '付多少', payAll: '全部', split: 'AA 平分', customAmount: '自定金额',
-  perPerson: (m) => `每人 ${m}`, tipTitle: '小费', tipBasis: (m) => `按税前 ${m} 计算`, customTip: '自定', noTip: '不加小费',
-  chooseTip: '请先选择小费', payButton: (m) => `付款 ${m}`, payNow: '付款', confirming: '正在确认付款…',
-  paidOk: (m) => `已付款 ${m}，谢谢！`, stillOwed: (m) => `这桌还差 ${m}`, payMore: '再付一份',
-  payFailed: '付款没有成功，没有扣款。', payReview: '付款需要店员核对，请把这个页面给服务员看。',
-  payPending: '还没收到付款确认。请不要重复付款，找服务员确认一下。', nuveiLocale: 'zh',
-  emailLabel: '收据邮箱', emailHint: '只交给支付公司 Nuvei 用于这笔付款，本店不保存。', enterEmail: '请填写邮箱',
-  billErrors: { bad_amount: '金额超过了待付金额，账单已刷新', being_paid: '同桌有人正在付款，请稍后再看', no_open_check: '这桌的账单已经结了',
-    online_pay_off: '这家店暂不支持手机付款，请找服务员', too_many_attempts: '尝试太多次了，请找服务员', bad_tip: '小费金额不对',
-    gateway_error: '付款服务暂时连不上，请稍后再试', offline: '连不上网络，请稍后重试', failed: '没有成功，请稍后再试', bad_email: '邮箱格式不对' },
-  search: '搜索菜品', noMatch: '没有找到这道菜', ordered: (n) => `已点 ×${n}`, from: '起', soldOutShort: '售完',
-  avoid: '我的忌口', avoidTitle: '选择你不吃的', avoidHint: '含这些的菜会标红；没标注过敏原的菜会提示「未标注」。', avoidDone: '好了', avoidClear: '清除',
-  hasAvoid: (a) => `含${a}`, unknownAvoid: '过敏原未标注',
-  stepSent: '已提交', stepConfirm: '店员确认', stepKitchen: '已送厨房', orderNo: (n) => `第 ${n} 单`,
-  call: '呼叫', callTitle: '需要什么？', callWater: '加水', callBill: '要买单', callHelp: '叫服务员',
-  callSent: '已通知服务员，马上过来', callAck: '服务员已经在路上', callCancel: '取消呼叫', callAgain: '再叫一次',
-  callErrors: { too_many_calls: '叫得有点多，服务员马上就来', offline: '连不上网络，请举手示意服务员', failed: '没有叫到，请举手示意服务员' },
-  poweredBy: '技术支持', lang: 'EN', details: '详情', close: '关闭', ingredients: '配料',
-  yourTable: '你的桌号是', pickLang: '选择语言', yourName: '你的名字（选填）', nameHint: '同桌的人会看到是谁点的菜', start: '开始点餐',
-  tableOrders: '这桌的点单', checkNo: (n) => `账单 #${n}`, nothingYet: '这桌还没有点菜', inKitchen: '已下厨', roundN: (n) => `第 ${n} 轮`,
-  orderMoreBtn: '继续加菜', payBtn: '买单', sentBy: (n) => `${n} 提交`, me: '我', guest: '客人',
-  tableCart: '这桌的购物车', clearCart: '清空', confirmClear: '确定清空？', cartChanged: '同桌刚改了购物车，请再看一眼再提交',
-  cartErrors: { sold_out: '刚刚售完：', item_unavailable: '这道菜已下架', bad_option: '请重新选择口味：', cart_full: '购物车满了，先提交一部分吧', offline: '连不上网络，请稍后重试', failed: '没有加上，请再试一次' },
-  autoKitchen: '已直接送到厨房', allCategories: '全部分类', menuTitle: '设置', language: '语言', changeName: '我的名字', saveName: '保存',
-} : {
-  scanFirst: 'Scan the QR code on your table to order', badCode: 'This QR code is no longer valid. Please ask a server.', loading: 'Loading the menu…', offline: 'No connection. Please try again.',
-  table: 'Table', all: 'All', soldOut: 'Sold out', add: 'Add', required: 'Required', pickOne: 'Pick one', upTo: (n) => `Up to ${n}`, optional: 'Optional',
-  order: 'Your order', items: (n) => `${n} items`, subtotal: 'Subtotal', tax: 'Tax (est.)', total: 'Total', note: 'Note for the kitchen', notePh: 'e.g. less spicy, no green onion',
-  itemNote: 'Note for this dish', send: 'Place order', sending: 'Sending…', save: 'Save', cancel: 'Cancel',
-  confirmHint: 'Your order goes to the kitchen. Tap Bill to see and pay your bill.', myOrders: 'Your orders',
-  pending: 'Waiting for a server to confirm', toKitchen: 'Going to the kitchen', accepted: 'Sent to the kitchen', rejected: 'Not accepted', orderMore: 'Order more',
-  errors: { too_many_orders: 'Too many orders at once. Please wait for a server.', sold_out: 'Just sold out: ', item_unavailable: 'An item is no longer available. Please reload the menu.', bad_option: 'Please choose the options again: ', unknown_table: 'This QR code is no longer valid. Please ask a server.' },
-  failed: 'Your order was not sent', retry: 'Try again',
-  contains: 'Contains', noAllergenData: 'Allergens not listed: ask your server',
-  guide: 'Ask Beaver', guideTitle: 'Beaver · AI menu guide', guideHello: "Hi! I'm Beaver 🦫 Ask me in any language: what a dish is, how spicy, allergens, how much to order for your group.",
-  guideHint: "e.g. I'm allergic to peanuts, what can I eat?", ask: 'Send', listening: 'Listening… tap to stop', addSuggestion: 'Add',
-  guideErrors: { busy: 'Beaver is busy, try again in half a minute', table_limit: 'Lots of questions! Please wait a moment', store_limit: "Today's questions are used up, please ask your server", no_model: 'The AI guide is unavailable, please ask your server', offline: 'No connection, try again', failed: "Sorry, I didn't get that, try rephrasing", no_speech_service: 'Voice is unavailable, please type', too_long: 'That recording is too long' },
-  aiNote: 'AI answers are a guide only. Always tell your server about allergies.',
-  voiceTitle: 'Order in one sentence', voiceEntry: 'Order in one sentence', voiceEntrySub: 'Tap, say what you want, Beaver fills the cart',
-  voiceHint: 'Tap the mic and say what you want', voiceExample: 'e.g. Two beef noodles, one without onion, and a cold dish',
-  voiceHearing: 'Getting your words…', voiceThinking: 'Beaver is checking the menu…', voiceNothing: "Didn't hear anything, try again",
-  voiceNoLines: "Couldn't match that to the menu. Try saying it another way?", youSaid: 'You said', fromMenu: "From this store's menu · Beaver",
-  whichOne: (h) => `Which "${h}"?`, notOnMenu: 'Not on the menu:', pickOptions: 'Choose options',
-  locale: navigator.language && !navigator.language.toLowerCase().startsWith('zh') ? navigator.language : 'en', partyTitle: 'How many of you?', partySpice: 'Spice?', spice: { none: 'No spice', mild: 'Mild is OK', any: 'Anything' }, partyHint: 'Optional: Beaver sizes its picks to your table',
-  peopleN: (n) => `${n} ${n === 1 ? 'person' : 'people'}`, picksTitle: (n) => `Beaver's picks for ${n}`, picksBtn: 'Let Beaver set up your table', picksGo: 'Go', picksLoading: 'Beaver is picking…',
-  picksAgain: 'Others', picksAll: (m) => `Add all · ${m}`, partyDone: 'Done',
-  enoughBtn: 'Ask Beaver: is this enough?', enoughNeedSize: 'How many of you?', enoughThinking: 'Beaver is looking…', enoughAgain: 'Look again',
-  verdict: { enough: 'Enough', more: 'A bit short', less: 'Too much' },
-  addAll: (n, m) => `Add all to cart · ${n} for ${m}`, addedN: (n) => `${n} added`, sayMore: 'Say more', typeInstead: 'Type', tapToStop: 'Tap when you are done',
-  bill: 'Bill', billTitle: 'Bill', noBill: 'No bill at this table yet', taxActual: 'Tax', alreadyPaid: 'Paid', balance: 'Balance due',
-  payServer: 'Please pay your server', allPaid: 'This table is all paid. Thank you!', howMuch: 'How much', payAll: 'All of it', split: 'Split evenly', customAmount: 'Other amount',
-  perPerson: (m) => `${m} each`, tipTitle: 'Tip', tipBasis: (m) => `Of ${m} before tax`, customTip: 'Custom', noTip: 'No tip',
-  chooseTip: 'Choose a tip first', payButton: (m) => `Pay ${m}`, payNow: 'Pay', confirming: 'Confirming your payment…',
-  paidOk: (m) => `Paid ${m}. Thank you!`, stillOwed: (m) => `${m} still owed at this table`, payMore: 'Pay another share',
-  payFailed: 'The payment did not go through. You were not charged.', payReview: 'A server needs to check this payment. Please show them this screen.',
-  payPending: "We haven't had the confirmation yet. Please don't pay again: ask your server.", nuveiLocale: 'en',
-  emailLabel: 'Email for your receipt', emailHint: 'Goes only to Nuvei, the payment company, for this payment. The store does not keep it.', enterEmail: 'Enter your email',
-  billErrors: { bad_amount: 'That is more than the balance. The bill was refreshed.', being_paid: 'Someone at your table is paying right now. Try again in a moment.', no_open_check: 'This bill is already closed.',
-    online_pay_off: "This store doesn't take payment on the phone. Please pay your server.", too_many_attempts: 'Too many tries. Please pay your server.', bad_tip: 'That tip amount is not allowed.',
-    gateway_error: "Payment isn't available right now. Try again in a moment.", offline: 'No connection. Please try again.', failed: 'That did not work. Please try again.', bad_email: 'That email address does not look right.' },
-  search: 'Search the menu', noMatch: 'No dish matches', ordered: (n) => `Ordered ×${n}`, from: '', soldOutShort: 'Sold out',
-  avoid: 'My allergies', avoidTitle: "What you don't eat", avoidHint: "Dishes with these get a red label; dishes without allergen info say so.", avoidDone: 'Done', avoidClear: 'Clear',
-  hasAvoid: (a) => `Contains ${a}`, unknownAvoid: 'Allergens not listed',
-  stepSent: 'Sent', stepConfirm: 'Server confirms', stepKitchen: 'In the kitchen', orderNo: (n) => `Order ${n}`,
-  call: 'Call', callTitle: 'What do you need?', callWater: 'Water', callBill: 'Ready to pay', callHelp: 'A server',
-  callSent: 'A server has been told and is coming', callAck: 'A server is on the way', callCancel: 'Cancel the call', callAgain: 'Call again',
-  callErrors: { too_many_calls: 'Lots of calls! A server is coming', offline: 'No connection. Please wave to a server.', failed: 'The call did not go through. Please wave to a server.' },
-  poweredBy: 'Powered by', lang: '中文', details: 'Details', close: 'Close', ingredients: 'Ingredients',
-  yourTable: 'Your table is', pickLang: 'Language', yourName: 'Your name (optional)', nameHint: 'So your table can see who ordered what', start: 'Start ordering',
-  tableOrders: "Your table's order", checkNo: (n) => `Check #${n}`, nothingYet: 'Nothing ordered at this table yet', inKitchen: 'In the kitchen', roundN: (n) => `Round ${n}`,
-  orderMoreBtn: 'Order more', payBtn: 'Bill', sentBy: (n) => `Sent by ${n}`, me: 'Me', guest: 'Guest',
-  tableCart: "Your table's cart", clearCart: 'Clear', confirmClear: 'Clear it all?', cartChanged: 'Someone at your table just changed the cart. Please check it, then send.',
-  cartErrors: { sold_out: 'Just sold out: ', item_unavailable: 'That dish is no longer available', bad_option: 'Please choose the options again: ', cart_full: 'The cart is full. Send some first.', offline: 'No connection. Please try again.', failed: "That didn't go in. Please try again." },
-  autoKitchen: 'Sent straight to the kitchen', allCategories: 'All categories', menuTitle: 'Settings', language: 'Language', changeName: 'My name', saveName: 'Save',
-}
 
-// Canada's priority allergens (products.attributes.allergens codes).
-const ALLERGENS = zh
-  ? { peanut: '花生', tree_nut: '坚果', milk: '奶', egg: '蛋', wheat: '小麦/麸质', soy: '大豆', fish: '鱼', crustacean: '甲壳类', mollusc: '贝类', sesame: '芝麻', mustard: '芥末', sulphite: '亚硫酸盐' }
-  : { peanut: 'peanut', tree_nut: 'tree nuts', milk: 'milk', egg: 'egg', wheat: 'wheat/gluten', soy: 'soy', fish: 'fish', crustacean: 'shellfish', mollusc: 'molluscs', sesame: 'sesame', mustard: 'mustard', sulphite: 'sulphites' }
-const DIETARY = zh
-  ? { vegetarian: '🌱 素食', vegan: '🌿 纯素', halal: '☪ 清真', gluten_free: '无麸质', no_pork: '不含猪肉', no_beef: '不含牛肉' }
-  : { vegetarian: '🌱 Vegetarian', vegan: '🌿 Vegan', halal: '☪ Halal', gluten_free: 'Gluten-free', no_pork: 'No pork', no_beef: 'No beef' }
 
 /** A dish's name in the customer's language (Cael's attributes.name_i18n), else the store's own. */
 const dishName = (p) => (p.names && typeof p.names[LANG] === 'string' && p.names[LANG].trim()) || p.name
@@ -213,7 +103,7 @@ function DishFacts({ p, compact = false }) {
 function AvoidLabel({ w }) {
   if (!w) return null
   if (w.unknown) return <span className="self-start inline-block mt-1.5 text-[11px] font-bold text-ink-mute bg-slate-100 px-2 py-0.5 rounded-full">⚠ {T.unknownAvoid}</span>
-  return <span className="self-start inline-block mt-1.5 text-[11px] font-black text-white bg-red-600 px-2 py-0.5 rounded-full">⚠ {T.hasAvoid(w.hit.map((a) => ALLERGENS[a] || a).join(zh ? '、' : ', '))}</span>
+  return <span className="self-start inline-block mt-1.5 text-[11px] font-black text-white bg-red-600 px-2 py-0.5 rounded-full">⚠ {T.hasAvoid(joinList(w.hit.map((a) => ALLERGENS[a] || a)))}</span>
 }
 
 const store = {
@@ -241,7 +131,7 @@ function Sheet({ onClose, children, tall = false }) {
  * pick-one groups act as radios, others as toggles up to max; required ones must
  * be answered before Add lights up.
  */
-function DishSheet({ product, avoid, onAdd, onClose, start }) {
+function DishSheet({ product, token, avoid, onAdd, onClose, start }) {
   const groups = product.modifier_groups || []
   // [start]: a line Beaver heard (voice order) -- its options, note and quantity carry over.
   const [picked, setPicked] = useState(() => Object.fromEntries(groups.map((g) => [g.id, g.options.filter((o) => (start?.option_ids || []).includes(o.id)).map((o) => o.id)])))
@@ -260,13 +150,22 @@ function DishSheet({ product, avoid, onAdd, onClose, start }) {
   const chosen = groups.flatMap((g) => g.options.filter((o) => (picked[g.id] || []).includes(o.id)))
   const unit = product.price_cents + chosen.reduce((s, o) => s + (o.price_cents || 0), 0)
   const sub = dishSubName(product)
+  // "Beaver, what is this dish?" -- in the page's language, kept on the server per dish + language.
+  const [explained, setExplained] = useState(null)
+  const [explaining, setExplaining] = useState(false)
+  const explain = async () => {
+    setExplaining(true)
+    const r = await askGuide({ action: 'explain', token, product_id: product.id, lang: LANG })
+    setExplaining(false)
+    setExplained(r.error ? { error: T.guideErrors[r.error] || T.guideErrors.failed } : r)
+  }
   return (
     <Sheet onClose={onClose} tall>
       <div className="overflow-y-auto flex-1">
         {product.image_url ? (
           <div className="relative">
             <DishImg src={product.image_url} className="w-full aspect-[4/3] object-cover bg-slate-100" fallback={<div className="h-14" />} />
-            <button onClick={onClose} aria-label={T.close} className="absolute top-3 left-3 bg-white/90 rounded-full p-2 shadow"><X className="w-5 h-5" /></button>
+            <button onClick={onClose} aria-label={T.close} className="absolute top-3 start-3 bg-white/90 rounded-full p-2 shadow"><X className="w-5 h-5" /></button>
           </div>
         ) : (
           <div className="flex justify-end px-3 pt-3"><button onClick={onClose} aria-label={T.close} className="p-2 text-ink-mute"><X className="w-6 h-6" /></button></div>
@@ -281,6 +180,20 @@ function DishSheet({ product, avoid, onAdd, onClose, start }) {
           {product.description && <p className="text-[15px] text-ink-soft mt-3">{product.description}</p>}
           {product.ingredients && <p className="text-sm text-ink-mute mt-2"><span className="font-bold">{T.ingredients}:</span> {product.ingredients}</p>}
           {product.guide && <p className="text-sm text-sky-800 bg-sky-50 rounded-xl px-3 py-2 mt-3">💡 {product.guide}</p>}
+          {!explained?.note && (
+            <button onClick={explain} disabled={explaining}
+              className="mt-3 flex items-center gap-2 text-sm font-black text-sky-700 bg-sky-50 rounded-full ps-1 pe-3 py-1">
+              <span className="w-7 h-7 rounded-full bg-white flex items-end justify-center overflow-hidden"><img src={`/beaver/${explaining ? 'thinking' : 'idle'}.webp`} alt="" className="w-6 translate-y-0.5" /></span>
+              {explaining ? T.explaining : T.explain}
+            </button>
+          )}
+          {explained?.error && <p className="mt-2 text-sm font-bold text-red-600">{explained.error}</p>}
+          {explained?.note && (
+            <AiCard className="mt-5" source={T.fromMenu}>
+              {explained.name && explained.name !== dishName(product) && <p dir="auto" className="font-black text-ink">{explained.name}</p>}
+              <p dir="auto" lang={LANG} className="text-sm text-ink-soft mt-1 leading-relaxed">{explained.note}</p>
+            </AiCard>
+          )}
         </div>
         <div className="px-5 space-y-5 pb-4 pt-2">
           {groups.map((g) => {
@@ -299,7 +212,7 @@ function DishSheet({ product, avoid, onAdd, onClose, start }) {
                     return (
                       <button key={o.id} onClick={() => toggle(g, o)}
                         className={`px-4 py-2.5 rounded-2xl text-sm font-bold border-2 transition-all ${on ? 'bg-gold-50 text-ink border-gold-500' : 'bg-white text-ink-soft border-slate-200'}`}>
-                        {on && <Check className="w-4 h-4 inline -mt-0.5 mr-1 text-gold-700" />}{o.name}{o.price_cents ? ` +${money(o.price_cents)}` : ''}
+                        {on && <Check className="w-4 h-4 inline -mt-0.5 me-1 text-gold-700" />}{o.name}{o.price_cents ? ` +${money(o.price_cents)}` : ''}
                       </button>
                     )
                   })}
@@ -427,7 +340,7 @@ function AvoidSheet({ avoid, setAvoid, onClose }) {
             return (
               <button key={code} onClick={() => flip(code)}
                 className={`px-4 py-2.5 rounded-2xl text-sm font-bold border-2 ${on ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-slate-200 text-ink-soft'}`}>
-                {on && <Check className="w-4 h-4 inline -mt-0.5 mr-1" />}{label}
+                {on && <Check className="w-4 h-4 inline -mt-0.5 me-1" />}{label}
               </button>
             )
           })}
@@ -479,7 +392,7 @@ function Avatar({ name, id, mine, size = 'w-6 h-6 text-[11px]' }) {
 function JoinScreen({ menu, guest, party, setParty, onJoin }) {
   const [name, setName] = useState(guest.name || '')
   const [logoBroken, setLogoBroken] = useState(false)
-  const pick = (l) => { if ((l === 'zh') !== zh) { try { localStorage.setItem(LANG_KEY, l) } catch { /* fine */ } window.location.reload() } }
+  const pick = pickLang
   return (
     <div className="relative min-h-screen bg-paper flex flex-col">
       <div className="bg-gradient-to-b from-gold-50 to-paper px-6 pt-10 pb-6 flex flex-col items-center text-center">
@@ -494,8 +407,8 @@ function JoinScreen({ menu, guest, party, setParty, onJoin }) {
         <div>
           <p className="text-sm font-black text-ink-soft mb-2">{T.pickLang}</p>
           <div className="grid grid-cols-2 gap-3">
-            {[['zh', '中文'], ['en', 'English']].map(([l, label]) => {
-              const on = (l === 'zh') === zh
+            {LANGS.map(([l, label]) => {
+              const on = l === LANG
               return <button key={l} onClick={() => pick(l)} className={`py-3.5 rounded-2xl font-black border-2 ${on ? 'bg-ink text-white border-ink' : 'bg-white text-ink-soft border-slate-200'}`}>{label}</button>
             })}
           </div>
@@ -549,7 +462,7 @@ function OrdersView({ menu, data, onMore, onBill, onClose }) {
               <div className="px-4 pt-4 pb-2 flex items-center gap-2">
                 <Beaver mood="done" className="w-10" />
                 <h2 className="font-black text-ink">{T.inKitchen}</h2>
-                <span className="ml-auto text-sm font-bold text-ink-mute">{T.items(lines.reduce((s, l) => s + l.quantity, 0))}</span>
+                <span className="ms-auto text-sm font-bold text-ink-mute">{T.items(lines.reduce((s, l) => s + l.quantity, 0))}</span>
               </div>
               {rounds.map((r) => (
                 <div key={r} className="px-4 pb-3">
@@ -593,7 +506,7 @@ function CategorySheet({ sections, active, onPick, onClose }) {
         <div className="grid grid-cols-2 gap-2">
           {sections.map(({ c, items }) => (
             <button key={c} onClick={() => onPick(c)}
-              className={`text-left px-4 py-3 rounded-2xl border-2 font-black ${active === c ? 'border-gold-500 bg-gold-50 text-ink' : 'border-slate-200 text-ink-soft'}`}>
+              className={`text-start px-4 py-3 rounded-2xl border-2 font-black ${active === c ? 'border-gold-500 bg-gold-50 text-ink' : 'border-slate-200 text-ink-soft'}`}>
               {c}<span className="block text-xs font-bold text-ink-mute">{T.items(items.length)}</span>
             </button>
           ))}
@@ -606,7 +519,7 @@ function CategorySheet({ sections, active, onPick, onClose }) {
 /** The ≡ menu: language and the name shown to the table. */
 function MenuSheet({ guest, onName, party, setParty, onClose }) {
   const [name, setName] = useState(guest.name || '')
-  const pick = (l) => { if ((l === 'zh') !== zh) { try { localStorage.setItem(LANG_KEY, l) } catch { /* fine */ } window.location.reload() } }
+  const pick = pickLang
   return (
     <Sheet onClose={onClose}>
       <div className="px-5 pt-5 pb-6 space-y-5">
@@ -617,8 +530,8 @@ function MenuSheet({ guest, onName, party, setParty, onClose }) {
         <div>
           <p className="text-sm font-black text-ink-soft mb-2 flex items-center gap-1"><Globe className="w-4 h-4" />{T.language}</p>
           <div className="grid grid-cols-2 gap-3">
-            {[['zh', '中文'], ['en', 'English']].map(([l, label]) => {
-              const on = (l === 'zh') === zh
+            {LANGS.map(([l, label]) => {
+              const on = l === LANG
               return <button key={l} onClick={() => pick(l)} className={`py-3 rounded-2xl font-black border-2 ${on ? 'bg-ink text-white border-ink' : 'bg-white text-ink-soft border-slate-200'}`}>{label}</button>
             })}
           </div>
@@ -902,7 +815,7 @@ export default function App() {
           </button>
           <button onClick={() => setView('orders')} aria-label={T.tableOrders} className="shrink-0 relative w-10 h-10 rounded-full bg-slate-100 text-ink flex items-center justify-center">
             <ClipboardList className="w-5 h-5" />
-            {waiting > 0 && <span className="absolute -top-1 -right-1 bg-gold-500 text-ink text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">{waiting}</span>}
+            {waiting > 0 && <span className="absolute -top-1 -end-1 bg-gold-500 text-ink text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">{waiting}</span>}
           </button>
           <button onClick={() => setMenuOpen(true)} aria-label={T.menuTitle} className="shrink-0 w-10 h-10 rounded-full bg-slate-100 text-ink flex items-center justify-center">
             <MenuIcon className="w-5 h-5" />
@@ -926,7 +839,7 @@ export default function App() {
           </button>
         </div>
         {categories.length > 1 && !q && (
-          <div className="max-w-3xl mx-auto pl-4 pb-2.5 flex items-center gap-2">
+          <div className="max-w-3xl mx-auto ps-4 pb-2.5 flex items-center gap-2">
             <nav ref={tabsRef} className="flex-1 overflow-x-auto no-scrollbar flex gap-2">
               {sections.map(({ c }) => (
                 <button key={c} data-cat={c} onClick={() => jumpTo(c)}
@@ -936,7 +849,7 @@ export default function App() {
               ))}
             </nav>
             <button onClick={() => setCatsOpen(true)} aria-label={T.allCategories}
-              className="shrink-0 mr-4 w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm"><ChevronDown className="w-5 h-5" /></button>
+              className="shrink-0 me-4 w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm"><ChevronDown className="w-5 h-5" /></button>
           </div>
         )}
       </header>
@@ -950,7 +863,7 @@ export default function App() {
         )}
         {/* Beaver takes the order: say it once, check the card, add. */}
         {!q && (
-          <button onClick={() => setVoiceOpen(true)} className="ai-card w-full mt-4 !p-3 !pt-3 flex items-center gap-3 text-left">
+          <button onClick={() => setVoiceOpen(true)} className="ai-card w-full mt-4 !p-3 !pt-3 flex items-center gap-3 text-start">
             <span className="w-14 h-14 shrink-0 rounded-2xl bg-gold-50 flex items-end justify-center overflow-hidden"><Beaver mood="listening" className="w-12 translate-y-1" /></span>
             <span className="flex-1 min-w-0">
               <span className="block font-black text-ink">{T.voiceEntry}</span>
@@ -995,7 +908,7 @@ export default function App() {
                           <button onClick={(e) => { e.stopPropagation(); p.modifier_groups?.length ? setDishFor(p) : addLine(p) }}
                             className="relative w-9 h-9 rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-ink flex items-center justify-center shadow-[0_4px_12px_rgba(255,159,0,.35)] active:scale-90 transition-transform" aria-label={T.add}>
                             <Plus className="w-5 h-5" strokeWidth={3} />
-                            {here > 0 && <span className="absolute -top-1.5 -right-1.5 bg-ink text-white text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">{here}</span>}
+                            {here > 0 && <span className="absolute -top-1.5 -end-1.5 bg-ink text-white text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">{here}</span>}
                           </button>
                         )}
                       </div>
@@ -1012,13 +925,13 @@ export default function App() {
 
       {count > 0 && (
         <button onClick={() => { setError(null); setConfirmClear(false); setCartOpen(true) }}
-          className="fixed bottom-4 left-4 right-4 z-30 max-w-xl mx-auto bg-ink text-white pl-3 pr-5 py-3 rounded-[22px] shadow-lift flex items-center justify-between">
+          className="fixed bottom-4 start-4 end-4 z-30 max-w-xl mx-auto bg-ink text-white ps-3 pe-5 py-3 rounded-[22px] shadow-lift flex items-center justify-between">
           <span className="flex items-center gap-3">
             <span className="bg-gradient-to-br from-gold-400 to-gold-600 text-ink font-black w-10 h-10 rounded-2xl flex items-center justify-center">{count}</span>
             <span className="flex -space-x-1.5">{[...new Map(lines.map((l) => [l.guest_id, l])).values()].slice(0, 4).map((l) => <Avatar key={l.guest_id} id={l.guest_id} name={l.guest_name} mine={l.guest_id === guest.id} />)}</span>
             <span className="font-black">{T.tableCart}</span>
           </span>
-          <span className="flex items-center gap-1 font-black text-lg text-gold-300">{money(subtotal + tax)}<ChevronRight className="w-5 h-5 text-slate-400" /></span>
+          <span className="flex items-center gap-1 font-black text-lg text-gold-300">{money(subtotal + tax)}<ChevronRight className="rtl:rotate-180 w-5 h-5 text-slate-400" /></span>
         </button>
       )}
 
@@ -1039,7 +952,7 @@ export default function App() {
               <div key={l.id} className="py-3 flex items-center justify-between gap-3">
                 <div className="relative shrink-0">
                   <DishImg src={l.p?.image_url} className="w-14 h-14 rounded-xl object-cover bg-slate-100" fallback={<div className="w-14 h-14 rounded-xl bg-gold-50" />} />
-                  <span className="absolute -bottom-1 -right-1"><Avatar id={l.guest_id} name={l.guest_name} mine={l.guest_id === guest.id} size="w-5 h-5 text-[10px]" /></span>
+                  <span className="absolute -bottom-1 -end-1"><Avatar id={l.guest_id} name={l.guest_name} mine={l.guest_id === guest.id} size="w-5 h-5 text-[10px]" /></span>
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="font-black text-ink">{l.p ? dishName(l.p) : '…'}</p>
@@ -1085,12 +998,12 @@ export default function App() {
 
       {/* Beaver, the AI guide: GoldSky's own, found on no other ordering page. */}
       <button onClick={() => setGuideOpen(true)}
-        className={`fixed right-3 z-30 flex items-center gap-1 pl-1 pr-4 py-1 rounded-full bg-gradient-to-r from-sky-500 to-sky-600 text-white shadow-lift font-black ${count > 0 ? 'bottom-[92px]' : 'bottom-4'}`}>
+        className={`fixed end-3 z-30 flex items-center gap-1 ps-1 pe-4 py-1 rounded-full bg-gradient-to-r from-sky-500 to-sky-600 text-white shadow-lift font-black ${count > 0 ? 'bottom-[92px]' : 'bottom-4'}`}>
         <span className="w-11 h-11 rounded-full bg-white flex items-end justify-center overflow-hidden"><Beaver mood="idle" className="w-10 translate-y-1" /></span>
         {T.guide}
       </button>
 
-      {toast && <div className="fixed left-4 right-4 bottom-28 z-[60] max-w-md mx-auto bg-ink text-white text-sm font-bold px-4 py-3 rounded-2xl shadow-lift text-center">{toast}</div>}
+      {toast && <div className="fixed start-4 end-4 bottom-28 z-[60] max-w-md mx-auto bg-ink text-white text-sm font-bold px-4 py-3 rounded-2xl shadow-lift text-center">{toast}</div>}
 
       {view === 'orders' && (
         <OrdersView menu={menu} data={table} onClose={() => setView('menu')} onMore={() => setView('menu')} onBill={() => setBillOpen(true)} />
@@ -1135,7 +1048,7 @@ export default function App() {
       {menuOpen && <MenuSheet guest={guest} onName={setGuestName} party={party} setParty={setParty} onClose={() => setMenuOpen(false)} />}
       {catsOpen && <CategorySheet sections={sections} active={activeCat} onPick={(c) => { setCatsOpen(false); jumpTo(c) }} onClose={() => setCatsOpen(false)} />}
       {dishFor && (
-        <DishSheet product={dishFor} avoid={avoid} start={dishStart} onClose={() => { setDishFor(null); setDishStart(null); dishDone.current = null }}
+        <DishSheet product={dishFor} token={token} avoid={avoid} start={dishStart} onClose={() => { setDishFor(null); setDishStart(null); dishDone.current = null }}
           onAdd={async (choice, qty) => {
             const p = dishFor
             setDishFor(null); setDishStart(null)

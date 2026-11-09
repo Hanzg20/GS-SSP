@@ -9,10 +9,11 @@
 // -> lines the phone shows on Beaver's card; nothing reaches the cart until the customer taps.
 // plan {token, mode: start|enough, party {size, spice}, avoid[], cart[], ordered[], browserLang}:
 // a first round sized for the table, or an honest enough / more / less on what they picked.
+// explain {token, product_id, lang}: the dish in zh / en / fr / ar, cached per dish + language (dine.dish_notes).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
-import { checkOrder, checkPlan, checkSuggestions, enoughPrompt, orderPrompt, parseAnswer, parseOrder, readPlanInput, readVerdict, startPrompt, systemPrompt, type Dish } from "./guide.ts";
+import { EXPLAIN_LANGS, checkOrder, checkPlan, explainPrompt, factsHash, parseExplain, checkSuggestions, enoughPrompt, orderPrompt, parseAnswer, parseOrder, readPlanInput, readVerdict, startPrompt, systemPrompt, type Dish } from "./guide.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -122,6 +123,36 @@ Deno.serve(async (req) => {
       if (typeof body.audio !== "string" || !body.audio) return json({ error: "no_audio" }, 400);
       const text = await transcribe(body.audio, typeof body.mime === "string" ? body.mime : "audio/webm");
       return text === null ? json({ error: "no_speech_service" }, 503) : json({ text });
+    }
+
+    // A dish explained in the page's language: from the cache when the dish hasn't changed (no model, no limit).
+    if (body.action === "explain") {
+      const dish = (menu.products ?? []).find((d: Dish) => d.id === String(body.product_id ?? ""));
+      if (!dish) return json({ error: "item_unavailable" }, 404);
+      const lang = EXPLAIN_LANGS.includes(String(body.lang)) ? String(body.lang) : "en";
+      const hash = await factsHash(dish);
+      const { data: cached } = await db.rpc("scan_dish_note_get", { p_token: token, p_product_id: dish.id, p_lang: lang, p_hash: hash });
+      if (cached?.note) return json({ ...cached, cached: true });
+
+      const { data: gate } = await db.rpc("scan_chat_allowed", { p_token: token, p_per_10min: PER_TABLE_10MIN, p_store_per_day: PER_STORE_DAY });
+      if (!gate?.allowed) return json({ error: gate?.reason ?? "limit" }, 429);
+      const llm = provider();
+      if (!llm) return json({ error: "no_model" }, 503);
+      let note = null;
+      for (let attempt = 0; attempt < 2 && !note; attempt++) {
+        try {
+          note = parseExplain(await llm.call(explainPrompt(menu.store.name, dish, lang), [{ role: "user", content: "What is this dish?" }]));
+        } catch (e) {
+          if (e instanceof BusyError || attempt === 1) throw e;
+        }
+      }
+      if (!note) throw new Error("unparsable explain");
+      await db.rpc("scan_dish_note_put", { p_token: token, p_product_id: dish.id, p_lang: lang, p_hash: hash, p_name: note.name, p_note: note.note, p_model: llm.name });
+      await db.rpc("scan_chat_record", {
+        p_token: token, p_question: `[explain] ${dish.name}`, p_reply: note.note, p_language: lang, p_model: llm.name,
+        p_kind: "ask", p_product_ids: [dish.id], p_missing: [],
+      });
+      return json(note);
     }
 
     if (body.action !== "ask" && body.action !== "order" && body.action !== "plan") return json({ error: "unknown_action" }, 400);

@@ -30,7 +30,7 @@
     background: linear-gradient(#fff, #fff) padding-box, linear-gradient(135deg, theme('colors.gold.400'), theme('colors.sky.400')) border-box;
   }
   .ai-badge {
-    @apply absolute -top-4 -left-1 w-10 h-10 rounded-full bg-white shadow-card flex items-end justify-center overflow-hidden;
+    @apply absolute -top-4 -start-1 w-10 h-10 rounded-full bg-white shadow-card flex items-end justify-center overflow-hidden;
     border: 1.5px solid theme('colors.gold.300');
   }
   .ai-badge img { @apply w-9 translate-y-1 select-none; }

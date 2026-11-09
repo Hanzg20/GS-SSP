@@ -107,7 +107,7 @@ export function TablePicks({ token, products, party, avoid, T, askGuide, auto, o
     return (
       <AiCard className="mt-5" mood="clipboard">
         <div className="flex items-center gap-2">
-          <button onClick={load} className="flex-1 text-left font-black text-ink">{T.picksBtn}<span className="block text-xs font-bold text-ink-mute">{who}</span></button>
+          <button onClick={load} className="flex-1 text-start font-black text-ink">{T.picksBtn}<span className="block text-xs font-bold text-ink-mute">{who}</span></button>
           {error && <span className="text-xs font-bold text-red-600">{error}</span>}
           <button onClick={load} className="btn-gold px-4 py-2 rounded-xl text-sm">{error ? T.retry : T.picksGo}</button>
         </div>
@@ -121,7 +121,7 @@ export function TablePicks({ token, products, party, avoid, T, askGuide, auto, o
           <p className="font-black text-ink">{T.picksTitle(party.size)}</p>
           <button onClick={onEditParty} className="text-xs font-bold text-sky-700 flex items-center gap-1">{who}<Pencil className="w-3 h-3" /></button>
         </div>
-        <button onClick={() => setHidden(true)} aria-label={T.close} className="p-1 -mr-1 text-ink-mute"><X className="w-5 h-5" /></button>
+        <button onClick={() => setHidden(true)} aria-label={T.close} className="p-1 -me-1 text-ink-mute"><X className="w-5 h-5" /></button>
       </div>
       {busy && <p className="mt-3 text-sm font-bold text-sky-700 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />{T.picksLoading}</p>}
       {error && <p className="mt-2 text-sm font-bold text-red-600">{error}</p>}
@@ -183,7 +183,7 @@ export function EnoughCheck({ token, products, party, setParty, avoid, cart, ord
           </AiCard>
         ) : (
           <button onClick={() => check()} disabled={busy}
-            className="ai-card w-full !p-3 !pt-3 flex items-center gap-3 text-left">
+            className="ai-card w-full !p-3 !pt-3 flex items-center gap-3 text-start">
             <span className="w-10 h-10 shrink-0 rounded-xl bg-gold-50 flex items-end justify-center overflow-hidden"><img src={`/beaver/${busy ? 'thinking' : 'clipboard'}.webp`} alt="" className="w-9 translate-y-1" /></span>
             <span className="flex-1 font-black text-ink text-sm">{busy ? T.enoughThinking : T.enoughBtn}</span>
             {busy && <Loader2 className="w-4 h-4 animate-spin text-sky-700" />}

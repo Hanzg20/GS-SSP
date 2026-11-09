@@ -302,3 +302,46 @@ export function readPlanInput(body: Record<string, unknown>, dishes: Dish[]): { 
     cart: lines(body.cart), ordered: lines(body.ordered),
   };
 }
+
+// ---------------------------------------------------------------- a dish explained in the customer's language
+
+const LANG_NAMES: Record<string, string> = { zh: "Simplified Chinese", en: "English", fr: "Canadian French", ar: "Arabic" };
+export const EXPLAIN_LANGS = Object.keys(LANG_NAMES);
+
+/** The facts a note is written from; any change -> a new note. */
+export function dishFacts(d: Dish): string {
+  return JSON.stringify([d.name, d.description ?? null, d.ingredients ?? null, d.allergens ?? null, d.dietary ?? null, d.spice_level ?? null, d.guide ?? null]);
+}
+
+export async function factsHash(d: Dish): Promise<string> {
+  const bytes = new TextEncoder().encode(dishFacts(d));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+}
+
+export function explainPrompt(store: string, d: Dish, lang: string): string {
+  return `You are Beaver (小海狸), the friendly server of "${store}". A customer who reads ${LANG_NAMES[lang] ?? "English"} asks: what is this dish?
+
+THE DISH (the store's own facts):
+${menuLines([d])}
+
+Write for someone who may never have had this cuisine:
+1. "name": the dish name in ${LANG_NAMES[lang] ?? "English"} (translate or transliterate; keep it short).
+2. "note": 2-4 short sentences in ${LANG_NAMES[lang] ?? "English"}: what it is, what it tastes like, how it is eaten. You may use general knowledge of this kind of dish, but say "usually" / "typically" for anything that is not in the store's facts.
+3. Never state allergens or diet labels beyond the store's facts. If allergens are NOT RECORDED, end with one short sentence saying to ask the server about allergies. Never call a dish vegetarian, halal, etc. unless the facts say so.
+4. No prices, no markdown.
+
+ANSWER FORMAT: a JSON object only: {"name": "...", "note": "..."}`;
+}
+
+export function parseExplain(raw: string): { name: string; note: string } | null {
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    const o = JSON.parse(m[0]);
+    if (typeof o?.note !== "string" || !o.note.trim()) return null;
+    return { name: typeof o.name === "string" ? o.name.trim().slice(0, 120) : "", note: o.note.trim().slice(0, 1200) };
+  } catch {
+    return null;
+  }
+}

@@ -17,7 +17,7 @@ export default {
         paper: '#F7F8FA',
       },
       fontFamily: {
-        sans: ['Inter', '"Noto Sans SC"', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Inter', '"Noto Sans SC"', '"Noto Sans Arabic"', 'system-ui', '-apple-system', 'sans-serif'],
       },
       boxShadow: {
         card: '0 1px 2px rgba(15,23,42,.04), 0 4px 16px rgba(15,23,42,.06)',

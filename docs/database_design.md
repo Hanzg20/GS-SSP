@@ -72,7 +72,7 @@ erDiagram
 | Sales & payment (each vertical's transactions move to its own schema, §4) | transactions, transaction_items, transaction_refunds, transaction_payment_answers (payment-app answers, SYS_ADMIN read only, filled by trigger from `transactions.acquirer_response`, `2026-11-08_payment_answers_void_sys_admin.sql`), qr_payment_sessions, acquirer_settlement_records, merchant_acquirer_accounts, hardware_acquirer_map | apps (sales), back office (settlement) |
 | Retail inventory | **`retail`.stock_moves** -- every stock change (SALE / RETURN by triggers on PAID / refunded `transaction_items`, RECEIVE / COUNT / ADJUST by staff) | triggers; Iris / Ourea via `retail_stock_*`, Cael via `cmp_retail_stock_*` |
 | Retail delivery → `retail` | delivery_orders (status = money OPEN / PAID / CANCELLED; delivery_stage = trip WAITING / OUT / DELIVERED, an OUT order is listed only on the driver's terminal), delivery_order_items | CMP / Apex (create), Iris (take out via `delivery_order_out` / `delivery_order_back`, collect = delivered) |
-| Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders, `dine`.scan_chats, `dine`.service_calls, `dine`.scan_cart_items, `dine`.settings** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
+| Dine-in | **`dine`.tables, `dine`.checks, `dine`.check_items, `dine`.payments, `dine`.scan_orders, `dine`.scan_chats, `dine`.service_calls, `dine`.scan_cart_items, `dine`.settings, `dine`.dish_notes** (§5) | Ourea, Iris via `dine_*` RPCs; customers via `scan_*` RPCs |
 | Members → `member` | **`member`.settings, `member`.members, `member`.points_ledger** (retail loyalty, 2026-11-01, `docs/migrations/2026-11-01_loyalty.sql`: member by phone per store; points earned on a PAID sale's subtotal through `member_record_sale`, a reward = an order discount; a whole refund undoes them by trigger, a partial refund takes back its pre-tax share of the earned points (`2026-11-01_loyalty_partial_refunds.sql`, REVERSE rows keyed `<sale>#r<n>`); `transactions.member_id`); vip_cards, vip_card_ledger, vip_load_plans, coupons, coupon_redemptions, coupon_attempts (still `public`; since 2026-11-08 created only through `cmp_create_coupons`, used through `coupon_check` / `coupon_redeem` / `coupon_release`, `2026-11-08_coupon_*.sql`) | Iris / Ourea via `member_*`, Cael via `cmp_member_*`; apps, CMP |
 | Ads → `media` | advertisements, playlists, ad_playback_logs | CMP (ads), apps (playback) |
 | Store back office → `office` | **`office`.checklists, `office`.checklist_items, `office`.checklist_ticks, `office`.shifts, `office`.settings** (§5b); expenses, reminders, notes (still `public`) | Iris / Ourea / Apex via `office_*` RPCs; Cael via `cmp_office_*` (time clock) |
@@ -229,6 +229,9 @@ Since 2026-11-08 each row also has `kind` (ask / order / plan), `product_ids` (d
 and `missing` (asked for, not on the menu); the owner reads them through `apex_tool_guest_asks(org, from, to)` (小海狸
 tool `guest_questions`) and two `apex_alerts` kinds, `guest_missing` and `guest_diet`
 (`docs/migrations/2026-11-08_scan_guest_asks.sql`).
+`dine.dish_notes` (2026-11-08): Beaver's explanation of a dish per language (product_id + lang, `facts_hash` of the
+dish facts it was written from), service role only via `scan_dish_note_get` / `scan_dish_note_put`
+(`docs/migrations/2026-11-08_scan_dish_notes.sql`).
 
 Pay at the table (2026-10-28, `supabase/functions/scan-pay` + `scan-pay-dmn`, no login, the QR secret is the
 credential): `scan_bill(token)` (anon) shows the table's live check, the balance and whether the store takes online
