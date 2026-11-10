@@ -78,5 +78,16 @@
             android:theme="@style/Theme.SSP.Fullscreen"
             android:configChanges="orientation|keyboardHidden|screenSize" />
 
+        <!-- Ad videos are played through it (AdActivity); without it every video ad crashed the ad screen (255 Flex, 2026-11-10). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 </manifest>

@@ -165,9 +165,18 @@ class AdActivity : BaseAdActivity() {
         val mediaUrl = media.media_url ?: return
         val file = File(AdManager.getAdsDir(this), media.id + getExtension(mediaUrl))
         if (file.exists()) {
-            preloadedUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            preloadedUri = adUri(file)
             preloadedType = media.media_type
         }
+    }
+
+    // An app shell without the FileProvider declared crashed here on every video ad (255 Flex,
+    // 2026-11-10): play the file straight from our own storage instead.
+    private fun adUri(file: File): android.net.Uri = try {
+        FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+    } catch (e: IllegalArgumentException) {
+        android.util.Log.w("AdActivity", "No FileProvider in this app, playing the file directly: ${e.message}")
+        android.net.Uri.fromFile(file)
     }
 
     private fun playVideo(file: File) {
@@ -178,7 +187,7 @@ class AdActivity : BaseAdActivity() {
         textAdCard.visibility = View.GONE
         videoAd.visibility = View.VISIBLE
         btnPause.visibility = View.VISIBLE
-        val contentUri = if (preloadedType == "VIDEO" && preloadedUri != null) preloadedUri!! else FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+        val contentUri = if (preloadedType == "VIDEO" && preloadedUri != null) preloadedUri!! else adUri(file)
         videoAd.setVideoURI(contentUri)
         // Full screen: tell the view the video's size so it can cover the screen.
         videoAd.setOnPreparedListener { mp -> (videoAd as? FillVideoView)?.setVideoSize(mp.videoWidth, mp.videoHeight) }
