@@ -13,6 +13,12 @@ export type Suggestion = { product_id: string; quantity: number; option_ids: str
 
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
+/** Allergen codes (products.attributes.allergens) as words, so Beaver never says "tree_nut" to a customer. */
+const ALLERGEN_WORDS: Record<string, string> = {
+  peanut: "peanuts", tree_nut: "tree nuts", milk: "milk", egg: "egg", wheat: "wheat (gluten)", soy: "soy", fish: "fish",
+  crustacean: "shellfish (crustaceans)", mollusc: "molluscs", sesame: "sesame", mustard: "mustard", sulphite: "sulphites",
+};
+
 /** One compact line per dish; allergens absent = NOT RECORDED (never "none"). */
 export function menuLines(dishes: Dish[]): string {
   return dishes.map((d) => {
@@ -22,7 +28,7 @@ export function menuLines(dishes: Dish[]): string {
       d.sold_out ? "SOLD OUT" : null,
       d.description ? `about: ${d.description}` : null,
       d.ingredients ? `ingredients: ${d.ingredients}` : null,
-      `allergens: ${Array.isArray(d.allergens) ? (d.allergens.length ? d.allergens.join(", ") : "none of the priority allergens") : "NOT RECORDED"}`,
+      `allergens: ${Array.isArray(d.allergens) ? (d.allergens.length ? d.allergens.map((a) => ALLERGEN_WORDS[a] ?? a).join(", ") : "none of the priority allergens") : "NOT RECORDED"}`,
       d.dietary?.length ? `dietary: ${d.dietary.join(", ")}` : null,
       typeof d.spice_level === "number" ? `spice ${d.spice_level}/5` : null,
       d.guide ? `how to eat: ${d.guide}` : null,
@@ -37,7 +43,7 @@ export function menuLines(dishes: Dish[]): string {
 export function systemPrompt(store: string, table: string, dishes: Dish[], browserLang: string): string {
   return `You are Beaver (小海狸 in Chinese), the friendly AI menu guide of "${store}", talking to a customer at table ${table} on their phone.
 
-LANGUAGE: reply in the language of the customer's LATEST message (French -> French, Japanese -> Japanese, Arabic -> Arabic, ...). If it is too short to tell, use the phone's language "${browserLang}". Keep each dish name as written on the menu, and explain it in the customer's language.
+LANGUAGE: answer in the SAME language the customer's latest message is written in -- an English question gets an English answer, a Chinese one a Chinese answer, Arabic gets Arabic. Never switch to another language because of the menu or the store. Only if the message is too short to tell, use the phone's language "${browserLang}". Keep each dish name as written on the menu.
 
 MENU (the only dishes that exist):
 ${menuLines(dishes)}
@@ -200,7 +206,7 @@ function listLines(lines: PlanLine[], byId: Map<string, Dish>): string {
 }
 
 /** One portion rule for both "set us up" and "is this enough?", so Beaver never contradicts itself. */
-const PORTION_RULE = `PORTIONS: a bowl of noodles, a rice dish or a plate of dumplings is one MAIN (a plate of 12 dumplings feeds one or two). Starters (cold dishes, small plates) are extra; drinks are not food.
+const PORTION_RULE = `PORTIONS (any cuisine): a MAIN is one person's main dish -- a burger, a steak, a pasta, a plate (kebab, döner, salmon...), a wrap, a pide, a bowl of noodles, a rice dish, a plate of 12 dumplings (feeds one or two), a meal-size bowl or salad. A platter "for 2" counts as 2 mains; a kids dish is a main for a child. STARTERS are to share: appetizers, dips, soups, side salads, meze, cold dishes, a lahmacun. Desserts and drinks are not counted as food.
 For N people: N mains is plenty; N-1 mains plus a shared starter is also enough for 4 or more. Short = fewer mains than that. Too much = more than N+1 mains, or more than 2 starters for 4 or fewer.`;
 
 const replyLang = (lang: string) => (lang === "zh" ? "Chinese" : `the language of the phone (${lang})`);
@@ -219,8 +225,8 @@ ${PORTION_RULE}
 
 RULES (never break):
 1. Only menu ids, never SOLD OUT. Never invent dishes or facts.
-2. Enough, not too much (see PORTIONS): for 4 or more people, N-1 mains plus one shared starter; otherwise N mains. Drinks: one kind, quantity = people, only if the menu has drinks. Most tables order more later, so lean towards less.
-   Example for 4 people: 1 cold starter + 2 noodles + 1 plate of dumplings + 4 drinks. NOT 4 noodles + 2 plates of dumplings.
+2. Enough, not too much (see PORTIONS): for 4 or more people, N-1 mains plus one shared starter; otherwise N mains. No desserts in a first round. Drinks: one kind, quantity = people, only if the menu has drinks. Most tables order more later, so lean towards less.
+   Example for 4 people: 1 shared starter + 3 different mains + 4 drinks. NOT 4 mains + 2 starters + desserts.
 3. Spice: respect it. For "no spice" pick the not-spicy option when a dish has a spice choice; never suggest dishes with spice 2/5 or more.
 4. Variety: different dishes, not the same one twice.
 5. "reply": 1-2 short sentences in ${replyLang(lang)}, warm, saying why this fits them. No prices in the text.
@@ -361,4 +367,19 @@ Answer with a JSON object only: {"intent": "order" | "ask" | "both"}`;
 export function parseIntent(raw: string): "order" | "ask" | "both" | null {
   const m = raw.match(/"intent"\s*:\s*"(order|ask|both)"/);
   return m ? (m[1] as "order" | "ask" | "both") : null;
+}
+
+/**
+ * A reply that slipped into another script: Chinese words in an answer to an Arabic or English
+ * question, or Arabic in an English one (seen 2026-11-09: an Arabic answer ending in Chinese).
+ * Dish names are taken out first -- quoting "炸酱面 Zhajiang Noodle" in English is fine.
+ */
+export function mixedScript(question: string, reply: string, dishes: Dish[]): boolean {
+  let r = reply;
+  for (const d of dishes) if (d.name) r = r.split(d.name).join(" ");
+  const has = (t: string, re: RegExp) => re.test(t);
+  const HAN = /\p{Script=Han}/u, ARABIC = /\p{Script=Arabic}/u;
+  const letters = (question.match(/\p{L}/gu) ?? []).length;
+  if (letters < 3) return false;
+  return (has(r, HAN) && !has(question, HAN)) || (has(r, ARABIC) && !has(question, ARABIC));
 }

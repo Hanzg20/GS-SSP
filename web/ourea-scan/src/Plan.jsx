@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { X, Pencil, RefreshCw, Loader2, Check, Plus } from 'lucide-react'
 import { AiCard } from './ai.jsx'
+import { dishName } from './i18n.js'
 
 /*
  * The table's own menu (scan-assistant action "plan"): the door asks how many
@@ -45,7 +46,7 @@ function PickRow({ s, p, T, done, onAdd }) {
   return (
     <div className="py-2 flex items-center gap-3">
       <div className="flex-1 min-w-0">
-        <p className="font-black text-ink text-[15px] leading-tight">{s.quantity} × {p.name}</p>
+        <p className="font-black text-ink text-[15px] leading-tight">{s.quantity} × {dishName(p)}</p>
         {s.why && <p dir="auto" className="text-xs text-ink-soft mt-0.5">{s.why}</p>}
         {s.allergens_unknown && <span className="inline-block mt-1 text-[11px] font-bold text-ink-mute bg-slate-100 px-2 py-0.5 rounded-full">⚠ {T.noAllergenData}</span>}
       </div>
@@ -64,7 +65,7 @@ const errorText = (T, r) => T.guideErrors[r.error] || T.guideErrors.failed
  * Fetched once per party/allergy setting (kept for this tab), or on a tap when
  * the table has already ordered.
  */
-export function TablePicks({ token, products, party, avoid, T, askGuide, auto, onEditParty, onAdd }) {
+export function TablePicks({ token, products, party, avoid, T, askGuide, auto, onEditParty, onAdd, needsConfirm = () => false }) {
   const key = `scan_picks_${token}_${party.size}_${party.spice}_${avoid.join(',')}`
   const [picks, setPicks] = useState(() => { try { return JSON.parse(sessionStorage.getItem(key) || 'null') } catch { return null } })
   const [busy, setBusy] = useState(false)
@@ -100,7 +101,12 @@ export function TablePicks({ token, products, party, avoid, T, askGuide, auto, o
   const who = [T.peopleN(party.size), party.spice ? T.spice[party.spice] : null].filter(Boolean).join(' · ')
   const left = (picks?.suggestions || []).filter((s) => !added[s.product_id])
   const addOne = async (s) => { if (await onAdd(s)) setAdded((a) => ({ ...a, [s.product_id]: true })) }
-  const addAll = async () => { for (const s of left) await addOne(s) }
+  // Add all: the dishes that need no choices go straight in; then the first one that does opens its sheet.
+  const addAll = async () => {
+    for (const s of left.filter((x) => !needsConfirm(x))) await addOne(s)
+    const first = left.find((x) => needsConfirm(x))
+    if (first) addOne(first)
+  }
 
   // Not fetched yet (the table already ordered): a one-line invitation.
   if (!picks && !busy) {

@@ -1,5 +1,5 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { checkOrder, checkPlan, checkSuggestions, factsHash, menuLines, parseExplain, parseIntent, parseAnswer, parseOrder, readPlanInput, readVerdict, type Dish } from "./guide.ts";
+import { checkOrder, checkPlan, checkSuggestions, factsHash, menuLines, mixedScript, parseExplain, parseIntent, parseAnswer, parseOrder, readPlanInput, readVerdict, type Dish } from "./guide.ts";
 
 const noodle: Dish = {
   id: "n1", name: "牛肉面 Beef Noodle Soup", price_cents: 1299, allergens: ["wheat", "soy"], dietary: ["halal"], spice_level: 2,
@@ -13,7 +13,7 @@ const gone: Dish = { id: "g1", name: "Gone", price_cents: 100, sold_out: true, a
 
 Deno.test("allergens: recorded, none, and not recorded are different", () => {
   const lines = menuLines([noodle, tofu, gone]);
-  assert(lines.includes("allergens: wheat, soy"));
+  assert(lines.includes("allergens: wheat (gluten), soy"));
   assert(lines.includes("豆腐 Firm Tofu | $2.49 | allergens: NOT RECORDED"));
   assert(lines.includes("SOLD OUT | allergens: none of the priority allergens"));
   assert(lines.includes(`options "Spice" (required, pick one): s0=Not spicy; s1=Mild`));
@@ -101,4 +101,13 @@ Deno.test("chat: the sorting answer is read; anything else is not trusted", () =
   assertEquals(parseIntent('{"intent":"both"}'), "both");
   assertEquals(parseIntent('{"intent" : "order"}'), "order");
   assertEquals(parseIntent('{"intent":"weird"}'), null);
+});
+
+Deno.test("mixed languages: caught, but quoting a dish name is fine", () => {
+  const menu = [noodle, tofu];
+  assert(mixedScript("هل البقلاوة فيها مكسرات؟", "نعم، تحتوي على مكسرات. 请告诉服务员", menu));
+  assert(!mixedScript("Is the beef noodle spicy?", "牛肉面 Beef Noodle Soup is mild.", menu));
+  assert(mixedScript("Is it spicy?", "It is 微辣.", menu));
+  assert(!mixedScript("有素食吗？", "有，豆腐 Firm Tofu 是素的。", menu));
+  assert(!mixedScript("ok", "好的", menu));
 });

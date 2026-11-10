@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { X, Mic, Square, Send, Plus, Minus, Loader2, Keyboard } from 'lucide-react'
 import { AiCard, BeaverImg, useVoice } from './ai.jsx'
+import { dishName } from './i18n.js'
 
 const money = (c) => '$' + (c / 100).toFixed(2)
 
@@ -117,7 +118,7 @@ export default function VoiceOrder({ token, products, T, askGuide, onClose, onAd
                   return (
                     <div key={x.product_id} className="mt-2 bg-paper rounded-xl p-3 flex items-center gap-3">
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-ink text-sm">{x.quantity} × {p.name}</p>
+                        <p className="font-bold text-ink text-sm">{x.quantity} × {dishName(p)}</p>
                         {x.why && <p dir="auto" className="text-xs text-ink-mute">{x.why}</p>}
                       </div>
                       <button disabled={added[x.product_id]} onClick={async () => { if (await onAdd(x)) setAdded((a) => ({ ...a, [x.product_id]: true })) }}
@@ -136,7 +137,7 @@ export default function VoiceOrder({ token, products, T, askGuide, onClose, onAd
                       return (
                         <div key={l.key} className="py-2.5 flex items-center gap-3">
                           <div className="flex-1 min-w-0">
-                            <p className="font-black text-ink text-[15px] leading-tight">{u.p.name}</p>
+                            <p className="font-black text-ink text-[15px] leading-tight">{dishName(u.p)}</p>
                             {(u.optNames.length > 0 || l.note) && (
                               <p dir="auto" className="text-xs text-ink-soft mt-0.5">{[...u.optNames, l.note].filter(Boolean).join(' · ')}</p>
                             )}
@@ -164,7 +165,7 @@ export default function VoiceOrder({ token, products, T, askGuide, onClose, onAd
                       {c.product_ids.map((pid) => byId[pid] && (
                         <button key={pid} onClick={() => pickChoice(ci, pid)}
                           className="px-3 py-1.5 rounded-full text-sm font-bold bg-sky-50 text-sky-800 border border-sky-200">
-                          {byId[pid].name} · {money(byId[pid].price_cents)}
+                          {dishName(byId[pid])} · {money(byId[pid].price_cents)}
                         </button>
                       ))}
                     </div>

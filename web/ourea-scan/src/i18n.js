@@ -249,3 +249,6 @@ export const ALLERGENS = { zh: ALLERGENS_ZH, en: ALLERGENS_EN, fr: ALLERGENS_FR,
 export const DIETARY = { zh: DIETARY_ZH, en: DIETARY_EN, fr: DIETARY_FR, ar: DIETARY_AR }[LANG]
 /** A list joined the way the language does it. */
 export const joinList = (xs) => xs.join(zh ? '、' : RTL ? '، ' : ', ')
+
+/** A dish's name in the customer's language (Cael's attributes.name_i18n), else the store's own. */
+export const dishName = (p) => (p?.names && typeof p.names[LANG] === 'string' && p.names[LANG].trim()) || p?.name || ''

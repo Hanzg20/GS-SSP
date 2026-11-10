@@ -24,6 +24,16 @@ class NetworkKitchenPrinterTest {
     }
 
     @Test
+    fun `letters GBK lacks lose their accent, not the letter`() {
+        assertEquals("Doner Wrap (Dürüm)", NetworkKitchenPrinter.printable("Döner Wrap (Dürüm)"))
+        assertEquals("Sis kebab, Kunefe", NetworkKitchenPrinter.printable("Şiş kebab, Künefe").replace("ü", "u"))
+        assertEquals("Crème brulée", NetworkKitchenPrinter.printable("Crème brûlée"))   // è é are in GBK (pinyin), û is not
+        assertEquals("Kasarli pide, i", NetworkKitchenPrinter.printable("Kaşarlı pide, ı"))
+        assertEquals("牛肉面 微辣", NetworkKitchenPrinter.printable("牛肉面 微辣"))
+        assertEquals("??", NetworkKitchenPrinter.printable("حم").take(2))
+    }
+
+    @Test
     fun `bytes are ESC-POS with GBK text and a cut`() {
         val bytes = NetworkKitchenPrinter.encode(listOf(NetworkKitchenPrinter.Line("桌 T5", big = true)))
         assertEquals(listOf<Byte>(0x1B, 0x40, 0x1C, 0x26), bytes.take(4))

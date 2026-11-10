@@ -15,7 +15,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
-import { EXPLAIN_LANGS, checkOrder, intentPrompt, parseIntent, checkPlan, explainPrompt, factsHash, parseExplain, checkSuggestions, enoughPrompt, orderPrompt, parseAnswer, parseOrder, readPlanInput, readVerdict, startPrompt, systemPrompt, type Dish } from "./guide.ts";
+import { EXPLAIN_LANGS, checkOrder, intentPrompt, mixedScript, parseIntent, checkPlan, explainPrompt, factsHash, parseExplain, checkSuggestions, enoughPrompt, orderPrompt, parseAnswer, parseOrder, readPlanInput, readVerdict, startPrompt, systemPrompt, type Dish } from "./guide.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -217,6 +217,12 @@ Deno.serve(async (req) => {
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
             const a = parse(await llm.call(system, turns, effort));
+            // An answer that slipped into another language gets one more try.
+            const said = (a as unknown as { reply?: unknown } | null)?.reply;
+            if (a && attempt === 0 && typeof said === "string" && mixedScript(question, said, dishes)) {
+              console.warn(`[scan-assistant] ${what}: mixed languages, asking again`);
+              continue;
+            }
             if (a) return a;
             console.warn(`[scan-assistant] unparsable ${what}, attempt`, attempt + 1);
           } catch (e) {
@@ -281,6 +287,11 @@ Deno.serve(async (req) => {
     for (let attempt = 0; attempt < 2 && !answer; attempt++) {
       try {
         answer = parseAnswer(await llm.call(system, turns));
+        if (answer && attempt === 0 && mixedScript(question, answer.reply, dishes)) {
+          console.warn("[scan-assistant] answer: mixed languages, asking again");
+          answer = null;
+          continue;
+        }
         if (!answer) console.warn("[scan-assistant] unparsable answer, attempt", attempt + 1);
       } catch (e) {
         if (e instanceof BusyError || attempt === 1) throw e;

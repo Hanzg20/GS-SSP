@@ -58,6 +58,30 @@ object NetworkKitchenPrinter {
         return out
     }
 
+    private val FOLD = mapOf('ı' to "i", 'İ' to "I", 'ß' to "ss", 'œ' to "oe", 'Œ' to "OE", 'æ' to "ae", 'Æ' to "AE",
+        'ø' to "o", 'Ø' to "O", 'ł' to "l", 'Ł' to "L", 'đ' to "d", 'Đ' to "D")
+
+    /**
+     * [text] as the GBK printer can print it. Letters GBK lacks lose their accent instead of
+     * becoming "?" (Döner -> Doner, Şiş -> Sis, crème -> creme; seen on a Turkish menu 2026-11-09);
+     * only what has no plain form at all (e.g. Arabic script) is still "?".
+     */
+    fun printable(text: String): String {
+        val enc = GBK.newEncoder()
+        val out = StringBuilder()
+        for (c in text) {
+            when {
+                enc.canEncode(c) -> out.append(c)
+                FOLD.containsKey(c) -> out.append(FOLD.getValue(c))
+                else -> {
+                    val plain = java.text.Normalizer.normalize(c.toString(), java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
+                    out.append(if (plain.isNotEmpty() && enc.canEncode(plain)) plain else "?")
+                }
+            }
+        }
+        return out.toString()
+    }
+
     /** The ESC/POS bytes for [lines], ending with a feed and a cut. */
     fun encode(lines: List<Line>): ByteArray {
         val b = ByteArrayOutputStream()
@@ -67,7 +91,7 @@ object NetworkKitchenPrinter {
             b.write(byteArrayOf(0x1B, 0x61, if (l.center) 1 else 0))                                       // ESC a  align
             b.write(byteArrayOf(0x1D, 0x21, (if (l.big) 0x11 else if (l.tall) 0x01 else 0x00).toByte()))  // GS !   size
             b.write(byteArrayOf(0x1B, 0x45, if (l.bold) 1 else 0))                                         // ESC E  bold
-            b.write(l.text.toByteArray(GBK))
+            b.write(printable(l.text).toByteArray(GBK))
             b.write(0x0A)
         }
         b.write(byteArrayOf(0x1D, 0x21, 0x00, 0x1B, 0x45, 0x00, 0x1B, 0x61, 0x00))

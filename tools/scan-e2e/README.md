@@ -14,6 +14,8 @@ store, **ZZ 扫码点餐测试 Scan E2E** (`e2e5ca00-0000-4000-8000-000000000001
 | `seed.sql` | Store, location, 9 dishes (modifiers, sold out, 0% tax, retired), tables T1–T4 + retired T9, staff PIN 1234 (manager) / 5678 (server). Safe to run again. |
 | `reset.sql` | Clears the store's QR orders, checks and payments (the abuse limits count each table's last 10 min). Run before every pass. |
 | `bind-emulator.sql` | `-v store=e2e` moves the Ourea emulator (`devices.sn = 'unknown'`) into the store; `-v store=back` returns it to GoldSky Test Store. |
+| `seed-western.sql` | Scenario store **ZZ 西餐测试 Western Grill** (QR `west…01`–`04`): Canadian casual dining, doneness / side choices, full allergen + diet data, fr / zh names (2026-11-09). |
+| `seed-kebab.sql` | Scenario store **ZZ Kanata 土耳其烤肉测试 Döner House** (QR `kbab…01`–`04`): halal Turkish menu, meat / base choices, platter for two, ar / fr / zh names; used for the full flow on the Ourea emulator (`bind-emulator.sql -v store=kebab`). |
 | `teardown.sql` | Removes the store completely. Card transactions are kept. |
 | `fake-printer.cjs` | Fake kitchen printer on :9100; prints each ticket as text. |
 | `../../web/ourea-scan/scripts/scan-e2e.mjs` | 32 server checks through the customer's anon RPCs. |

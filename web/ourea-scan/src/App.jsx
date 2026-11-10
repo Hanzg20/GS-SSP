@@ -5,7 +5,7 @@ import VoiceOrder from './VoiceOrder.jsx'
 import { AiCard, BeaverImg } from './ai.jsx'
 import { PartyPicker, TablePicks, EnoughCheck } from './Plan.jsx'
 import Bill from './Bill.jsx'
-import { T, LANG, LANGS, zh, RTL, pickLang, ALLERGENS, DIETARY, joinList } from './i18n.js'
+import { T, LANG, LANGS, zh, RTL, pickLang, ALLERGENS, DIETARY, joinList, dishName } from './i18n.js'
 export { LANG }
 
 /*
@@ -56,8 +56,6 @@ async function callPay(body) {
 const money = (c) => '$' + (c / 100).toFixed(2)
 
 
-/** A dish's name in the customer's language (Cael's attributes.name_i18n), else the store's own. */
-const dishName = (p) => (p.names && typeof p.names[LANG] === 'string' && p.names[LANG].trim()) || p.name
 /** The store's own name under a translated one, so staff and customer can point at the same dish. */
 const dishSubName = (p) => (dishName(p) !== p.name ? p.name : null)
 
@@ -579,7 +577,7 @@ export default function App() {
   const [party, setPartyState] = useState(() => store.get('ourea_scan_party_' + token) || { size: null, spice: null })
   const setParty = (p) => { setPartyState(p); store.set('ourea_scan_party_' + token, p) }
   const [partyOpen, setPartyOpen] = useState(false)
-  const dishDone = useRef(null)   // a voice-order line waiting for its options
+  const dishDone = useRef(null)   // called with true / false when the open dish sheet adds / closes (voice line, suggestion)
   const [dishStart, setDishStart] = useState(null)
   const [billOpen, setBillOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -727,11 +725,16 @@ export default function App() {
     setCart(data.cart); setError(null)
     return true
   }
-  // A dish Beaver suggested: options it still needs open the dish sheet (with what Beaver chose), else straight in.
+  // A dish Beaver suggested. Required choices (doneness, meat, side) are the customer's to make: such a
+  // dish opens its sheet with Beaver's picks filled in, never goes in on Beaver's say-so (2026-11-09).
+  const needsConfirm = (p, s) => s.needs_options || p.modifier_groups?.some((g) => g.required)
   const addSuggestion = async (s) => {
     const p = menu.products.find((x) => x.id === s.product_id)
     if (!p) return false
-    if (s.needs_options || (p.modifier_groups?.some((g) => g.required) && !s.option_ids?.length)) { setDishStart(s); setDishFor(p); return false }
+    if (needsConfirm(p, s)) {
+      // Resolves when the customer adds it from the sheet (true) or closes the sheet (false).
+      return new Promise((resolve) => { dishDone.current?.(false); dishDone.current = resolve; setDishStart(s); setDishFor(p) })
+    }
     return addLine(p, { optionIds: s.option_ids || [] }, s.quantity)
   }
   const setQty = async (line, quantity) => {
@@ -763,6 +766,7 @@ export default function App() {
     setSubmitting(true); setError(null)
     const { data, error: e } = await supabase.rpc('scan_submit_cart', {
       p_token: token, p_rev: cart.rev, p_note: orderNote.trim() || null, p_client_ref: clientRef, p_guest_name: guest.name || null,
+      p_guests: party.size || null,   // the door's "how many of you" -> the check's party size
     })
     setSubmitting(false)
     if (e) { setError(T.offline); return }
@@ -857,7 +861,8 @@ export default function App() {
         {!q && party.size && table !== null && (
           <TablePicks token={token} products={menu.products} party={party} avoid={avoid} T={T} askGuide={askGuide}
             auto={lines.length === 0 && Object.keys(orderedCount).length === 0}
-            onEditParty={() => setPartyOpen(true)} onAdd={addSuggestion} />
+            onEditParty={() => setPartyOpen(true)} onAdd={addSuggestion}
+            needsConfirm={(s) => { const p = menu.products.find((x) => x.id === s.product_id); return !!p && needsConfirm(p, s) }} />
         )}
         {/* Beaver takes the order: say it once, check the card, add. */}
         {!q && (
@@ -1019,7 +1024,7 @@ export default function App() {
             }
             return done
           }}
-          onPickOptions={(p, l, done) => { dishDone.current = done; setDishStart(l); setDishFor(p) }}
+          onPickOptions={(p, l, done) => { dishDone.current = (ok) => { if (ok) done() }; setDishStart(l); setDishFor(p) }}
           onAdd={addSuggestion} />
       )}
       {billOpen && <Bill token={token} T={T} supabase={supabase} callPay={callPay} onClose={() => setBillOpen(false)} />}
@@ -1037,11 +1042,12 @@ export default function App() {
       {menuOpen && <MenuSheet guest={guest} onName={setGuestName} party={party} setParty={setParty} onClose={() => setMenuOpen(false)} />}
       {catsOpen && <CategorySheet sections={sections} active={activeCat} onPick={(c) => { setCatsOpen(false); jumpTo(c) }} onClose={() => setCatsOpen(false)} />}
       {dishFor && (
-        <DishSheet product={dishFor} token={token} avoid={avoid} start={dishStart} onClose={() => { setDishFor(null); setDishStart(null); dishDone.current = null }}
+        <DishSheet product={dishFor} token={token} avoid={avoid} start={dishStart} onClose={() => { setDishFor(null); setDishStart(null); dishDone.current?.(false); dishDone.current = null }}
           onAdd={async (choice, qty) => {
             const p = dishFor
             setDishFor(null); setDishStart(null)
-            if (await addLine(p, choice, qty) && dishDone.current) { dishDone.current(); flash(T.addedN(qty)) }
+            const ok = await addLine(p, choice, qty)
+            if (dishDone.current) { dishDone.current(ok); if (ok) flash(T.addedN(qty)) }
             dishDone.current = null
           }} />
       )}
