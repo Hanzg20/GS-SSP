@@ -477,6 +477,7 @@ class MainActivity : BaseAdActivity() {
                 durationView.visibility = View.GONE
 
                 cardView.setOnClickListener {
+                    if (isWorking || paymentInFlight || paymentDialog?.isShowing == true) return@setOnClickListener
                     applyClickFeedback(it)
                     val serialHex = product.attributes?.get("serial_hex")?.jsonPrimitive?.contentOrNull
                         ?: "AA 01 ${"%02X".format(newPrice)} 55"
@@ -987,6 +988,14 @@ class MainActivity : BaseAdActivity() {
      * what the wash runs for (more than the price on a promotion package).
      */
     private fun startPackagePurchaseFlow(priceInCents: Int, startHex: String, productId: String? = null, serviceCents: Int = priceInCents) {
+        // A tap that lands on the home screen while a sale is already running (a double tap
+        // on the payment page's Card button reaches the package tile under it before the card
+        // screen covers it) opened a second payment page, whose countdown started a second
+        // card sale 4 s later -- PAYWizard refused it as busy (253, 2026-11-09 20:12, CARD_READER_FAULT).
+        if (isWorking || paymentInFlight || paymentDialog?.isShowing == true) {
+            Log.w("SSP_TEST", "Package tap ignored: a payment or wash is already in progress")
+            return
+        }
         hideScanPending()
         val vipUid = pendingVipCardUid
         if (vipUid != null) {
