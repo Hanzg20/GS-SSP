@@ -78,7 +78,14 @@ class AdActivity : BaseAdActivity() {
         btnPause.setOnClickListener { togglePauseResume() }
 
         AdManager.playlistUpdateFlow.onEach { newAds ->
+            val wasEmpty = fullPlaylist.isEmpty()
             fullPlaylist = newAds
+            // Opened with nothing to play, the placeholder stayed for good: two videos added
+            // in Cael never showed until the screen was left (255 Flex, 2026-11-10).
+            if (wasEmpty && newAds.isNotEmpty() && !isFinishing) {
+                advanceHandler.removeCallbacksAndMessages(null)
+                playNext()
+            }
         }.launchIn(CoroutineScope(Dispatchers.Main))
     }
 
