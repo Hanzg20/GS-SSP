@@ -63,6 +63,7 @@ Eliminates the need for on-site visits for simple operational changes. This modu
 The Voucher Hub is designed to drive consumer traffic and resolve field service issues. It implements a strictly audited issuance and redemption loop.
 
 #### 3.3.1 Issuance Workflows
+*   `[REVISED 2026-11-12]` No campaigns / batches (owner): coupons are made N at a time with one note; each code is the store's running number + 4 random characters (`0123-K7MQ`), "Given to" records who one was handed to. See `docs/system_architecture.md` v2.64.
 *   **Marketing Campaigns (Bulk)**: 
     *   Operators define campaign parameters (e.g., "Summer Splash 2026").
     *   Support for **Static Codes** (one code like `WASH20` used many times) and **Dynamic Codes** (a batch of 1,000 unique single-use codes).
