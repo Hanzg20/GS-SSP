@@ -392,6 +392,14 @@ class WizarPosPaymentProvider(private val terminal: POSTerminal?) : IPaymentProv
                     // The reason only reached the screen before: a decline left nothing to look
                     // at afterwards (2026-10-14, Ourea declines answered in 0.5 s with no card read).
                     Log.w(TAG, "${request.TransType} not approved: RespCode=$resultCode RespDesc=$resultMsg cardRead=$cardRead")
+                    // The bank's reason was only in the log, gone within the hour: a $25 decline on 253
+                    // (2026-11-11 11:27) couldn't be explained. Kept on the row under its own key
+                    // ("PurchaseDeclined"), never "Purchase" -- voids and refunds read that one.
+                    if (request.TransType != "Settle") {
+                        PaymentResponses.sanitize(response)?.let { clean ->
+                            runCatching { PaymentResponses.listener?.invoke(originalRef, "${request.TransType}Declined", clean) }
+                        }
+                    }
                     if (cardRead) callback.onCardInfo(info)
                     // -139 "cancelled by user": cancel key or payment-screen timeout.
                     if (resultCode == RESP_CANCELLED) callback.onCancelled()
