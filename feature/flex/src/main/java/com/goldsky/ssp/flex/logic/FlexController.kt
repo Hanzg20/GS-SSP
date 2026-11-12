@@ -14,7 +14,7 @@ import java.net.URL
  * The partner's own controller that hands the product over (Aegis Flex's whole point: the
  * terminal takes the money, the customer's machine does the rest -- e.g. Outdoor Vend's InHand
  * EC3320 over the LAN, 2026-11-05). Told after the money is in; only its "dispensed" keeps it.
- * The wire format is ours: docs/flex_controller_api.md.
+ * The wire format is ours: docs/partner/flex_controller_api.md.
  */
 interface FlexController {
     /**
@@ -75,7 +75,7 @@ interface FlexController {
     }
 
     /**
-     * The controller on the LAN, over HTTP (docs/flex_controller_api.md): GET /flex/v1/status,
+     * The controller on the LAN, over HTTP (docs/partner/flex_controller_api.md): GET /flex/v1/status,
      * POST /flex/v1/dispense, answered once the product is handed over (or not). [token] is
      * sent as a Bearer token when set.
      */

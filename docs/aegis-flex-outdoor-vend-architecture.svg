@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<defs>
+  <marker id="arrow" markerWidth="11" markerHeight="9" refX="10" refY="4.5" orient="auto"><path d="M0 0L11 4.5 0 9Z" fill="#465360"/></marker>
+  <marker id="arrowGold" markerWidth="11" markerHeight="9" refX="10" refY="4.5" orient="auto"><path d="M0 0L11 4.5 0 9Z" fill="#b98700"/></marker>
+  <marker id="arrowGreen" markerWidth="11" markerHeight="9" refX="10" refY="4.5" orient="auto"><path d="M0 0L11 4.5 0 9Z" fill="#2e7d32"/></marker>
+  <style>
+    text{font-family:Inter,Helvetica,Arial,sans-serif;fill:#26323b}.title{font-size:31px;font-weight:700}.subtitle{font-size:15px;fill:#66727b}.layer{font-size:14px;font-weight:700;letter-spacing:1.8px;fill:#74808a}.boxTitle{font-size:20px;font-weight:700}.boxSub{font-size:14px;fill:#5f6c75}.body{font-size:14px}.small{font-size:12px}.tiny{font-size:11px}.num{font-size:15px;font-weight:700;fill:white}.link{stroke:#465360;stroke-width:2.4;fill:none;marker-end:url(#arrow)}.goldLink{stroke:#b98700;stroke-width:2.6;fill:none;marker-end:url(#arrowGold)}.greenLink{stroke:#2e7d32;stroke-width:2.4;fill:none;marker-end:url(#arrowGreen)}
+  </style>
+</defs>
+<rect width="1920" height="1080" fill="#fff"/>
+<text x="64" y="57" class="title">GoldSky Aegis Flex × Outdoor Vend — Device &amp; Cloud Interactions</text>
+<text x="66" y="84" class="subtitle">Integration architecture · GoldSky handles payment; Outdoor Vend’s controller handles dispensing</text>
+<rect x="46" y="111" width="1828" height="350" rx="20" fill="#f8fafb" stroke="#e0e5e8"/>
+<rect x="46" y="479" width="1828" height="469" rx="20" fill="#fbfaf6" stroke="#e5e1d7"/>
+<text x="70" y="143" class="layer">CLOUD</text><text x="70" y="512" class="layer">ON SITE — OUTDOOR KIOSK</text>
+<!-- Cloud boxes -->
+<g>
+ <rect x="130" y="169" width="420" height="245" rx="18" fill="#f0f2f3" stroke="#b9c1c6" stroke-width="1.5"/>
+ <text x="165" y="211" class="boxTitle">Nuvei</text><text x="165" y="236" class="boxSub">card acquirer</text>
+ <circle cx="169" cy="274" r="16" fill="#465360"/><text x="169" y="279" text-anchor="middle" class="num">②</text>
+ <text x="198" y="279" class="body">PAYWizard over 4G / Wi-Fi</text><text x="198" y="302" class="small">Authorize · reverse</text>
+ <path d="M165 324H515" stroke="#d5dade"/>
+ <circle cx="169" cy="367" r="16" fill="#465360"/><text x="169" y="372" text-anchor="middle" class="num">⑥</text>
+ <text x="198" y="362" class="body">Daily settlement</text>
+ <path d="M323 368H345" class="link"/>
+ <rect x="355" y="343" width="160" height="50" rx="9" fill="#fff" stroke="#aeb8be"/><text x="435" y="374" text-anchor="middle" class="small">Merchant bank account</text>
+ <rect x="775" y="169" width="470" height="245" rx="18" fill="#fff8dc" stroke="#d2a315" stroke-width="2"/>
+ <rect x="775" y="169" width="470" height="11" rx="6" fill="#F5B700"/>
+ <text x="813" y="215" class="boxTitle">GoldSky Cael</text><text x="813" y="240" class="boxSub">GoldSky cloud · device-scoped access</text>
+ <circle cx="820" cy="281" r="16" fill="#b98700"/><text x="820" y="286" text-anchor="middle" class="num">③</text><text x="850" y="277" class="body">Transactions (order_id, result)</text><text x="850" y="298" class="small">Heartbeat · offline queue</text>
+ <circle cx="820" cy="330" r="16" fill="#b98700"/><text x="820" y="335" text-anchor="middle" class="num">④</text><text x="850" y="326" class="body">Config to terminal</text><text x="850" y="347" class="small">Products, prices, slots, payment mode, ads</text>
+ <circle cx="820" cy="379" r="16" fill="#b98700"/><text x="820" y="384" text-anchor="middle" class="num">⑤</text><text x="850" y="375" class="body">Remote commands (realtime)</text><text x="850" y="396" class="small">SYNC_CONFIG · SET_CONTROLLER · VOID_PAYMENT · LOCK</text>
+ <rect x="1475" y="169" width="330" height="245" rx="18" fill="#edf6ee" stroke="#75a878" stroke-width="1.7"/>
+ <text x="1512" y="215" class="boxTitle">Outdoor Vend Cloud</text><text x="1512" y="241" class="boxSub">Partner-owned cloud services</text>
+ <text x="1512" y="282" class="body">Receives sale webhook</text><text x="1512" y="305" class="small">Planned · not yet developed</text>
+ <text x="1512" y="352" class="body">Controller’s own connection</text><text x="1512" y="375" class="small">Inventory · camera · door events</text>
+</g>
+<!-- On site devices -->
+<g>
+ <rect x="205" y="568" width="780" height="290" rx="18" fill="#fff9e8" stroke="#d2a315" stroke-width="2"/>
+ <rect x="205" y="568" width="780" height="12" rx="6" fill="#F5B700"/>
+ <text x="242" y="615" class="boxTitle">GoldSky Aegis Flex Terminal</text><text x="242" y="639" class="boxSub">WizarPOS Q3mini UPT · GoldSky-owned</text>
+ <rect x="252" y="672" width="286" height="105" rx="12" fill="#fff" stroke="#d7bd66" stroke-width="1.5"/>
+ <text x="395" y="714" text-anchor="middle" class="boxTitle" style="font-size:18px">Aegis Flex app</text><text x="395" y="741" text-anchor="middle" class="small">Products · checkout · local order log</text>
+ <rect x="655" y="672" width="286" height="105" rx="12" fill="#f4f6f7" stroke="#aab4bb" stroke-width="1.5"/>
+ <text x="798" y="714" text-anchor="middle" class="boxTitle" style="font-size:18px">PAYWizard payment app</text><text x="798" y="741" text-anchor="middle" class="small">Card / VIP payment processing</text>
+ <path d="M538 725H655" class="link"/><path d="M655 745H538" class="link"/>
+ <rect x="548" y="789" width="152" height="27" rx="13" fill="#eef1f2" stroke="#c7cfd4"/><text x="624" y="807" text-anchor="middle" class="tiny">AIDL · on-device</text>
+ <rect x="1220" y="602" width="475" height="225" rx="18" fill="#edf6ee" stroke="#75a878" stroke-width="2"/>
+ <rect x="1220" y="602" width="475" height="12" rx="6" fill="#2E7D32"/>
+ <text x="1257" y="650" class="boxTitle">Outdoor Vend Controller</text><text x="1257" y="675" class="boxSub">InHand EC3320 · partner-owned</text>
+ <text x="1257" y="720" class="body">Controls locks · camera · weighing · inventory</text>
+ <text x="1257" y="749" class="small">Executes the vend; terminal never controls hardware</text>
+ <rect x="1257" y="776" width="190" height="29" rx="14" fill="#fff" stroke="#92b99a"/><text x="1352" y="796" text-anchor="middle" class="tiny">No card data</text>
+ <!-- Customer icon -->
+ <circle cx="108" cy="686" r="24" fill="#e8edf1" stroke="#82919c" stroke-width="2"/><circle cx="108" cy="678" r="8" fill="#647481"/><path d="M91 709 Q108 686 125 709" fill="#647481"/>
+ <text x="108" y="742" text-anchor="middle" class="body" style="font-weight:650">Customer</text>
+ <path d="M138 702H205" class="link"/><text x="171" y="689" text-anchor="middle" class="tiny">select 1 / 2 / 3</text>
+</g>
+<!-- numbered connections -->
+<!-- 1 LAN link -->
+<path d="M985 831 H1220" class="link" stroke-width="4"/>
+<circle cx="1004" cy="811" r="16" fill="#465360"/><text x="1004" y="816" text-anchor="middle" class="num">①</text>
+<text x="1103" y="858" text-anchor="middle" class="small" style="font-weight:650">Site LAN · Ethernet · HTTP/JSON</text>
+<text x="1103" y="879" text-anchor="middle" class="tiny">Terminal always initiates · optional Bearer token</text>
+<text x="1103" y="900" text-anchor="middle" class="tiny">GET /flex/v1/status every 10 s → ready, sold_out</text>
+<text x="1103" y="920" text-anchor="middle" class="tiny">POST /flex/v1/dispense after approval → DISPENSED / FAILED</text>
+<rect x="1187" y="867" width="112" height="25" rx="12" fill="#fff" stroke="#92b99a"/><text x="1243" y="884" text-anchor="middle" class="tiny">No card data</text>
+<!-- 2 PAYWizard to Nuvei -->
+<path d="M798 672 V438 H340 V414" class="link"/>
+<circle cx="775" cy="438" r="16" fill="#465360"/><text x="775" y="443" text-anchor="middle" class="num">②</text>
+<!-- 3 transaction terminal to Cael -->
+<path d="M395 672 V455 H871 V414" class="goldLink"/>
+<circle cx="448" cy="455" r="16" fill="#b98700"/><text x="448" y="460" text-anchor="middle" class="num">③</text>
+<!-- 4 and 5 config/commands to terminal, separate paths -->
+<path d="M936 414 V476 H925 V568" class="goldLink"/>
+<circle cx="936" cy="489" r="16" fill="#b98700"/><text x="936" y="494" text-anchor="middle" class="num">④</text>
+<path d="M980 414 V512 H964 V568" class="goldLink"/>
+<circle cx="980" cy="527" r="16" fill="#b98700"/><text x="980" y="532" text-anchor="middle" class="num">⑤</text>
+<!-- 7 cloud-to-cloud planned webhook -->
+<path d="M1245 294 H1475" stroke="#b98700" stroke-width="2.5" stroke-dasharray="9 7" fill="none" marker-end="url(#arrowGold)"/>
+<circle cx="1273" cy="294" r="16" fill="#b98700"/><text x="1273" y="299" text-anchor="middle" class="num">⑦</text>
+<text x="1362" y="268" text-anchor="middle" class="tiny">HTTPS webhook · HMAC-signed</text>
+<text x="1362" y="324" text-anchor="middle" class="tiny">Per sale: order_id, product, qty,</text><text x="1362" y="341" text-anchor="middle" class="tiny">amount, result — PLANNED</text>
+<!-- 8 controller to partner cloud -->
+<path d="M1618 602 V414" class="greenLink"/>
+<circle cx="1618" cy="511" r="16" fill="#2e7d32"/><text x="1618" y="516" text-anchor="middle" class="num">⑧</text>
+<!-- hard boundary callouts -->
+<rect x="1297" y="432" width="156" height="29" rx="14" fill="#f2f3f4" stroke="#c8ced2"/><text x="1375" y="451" text-anchor="middle" class="tiny">No Cael ↔ Nuvei link</text>
+<rect x="1260" y="839" width="200" height="28" rx="14" fill="#f2f3f4" stroke="#c8ced2"/><text x="1360" y="858" text-anchor="middle" class="tiny">No Controller ↔ Cael link</text>
+<!-- banner -->
+<rect x="46" y="966" width="1828" height="85" rx="16" fill="#263744"/>
+<text x="77" y="995" font-size="14" font-weight="700" fill="#f5c544">RECONCILIATION KEY</text>
+<text x="77" y="1023" font-size="14" fill="#fff">The same order_id appears in ① dispense, ③ GoldSky record and ⑦ webhook. Charged only when the controller answers DISPENSED for that order_id;</text>
+<text x="77" y="1043" font-size="14" fill="#fff">FAILED / error / timeout → reversed.</text>
+</svg>

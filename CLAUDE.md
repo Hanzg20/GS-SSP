@@ -103,7 +103,7 @@ app/aegis-flex -- Aegis Flex (`com.goldsky.ssp.aegis.flex`, feature:flex), added
                   PARTNER's own machine -- the customer picks and pays on the terminal, the partner's controller hands the
                   product over (first lead: Outdoor Vend's firewood kiosk on an InHand EC3320). Copied from Aegis Vend without
                   MDB / big screen / VMC simulator; the sale screen is Vend's showcase grid. Only the controller's "dispensed"
-                  keeps the money (`FlexController`): `Http` = our LAN API (`docs/flex_controller_api.md`, status + dispense,
+                  keeps the money (`FlexController`): `Http` = our LAN API (`docs/partner/flex_controller_api.md`, status + dispense,
                   address per terminal in the technician panel; `tools/flex-controller-sim` stands in for the machine); none
                   set = `NotConnected`, every sale reversed at once under a TEST strip. Tiles can be drawn and animated
                   (`attributes.art`, e.g. "firewood"). The controller's status can list `sold_out` slots (grey SOLD OUT

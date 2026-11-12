@@ -28,3 +28,8 @@ supabase/.temp/
 
 # scratch/reference dirs (vendor demo pulls, extracted AARs, SDK downloads) — not source
 temp_*/
+
+# local tool output (Vite dep cache, Python bytecode, fake printer's raw tickets)
+.vite/
+__pycache__/
+tools/scan-e2e/*.bin

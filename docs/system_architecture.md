@@ -1499,7 +1499,7 @@ Q3mini UPT 上的收单程序是 PAYWizard 自助版（UnAttend）+ Nuvei SmartP
 
 `app/aegis-flex` + `feature/flex`（包 `com.goldsky.ssp.aegis.flex`，从 Aegis Vend 复制，去掉 MDB / 大屏 / VMC 模拟）。顾客在终端上选、在终端上付，**合作方自己的控制器**负责出货。首个线索：Outdoor Vend（Alberta）户外柴火售卖机，控制器是 InHand EC3320，1 / 2 / 3 捆三个套餐。
 
-### 21.1 与控制器的接口（`docs/flex_controller_api.md`，英文，可直接发给合作方）
+### 21.1 与控制器的接口（`docs/partner/flex_controller_api.md`，英文，可直接发给合作方）
 *   局域网 HTTP，终端是客户端；地址和 Bearer token 每台终端单独设置（技术员面板，或 Cael 远程 `SET_CONTROLLER`）。v1 用 HTTP，不用 socket。
 *   `GET /flex/v1/status`：每 10 秒一次，3 秒超时。`ready=false` 或连不上 → 整机「暂不可用」。可选 `sold_out: ["3"]`：这些货道变灰显示 SOLD OUT 不能买，其余照常；全部售罄 = 暂不可用。
 *   `POST /flex/v1/dispense`：付款获批后发送（order_id、product_id、slot、quantity、amount_cents、payment_flow、deadline_ms = 现在 + 90 秒）。控制器**交接完成后**再回答；终端等到 deadline + 10 秒。只有对同一 order_id 明确回 `DISPENSED` 才留下这笔钱，其余（FAILED、HTTP 错误、超时）一律退还。

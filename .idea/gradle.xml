@@ -11,10 +11,15 @@
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/app" />
             <option value="$PROJECT_DIR$/app/aegis-ev" />
+            <option value="$PROJECT_DIR$/app/aegis-flex" />
+            <option value="$PROJECT_DIR$/app/aegis-laundry" />
+            <option value="$PROJECT_DIR$/app/aegis-timer" />
             <option value="$PROJECT_DIR$/app/aegis-vend" />
+            <option value="$PROJECT_DIR$/app/aegis-vend-screen" />
             <option value="$PROJECT_DIR$/app/aegis-wash" />
             <option value="$PROJECT_DIR$/app/iris" />
             <option value="$PROJECT_DIR$/app/ourea" />
+            <option value="$PROJECT_DIR$/app/ourea-eye" />
             <option value="$PROJECT_DIR$/core" />
             <option value="$PROJECT_DIR$/core/common" />
             <option value="$PROJECT_DIR$/core/data" />
@@ -24,8 +29,11 @@
             <option value="$PROJECT_DIR$/feature" />
             <option value="$PROJECT_DIR$/feature/apex" />
             <option value="$PROJECT_DIR$/feature/ev" />
+            <option value="$PROJECT_DIR$/feature/flex" />
+            <option value="$PROJECT_DIR$/feature/laundry" />
             <option value="$PROJECT_DIR$/feature/parking" />
             <option value="$PROJECT_DIR$/feature/retail" />
+            <option value="$PROJECT_DIR$/feature/timer" />
             <option value="$PROJECT_DIR$/feature/vending" />
             <option value="$PROJECT_DIR$/feature/wash" />
             <option value="$PROJECT_DIR$/libs" />

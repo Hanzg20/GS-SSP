@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Proposed Outdoor Vend Payment Integration</title>
+  <desc id="desc">Hand-drawn whiteboard style discussion draft showing a WizarPOS Q3mini payment terminal connected to an InHand EC3320 controller, GoldSky cloud services, Outdoor Vend cloud, transaction flow, and open technical questions.</desc>
+  <defs>
+    <filter id="paper" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="2" seed="7" result="noise"/>
+      <feColorMatrix in="noise" type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="table" tableValues="0 0.025"/></feComponentTransfer>
+      <feBlend in="SourceGraphic" mode="multiply"/>
+    </filter>
+    <marker id="arrowBlue" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="#245a85" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <marker id="arrowGreen" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="#327957" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <marker id="arrowOrange" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M1 1 L10 6 L1 11" fill="none" stroke="#b36c20" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <style>
+      .hand { font-family: 'Segoe Print','Comic Sans MS','Bradley Hand',cursive,sans-serif; }
+      .title { font-size: 37px; font-weight: 700; fill: #183b58; }
+      .sub { font-size: 17px; fill: #596a76; }
+      .head { font-size: 22px; font-weight: 700; fill: #183b58; }
+      .label { font-size: 18px; font-weight: 700; fill: #183b58; }
+      .body { font-size: 15px; fill: #354956; }
+      .small { font-size: 13px; fill: #52616b; }
+      .tiny { font-size: 12px; fill: #52616b; }
+      .ink { fill: none; stroke: #245a85; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+      .green { fill: none; stroke: #327957; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+      .orange { fill: none; stroke: #b36c20; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+      .dash { stroke-dasharray: 9 8; }
+    </style>
+  </defs>
+  <rect width="1600" height="1000" fill="#fbfaf5"/>
+  <rect x="0" y="0" width="1600" height="1000" fill="#fffefb" opacity=".65" filter="url(#paper)"/>
+
+  <!-- Header -->
+  <path d="M72 105 C320 99 590 108 835 102 S1320 108 1525 101" stroke="#2e668b" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <text x="78" y="68" class="hand title">Proposed Outdoor Vend Payment Integration</text>
+  <text x="80" y="137" class="hand sub">Discussion Draft — Interface and environmental requirements subject to validation</text>
+  <g transform="translate(1260 42) rotate(1)">
+    <path d="M0 0 Q110 -5 260 2 L255 54 Q120 59 3 53 Z" fill="#fff4d6" stroke="#bd812f" stroke-width="2.5" stroke-linejoin="round"/>
+    <text x="17" y="23" class="hand small" font-weight="700" fill="#89591e">WORKING DESIGN</text>
+    <text x="17" y="43" class="hand tiny">For technical discussion</text>
+  </g>
+
+  <!-- Top architecture zones -->
+  <path d="M70 180 Q340 174 615 181 L612 559 Q345 567 72 558 Z" fill="#f2f8fb" stroke="#376d8b" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M645 181 Q865 174 1083 181 L1080 559 Q863 565 646 558 Z" fill="#f3f8ef" stroke="#4f805c" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M1110 181 Q1320 175 1530 181 L1527 559 Q1320 566 1111 558 Z" fill="#f8f5ee" stroke="#a17c42" stroke-width="3" stroke-linejoin="round"/>
+
+  <text x="95" y="218" class="hand head">1. On-site Equipment</text>
+  <text x="670" y="218" class="hand head">2. GoldSky Cloud</text>
+  <text x="1135" y="218" class="hand head">3. Outdoor Vend Cloud</text>
+
+  <!-- customer and terminal -->
+  <g transform="translate(102 263) rotate(-1)">
+    <circle cx="29" cy="20" r="14" fill="#dcebf3" stroke="#245a85" stroke-width="2.5"/>
+    <path d="M9 75 Q11 43 29 42 Q49 43 51 75 M14 56 L0 70 M45 55 L59 67" class="ink"/>
+    <text x="-3" y="100" class="hand small">Customer</text>
+  </g>
+  <path d="M165 298 C185 286 194 287 210 295" class="ink" marker-end="url(#arrowBlue)"/>
+  <g transform="translate(211 252) rotate(1)">
+    <path d="M0 4 Q48 -1 103 4 L101 167 Q50 172 2 167 Z" fill="#eaf3f9" stroke="#245a85" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="20" y="19" width="63" height="68" rx="5" fill="#fff" stroke="#245a85" stroke-width="2.5"/>
+    <path d="M29 36 L73 36 M29 47 L67 47 M29 58 L60 58" class="ink" stroke-width="2"/>
+    <circle cx="51" cy="107" r="9" fill="#d7e9dc" stroke="#327957" stroke-width="2"/>
+    <path d="M33 132 Q51 123 70 132" class="ink" stroke-width="2"/>
+    <text x="-7" y="193" class="hand label">WizarPOS Q3mini</text>
+    <text x="4" y="214" class="hand small">Payment + customer UI</text>
+  </g>
+  <path d="M322 302 C351 287 369 291 390 303" class="ink" marker-end="url(#arrowBlue)"/>
+  <text x="321" y="274" class="hand tiny" fill="#245a85">Ethernet / LAN</text>
+
+  <!-- EC3320 -->
+  <g transform="translate(390 263) rotate(-1)">
+    <path d="M0 8 Q80 1 170 7 L168 128 Q82 134 2 128 Z" fill="#eef4e9" stroke="#327957" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="18" y="25" width="84" height="48" rx="4" fill="#fff" stroke="#327957" stroke-width="2.3"/>
+    <path d="M29 39 L87 39 M29 51 L74 51 M29 63 L83 63" class="green" stroke-width="2"/>
+    <circle cx="130" cy="37" r="7" fill="#8ec49c" stroke="#327957" stroke-width="2"/>
+    <circle cx="130" cy="62" r="7" fill="#fff4d6" stroke="#b36c20" stroke-width="2"/>
+    <path d="M108 93 L145 93 M117 103 L137 103" class="green" stroke-width="2"/>
+    <text x="14" y="157" class="hand label">InHand EC3320</text>
+    <text x="11" y="178" class="hand small">Equipment control host</text>
+  </g>
+
+  <!-- equipment stack -->
+  <path d="M475 444 C475 465 450 473 430 478" class="green" marker-end="url(#arrowGreen)"/>
+  <path d="M478 444 C495 465 515 472 530 480" class="green" marker-end="url(#arrowGreen)"/>
+  <path d="M478 444 C490 502 478 515 454 525" class="green" marker-end="url(#arrowGreen)"/>
+  <g class="hand small" fill="#354956">
+    <path d="M95 475 Q96 468 104 468 L254 468 Q262 469 262 476 L261 518 Q182 522 96 518 Z" fill="#fff" stroke="#7391a1" stroke-width="2"/>
+    <text x="114" y="494">Inventory validation</text><text x="114" y="511">Camera / weighing</text>
+    <path d="M276 475 Q277 468 285 468 L410 468 Q418 469 418 476 L417 518 Q347 522 277 518 Z" fill="#fff" stroke="#7391a1" stroke-width="2"/>
+    <text x="293" y="495">Door lock</text><text x="293" y="512">Vend mechanism</text>
+    <path d="M434 478 Q435 471 443 471 L581 471 Q589 472 589 479 L588 520 Q510 524 435 520 Z" fill="#fff" stroke="#7391a1" stroke-width="2"/>
+    <text x="452" y="497">Sensors / dispense</text><text x="452" y="514">result feedback</text>
+  </g>
+
+  <!-- GoldSky cloud -->
+  <g transform="translate(706 272) rotate(-1)">
+    <path d="M68 100 C34 100 28 56 58 43 C64 15 109 4 132 29 C159 20 185 42 180 68 C207 90 193 120 162 122 L69 122 Z" fill="#fff" stroke="#4f805c" stroke-width="3"/>
+    <text x="64" y="73" class="hand label">GoldSky</text><text x="79" y="95" class="hand small">Cloud</text>
+    <text x="47" y="157" class="hand small">Terminal configuration</text>
+    <text x="47" y="179" class="hand small">Transaction records</text>
+    <text x="47" y="201" class="hand small">Device status + diagnostics</text>
+  </g>
+  <!-- terminal cloud links -->
+  <path d="M263 251 C340 205 568 220 707 282" class="ink dash" marker-end="url(#arrowBlue)"/>
+  <text x="427" y="226" class="hand tiny">Secure cloud sync</text>
+  <path d="M556 321 C619 321 649 321 696 321" class="green dash" marker-end="url(#arrowGreen)"/>
+  <text x="576" y="304" class="hand tiny">Telemetry</text>
+  <path d="M699 392 C647 414 617 419 576 416" class="green dash" marker-end="url(#arrowGreen)"/>
+  <text x="597" y="444" class="hand tiny">Config / commands</text>
+
+  <!-- Outdoor Vend cloud -->
+  <g transform="translate(1167 269) rotate(1)">
+    <path d="M59 94 C25 93 24 52 52 39 C59 10 103 1 126 25 C153 18 177 39 172 63 C197 83 184 113 155 115 L61 116 Z" fill="#fff" stroke="#a17c42" stroke-width="3"/>
+    <text x="51" y="66" class="hand label">Outdoor Vend</text><text x="83" y="87" class="hand small">Cloud</text>
+    <text x="43" y="153" class="hand small">Inventory data</text>
+    <text x="43" y="175" class="hand small">Vend / dispense events</text>
+    <text x="43" y="197" class="hand small">Business reporting</text>
+  </g>
+  <path d="M563 503 C733 547 1031 542 1186 439" class="orange dash" marker-end="url(#arrowOrange)"/>
+  <text x="810" y="538" class="hand tiny" fill="#925a1c">EC3320 → Outdoor Vend cloud (interface TBD)</text>
+  <path d="M1171 472 C1035 516 799 520 577 500" class="orange dash" marker-end="url(#arrowOrange)"/>
+
+  <!-- responsibility note -->
+  <g transform="translate(684 460) rotate(.5)">
+    <path d="M0 0 Q180 -6 382 1 L380 69 Q183 75 1 68 Z" fill="#e9f4e9" stroke="#579063" stroke-width="2.2"/>
+    <text x="18" y="25" class="hand small" font-weight="700">Design intent: EC3320 controls dispensing.</text>
+    <text x="18" y="47" class="hand small">No additional GoldSky equipment controller in this proposal.</text>
+  </g>
+
+  <!-- transaction flow lower left -->
+  <path d="M70 605 Q594 598 1113 605 L1110 942 Q590 950 72 941 Z" fill="#f8fbfc" stroke="#376d8b" stroke-width="3" stroke-linejoin="round"/>
+  <text x="95" y="642" class="hand head">Transaction Flow</text>
+  <g class="hand" text-anchor="middle">
+    <g transform="translate(95 685)"><path d="M0 5 Q68 0 132 5 L130 81 Q67 86 1 81 Z" fill="#fff" stroke="#527b91" stroke-width="2.4"/><text x="65" y="35" class="small">Select quantity</text><text x="65" y="57" class="small">1 / 2 / 3 bags</text></g>
+    <g transform="translate(263 685)"><path d="M0 5 Q68 0 132 5 L130 81 Q67 86 1 81 Z" fill="#fff" stroke="#527b91" stroke-width="2.4"/><text x="65" y="35" class="small">Payment</text><text x="65" y="57" class="small">authorization</text></g>
+    <g transform="translate(431 685)"><path d="M0 5 Q68 0 132 5 L130 81 Q67 86 1 81 Z" fill="#fff" stroke="#527b91" stroke-width="2.4"/><text x="65" y="33" class="small">Send transaction ID,</text><text x="65" y="53" class="small">amount + quantity</text><text x="65" y="71" class="tiny">to EC3320</text></g>
+    <g transform="translate(599 685)"><path d="M0 5 Q68 0 132 5 L130 81 Q67 86 1 81 Z" fill="#fff" stroke="#527b91" stroke-width="2.4"/><text x="65" y="35" class="small">Validate stock</text><text x="65" y="57" class="small">and dispense</text></g>
+    <g transform="translate(767 685)"><path d="M0 5 Q68 0 132 5 L130 81 Q67 86 1 81 Z" fill="#fff" stroke="#527b91" stroke-width="2.4"/><text x="65" y="35" class="small">Return result</text><text x="65" y="57" class="small">success / failure</text></g>
+    <g transform="translate(935 685)"><path d="M0 5 Q68 0 132 5 L130 81 Q67 86 1 81 Z" fill="#eaf5eb" stroke="#327957" stroke-width="2.4"/><text x="65" y="35" class="small">Complete sale</text><text x="65" y="57" class="small">and sync data</text></g>
+  </g>
+  <path d="M228 727 L251 727 M396 727 L419 727 M564 727 L587 727 M732 727 L755 727 M900 727 L923 727" class="ink" marker-end="url(#arrowBlue)"/>
+  <path d="M666 777 C665 815 584 821 529 821" class="orange" marker-end="url(#arrowOrange)"/>
+  <g transform="translate(193 802) rotate(-.4)">
+    <path d="M0 0 Q225 -5 454 1 L451 81 Q222 86 2 79 Z" fill="#fff5e5" stroke="#bd812f" stroke-width="2.5"/>
+    <text x="20" y="28" class="hand small" font-weight="700" fill="#89591e">Failure, partial vend or timeout</text>
+    <text x="20" y="52" class="hand small" fill="#89591e">→ Apply agreed void / refund handling and retain an audit record</text>
+    <text x="20" y="70" class="hand tiny" fill="#89591e">Exact rules depend on acquirer, payment type and confirmed device response.</text>
+  </g>
+
+  <!-- to-confirm panel -->
+  <path d="M1140 605 Q1335 599 1530 605 L1527 942 Q1337 949 1141 941 Z" fill="#fff8e8" stroke="#bd812f" stroke-width="3" stroke-linejoin="round"/>
+  <text x="1165" y="642" class="hand head" fill="#89591e">To Confirm</text>
+  <g class="hand body">
+    <circle cx="1172" cy="680" r="4" fill="#bd812f"/><text x="1185" y="685">Q3mini −30°C rating</text><text x="1185" y="704" class="small">and cold-start behavior</text>
+    <circle cx="1172" cy="731" r="4" fill="#bd812f"/><text x="1185" y="736">EC3320 protocol + security</text>
+    <circle cx="1172" cy="764" r="4" fill="#bd812f"/><text x="1185" y="769">Timeouts, retries, duplicate</text><text x="1185" y="788" class="small">message protection</text>
+    <circle cx="1172" cy="815" r="4" fill="#bd812f"/><text x="1185" y="820">Interac / credit void flows</text>
+    <circle cx="1172" cy="848" r="4" fill="#bd812f"/><text x="1185" y="853">Partial vend handling</text>
+    <circle cx="1172" cy="881" r="4" fill="#bd812f"/><text x="1185" y="886">Cloud API / webhook scope</text>
+  </g>
+  <path d="M1165 910 Q1325 906 1502 910" stroke="#bd812f" stroke-width="1.7" stroke-dasharray="5 5" fill="none"/>
+  <text x="1167" y="930" class="hand tiny" fill="#89591e">Dashed links = proposed / to validate</text>
+
+  <text x="74" y="977" class="hand tiny" fill="#64737c">GoldSky × Outdoor Vending Solutions  •  Working discussion visual  •  Not a final interface specification</text>
+</svg>

@@ -1,5 +1,5 @@
 """
-Aegis Flex controller simulator (docs/flex_controller_api.md): a stand-in for a partner's
+Aegis Flex controller simulator (docs/partner/flex_controller_api.md): a stand-in for a partner's
 controller, e.g. Outdoor Vend's InHand EC3320, so a terminal can be tested end to end without the
 machine. Python 3, standard library only.
 
