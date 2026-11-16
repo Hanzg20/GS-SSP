@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Minus, X, Mic, Edit3, ChevronRight, ChevronDown, XCircle, Loader2, Bell, Search, ShieldAlert, Check, ClipboardList, Menu as MenuIcon, Globe } from 'lucide-react'
+import { Plus, Minus, X, Mic, Edit3, ChevronRight, XCircle, Loader2, Bell, Check, ClipboardList, Menu as MenuIcon, Globe } from 'lucide-react'
 import VoiceOrder from './VoiceOrder.jsx'
 import { PartyPicker, TablePicks, EnoughCheck } from './Plan.jsx'
 import Bill from './Bill.jsx'
 import { T, LANG, LANGS, pickLang, dishName } from './i18n.js'
 import { supabase, askGuide, callFunction, money, store, newRef } from './lib.js'
-import { dishSubName, Beaver, DishImg, avoidWarning, DishFacts, AvoidLabel, Sheet, DishSheet, AvoidSheet, BeaverScreen, Signature, CategorySheet } from './shared.jsx'
+import { Beaver, DishImg, Sheet, DishSheet, AvoidSheet, BeaverScreen, Signature, CategorySheet,
+  useMenuSections, useCategoryTabs, MenuFilters, DishRow, MenuSections } from './shared.jsx'
 
 /*
  * Ourea Scan: a customer scans the QR on their table and orders from their
@@ -293,17 +294,11 @@ export default function TableApp({ token }) {
   const [query, setQuery] = useState('')
   const [avoid, setAvoidState] = useState(() => store.get('ourea_scan_avoid') || [])
   const [avoidOpen, setAvoidOpen] = useState(false)
-  const [activeCat, setActiveCat] = useState(null)
   const [call, setCall] = useState(null)        // the table's latest call {id, reason, status}
   const [callOpen, setCallOpen] = useState(false)
   const [callBusy, setCallBusy] = useState(false)
   const [callError, setCallError] = useState(null)
   const [logoBroken, setLogoBroken] = useState(false)
-  const sectionRefs = useRef({})
-  const tabsRef = useRef(null)
-  const headerRef = useRef(null)
-  // Where the sticky header ends: a section counts as reached when it comes up to there.
-  const headerBottom = () => (headerRef.current?.getBoundingClientRect().bottom || 140) + 12
 
   const setAvoid = (a) => { setAvoidState(a); store.set('ourea_scan_avoid', a) }
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast((t) => (t === msg ? null : t)), 3500) }
@@ -376,12 +371,7 @@ export default function TableApp({ token }) {
     await readCall()
   }
 
-  const categories = useMemo(() => menu ? [...new Set(menu.products.map((p) => p.category || '—'))] : [], [menu])
-  const q = query.trim().toLowerCase()
-  const matches = (p) => !q || [p.name, dishName(p), p.description, p.ingredients].some((x) => (x || '').toLowerCase().includes(q))
-  const sections = useMemo(() => menu ? categories.map((c) => ({ c, items: menu.products.filter((p) => (p.category || '—') === c && matches(p)) })).filter((s) => s.items.length) : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [menu, categories, q])
+  const { categories, sections, q } = useMenuSections(menu?.products, query)
   const byId = useMemo(() => Object.fromEntries((menu?.products || []).map((p) => [p.id, p])), [menu])
 
   // What the whole table already has, per dish: lines on the check plus QR orders still waiting.
@@ -393,28 +383,7 @@ export default function TableApp({ token }) {
   }, [table])
 
   // Category tabs follow the scroll (the section nearest the top is the active one).
-  useEffect(() => {
-    if (!sections.length || view !== 'menu') return
-    const onScroll = () => {
-      let cur = sections[0].c
-      for (const s of sections) {
-        const el = sectionRefs.current[s.c]
-        if (el && el.getBoundingClientRect().top <= headerBottom() + 4) cur = s.c
-      }
-      setActiveCat(cur)
-    }
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [sections, view])
-  useEffect(() => {
-    const tab = tabsRef.current?.querySelector(`[data-cat="${CSS.escape(activeCat || '')}"]`)
-    tab?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
-  }, [activeCat])
-  const jumpTo = (c) => {
-    const el = sectionRefs.current[c]
-    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - headerBottom(), behavior: 'smooth' })
-  }
+  const nav = useCategoryTabs(sections, view === 'menu')
 
   // ---- the shared cart: every change goes to the server, which answers with the table's cart
   const cartError = (data) => {
@@ -510,7 +479,7 @@ export default function TableApp({ token }) {
   return (
     <div className="min-h-screen pb-32 bg-paper">
       {/* Store first: its logo and name lead the page. */}
-      <header ref={headerRef} className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-100">
+      <header ref={nav.headerRef} className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-100">
         <div className="max-w-3xl mx-auto px-4 py-2.5 flex items-center gap-3">
           {menu.store.logo_url && !logoBroken
             ? <img src={menu.store.logo_url} alt="" onError={() => setLogoBroken(true)} className="w-10 h-10 rounded-xl object-cover bg-slate-100 shrink-0" />
@@ -537,31 +506,8 @@ export default function TableApp({ token }) {
           </button>
         )}
         {/* Search, allergy filter, and the category tabs that follow the scroll. */}
-        <div className="max-w-3xl mx-auto px-4 pb-2 flex gap-2">
-          <label className="flex-1 flex items-center gap-2 bg-paper rounded-2xl px-3 py-2 border border-slate-200 focus-within:border-gold-500">
-            <Search className="w-4 h-4 text-ink-mute shrink-0" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={T.search} className="bg-transparent outline-none w-full text-[15px]" />
-            {query && <button onClick={() => setQuery('')} aria-label={T.close}><X className="w-4 h-4 text-ink-mute" /></button>}
-          </label>
-          <button onClick={() => setAvoidOpen(true)}
-            className={`shrink-0 px-3 rounded-2xl text-sm font-black border flex items-center gap-1 ${avoid.length ? 'bg-red-50 border-red-300 text-red-700' : 'bg-white border-slate-200 text-ink-soft'}`}>
-            <ShieldAlert className="w-4 h-4" />{T.avoid}{avoid.length ? ` ${avoid.length}` : ''}
-          </button>
-        </div>
-        {categories.length > 1 && !q && (
-          <div className="max-w-3xl mx-auto ps-4 pb-2.5 flex items-center gap-2">
-            <nav ref={tabsRef} className="flex-1 overflow-x-auto no-scrollbar flex gap-2">
-              {sections.map(({ c }) => (
-                <button key={c} data-cat={c} onClick={() => jumpTo(c)}
-                  className={`px-4 py-1.5 rounded-full text-sm font-black whitespace-nowrap transition-colors ${activeCat === c ? 'bg-ink text-white' : 'bg-slate-100 text-ink-soft'}`}>
-                  {c}
-                </button>
-              ))}
-            </nav>
-            <button onClick={() => setCatsOpen(true)} aria-label={T.allCategories}
-              className="shrink-0 me-4 w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm"><ChevronDown className="w-5 h-5" /></button>
-          </div>
-        )}
+        <MenuFilters query={query} setQuery={setQuery} avoid={avoid} onAvoid={() => setAvoidOpen(true)}
+          categories={categories} sections={sections} nav={nav} q={q} onAllCategories={() => setCatsOpen(true)} />
       </header>
 
       <main className="max-w-3xl mx-auto px-4 pt-2">
@@ -589,47 +535,10 @@ export default function TableApp({ token }) {
             <p className="mt-3 font-bold text-ink-soft">{T.noMatch}</p>
           </div>
         )}
-        {sections.map(({ c, items }) => (
-          <section key={c} ref={(el) => { sectionRefs.current[c] = el }} className="pt-5">
-            <h2 className="flex items-center gap-2 font-black text-lg text-ink mb-2">
-              <span className="w-1.5 h-5 rounded-full bg-gradient-to-b from-gold-400 to-sky-500" />{c}
-            </h2>
-            <div className="bg-white rounded-3xl shadow-card divide-y divide-slate-100 overflow-hidden">
-              {items.map((p) => {
-                const w = avoidWarning(p, avoid)
-                const ordered = orderedCount[p.id] || 0
-                const here = inCart(p.id)
-                const sub = dishSubName(p)
-                return (
-                  <div key={p.id} role="button" tabIndex={0} onClick={() => setDishFor(p)}
-                    className={`flex gap-3 p-3 active:bg-slate-50 ${p.sold_out ? 'opacity-50' : ''}`}>
-                    <DishImg src={p.image_url} lazy className="w-24 h-24 rounded-2xl object-cover bg-slate-100 shrink-0" />
-                    <div className="min-w-0 flex-1 flex flex-col">
-                      <h3 className="font-black text-ink leading-snug">{dishName(p)}</h3>
-                      {sub && <p className="text-xs text-ink-mute">{sub}</p>}
-                      {p.description && <p className="text-xs text-ink-mute mt-0.5 line-clamp-2">{p.description}</p>}
-                      <DishFacts p={p} compact />
-                      <AvoidLabel w={w} />
-                      <div className="flex items-end justify-between mt-auto pt-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-black text-gold-700 text-[17px]">{money(p.price_cents)}{p.modifier_groups?.length ? <sup className="text-xs">+</sup> : null}</span>
-                          {ordered > 0 && <span className="text-[11px] font-black bg-sky-50 text-sky-800 px-2 py-0.5 rounded-full">{T.ordered(ordered)}</span>}
-                        </div>
-                        {p.sold_out ? <span className="text-xs font-black text-ink-mute">{T.soldOutShort}</span> : (
-                          <button onClick={(e) => { e.stopPropagation(); p.modifier_groups?.length ? setDishFor(p) : addLine(p) }}
-                            className="relative w-9 h-9 rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-ink flex items-center justify-center shadow-[0_4px_12px_rgba(255,159,0,.35)] active:scale-90 transition-transform" aria-label={T.add}>
-                            <Plus className="w-5 h-5" strokeWidth={3} />
-                            {here > 0 && <span className="absolute -top-1.5 -end-1.5 bg-ink text-white text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">{here}</span>}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        ))}
+        <MenuSections sections={sections} nav={nav} row={(p) => (
+          <DishRow key={p.id} p={p} avoid={avoid} here={inCart(p.id)} onOpen={setDishFor} onQuickAdd={(x) => addLine(x)}
+            badge={orderedCount[p.id] > 0 && <span className="text-[11px] font-black bg-sky-50 text-sky-800 px-2 py-0.5 rounded-full">{T.ordered(orderedCount[p.id])}</span>} />
+        )} />
         <p className="text-xs text-ink-mute text-center mt-6 px-6">{T.confirmHint}</p>
         <Signature className="mt-3 mb-4" />
       </main>
@@ -748,7 +657,7 @@ export default function TableApp({ token }) {
       )}
       {avoidOpen && <AvoidSheet avoid={avoid} setAvoid={setAvoid} onClose={() => setAvoidOpen(false)} />}
       {menuOpen && <MenuSheet guest={guest} onName={setGuestName} party={party} setParty={setParty} onClose={() => setMenuOpen(false)} />}
-      {catsOpen && <CategorySheet sections={sections} active={activeCat} onPick={(c) => { setCatsOpen(false); jumpTo(c) }} onClose={() => setCatsOpen(false)} />}
+      {catsOpen && <CategorySheet sections={sections} active={nav.activeCat} onPick={(c) => { setCatsOpen(false); nav.jumpTo(c) }} onClose={() => setCatsOpen(false)} />}
       {dishFor && (
         <DishSheet product={dishFor} avoid={avoid} onExplain={(p) => askGuide({ action: 'explain', token, product_id: p.id, lang: LANG })} start={dishStart} onClose={() => { setDishFor(null); setDishStart(null); dishDone.current?.(false); dishDone.current = null }}
           onAdd={async (choice, qty) => {

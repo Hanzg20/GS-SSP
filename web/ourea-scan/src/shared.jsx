@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react'
-import { Plus, Minus, X, Check } from 'lucide-react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Plus, Minus, X, Check, Search, ShieldAlert, ChevronDown } from 'lucide-react'
 import { AiCard, BeaverImg } from './ai.jsx'
 import { T, LANG, ALLERGENS, DIETARY, joinList, dishName } from './i18n.js'
 import { money } from './lib.js'
@@ -257,4 +257,130 @@ export function CategorySheet({ sections, active, onPick, onClose }) {
       </div>
     </Sheet>
   )
+}
+
+// ---------------------------------------------------------------- the menu: search, category tabs, dish rows
+
+/** The menu's categories (store order) and the sections that match the search. */
+export function useMenuSections(products, query) {
+  const categories = useMemo(() => products ? [...new Set(products.map((p) => p.category || '—'))] : [], [products])
+  const q = query.trim().toLowerCase()
+  const sections = useMemo(() => {
+    if (!products) return []
+    const matches = (p) => !q || [p.name, dishName(p), p.description, p.ingredients].some((x) => (x || '').toLowerCase().includes(q))
+    return categories.map((c) => ({ c, items: products.filter((p) => (p.category || '—') === c && matches(p)) })).filter((s) => s.items.length)
+  }, [products, categories, q])
+  return { categories, sections, q }
+}
+
+/** Category tabs that follow the scroll (the section nearest the sticky header is active), and jump-to. */
+export function useCategoryTabs(sections, enabled = true) {
+  const [activeCat, setActiveCat] = useState(null)
+  const sectionRefs = useRef({})
+  const tabsRef = useRef(null)
+  const headerRef = useRef(null)
+  // Where the sticky header ends: a section counts as reached when it comes up to there.
+  const headerBottom = () => (headerRef.current?.getBoundingClientRect().bottom || 140) + 12
+  useEffect(() => {
+    if (!sections.length || !enabled) return
+    const onScroll = () => {
+      let cur = sections[0].c
+      for (const s of sections) {
+        const el = sectionRefs.current[s.c]
+        if (el && el.getBoundingClientRect().top <= headerBottom() + 4) cur = s.c
+      }
+      setActiveCat(cur)
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [sections, enabled])
+  useEffect(() => {
+    const tab = tabsRef.current?.querySelector(`[data-cat="${CSS.escape(activeCat || '')}"]`)
+    tab?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
+  }, [activeCat])
+  const jumpTo = (c) => {
+    const el = sectionRefs.current[c]
+    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - headerBottom(), behavior: 'smooth' })
+  }
+  return { activeCat, sectionRefs, tabsRef, headerRef, jumpTo }
+}
+
+/** Search box + the allergy filter button + the category tabs, for the sticky header. */
+export function MenuFilters({ query, setQuery, avoid, onAvoid, categories, sections, nav, q, onAllCategories }) {
+  return (
+    <>
+      <div className="max-w-3xl mx-auto px-4 pb-2 flex gap-2">
+        <label className="flex-1 flex items-center gap-2 bg-paper rounded-2xl px-3 py-2 border border-slate-200 focus-within:border-gold-500">
+          <Search className="w-4 h-4 text-ink-mute shrink-0" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={T.search} className="bg-transparent outline-none w-full text-[15px]" />
+          {query && <button onClick={() => setQuery('')} aria-label={T.close}><X className="w-4 h-4 text-ink-mute" /></button>}
+        </label>
+        <button onClick={onAvoid}
+          className={`shrink-0 px-3 rounded-2xl text-sm font-black border flex items-center gap-1 ${avoid.length ? 'bg-red-50 border-red-300 text-red-700' : 'bg-white border-slate-200 text-ink-soft'}`}>
+          <ShieldAlert className="w-4 h-4" />{T.avoid}{avoid.length ? ` ${avoid.length}` : ''}
+        </button>
+      </div>
+      {categories.length > 1 && !q && (
+        <div className="max-w-3xl mx-auto ps-4 pb-2.5 flex items-center gap-2">
+          <nav ref={nav.tabsRef} className="flex-1 overflow-x-auto no-scrollbar flex gap-2">
+            {sections.map(({ c }) => (
+              <button key={c} data-cat={c} onClick={() => nav.jumpTo(c)}
+                className={`px-4 py-1.5 rounded-full text-sm font-black whitespace-nowrap transition-colors ${nav.activeCat === c ? 'bg-ink text-white' : 'bg-slate-100 text-ink-soft'}`}>
+                {c}
+              </button>
+            ))}
+          </nav>
+          <button onClick={onAllCategories} aria-label={T.allCategories}
+            className="shrink-0 me-4 w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm"><ChevronDown className="w-5 h-5" /></button>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** One dish in the menu list: photo, names, facts, price, and the + button (opens the sheet when it has options). */
+export function DishRow({ p, avoid, here = 0, badge = null, onOpen, onQuickAdd }) {
+  const w = avoidWarning(p, avoid)
+  const sub = dishSubName(p)
+  return (
+    <div role="button" tabIndex={0} onClick={() => onOpen(p)}
+      className={`flex gap-3 p-3 active:bg-slate-50 ${p.sold_out ? 'opacity-50' : ''}`}>
+      <DishImg src={p.image_url} lazy className="w-24 h-24 rounded-2xl object-cover bg-slate-100 shrink-0" />
+      <div className="min-w-0 flex-1 flex flex-col">
+        <h3 className="font-black text-ink leading-snug">{dishName(p)}</h3>
+        {sub && <p className="text-xs text-ink-mute">{sub}</p>}
+        {p.description && <p className="text-xs text-ink-mute mt-0.5 line-clamp-2">{p.description}</p>}
+        <DishFacts p={p} compact />
+        <AvoidLabel w={w} />
+        <div className="flex items-end justify-between mt-auto pt-2">
+          <div className="flex items-center gap-2">
+            <span className="font-black text-gold-700 text-[17px]">{money(p.price_cents)}{p.modifier_groups?.length ? <sup className="text-xs">+</sup> : null}</span>
+            {badge}
+          </div>
+          {p.sold_out ? <span className="text-xs font-black text-ink-mute">{T.soldOutShort}</span> : (
+            <button onClick={(e) => { e.stopPropagation(); p.modifier_groups?.length ? onOpen(p) : onQuickAdd(p) }}
+              className="relative w-9 h-9 rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-ink flex items-center justify-center shadow-[0_4px_12px_rgba(255,159,0,.35)] active:scale-90 transition-transform" aria-label={T.add}>
+              <Plus className="w-5 h-5" strokeWidth={3} />
+              {here > 0 && <span className="absolute -top-1.5 -end-1.5 bg-ink text-white text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">{here}</span>}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** The menu's sections, each a card of dish rows (rendered by [row]). */
+export function MenuSections({ sections, nav, row }) {
+  return sections.map(({ c, items }) => (
+    <section key={c} ref={(el) => { nav.sectionRefs.current[c] = el }} className="pt-5">
+      <h2 className="flex items-center gap-2 font-black text-lg text-ink mb-2">
+        <span className="w-1.5 h-5 rounded-full bg-gradient-to-b from-gold-400 to-sky-500" />{c}
+      </h2>
+      <div className="bg-white rounded-3xl shadow-card divide-y divide-slate-100 overflow-hidden">
+        {items.map(row)}
+      </div>
+    </section>
+  ))
 }

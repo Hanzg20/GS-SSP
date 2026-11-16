@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { X, Loader2, CheckCircle2, AlertTriangle, Receipt } from 'lucide-react'
+import { isEmail, savedEmail, saveEmail, loadNuvei, mountNuvei, TipPicker, tipCentsOf, EmailField } from './pay.jsx'
 
 /*
  * Pay at the table: the table's live check (scan_bill), then all of it or a
@@ -9,31 +10,7 @@ import { X, Loader2, CheckCircle2, AlertTriangle, Receipt } from 'lucide-react'
  * supabase/functions/scan-pay, docs/migrations/2026-10-28_scan_pay.sql.
  */
 
-const NUVEI_SCRIPT = 'https://cdn.safecharge.com/safecharge_resources/v1/checkout/checkout.js'
-// Tipping.kt: the same choices as Ourea / Eye / Iris, of the amount before tax.
-const TIP_PERCENTS = [10, 12, 15]
-const percentOf = (basis, bps) => Math.floor((basis * bps + 5000) / 10000)
 const money = (c) => '$' + (c / 100).toFixed(2)
-// Nuvei needs the customer's email for a card payment; it goes to Nuvei only.
-// Remembered on this phone (and only here) so a second visit doesn't ask again.
-const isEmail = (s) => s.length <= 100 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)
-const EMAIL_KEY = 'scan_receipt_email'
-const savedEmail = () => { try { return localStorage.getItem(EMAIL_KEY) || '' } catch { return '' } }
-
-let scriptPromise = null
-function loadNuvei() {
-  if (window.checkout) return Promise.resolve()
-  if (!scriptPromise) {
-    scriptPromise = new Promise((ok, fail) => {
-      const s = document.createElement('script')
-      s.src = NUVEI_SCRIPT
-      s.onload = () => (window.checkout ? ok() : fail(new Error('no checkout')))
-      s.onerror = () => { scriptPromise = null; fail(new Error('script')) }
-      document.head.appendChild(s)
-    })
-  }
-  return scriptPromise
-}
 
 /** The tax inside a payment of [amount] (same rule as the server and Ourea). */
 function taxOf(check, amount) {
@@ -72,8 +49,7 @@ export default function Bill({ token, T, supabase, callPay, onClose }) {
     : mode === 'split' ? Math.min(balance, Math.ceil(balance / ways))
     : Math.min(balance, Math.round(Number(custom || 0) * 100) || 0)
   const basis = check ? amount - taxOf(check, amount) : 0
-  const maxTip = Math.max(basis, 2000)
-  const tipCents = tip === 'custom' ? Math.min(Math.round(Number(customTip || 0) * 100) || 0, maxTip) : tip === 'none' ? 0 : tip ?? 0
+  const tipCents = tipCentsOf(tip, customTip, basis)
 
   // A changed amount means a changed tip: choose again.
   useEffect(() => { if (tip !== null && tip !== 'none' && tip !== 'custom') setTip(null) }, [amount]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -95,7 +71,7 @@ export default function Bill({ token, T, supabase, callPay, onClose }) {
   const pay = async () => {
     setError(null); confirmed.current = false
     setState('paying')
-    try { localStorage.setItem(EMAIL_KEY, email.trim()) } catch { /* private mode: fine */ }
+    saveEmail(email.trim())
     const r = await callPay({ action: 'open', token, amount_cents: amount, tip_cents: tipCents, email: email.trim() })
     if (!r.session_token) {
       setState('ready')
@@ -116,29 +92,9 @@ export default function Bill({ token, T, supabase, callPay, onClose }) {
   // Nuvei's card form, once its container is on screen.
   useEffect(() => {
     if (state !== 'paying' || !session || !window.checkout) return
-    window.checkout({
-      sessionToken: session.session_token,
-      env: session.env,
-      merchantId: session.merchant_id,
-      merchantSiteId: session.merchant_site_id,
-      country: session.country,
-      currency: session.currency,
-      amount: Number(session.amount),
-      locale: T.nuveiLocale,
-      email: session.email,
-      billingAddress: { country: session.country, email: session.email },
-      pmWhitelist: ['cc_card'],
-      renderTo: '#nuvei-checkout',
-      onResult: (res) => {
-        const status = String(res?.result || res?.transactionStatus || '').toUpperCase()
-        if (res?.cancelled) {
-          callPay({ action: 'cancel', token, id: session.id })
-          setSession(null); setState('ready')
-        } else if (status === 'APPROVED') {
-          finish(session.id)
-        }
-        // DECLINED / ERROR: Nuvei's form says so and lets the customer try another card.
-      },
+    mountNuvei(session, T, {
+      onApproved: () => finish(session.id),
+      onCancelled: () => { callPay({ action: 'cancel', token, id: session.id }); setSession(null); setState('ready') },
     })
   }, [state, session]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -235,42 +191,8 @@ export default function Bill({ token, T, supabase, callPay, onClose }) {
               )}
             </div>
 
-            {amount > 0 && (
-              <div>
-                <h3 className="font-bold text-slate-900 mb-1">{T.tipTitle}</h3>
-                <p className="text-xs text-slate-500 mb-2">{T.tipBasis(money(basis))}</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {TIP_PERCENTS.map((pct) => {
-                    const c = percentOf(basis, pct * 100)
-                    return (
-                      <button key={pct} onClick={() => setTip(c)}
-                        className={`py-3 rounded-xl border font-bold ${tip === c ? 'bg-gold-50 text-ink border-gold-500 border-2' : 'bg-white border-slate-300'}`}>
-                        {pct}%<span className="block text-xs font-normal">{money(c)}</span>
-                      </button>
-                    )
-                  })}
-                  <button onClick={() => setTip('custom')}
-                    className={`py-3 rounded-xl border font-bold ${tip === 'custom' ? 'bg-gold-50 text-ink border-gold-500 border-2' : 'bg-white border-slate-300'}`}>{T.customTip}</button>
-                  <button onClick={() => setTip('none')}
-                    className={`col-span-2 py-3 rounded-xl border font-bold ${tip === 'none' ? 'bg-ink text-white border-ink' : 'bg-white border-slate-300'}`}>{T.noTip}</button>
-                </div>
-                {tip === 'custom' && (
-                  <input inputMode="decimal" value={customTip ?? ''} placeholder="0.00"
-                    onChange={(e) => setCustomTip(e.target.value.replace(/[^0-9.]/g, '').slice(0, 7))}
-                    className="mt-2 w-full px-4 py-3 rounded-xl border border-slate-300" />
-                )}
-              </div>
-            )}
-
-            {amount > 0 && (
-              <div>
-                <h3 className="font-bold text-slate-900 mb-1">{T.emailLabel}</h3>
-                <input type="email" inputMode="email" autoComplete="email" value={email} placeholder="name@example.com"
-                  onChange={(e) => setEmail(e.target.value.slice(0, 100))}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300" />
-                <p className="text-xs text-slate-500 mt-1">{T.emailHint}</p>
-              </div>
-            )}
+            {amount > 0 && <TipPicker T={T} basis={basis} tip={tip} setTip={setTip} customTip={customTip} setCustomTip={setCustomTip} />}
+            {amount > 0 && <EmailField T={T} email={email} setEmail={setEmail} />}
           </div>
         )}
       </>

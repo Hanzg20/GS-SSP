@@ -74,6 +74,22 @@ verify_jwt = false
 # checked on the terminal, as for card refunds.
 verify_jwt = true
 
+[functions.arke-pay]
+# Arke online ordering: customers' phones pay their order without a login --
+# the order's link token is the credential, amounts and limits come from the
+# database (online_pay_*).
+verify_jwt = false
+
+[functions.arke-pay-dmn]
+# Nuvei's payment notification for arke-pay. Authenticity comes from the
+# advanceResponseChecksum signed with the store's Nuvei secret.
+verify_jwt = false
+
+[functions.arke-pay-refund]
+# Default (true): only a signed-in terminal may give back a rejected order's
+# payment. The function maps that session to its store (device_auth_map) itself.
+verify_jwt = true
+
 [functions.nuvei-online-setup]
 # Default (true): Cael's signed-in users. The function then requires
 # is_sys_admin() as the caller before testing / saving a store's Nuvei account.
