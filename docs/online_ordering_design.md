@@ -1,6 +1,6 @@
 # 线上订餐 / 订货系统 设计草案
 
-2026-11-16 草案，还没开工。
+2026-11-16 草案。产品名定为 **Arke**（2026-11-16）。第 1 期进行中：数据库迁移 `docs/migrations/2026-11-16_arke_online_orders.sql`，付款函数 `arke-pay` / `arke-pay-dmn` / `arke-pay-refund`，顾客页面 `web/ourea-scan/src/ArkeApp.jsx`。
 
 ## 老板定下的方向（2026-11-16）
 
@@ -35,7 +35,7 @@
 - **数据**：按 `docs/database_design.md` 新建 `online` schema，只能通过 `public.online_*` RPC 读写。
   - `online.stores`：短名、营业时间、自取准备时间、是否开放线上、最低起送额。
   - `online.delivery_zones`：按距离或邮编划区，每区配送费和起送额。
-  - `online.orders` / `online.order_items`：订单头和明细。取货方式 `PICKUP` / `OWN_DELIVERY` / `THIRD_PARTY`；状态：待付款 → 已付款待接单 → 已接单（含预计时间）→ 备好 → 已取 / 配送中 → 完成；另有已取消、已退款。
+  - `online.orders`：订单，明细放在 `items`（JSONB，和桌边扫码单同一格式）。取货方式 `PICKUP` / `OWN_DELIVERY` / `THIRD_PARTY`；状态：待付款 → 已付款待接单 → 已接单（含预计时间）→ 备好 → 已取 / 配送中 → 完成；另有已取消、已退款。
   - `online.payments`：这个业务线自己的付款表（按"每条业务线自己的交易表"规则，不往别的业务线表里抄）。
   - 顾客第一期不注册账号：填名字、电话、邮箱；状态页链接发到邮箱。
 - **店里接单**：
