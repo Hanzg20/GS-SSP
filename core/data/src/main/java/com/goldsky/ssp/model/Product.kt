@@ -84,6 +84,28 @@ private val modifierJson = kotlinx.serialization.json.Json { ignoreUnknownKeys =
 fun List<Product>.forVertical(verticalType: String): List<Product> =
     filter { it.vertical_type.equals(verticalType, ignoreCase = true) }
 
+/**
+ * A promotion package: `attributes.credit_cents` above the price ("buy 4 get 1",
+ * $16 for 20 minutes).
+ */
+val Product.isPromotion: Boolean
+    get() = (attributes?.get("credit_cents")?.jsonPrimitive?.intOrNull ?: 0) > price_cents
+
+/**
+ * The packages for a screen with [slots] package buttons (Aegis Wash: 5). A promotion
+ * always gets a button (owner, 2026-11-16: Eagleson's 6th package, buy 4 get 1, was cut
+ * off and never sold); the regular packages fill the rest in list order, the last ones
+ * left off (still payable through Custom). At least one regular package stays. The
+ * list order is kept.
+ */
+fun List<Product>.forButtons(slots: Int): List<Product> {
+    if (size <= slots) return this
+    val regular = filterNot { it.isPromotion }
+    val promos = filter { it.isPromotion }.take(if (regular.isEmpty()) slots else slots - 1)
+    val kept = (promos + regular.take(slots - promos.size)).toSet()
+    return filter { it in kept }
+}
+
 @Serializable
 data class ModifierGroup(
     val id: String,

@@ -38,6 +38,7 @@ import com.goldsky.ssp.model.PaymentMethodMode
 import com.goldsky.ssp.model.Product
 import com.goldsky.ssp.model.WashPackage
 import com.goldsky.ssp.model.forVertical
+import com.goldsky.ssp.model.forButtons
 import com.goldsky.ssp.payment.*
 import com.goldsky.ssp.payment.hardware.DeclineReason
 import com.goldsky.ssp.payment.hardware.HardwareFactory
@@ -396,7 +397,7 @@ class MainActivity : BaseAdActivity() {
     private fun loadInitialConfig(orgId: String?) {
         CoroutineScope(Dispatchers.Main).launch {
             val config = ConfigManager.loadConfig(this@MainActivity, orgId)
-            refreshProductsUI(config.products.forVertical(WASH_VERTICAL).filter { it.is_active })
+            refreshProductsUI(config.products.forVertical(WASH_VERTICAL).filter { it.is_active }.forButtons(5))
             refreshVipBanner()
 
             // Sync dynamic TTS language
@@ -2477,7 +2478,7 @@ class MainActivity : BaseAdActivity() {
                 // already uses elsewhere (see the RemoteCommandManager wiring).
                 DeviceAccessManager.applyActiveState(identity?.is_active)
                 val config = ConfigManager.loadConfig(this@MainActivity, identity?.org_id)
-                refreshProductsUI(config.products.forVertical(WASH_VERTICAL).filter { it.is_active })
+                refreshProductsUI(config.products.forVertical(WASH_VERTICAL).filter { it.is_active }.forButtons(5))
                 DiagnosticManager.recordMaintenance(deviceSn, "DASH_FORCE_SYNC")
 
                 updateHealthUI()
