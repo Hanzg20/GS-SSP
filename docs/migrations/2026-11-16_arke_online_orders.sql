@@ -542,8 +542,9 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, online AS $$
 BEGIN
   IF NOT (is_sys_admin() OR p_org IN (SELECT member_org_ids())) THEN RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501'; END IF;
   RETURN coalesce((SELECT jsonb_agg(online.order_json(o, true) ORDER BY o.created_at DESC)
-                     FROM (SELECT * FROM online.orders WHERE org_id = p_org AND status <> 'AWAITING_PAYMENT'
-                            ORDER BY created_at DESC LIMIT least(coalesce(p_limit, 100), 500)) o), '[]'::jsonb);
+                     FROM online.orders o
+                    WHERE o.id IN (SELECT id FROM online.orders WHERE org_id = p_org AND status <> 'AWAITING_PAYMENT'
+                                    ORDER BY created_at DESC LIMIT least(coalesce(p_limit, 100), 500))), '[]'::jsonb);
 END $$;
 
 REVOKE ALL ON FUNCTION public.cmp_online_store_get(UUID) FROM public, anon;
