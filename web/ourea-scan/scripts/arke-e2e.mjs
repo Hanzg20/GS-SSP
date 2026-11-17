@@ -34,6 +34,7 @@ async function rpc(fn, args) {
 const place = (items, o = {}) => rpc('online_place_order', {
   p_slug: o.slug ?? SLUG, p_items: items, p_name: o.name ?? 'Test Customer', p_phone: o.phone ?? '613-555-0123',
   p_note: o.note ?? null, p_client_ref: o.ref ?? ref(),
+  ...(o.fulfilment ? { p_fulfilment: o.fulfilment, p_address: o.address ?? null } : {}),
 })
 const expectMsg = async (name, items, msg, o) => {
   const r = await place(items, o)
@@ -116,6 +117,35 @@ check('付款金额 = 小计 + 税 + 小费', opened?.amount === ((sub + tax + 1
 // (No 'confirm' here: a session gets one status check from Nuvei, kept for the real payment in the browser.)
 check('别的订单令牌查不到这笔付款', (await pay({ action: 'confirm', token: 'nope', id: opened?.id }))?.error === 'not_found')
 
+// ---- phase 2: the store's own delivery (seed-arke.sql: Near K2K/K2L $3.99 min $15, Far K2M $6.99 min $30, Next door K2K1X $1)
+const d = menu.store.delivery
+check('店铺页带配送信息', d?.minutes === 40 && d.fee_from_cents === 100 && d.min_order_from_cents === 0, d)
+const quote = (postal, sub) => rpc('online_delivery_quote', { p_slug: SLUG, p_postal: postal, p_subtotal_cents: sub ?? null })
+check('邮编格式不对 -> bad_postal', (await quote('12345'))?.message === 'bad_postal')
+check('不在配送区 -> out_of_area', (await quote('M5V 1A1'))?.message === 'out_of_area')
+const near = await quote('k2k 2b2', 2000)
+check('K2K 2B2 -> Near $3.99，税 13%', near?.success && near.zone === 'Near' && near.fee_cents === 399 && near.fee_tax_cents === 52 && near.postal === 'K2K2B2', near)
+check('最长前缀优先：K2K 1X1 -> Next door', (await quote('K2K1X1'))?.zone === 'Next door')
+const far = await quote('K2M 1A1', 1000)
+check('没到起送额 -> below_minimum（带起送额）', far?.message === 'below_minimum' && far.min_order_cents === 3000, far)
+const addr = { line1: '1 Delivery Rd', unit: '1203', city: 'Ottawa', postal: 'K2K 2B2', instructions: 'buzz 1203' }
+await expectMsg('配送没填地址 -> address_required', items, 'address_required', { fulfilment: 'OWN_DELIVERY' })
+await expectMsg('配送地址不在范围 -> out_of_area', items, 'out_of_area', { fulfilment: 'OWN_DELIVERY', address: { ...addr, postal: 'M5V1A1' } })
+await expectMsg('配送没到起送额 -> below_minimum', [{ product_id: WATER, quantity: 1 }], 'below_minimum', { fulfilment: 'OWN_DELIVERY', address: { ...addr, postal: 'K2M1A1' } })
+await expectMsg('不认识的取餐方式 -> bad_request', items, 'bad_request', { fulfilment: 'DRONE' })
+const dPlaced = await place(items, { fulfilment: 'OWN_DELIVERY', address: addr })
+check('配送单：配送费 $3.99', dPlaced?.success && dPlaced.delivery_fee_cents === 399, dPlaced)
+check('配送单：税 = 菜的税 + 配送费的税', dPlaced?.tax_cents === tax + 52, { got: dPlaced?.tax_cents, want: tax + 52 })
+const dSt = await rpc('online_order_status', { p_token: dPlaced.token })
+check('配送单订单页：方式、地址（邮编规范成 K2K 2B2）', dSt?.fulfilment === 'OWN_DELIVERY' && dSt.delivery_address?.postal === 'K2K 2B2'
+  && dSt.delivery_address.instructions === 'buzz 1203', dSt?.delivery_address)
+check('配送单订单页：合计含配送费', dSt?.total_cents === sub + 399 + tax + 52, dSt?.total_cents)
+check('配送单订单页：店里的预计送达时间', dSt?.store?.delivery_minutes === 40)
+const dOpened = await pay({ action: 'open', token: dPlaced.token, tip_cents: 0, email: 'test@example.com', lang: 'zh' })
+check('配送单付款金额 = 小计 + 配送费 + 税', dOpened?.amount_cents === sub + 399 + tax + 52, dOpened)
+check('配送设置接口不对顾客开放', !!(await sb.rpc('cmp_online_delivery_save', { p_org: 'e2e5ca00-0000-4000-8000-000000000001', p_enabled: false, p_minutes: 40, p_tax_bps: 1300, p_zones: [] })).error)
+
 console.log(failed ? `\n${failed} 项失败` : '\n全部通过')
+console.log(`未付款配送单: ?o=${dPlaced?.token}`)
 console.log(`未付款订单: ?o=${placed?.token}  (在浏览器里用 Nuvei 测试卡付款，再到 Ourea 接单)`)
 process.exit(failed ? 1 : 0)

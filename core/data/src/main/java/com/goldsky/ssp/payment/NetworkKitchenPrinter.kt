@@ -34,9 +34,10 @@ object NetworkKitchenPrinter {
         val rule = Line("-".repeat(WIDTH))
         val out = mutableListOf<Line>()
         if (t.isOnline) {
-            out += Line("线上自取 ONLINE PICKUP", big = true, bold = true, center = true)
+            out += Line(if (t.isDelivery) "线上配送 DELIVERY" else "线上自取 ONLINE PICKUP", big = true, bold = true, center = true)
             out += Line(t.onlineCode!!, big = true, bold = true, center = true)
             t.customer?.let { out += Line(it, tall = true, bold = true, center = true) }
+            t.deliveryTo?.forEach { out += Line(it, tall = true, center = true) }
         } else if (t.isDineIn) {
             out += Line(if (t.round > 1) "加菜 ADD  (第${t.round}轮)" else "厨房单 KITCHEN", big = true, bold = true, center = true)
             out += Line("桌 ${t.table}", big = true, bold = true, center = true)

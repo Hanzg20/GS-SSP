@@ -1,4 +1,4 @@
-// Arke online ordering: the customer pays their order (food + tax, plus a tip) on
+// Arke online ordering: the customer pays their order (food + delivery fee + tax, plus a tip) on
 // their phone through the store's Nuvei account, before the store sees it.
 // Called from web/ourea-scan (?s=<store>) without a login: the order's own link
 // token is the credential. Amounts, tax and limits are the database's
@@ -6,8 +6,9 @@
 // to Nuvei (Simply Connect on the phone).
 //
 // Actions:
-//   open    {token, tip_cents, email} -> the Nuvei session the phone renders
-//           (email: the customer's, required by Nuvei; passed through, not stored)
+//   open    {token, tip_cents, email, lang} -> the Nuvei session the phone renders
+//           (email: the customer's, required by Nuvei; kept on the payment so the paid
+//           order's link can be mailed -- _shared/arke-mail.ts; lang: that mail's language)
 //   confirm {token, id}  -> PAID (+ pickup_code) / FAILED / PENDING / REVIEW
 //   cancel  {token, id}  -> the customer closed the payment without paying
 // An order is paid only after Nuvei confirmed it to the server (here through
@@ -16,6 +17,7 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
 import { getPaymentStatus, isEmail, loadAccount, openOrder, toAmount } from "../_shared/nuvei-checkout.ts";
+import { inBackground, mailPaidOrder } from "../_shared/arke-mail.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -34,10 +36,10 @@ async function rpc(supabase: Supabase, fn: string, args: Record<string, unknown>
   return data;
 }
 
-async function open(supabase: Supabase, token: string, tipCents: number, email: string): Promise<Response> {
+async function open(supabase: Supabase, token: string, tipCents: number, email: string, lang: string): Promise<Response> {
   if (!Number.isInteger(tipCents)) return json({ error: "bad_request" }, 400);
   if (!isEmail(email)) return json({ error: "bad_email" }, 400);
-  const opened = await rpc(supabase, "online_pay_open", { p_token: token, p_tip_cents: tipCents });
+  const opened = await rpc(supabase, "online_pay_open", { p_token: token, p_tip_cents: tipCents, p_email: email, p_lang: lang || null });
   if (!opened?.success) return json({ error: opened?.message ?? "failed" }, 409);
 
   const account = await loadAccount(supabase, opened.acquirer_account_id);
@@ -87,7 +89,10 @@ async function confirm(supabase: Supabase, token: string, id: string): Promise<R
       p_id: id, p_transaction_id: outcome.transactionId, p_paid_cents: outcome.paidCents,
       p_auth_code: outcome.authCode, p_card: outcome.card,
     });
-    if (settled?.success) return json({ status: "PAID", pickup_code: settled.pickup_code });
+    if (settled?.success) {
+      inBackground(mailPaidOrder(settled.mail));
+      return json({ status: "PAID", pickup_code: settled.pickup_code });
+    }
     // Charged, but not what we asked for (or a second payment): a person sorts it out, the phone says call the store.
     console.error(`[arke-pay] approved but not settled ${id}: ${settled?.message}`);
     return json({ status: "REVIEW" });
@@ -119,7 +124,8 @@ Deno.serve(async (req: Request) => {
     switch (body.action) {
       case "open":
         return await open(supabase, token, Number(body.tip_cents ?? 0),
-          typeof body.email === "string" ? body.email.trim() : "");
+          typeof body.email === "string" ? body.email.trim() : "",
+          typeof body.lang === "string" ? body.lang.slice(0, 5) : "");
       case "confirm":
         return id ? await confirm(supabase, token, id) : json({ error: "bad_request" }, 400);
       case "cancel": {

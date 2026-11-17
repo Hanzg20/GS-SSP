@@ -136,7 +136,7 @@ distinct from the POSLink AAR in libs/pax) live in `core/hardware/src/main/java/
 | GoldSky Iris | 虹 | Handheld POS -- `app/iris`, confirmed to correctly hold `feature:retail`'s counter checkout flow |
 | GoldSky Aegis | 盾 | Unattended-terminal **series brand** -- NOT a single app, see below |
 | GoldSky Apex | 顶峰 | AI assistant |
-| GoldSky Arke | 彩虹女神 Iris 的姐妹、信使 | Online ordering (owner 2026-11-16): pickup now, own / third-party delivery later. Customer page = `web/ourea-scan` `?s=<slug>` / `?o=<token>` (`ArkeApp.jsx`, sharing Scan's pieces); schema `online`; Edge Functions `arke-pay*`; orders handled on Ourea (`feature/retail/arke`); Cael Devices > Online Ordering. Design: `docs/online_ordering_design.md` |
+| GoldSky Arke | 彩虹女神 Iris 的姐妹、信使 | Online ordering (owner 2026-11-16): pickup, the store's own delivery (2026-11-17: zones by postal code prefix, drivers on Ourea / Iris's delivery screen, nothing collected at the door), third-party delivery later. Customer page = `web/ourea-scan` `?s=<slug>` / `?o=<token>` (`ArkeApp.jsx`, sharing Scan's pieces); schema `online`; Edge Functions `arke-pay*`; orders handled on Ourea (`feature/retail/arke`); Cael Devices > Online Ordering. Design: `docs/online_ordering_design.md` |
 
 **Aegis is a series, not one app.** wash/vending/parking/EV are each a SEPARATE, independently-installable app, all branded under "Aegis" -- not one app with flavors/modes selecting the vertical. Naming convention: sub-package form, package `com.goldsky.ssp.aegis.<vertical>` (e.g. `com.goldsky.ssp.aegis.wash`), module dir `app/aegis-<vertical>` (e.g. `app/aegis-wash`), applicationId matches the package, display name "GoldSky Aegis Wash" style. `app/aegis-parking` is the one vertical not yet built.
 

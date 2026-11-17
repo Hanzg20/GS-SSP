@@ -7,6 +7,16 @@ VALUES ('e2e5ca00-0000-4000-8000-000000000001', 'zz-scan-e2e', true, 15, NULL,
 ON CONFLICT (org_id) DO UPDATE SET slug = EXCLUDED.slug, is_open = true, pickup_minutes = EXCLUDED.pickup_minutes,
        hours = NULL, address = EXCLUDED.address, phone = EXCLUDED.phone, notice = EXCLUDED.notice, updated_at = now();
 
+-- Phase 2: the store delivers (2026-11-17). Three zones: K2K / K2L near, K2M far (higher fee and
+-- minimum), and K2K1X "next door" -- longer than K2K, so it wins for K2K 1X?.
+UPDATE online.stores SET delivery_enabled = true, delivery_minutes = 40, delivery_tax_bps = 1300
+ WHERE org_id = 'e2e5ca00-0000-4000-8000-000000000001';
+DELETE FROM online.delivery_zones WHERE org_id = 'e2e5ca00-0000-4000-8000-000000000001';
+INSERT INTO online.delivery_zones (org_id, name, postal_prefixes, fee_cents, min_order_cents, sort) VALUES
+  ('e2e5ca00-0000-4000-8000-000000000001', 'Near',      '{K2K,K2L}', 399, 1500, 1),
+  ('e2e5ca00-0000-4000-8000-000000000001', 'Far',       '{K2M}',     699, 3000, 2),
+  ('e2e5ca00-0000-4000-8000-000000000001', 'Next door', '{K2K1X}',   100,    0, 3);
+
 -- Reset: the store's online orders and their payment attempts (abuse limits count the last 10 min).
 -- psql -v reset=1 ... to run it.
 \if :{?reset}

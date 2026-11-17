@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Plus, Minus, X, ChevronRight, ChevronDown, Loader2, Phone, MapPin, Clock, CheckCircle2, AlertTriangle, ClipboardList,
-  Globe, Check, Search, ShieldAlert, ShoppingBag, ChefHat, PackageCheck, XCircle, Store } from 'lucide-react'
+  Globe, Check, Search, ShieldAlert, ShoppingBag, ChefHat, PackageCheck, XCircle, Store, Bike } from 'lucide-react'
 import { T, LANG, LANGS, pickLang, dishName } from './i18n.js'
 import { AK } from './arke-i18n.js'
 import { supabase, callFunction, money, store, newRef } from './lib.js'
@@ -9,7 +9,9 @@ import { isEmail, savedEmail, saveEmail, loadNuvei, mountNuvei, TipPicker, tipCe
 
 /*
  * Arke -- online ordering for pickup (owner 2026-11-16, phase 1 of
- * docs/online_ordering_design.md). The store's link is <this site>/?s=<slug>;
+ * docs/online_ordering_design.md) and the store's own delivery (phase 2, 2026-11-17:
+ * pick delivery, an address, the server's fee for its postal code zone; the order page
+ * follows it out with the driver; docs/migrations/2026-11-17_arke_delivery.sql). The store's link is <this site>/?s=<slug>;
  * the customer builds a cart on this device, places the order (online_place_order),
  * pays it on Nuvei's form (arke-pay) and follows it on its own page (?o=<token>):
  * paid -> the store accepts (ready time) -> ready -> picked up. The server prices
@@ -107,7 +109,36 @@ function MenuSheet({ onClose }) {
 }
 
 /** The store's card: pickup time, today's hours (tap for the week), address, phone, notice. */
-function StoreCard({ s, canOrder }) {
+/** Pickup or delivery, for a store that delivers (else just "Pickup"). */
+function ModeSwitch({ s, mode, setMode }) {
+  if (!s.delivery) {
+    return (
+      <div className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-ink text-white ps-3 pe-4 py-2">
+        <ShoppingBag className="w-4 h-4 text-gold-300" />
+        <span className="font-black text-sm">{AK.pickup}</span>
+        <span className="text-xs text-slate-300">· {AK.pickupIn(s.pickup_minutes)}</span>
+      </div>
+    )
+  }
+  const opt = (m, Icon, label, sub) => (
+    <button key={m} onClick={() => setMode(m)} aria-pressed={mode === m}
+      className={`flex-1 min-w-0 flex items-center gap-2 rounded-xl px-3 py-2 text-start transition-colors ${mode === m ? 'bg-ink text-white shadow-card' : 'text-ink-soft'}`}>
+      <Icon className={`w-4 h-4 shrink-0 ${mode === m ? 'text-gold-300' : ''}`} />
+      <span className="min-w-0">
+        <span className="block font-black text-sm">{label}</span>
+        <span className={`block text-[11px] truncate ${mode === m ? 'text-slate-300' : 'text-ink-mute'}`}>{sub}</span>
+      </span>
+    </button>
+  )
+  return (
+    <div className="mt-3 flex gap-1 p-1 rounded-2xl bg-slate-100 max-w-md">
+      {opt('PICKUP', ShoppingBag, AK.pickup, AK.pickupIn(s.pickup_minutes))}
+      {opt('OWN_DELIVERY', Bike, AK.delivery, `${AK.deliveryIn(s.delivery.minutes)} · ${AK.feeFrom(money(s.delivery.fee_from_cents))}`)}
+    </div>
+  )
+}
+
+function StoreCard({ s, canOrder, mode, setMode }) {
   const [week, setWeek] = useState(false)
   const today = isoToday(s.timezone)
   const hasHours = s.hours && typeof s.hours === 'object'
@@ -124,11 +155,7 @@ function StoreCard({ s, canOrder }) {
           </span>
         </div>
         <h1 className="mt-2 font-black text-2xl text-ink leading-tight">{s.name}</h1>
-        <div className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-ink text-white ps-3 pe-4 py-2">
-          <ShoppingBag className="w-4 h-4 text-gold-300" />
-          <span className="font-black text-sm">{AK.pickup}</span>
-          <span className="text-xs text-slate-300">· {AK.pickupIn(s.pickup_minutes)}</span>
-        </div>
+        <ModeSwitch s={s} mode={mode} setMode={setMode} />
         <div className="mt-3 space-y-1.5 text-sm text-ink-soft">
           {hasHours && (
             <button onClick={() => setWeek(!week)} className="flex items-center gap-2 text-start">
@@ -214,7 +241,7 @@ function CartBody({ lines, subtotal, tax, setQty, footer }) {
 }
 
 /** Cart -> who picks it up -> tip -> email -> Nuvei's card form -> the order's page. */
-function Checkout({ slug, menu, lines, subtotal, tax, onEdit, onClose, onPaid }) {
+function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onPaid }) {
   const [info, setInfo] = useState(() => store.get('arke_customer') || { name: '', phone: '' })
   const [note, setNote] = useState('')
   const [tip, setTip] = useState(null)
@@ -227,12 +254,36 @@ function Checkout({ slug, menu, lines, subtotal, tax, onEdit, onClose, onPaid })
   const clientRef = useRef(newRef())            // one checkout = one order, across retries
   const confirmed = useRef(false)
   const s = menu.store
+  const delivery = mode === 'OWN_DELIVERY'
+  const [addr, setAddr] = useState(() => ({ line1: '', unit: '', city: '', postal: '', instructions: '', ...(store.get('arke_address') || {}) }))
+  const postal = (addr.postal || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const [quote, setQuote] = useState(null)      // null | {checking} | {ok, fee, feeTax, zone} | {ok: false, msg}
+  // The fee for this postal code, from the server (it prices the order the same way when placing it).
+  useEffect(() => {
+    if (!delivery || postal.length !== 6) { setQuote(null); return }
+    setQuote({ checking: true })
+    let gone = false
+    const t = setTimeout(async () => {
+      const { data, error: e } = await supabase.rpc('online_delivery_quote', { p_slug: slug, p_postal: postal, p_subtotal_cents: subtotal })
+      if (gone) return
+      if (e || !data) { setQuote({ ok: false, msg: AK.quote.failed }); return }
+      if (data.success) { setQuote({ ok: true, fee: data.fee_cents, feeTax: data.fee_tax_cents, zone: data.zone }); return }
+      setQuote({ ok: false, msg: data.message === 'below_minimum' ? AK.quote.below_minimum(money(data.min_order_cents)) : AK.quote[data.message] || AK.quote.failed })
+    }, 350)
+    return () => { gone = true; clearTimeout(t) }
+  }, [delivery, postal, subtotal, slug])
+  // A different address is a different order: one placed for the old address is left to expire.
+  useEffect(() => { if (order && state === 'form') { setOrder(null); clientRef.current = newRef() } }, [addr.line1, addr.unit, postal]) // eslint-disable-line react-hooks/exhaustive-deps
+  const fee = delivery && quote?.ok ? quote.fee : 0
+  const feeTax = delivery && quote?.ok ? quote.feeTax : 0
+  const addrOk = !delivery || ((addr.line1 || '').trim().length >= 3 && !!quote?.ok)
 
   useEffect(() => { loadNuvei().catch(() => {}) }, [])   // ready by the time they tap Pay
 
   const tipCents = tipCentsOf(tip, customTip, subtotal)
   const phoneOk = (info.phone || '').replace(/[^0-9]/g, '').length >= 10
-  const ready = info.name.trim() && phoneOk && tip !== null && isEmail(email.trim())
+  const ready = info.name.trim() && phoneOk && addrOk && tip !== null && isEmail(email.trim())
+  const due = subtotal + fee + tax + feeTax + tipCents
 
   const finish = async (id, token) => {
     if (confirmed.current) return
@@ -251,6 +302,7 @@ function Checkout({ slug, menu, lines, subtotal, tax, onEdit, onClose, onPaid })
   const pay = async () => {
     setError(null); confirmed.current = false
     store.set('arke_customer', { name: info.name.trim(), phone: info.phone.trim() })
+    if (delivery) store.set('arke_address', addr)
     saveEmail(email.trim())
     setState('placing')
     let o = order
@@ -258,18 +310,20 @@ function Checkout({ slug, menu, lines, subtotal, tax, onEdit, onClose, onPaid })
       const { data, error: e } = await supabase.rpc('online_place_order', {
         p_slug: slug, p_items: lines.map((l) => ({ product_id: l.product_id, option_ids: l.option_ids, note: l.note || null, quantity: l.quantity })),
         p_name: info.name.trim(), p_phone: info.phone.trim(), p_note: note.trim() || null, p_client_ref: clientRef.current,
+        p_fulfilment: mode, p_address: delivery ? { ...addr, postal } : null,
       })
       if (e) { setState('form'); setError(AK.errors.offline); return }
       if (!data?.success) {
         setState('form')
-        setError((AK.errors[data?.message] || AK.errors.failed) + (data?.product ? data.product : ''))
+        setError(data?.message === 'below_minimum' && data.min_order_cents != null ? AK.quote.below_minimum(money(data.min_order_cents))
+          : (AK.errors[data?.message] || AK.errors.failed) + (data?.product ? data.product : ''))
         return
       }
       o = data
       setOrder(data)
       myOrders.add({ token: data.token, store: s.name, at: new Date().toISOString() })
     }
-    const r = await callPay({ action: 'open', token: o.token, tip_cents: tipCents, email: email.trim() })
+    const r = await callPay({ action: 'open', token: o.token, tip_cents: tipCents, email: email.trim(), lang: LANG })
     if (!r.session_token) {
       setState('form'); setError(AK.errors[r.error] || AK.errors.failed)
       if (r.error === 'order_expired') { setOrder(null); clientRef.current = newRef() }
@@ -316,11 +370,12 @@ function Checkout({ slug, menu, lines, subtotal, tax, onEdit, onClose, onPaid })
       </div>
       <div className="mt-2 pt-2 border-t border-slate-200 space-y-1 text-sm text-slate-600">
         <div className="flex justify-between"><span>{T.subtotal}</span><span className="font-bold">{money(subtotal)}</span></div>
-        <div className="flex justify-between"><span>{T.taxActual}</span><span className="font-bold">{money(tax)}</span></div>
+        {delivery && <div className="flex justify-between"><span>{AK.deliveryFee}{quote?.ok && quote.zone ? ` · ${quote.zone}` : ''}</span><span className="font-bold">{quote?.ok ? money(fee) : '—'}</span></div>}
+        <div className="flex justify-between"><span>{T.taxActual}</span><span className="font-bold">{money(tax + feeTax)}</span></div>
         {tip !== null && tipCents > 0 && <div className="flex justify-between"><span>{T.tipTitle}</span><span className="font-bold">{money(tipCents)}</span></div>}
-        <div className="flex justify-between text-base font-black text-ink pt-1"><span>{T.total}</span><span>{money(subtotal + tax + tipCents)}</span></div>
+        <div className="flex justify-between text-base font-black text-ink pt-1"><span>{T.total}</span><span>{money(due)}</span></div>
       </div>
-      <p className="mt-3 flex items-start gap-1.5 text-xs text-ink-mute"><MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gold-700" /><span><b className="text-ink-soft">{s.name}</b>{s.address ? ` · ${s.address}` : ''}</span></p>
+      {!delivery && <p className="mt-3 flex items-start gap-1.5 text-xs text-ink-mute"><MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gold-700" /><span><b className="text-ink-soft">{s.name}</b>{s.address ? ` · ${s.address}` : ''}</span></p>}
     </div>
   )
 
@@ -328,7 +383,7 @@ function Checkout({ slug, menu, lines, subtotal, tax, onEdit, onClose, onPaid })
   if (state === 'paying') {
     body = (
       <div className="py-3">
-        <div className="flex justify-between font-black text-lg mb-3"><span>{T.payNow}</span><span>{money(subtotal + tax + tipCents)}</span></div>
+        <div className="flex justify-between font-black text-lg mb-3"><span>{T.payNow}</span><span>{money(due)}</span></div>
         <div id="nuvei-checkout" className="min-h-[320px]" />
       </div>
     )
@@ -344,8 +399,28 @@ function Checkout({ slug, menu, lines, subtotal, tax, onEdit, onClose, onPaid })
   } else {
     body = (
       <div className="space-y-5 py-2">
+        {delivery && (
+          <div>
+            <h3 className="font-black text-ink mb-2 flex items-center gap-1.5"><Bike className="w-4 h-4 text-gold-600" />{AK.deliverTo}</h3>
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px]">
+              <input value={addr.line1} onChange={(e) => setAddr({ ...addr, line1: e.target.value.slice(0, 120) })} placeholder={AK.line1} autoComplete="address-line1"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300" />
+              <input value={addr.unit} onChange={(e) => setAddr({ ...addr, unit: e.target.value.slice(0, 20) })} placeholder={AK.unit} autoComplete="address-line2"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300" />
+              <input value={addr.city} onChange={(e) => setAddr({ ...addr, city: e.target.value.slice(0, 60) })} placeholder={AK.city} autoComplete="address-level2"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300" />
+              <input value={addr.postal} onChange={(e) => setAddr({ ...addr, postal: e.target.value.toUpperCase().slice(0, 7) })} placeholder={AK.postal} autoComplete="postal-code"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 uppercase" />
+            </div>
+            <input value={addr.instructions} onChange={(e) => setAddr({ ...addr, instructions: e.target.value.slice(0, 200) })} placeholder={AK.instructionsPh}
+              aria-label={AK.instructions} className="mt-2 w-full px-4 py-3 rounded-xl border border-slate-300" />
+            {quote?.checking && <p className="mt-1.5 text-xs text-ink-mute flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />{AK.checking}</p>}
+            {quote?.ok && <p className="mt-1.5 text-xs font-bold text-emerald-700 flex items-center gap-1"><Check className="w-3.5 h-3.5" />{AK.zoneFee(quote.zone, money(quote.fee))}</p>}
+            {quote && !quote.checking && !quote.ok && <p className="mt-1.5 text-xs font-bold text-red-600">{quote.msg}</p>}
+          </div>
+        )}
         <div>
-          <h3 className="font-black text-ink mb-2">{AK.yourInfo}</h3>
+          <h3 className="font-black text-ink mb-2">{delivery ? AK.recipient : AK.yourInfo}</h3>
           <div className="grid gap-2 sm:grid-cols-2">
             <input value={info.name} onChange={(e) => setInfo({ ...info, name: e.target.value.slice(0, 40) })} placeholder={AK.name} autoComplete="name"
               className="w-full px-4 py-3 rounded-xl border border-slate-300" />
@@ -371,10 +446,11 @@ function Checkout({ slug, menu, lines, subtotal, tax, onEdit, onClose, onPaid })
       <button onClick={pay} disabled={!ready || state === 'placing'} className="btn-gold w-full py-4 rounded-2xl text-lg flex items-center justify-center gap-2">
         {state === 'placing' && <Loader2 className="w-5 h-5 animate-spin" />}
         {state === 'placing' ? AK.placing
+          : delivery && !addrOk ? (quote && !quote.checking && !quote.ok ? quote.msg : AK.fillAddress)
           : !info.name.trim() || !phoneOk ? AK.fillInfo
           : tip === null ? T.chooseTip
           : !isEmail(email.trim()) ? T.enterEmail
-          : AK.payAndOrder(money(subtotal + tax + tipCents))}
+          : AK.payAndOrder(money(due))}
       </button>
     </div>
   )
@@ -385,7 +461,7 @@ function Checkout({ slug, menu, lines, subtotal, tax, onEdit, onClose, onPaid })
     <div className="fixed inset-0 z-50 bg-ink/60 flex items-end sm:items-center sm:justify-center sm:p-6">
       <div className="bg-white w-full max-w-lg lg:max-w-4xl rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col">
         <div className="px-5 lg:px-7 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="font-black text-xl flex items-center gap-2"><ShoppingBag className="w-5 h-5 text-gold-600" />{AK.checkout} · {AK.pickup}</h2>
+          <h2 className="font-black text-xl flex items-center gap-2">{delivery ? <Bike className="w-5 h-5 text-gold-600" /> : <ShoppingBag className="w-5 h-5 text-gold-600" />}{AK.checkout} · {delivery ? AK.delivery : AK.pickup}</h2>
           <button onClick={close} aria-label={T.close} className="p-2 text-slate-400"><X className="w-6 h-6" /></button>
         </div>
         <div className="overflow-y-auto flex-1 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-7 px-5 lg:px-7 py-3 lg:py-5">
@@ -406,6 +482,8 @@ const STATUS_LOOK = {
   NEW: { Icon: ClipboardList, ring: 'bg-sky-50 text-sky-700' },
   ACCEPTED: { Icon: ChefHat, ring: 'bg-gold-50 text-gold-700' },
   READY: { Icon: PackageCheck, ring: 'bg-emerald-50 text-emerald-600' },
+  OUT_FOR_DELIVERY: { Icon: Bike, ring: 'bg-sky-50 text-sky-700' },
+  DELIVERED: { Icon: CheckCircle2, ring: 'bg-emerald-50 text-emerald-600' },
   PICKED_UP: { Icon: CheckCircle2, ring: 'bg-emerald-50 text-emerald-600' },
   REJECTED: { Icon: XCircle, ring: 'bg-red-50 text-red-600' },
   EXPIRED: { Icon: XCircle, ring: 'bg-slate-100 text-ink-mute' },
@@ -434,9 +512,15 @@ function OrderPage({ token }) {
   if (o === null) return <ArkeScreen text={AK.noStore} />
 
   const s = o.store
-  const step = { NEW: 1, ACCEPTED: 2, READY: 3, PICKED_UP: 3 }[o.status] || 0
+  const delivery = o.fulfilment === 'OWN_DELIVERY'
+  const steps = delivery ? AK.deliverySteps : AK.steps
+  const step = (delivery ? { NEW: 1, ACCEPTED: 2, READY: 2, OUT_FOR_DELIVERY: 3, DELIVERED: 4 } : { NEW: 1, ACCEPTED: 2, READY: 3, PICKED_UP: 3 })[o.status] || 0
   const bad = o.status === 'REJECTED' || o.status === 'EXPIRED'
-  const { Icon, ring } = STATUS_LOOK[o.status] || STATUS_LOOK.NEW
+  const good = delivery ? o.status === 'DELIVERED' : o.status === 'READY'
+  const look = delivery && o.status === 'READY' ? STATUS_LOOK.ACCEPTED : STATUS_LOOK[o.status] || STATUS_LOOK.NEW
+  const { Icon, ring } = look
+  const stText = delivery && o.status === 'READY' ? AK.st.ACCEPTED : AK.st[o.status]
+  const a = o.delivery_address
   return (
     <div className="min-h-screen bg-paper pb-10">
       <header className="bg-white border-b border-slate-100">
@@ -444,7 +528,7 @@ function OrderPage({ token }) {
           <StoreLogo s={s} size="w-10 h-10 text-lg" />
           <div className="min-w-0 flex-1">
             <p className="font-black text-ink truncate leading-tight">{s.name}</p>
-            <p className="text-xs font-bold text-ink-mute">{AK.pickup}</p>
+            <p className="text-xs font-bold text-ink-mute">{delivery ? AK.delivery : AK.pickup}</p>
           </div>
           {s.slug && <a href={`?s=${s.slug}`} className="hidden sm:inline-flex text-sm font-black text-gold-800 border border-gold-500 rounded-xl px-3 py-2">{AK.backToMenu}</a>}
         </div>
@@ -454,13 +538,16 @@ function OrderPage({ token }) {
           <div className={`w-20 h-20 rounded-full flex items-center justify-center ${ring}`}><Icon className="w-10 h-10" /></div>
           {o.pickup_code && (
             <>
-              <p className="mt-4 text-sm font-black text-ink-mute">{AK.pickupCode}</p>
+              <p className="mt-4 text-sm font-black text-ink-mute">{delivery ? AK.orderNo : AK.pickupCode}</p>
               <p className="text-6xl lg:text-7xl font-black text-ink tracking-tight">{o.pickup_code}</p>
             </>
           )}
-          <p className={`mt-3 text-xl lg:text-2xl font-black ${bad ? 'text-red-600' : o.status === 'READY' ? 'text-emerald-600' : 'text-ink'}`}>{AK.st[o.status]}</p>
-          {o.status === 'ACCEPTED' && o.ready_by && <p className="mt-1 font-bold text-gold-700 flex items-center gap-1"><Clock className="w-4 h-4" />{AK.readyBy(timeOf(o.ready_by, s.timezone))}</p>}
-          {o.status === 'READY' && o.ready_at && <p className="mt-1 text-sm text-ink-mute">{AK.readyAt(timeOf(o.ready_at, s.timezone))}</p>}
+          <p className={`mt-3 text-xl lg:text-2xl font-black ${bad ? 'text-red-600' : good ? 'text-emerald-600' : 'text-ink'}`}>{stText}</p>
+          {!delivery && o.status === 'ACCEPTED' && o.ready_by && <p className="mt-1 font-bold text-gold-700 flex items-center gap-1"><Clock className="w-4 h-4" />{AK.readyBy(timeOf(o.ready_by, s.timezone))}</p>}
+          {!delivery && o.status === 'READY' && o.ready_at && <p className="mt-1 text-sm text-ink-mute">{AK.readyAt(timeOf(o.ready_at, s.timezone))}</p>}
+          {delivery && ['ACCEPTED', 'READY', 'OUT_FOR_DELIVERY'].includes(o.status) && o.ready_by && <p className="mt-1 font-bold text-gold-700 flex items-center gap-1"><Clock className="w-4 h-4" />{AK.arriveBy(timeOf(o.ready_by, s.timezone))}</p>}
+          {o.status === 'OUT_FOR_DELIVERY' && <p className="mt-1 text-sm font-bold text-sky-700">{AK.driverOnWay}</p>}
+          {o.status === 'DELIVERED' && o.delivered_at && <p className="mt-1 text-sm text-ink-mute">{AK.deliveredAt(timeOf(o.delivered_at, s.timezone))}</p>}
           {o.status === 'REJECTED' && (
             <>
               {o.reject_reason && <p className="mt-1 text-sm text-ink-soft">{o.reject_reason}</p>}
@@ -469,7 +556,7 @@ function OrderPage({ token }) {
           )}
           {step > 0 && !bad && (
             <div className="flex items-center w-full max-w-sm mt-6" aria-hidden="true">
-              {AK.steps.map((label, i) => (
+              {steps.map((label, i) => (
                 <React.Fragment key={label}>
                   {i > 0 && <div className={`flex-1 h-1 rounded-full mx-1 ${i < step ? 'bg-gold-500' : 'bg-slate-200'}`} />}
                   <div className="flex flex-col items-center w-16">
@@ -497,6 +584,7 @@ function OrderPage({ token }) {
             </div>
             <div className="mt-2 pt-2 border-t border-slate-200 space-y-1 text-sm text-slate-600">
               <div className="flex justify-between"><span>{T.subtotal}</span><span className="font-bold">{money(o.subtotal_cents)}</span></div>
+              {o.delivery_fee_cents > 0 && <div className="flex justify-between"><span>{AK.deliveryFee}</span><span className="font-bold">{money(o.delivery_fee_cents)}</span></div>}
               <div className="flex justify-between"><span>{T.taxActual}</span><span className="font-bold">{money(o.tax_cents)}</span></div>
               {o.tip_cents > 0 && <div className="flex justify-between"><span>{T.tipTitle}</span><span className="font-bold">{money(o.tip_cents)}</span></div>}
               <div className="flex justify-between text-lg font-black text-ink pt-1"><span>{T.total}</span><span>{money(o.total_cents)}</span></div>
@@ -505,11 +593,16 @@ function OrderPage({ token }) {
           </div>
 
           <div className="bg-white rounded-3xl shadow-card p-4 space-y-2">
-            {s.address && <p className="flex items-start gap-2 text-sm text-ink-soft"><MapPin className="w-4 h-4 mt-0.5 shrink-0 text-gold-700" /><span><span className="font-black text-ink">{AK.address}</span><br />{s.address}</span></p>}
+            {delivery && a && (
+              <p className="flex items-start gap-2 text-sm text-ink-soft"><Bike className="w-4 h-4 mt-0.5 shrink-0 text-gold-700" />
+                <span><span className="font-black text-ink">{AK.deliverAddress}</span><br />{a.line1}{a.unit ? `, ${a.unit}` : ''}<br />{[a.city, a.postal].filter(Boolean).join(' ')}
+                  {a.instructions && <span className="block text-xs text-ink-mute italic mt-0.5">* {a.instructions}</span>}</span></p>
+            )}
+            {!delivery && s.address && <p className="flex items-start gap-2 text-sm text-ink-soft"><MapPin className="w-4 h-4 mt-0.5 shrink-0 text-gold-700" /><span><span className="font-black text-ink">{AK.address}</span><br />{s.address}</span></p>}
             {s.phone && <a href={`tel:${s.phone.replace(/[^0-9+]/g, '')}`} className="flex items-center gap-2 text-sm font-black text-sky-700"><Phone className="w-4 h-4" />{AK.callStore} · {s.phone}</a>}
           </div>
 
-          {s.slug && <a href={`?s=${s.slug}`} className="block text-center font-black text-gold-800 border-2 border-gold-500 rounded-2xl py-3.5 bg-white">{o.status === 'PICKED_UP' || bad ? AK.orderAgain : AK.backToMenu}</a>}
+          {s.slug && <a href={`?s=${s.slug}`} className="block text-center font-black text-gold-800 border-2 border-gold-500 rounded-2xl py-3.5 bg-white">{o.status === 'PICKED_UP' || o.status === 'DELIVERED' || bad ? AK.orderAgain : AK.backToMenu}</a>}
         </div>
       </div>
       <Signature product="Arke" className="pt-8" />
@@ -533,6 +626,8 @@ function StorePage({ slug }) {
   const [cartOpen, setCartOpen] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
+  const [mode, setModeState] = useState(() => store.get('arke_mode_' + slug) || 'PICKUP')   // PICKUP | OWN_DELIVERY
+  const setMode = (m) => { setModeState(m); store.set('arke_mode_' + slug, m) }
   const [toast, setToast] = useState(null)
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast((t) => (t === msg ? null : t)), 3000) }
 
@@ -541,7 +636,7 @@ function StorePage({ slug }) {
     if (error) { setState('offline'); return }
     if (!data) { setState('bad'); return }
     setMenu(data); setState('ready')
-    document.title = `${data.store.name} · ${AK.pickup}`
+    document.title = data.store.name
   }, [slug])
   useEffect(() => { load() }, [load])
 
@@ -577,6 +672,7 @@ function StorePage({ slug }) {
 
   const s = menu.store
   const canOrder = s.open_now && s.online_pay
+  const fulfil = s.delivery ? mode : 'PICKUP'   // a store that stopped delivering: back to pickup
   const goCheckout = () => { setCartOpen(false); setCheckoutOpen(true) }
   const checkoutButton = (
     <>
@@ -595,7 +691,7 @@ function StorePage({ slug }) {
         <div className="max-w-7xl mx-auto px-4 h-14 lg:h-16 flex items-center gap-3">
           <StoreLogo s={s} size="w-9 h-9 text-base" />
           <p className="min-w-0 flex-1 font-black text-ink truncate">{s.name}</p>
-          <span className="hidden lg:inline-flex items-center gap-1.5 text-sm font-bold text-ink-soft"><ShoppingBag className="w-4 h-4 text-gold-600" />{AK.pickup}</span>
+          <span className="hidden lg:inline-flex items-center gap-1.5 text-sm font-bold text-ink-soft">{fulfil === 'OWN_DELIVERY' ? <Bike className="w-4 h-4 text-gold-600" /> : <ShoppingBag className="w-4 h-4 text-gold-600" />}{fulfil === 'OWN_DELIVERY' ? AK.delivery : AK.pickup}</span>
           <button onClick={() => setMenuOpen(true)} aria-label={T.menuTitle}
             className="shrink-0 h-9 px-2.5 lg:px-3 rounded-xl bg-slate-100 text-ink flex items-center gap-1.5 text-sm font-bold">
             <Globe className="w-4 h-4" /><span className="hidden sm:inline">{LANGS.find(([l]) => l === LANG)?.[1]}</span>
@@ -636,7 +732,7 @@ function StorePage({ slug }) {
         </aside>
 
         <main className="min-w-0">
-          <StoreCard s={s} canOrder={canOrder} />
+          <StoreCard s={s} canOrder={canOrder} mode={fulfil} setMode={setMode} />
           {sections.length === 0 && (
             <div className="flex flex-col items-center py-16 text-center">
               <Search className="w-10 h-10 text-slate-300" />
@@ -697,7 +793,7 @@ function StorePage({ slug }) {
       )}
 
       {checkoutOpen && (
-        <Checkout slug={slug} menu={menu} lines={lines} subtotal={subtotal} tax={tax}
+        <Checkout slug={slug} menu={menu} mode={fulfil} lines={lines} subtotal={subtotal} tax={tax}
           onEdit={() => { setCheckoutOpen(false); if (window.matchMedia('(max-width: 1023px)').matches) setCartOpen(true) }}
           onClose={() => { setCheckoutOpen(false); load() }}
           onPaid={(token, code) => {

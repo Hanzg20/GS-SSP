@@ -18,8 +18,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.goldsky.ssp.feature.retail.dine.parseIso
+import com.goldsky.ssp.payment.ArkeOrderRepository
 import com.goldsky.ssp.payment.DeliveryOrder
 import com.goldsky.ssp.payment.DeliveryOrderRepository
+import com.goldsky.ssp.payment.DeviceRepository
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -34,6 +36,10 @@ private fun clock(iso: String?): String? = parseIso(iso)?.let { SimpleDateFormat
  * (from then on only this terminal lists it), collects by card or cash at the
  * door -- which marks it delivered -- or brings it back with the reason.
  * [reloadKey] changes after a collection so the paid order drops off the list.
+ *
+ * Above them, the store's Arke online delivery orders (2026-11-17): already paid online, so
+ * the driver only takes one out, hands it over (delivered) or brings it back -- nothing to
+ * collect. Those stay in Arke's own records (online_store_step), never in delivery_orders.
  */
 @Composable
 fun DeliveryScreen(
@@ -51,6 +57,8 @@ fun DeliveryScreen(
     var notice by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var refreshTick by remember { mutableStateOf(0) }
+    var online by remember { mutableStateOf<List<ArkeOrderRepository.Order>>(emptyList()) }
+    var onlineBack by remember { mutableStateOf<ArkeOrderRepository.Order?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -62,6 +70,9 @@ fun DeliveryScreen(
         val result = DeliveryOrderRepository.fetchOpen()
         failed = result == null
         if (result != null) orders = result
+        ArkeOrderRepository.orders()?.let { all ->
+            online = all.filter { it.isDelivery && it.status in ONLINE_TO_DELIVER }.sortedBy { it.paid_at ?: "" }
+        }
         loading = false
         // Orders move between "my run" and "waiting": start from the top, headers included.
         listState.scrollToItem(0)
@@ -82,6 +93,20 @@ fun DeliveryScreen(
             notice = answer(order, r).ifEmpty { context.getString(R.string.retail_delivery_out_done, order.order_no.toString()) }
             busy = false
             if (r != null) refreshTick++
+        }
+    }
+
+    fun onlineStep(o: ArkeOrderRepository.Order, done: Int, block: suspend () -> ArkeOrderRepository.Result) {
+        busy = true
+        scope.launch {
+            val r = block()
+            notice = when {
+                r.ok -> context.getString(done, o.pickup_code ?: "")
+                r.message == null -> context.getString(R.string.retail_can_t_reach_the_server)
+                else -> context.getString(R.string.arke_step_failed, r.message)
+            }
+            busy = false
+            refreshTick++
         }
     }
 
@@ -128,7 +153,7 @@ fun DeliveryScreen(
                 modifier = Modifier.padding(horizontal = 16.dp).clickable { notice = null })
         }
         val list = orders.orEmpty()
-        if (!loading && list.isEmpty() && !failed) {
+        if (!loading && list.isEmpty() && online.isEmpty() && !failed) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(stringResource(R.string.retail_no_open_delivery_orders), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -141,6 +166,16 @@ fun DeliveryScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            if (online.isNotEmpty()) item(key = "online-h") {
+                Text(stringResource(R.string.arke_online_section, online.size), style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            items(online, key = { "online-" + it.id }) { o ->
+                OnlineCard(o, busy,
+                    onOut = { onlineStep(o, R.string.arke_out_done) { ArkeOrderRepository.out(o.id, staffName) } },
+                    onDelivered = { onlineStep(o, R.string.arke_delivered_done) { ArkeOrderRepository.delivered(o.id, staffName) } },
+                    onBack = { onlineBack = o })
+            }
             listOf(R.string.retail_delivery_mine to mine, R.string.retail_delivery_waiting to waiting).forEach { (title, group) ->
                 if (group.isNotEmpty() && mine.isNotEmpty()) item(key = "h$title") {
                     Text(stringResource(title, group.size), style = MaterialTheme.typography.labelLarge,
@@ -160,6 +195,12 @@ fun DeliveryScreen(
                 }
             }
         }
+    }
+
+    onlineBack?.let { o ->
+        OnlineBackDialog(o,
+            onConfirm = { note -> onlineBack = null; onlineStep(o, R.string.arke_back_done) { ArkeOrderRepository.back(o.id, note, staffName) } },
+            onDismiss = { onlineBack = null })
     }
 
     backFor?.let { order ->
@@ -326,4 +367,107 @@ private fun open(context: android.content.Context, uri: String, action: String =
     } catch (e: android.content.ActivityNotFoundException) {
         android.widget.Toast.makeText(context, R.string.retail_delivery_no_app, android.widget.Toast.LENGTH_SHORT).show()
     }
+}
+
+/** Arke online delivery states a driver still has something to do with. */
+private val ONLINE_TO_DELIVER = setOf(ArkeOrderRepository.ACCEPTED, ArkeOrderRepository.READY, ArkeOrderRepository.OUT_FOR_DELIVERY)
+
+/**
+ * One Arke online delivery: number, who, where, "paid online". In the store: take it out. Out with
+ * this terminal: delivered / brought back. Out with another terminal: just who has it.
+ */
+@Composable
+private fun OnlineCard(o: ArkeOrderRepository.Order, busy: Boolean, onOut: () -> Unit, onDelivered: () -> Unit, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val isOut = o.status == ArkeOrderRepository.OUT_FOR_DELIVERY
+    val mine = isOut && (o.out_by_sn == null || o.out_by_sn == DeviceRepository.getPersistedDeviceSn())
+    val a = o.delivery_address
+    val where = listOfNotNull(a?.street?.takeIf { it.isNotBlank() }, a?.area?.takeIf { it.isNotBlank() }).joinToString(", ")
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(if (isOut) 1.5.dp else 0.5.dp, if (isOut) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.DeliveryDining, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(o.pickup_code ?: "", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                Text(money(o.total_cents), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+            }
+            Text(stringResource(R.string.arke_nothing_to_collect), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                color = androidx.compose.ui.graphics.Color(0xFF059669))
+            when {
+                isOut -> Text(listOfNotNull(stringResource(R.string.retail_delivery_out), o.out_by, clock(o.out_at)).joinToString(" · "),
+                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                o.delivery_attempts > 0 -> Text(stringResource(R.string.retail_delivery_tried, o.delivery_attempts) + (o.last_attempt_note?.let { " · $it" } ?: ""),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                o.ready_by != null -> Text(stringResource(R.string.arke_arrive_by, clock(o.ready_by) ?: ""), style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(o.customer_name, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            if (where.isNotBlank()) Text(where, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            a?.instructions?.takeIf { it.isNotBlank() }?.let { Text("* $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+            Text(o.items.joinToString(", ") { "${it.quantity}× ${it.name}" }, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                o.customer_phone?.takeIf { it.isNotBlank() }?.let { phone ->
+                    AssistChip(onClick = { open(context, "tel:" + phone.filter { it.isDigit() || it == '+' }, android.content.Intent.ACTION_DIAL) },
+                        label = { Text(stringResource(R.string.retail_delivery_call)) }, leadingIcon = { Icon(Icons.Default.Call, null) })
+                }
+                if (where.isNotBlank()) AssistChip(onClick = { open(context, "geo:0,0?q=" + android.net.Uri.encode(where)) },
+                    label = { Text(stringResource(R.string.retail_delivery_map)) }, leadingIcon = { Icon(Icons.Default.Place, null) })
+            }
+            Spacer(Modifier.height(10.dp))
+            when {
+                !isOut -> Button(onClick = onOut, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.DeliveryDining, null); Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.retail_delivery_take_out), fontWeight = FontWeight.Bold)
+                }
+                mine -> {
+                    Button(onClick = onDelivered, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.CheckCircle, null); Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.arke_delivered), fontWeight = FontWeight.Bold)
+                    }
+                    TextButton(onClick = onBack, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Undo, null, tint = MaterialTheme.colorScheme.error); Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.retail_delivery_bring_back), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun OnlineBackDialog(o: ArkeOrderRepository.Order, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var note by remember { mutableStateOf("") }
+    val reasons = listOf(
+        stringResource(R.string.retail_delivery_reason_nobody),
+        stringResource(R.string.retail_delivery_reason_address),
+        stringResource(R.string.retail_delivery_reason_refused)
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.arke_back_title, o.pickup_code ?: "")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.arke_back_hint))
+                reasons.forEach { r -> FilterChip(selected = note == r, onClick = { note = r }, label = { Text(r) }) }
+                OutlinedTextField(value = note, onValueChange = { note = it.take(200) }, singleLine = true,
+                    label = { Text(stringResource(R.string.retail_delivery_back_note)) }, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(note) }, enabled = note.isNotBlank()) {
+                Text(stringResource(R.string.retail_delivery_back_confirm), fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.retail_cancel_2)) } },
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }

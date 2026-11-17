@@ -9,8 +9,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
 /**
- * Arke online orders for this terminal's store (docs/migrations/2026-11-16_arke_online_orders.sql):
- * paid orders waiting to be accepted, being prepared, ready; the store moves them on
+ * Arke online orders for this terminal's store (docs/migrations/2026-11-16_arke_online_orders.sql,
+ * 2026-11-17_arke_delivery.sql): paid orders waiting to be accepted, being prepared, ready, and
+ * the store's own deliveries out with a driver (already paid online -- nothing to collect at the
+ * door); the store moves them on
  * (online_store_step) and gives a rejected one's money back (supabase/functions/arke-pay-refund).
  * The store comes from the signed-in device, never from here. No cloud = no online orders
  * (null), never a crash.
@@ -30,6 +32,19 @@ object ArkeOrderRepository {
         val note: String? = null
     )
 
+    /** Where a delivery order goes (the customer's words; postal code normalised "K2K 1X1"). */
+    @Serializable
+    data class Address(
+        val line1: String = "",
+        val unit: String? = null,
+        val city: String? = null,
+        val postal: String? = null,
+        val instructions: String? = null
+    ) {
+        val street: String get() = listOfNotNull(line1.takeIf { it.isNotBlank() }, unit?.takeIf { it.isNotBlank() }).joinToString(", ")
+        val area: String get() = listOfNotNull(city?.takeIf { it.isNotBlank() }, postal?.takeIf { it.isNotBlank() }).joinToString(" ")
+    }
+
     @Serializable
     data class Order(
         val id: String,
@@ -44,6 +59,9 @@ object ArkeOrderRepository {
         val subtotal_cents: Int = 0,
         val tax_cents: Int = 0,
         val tip_cents: Int = 0,
+        val delivery_fee_cents: Int = 0,
+        val delivery_address: Address? = null,
+        val delivery_zone: String? = null,
         val total_cents: Int = 0,
         val created_at: String? = null,
         val paid_at: String? = null,
@@ -51,12 +69,19 @@ object ArkeOrderRepository {
         val ready_by: String? = null,
         val ready_at: String? = null,
         val picked_up_at: String? = null,
+        val out_at: String? = null,
+        val out_by: String? = null,
+        val out_by_sn: String? = null,
+        val delivered_at: String? = null,
+        val delivery_attempts: Int = 0,
+        val last_attempt_note: String? = null,
         val rejected_at: String? = null,
         val reject_reason: String? = null,
         val handled_by: String? = null
     ) {
-        /** Still the store's to handle (not picked up / rejected). */
-        val open: Boolean get() = status == NEW || status == ACCEPTED || status == READY
+        /** Still the store's to handle (not picked up / delivered / rejected). */
+        val open: Boolean get() = status == NEW || status == ACCEPTED || status == READY || status == OUT_FOR_DELIVERY
+        val isDelivery: Boolean get() = fulfilment == OWN_DELIVERY
         val itemCount: Int get() = items.sumOf { it.quantity }
     }
 
@@ -64,7 +89,10 @@ object ArkeOrderRepository {
     const val ACCEPTED = "ACCEPTED"
     const val READY = "READY"
     const val PICKED_UP = "PICKED_UP"
+    const val OUT_FOR_DELIVERY = "OUT_FOR_DELIVERY"
+    const val DELIVERED = "DELIVERED"
     const val REJECTED = "REJECTED"
+    const val OWN_DELIVERY = "OWN_DELIVERY"
 
     /** Outcome of a step: ok (+ the order as it is now), or the server's reason; message null = unreachable. */
     data class Result(val ok: Boolean, val message: String? = null, val order: Order? = null)
@@ -104,6 +132,11 @@ object ArkeOrderRepository {
     suspend fun ready(id: String, staffName: String?) = step(id, "READY", staffName = staffName)
     suspend fun pickedUp(id: String, staffName: String?) = step(id, "PICKED_UP", staffName = staffName)
     suspend fun reject(id: String, reason: String, staffName: String?) = step(id, "REJECT", reason = reason, staffName = staffName)
+    /** A driver takes a delivery out ([driver] = the staff name on this terminal). */
+    suspend fun out(id: String, driver: String?) = step(id, "OUT", staffName = driver)
+    suspend fun delivered(id: String, staffName: String?) = step(id, "DELIVERED", staffName = staffName)
+    /** Couldn't hand it over: back in the store (READY), [reason] kept. */
+    suspend fun back(id: String, reason: String?, staffName: String?) = step(id, "BACK", reason = reason, staffName = staffName)
 
     /** Gives a rejected order's payment back: VOIDED / REFUNDED, else the error ("offline" = unreachable). */
     suspend fun refund(orderId: String): OnlinePaymentRepository.RefundResult = withContext(Dispatchers.IO) {

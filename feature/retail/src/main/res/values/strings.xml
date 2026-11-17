@@ -529,7 +529,7 @@
     <string name="arke_offline">Can\'t reach the cloud. Online orders will show again when it\'s back.</string>
     <string name="arke_col_new">New · paid</string>
     <string name="arke_col_preparing">Preparing</string>
-    <string name="arke_col_ready">Ready for pickup</string>
+    <string name="arke_col_ready">Ready</string>
     <string name="arke_done_today">Done today</string>
     <string name="arke_none">No orders</string>
     <string name="arke_accept">Accept</string>
@@ -558,4 +558,26 @@
     <string name="arke_step_offline">Can\'t reach the cloud. Try again.</string>
     <string name="arke_status_rejected">Rejected</string>
     <string name="arke_status_picked_up">Picked up</string>
+    <string name="arke_col_out">Out for delivery</string>
+    <string name="arke_delivery">Delivery</string>
+    <string name="arke_out">Out for delivery</string>
+    <string name="arke_delivered">Delivered</string>
+    <string name="arke_back">Couldn\'t deliver</string>
+    <string name="arke_back_title">%1$s brought back?</string>
+    <string name="arke_back_hint">It goes back to Ready. Call the customer, then send it out again, or \"Can\'t make it\" to refund.</string>
+    <string name="arke_back_nobody">No one home</string>
+    <string name="arke_back_address">Wrong address</string>
+    <string name="arke_back_phone">Customer not answering</string>
+    <string name="arke_back_confirm">Bring it back</string>
+    <string name="arke_status_delivered">Delivered</string>
+    <string name="arke_deliver_in">Arrives at the customer in how many minutes?</string>
+    <string name="arke_arrive_by">Arrive by %1$s</string>
+    <string name="arke_out_by">%1$s is delivering</string>
+    <string name="arke_attempts">Tried %1$d× · %2$s</string>
+    <string name="arke_fee">delivery %1$s</string>
+    <string name="arke_online_section">Online orders · paid (%1$d)</string>
+    <string name="arke_nothing_to_collect">Paid online: nothing to collect at the door</string>
+    <string name="arke_out_done">%1$s is on your run. Paid online: nothing to collect.</string>
+    <string name="arke_delivered_done">%1$s delivered.</string>
+    <string name="arke_back_done">%1$s is back in the store.</string>
 </resources>

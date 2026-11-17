@@ -55,4 +55,19 @@ class KitchenTicketTest {
         assertTrue(net.contains("A12"))
         assertTrue(net.contains("Lily"))
     }
+
+    @Test
+    fun `Arke delivery order - delivery header and the address for the driver`() {
+        val t = KitchenTicket(7, takeout = true, note = "", lines = listOf(noodles), staffName = "Amy", onlineCode = "D7", customer = "Lily",
+            deliveryTo = listOf("123 Main St, 1203", "Ottawa K2K 1X1", "Tel 6135550100"))
+        val out = ReceiptPrinterManager.kitchenTicketLines(t)
+        assertTrue(out.contains("    线上配送  DELIVERY"))
+        assertTrue(out.contains("      ##  D7  ##"))
+        assertTrue(out.contains("    123 Main St, 1203"))
+        assertTrue(out.contains("    Tel 6135550100"))
+        assertTrue(out.none { it.contains("PICKUP") })
+        val net = NetworkKitchenPrinter.ticketLines(t).map { it.text }
+        assertTrue(net.contains("线上配送 DELIVERY"))
+        assertTrue(net.contains("Ottawa K2K 1X1"))
+    }
 }

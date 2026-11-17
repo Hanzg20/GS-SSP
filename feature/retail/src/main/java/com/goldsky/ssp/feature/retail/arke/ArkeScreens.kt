@@ -34,6 +34,7 @@ private fun clock(iso: String?): String = parseIso(iso)?.let { SimpleDateFormat(
 private val Gold = Color(0xFFF59E0B)
 private val Sky = Color(0xFF0284C7)
 private val Green = Color(0xFF059669)
+private val Purple = Color(0xFF7C3AED)
 
 /**
  * Chimes once per new paid online order, wherever the terminal is (call it once at the top of
@@ -70,7 +71,11 @@ fun ArkeArrivalBanner(vm: ArkeViewModel, onOpen: () -> Unit) {
     }
 }
 
-/** The store's online orders: new (accept / can't make it), preparing (ready), ready (picked up), and today's done. */
+/**
+ * The store's online orders: new (accept / can't make it), preparing (ready), ready (picked up -- or,
+ * for a delivery, out with a driver), out for delivery (delivered / couldn't deliver), and today's done.
+ * The out-for-delivery lane shows only when the store has delivery orders.
+ */
 @Composable
 fun ArkeOrdersScreen(vm: ArkeViewModel, staffName: String?, onDark: Boolean = false) {
     // Text straight on the screen's background (title, "done today"): light on a dark shell (Ourea).
@@ -79,6 +84,7 @@ fun ArkeOrdersScreen(vm: ArkeViewModel, staffName: String?, onDark: Boolean = fa
     val context = LocalContext.current
     var accepting by remember { mutableStateOf<Order?>(null) }
     var rejecting by remember { mutableStateOf<Order?>(null) }
+    var bringingBack by remember { mutableStateOf<Order?>(null) }
     LaunchedEffect(Unit) { vm.dismissArrival(); vm.refreshNow() }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -118,9 +124,29 @@ fun ArkeOrdersScreen(vm: ArkeViewModel, staffName: String?, onDark: Boolean = fa
             }
             Lane(stringResource(R.string.arke_col_ready), Green, by[ArkeOrderRepository.READY].orEmpty(), Modifier.weight(1f)) { o ->
                 OrderCard(o, vm.busyId == o.id, onReprint = { vm.reprint(context, o, staffName) }) {
-                    Button(onClick = { vm.pickedUp(context, o, staffName) }, enabled = vm.busyId == null,
-                        colors = ButtonDefaults.buttonColors(containerColor = Green), modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.arke_picked_up), fontWeight = FontWeight.Black)
+                    if (o.isDelivery) {
+                        Button(onClick = { vm.out(context, o, staffName) }, enabled = vm.busyId == null,
+                            colors = ButtonDefaults.buttonColors(containerColor = Sky), modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Default.DeliveryDining, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
+                            Text(stringResource(R.string.arke_out), fontWeight = FontWeight.Black)
+                        }
+                        OutlinedButton(onClick = { rejecting = o }, enabled = vm.busyId == null) { Text(stringResource(R.string.arke_reject)) }
+                    } else {
+                        Button(onClick = { vm.pickedUp(context, o, staffName) }, enabled = vm.busyId == null,
+                            colors = ButtonDefaults.buttonColors(containerColor = Green), modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.arke_picked_up), fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+            }
+            if (vm.orders.any { it.isDelivery }) {
+                Lane(stringResource(R.string.arke_col_out), Purple, by[ArkeOrderRepository.OUT_FOR_DELIVERY].orEmpty(), Modifier.weight(1f)) { o ->
+                    OrderCard(o, vm.busyId == o.id, onReprint = { vm.reprint(context, o, staffName) }) {
+                        Button(onClick = { vm.delivered(context, o, staffName) }, enabled = vm.busyId == null,
+                            colors = ButtonDefaults.buttonColors(containerColor = Green), modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.arke_delivered), fontWeight = FontWeight.Black)
+                        }
+                        OutlinedButton(onClick = { bringingBack = o }, enabled = vm.busyId == null) { Text(stringResource(R.string.arke_back)) }
                     }
                 }
             }
@@ -131,9 +157,13 @@ fun ArkeOrdersScreen(vm: ArkeViewModel, staffName: String?, onDark: Boolean = fa
             Text(stringResource(R.string.arke_done_today), fontWeight = FontWeight.Bold, color = screenMuted)
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 done.take(8).forEach { o ->
-                    val rejected = o.status == ArkeOrderRepository.REJECTED
+                    val label = when (o.status) {
+                        ArkeOrderRepository.REJECTED -> R.string.arke_status_rejected
+                        ArkeOrderRepository.DELIVERED -> R.string.arke_status_delivered
+                        else -> R.string.arke_status_picked_up
+                    }
                     AssistChip(onClick = {}, label = {
-                        Text(color = screenText, text = "${o.pickup_code ?: ""} ${o.customer_name} · " + stringResource(if (rejected) R.string.arke_status_rejected else R.string.arke_status_picked_up))
+                        Text(color = screenText, text = "${o.pickup_code ?: ""} ${o.customer_name} · " + stringResource(label))
                     })
                 }
             }
@@ -142,6 +172,9 @@ fun ArkeOrdersScreen(vm: ArkeViewModel, staffName: String?, onDark: Boolean = fa
 
     accepting?.let { o ->
         AcceptDialog(o, onDismiss = { accepting = null }) { minutes -> accepting = null; vm.accept(context, o, minutes, staffName) }
+    }
+    bringingBack?.let { o ->
+        BackDialog(o, onDismiss = { bringingBack = null }) { reason -> bringingBack = null; vm.back(context, o, reason, staffName) }
     }
     rejecting?.let { o ->
         RejectDialog(o, onDismiss = { rejecting = null }) { reason -> rejecting = null; vm.reject(context, o, reason, staffName) }
@@ -177,7 +210,19 @@ private fun OrderCard(o: Order, busy: Boolean, onReprint: (() -> Unit)?, actions
                 Text(o.pickup_code ?: "", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Sky)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(o.customer_name, fontWeight = FontWeight.Black, fontSize = 17.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(o.customer_name, fontWeight = FontWeight.Black, fontSize = 17.sp)
+                        if (o.isDelivery) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(color = Purple, shape = RoundedCornerShape(6.dp)) {
+                                Row(Modifier.padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.DeliveryDining, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(3.dp))
+                                    Text(stringResource(R.string.arke_delivery), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
                     o.customer_phone?.let { Text(it, color = Color.Gray, fontSize = 13.sp) }
                 }
                 Column(horizontalAlignment = Alignment.End) {
@@ -185,8 +230,29 @@ private fun OrderCard(o: Order, busy: Boolean, onReprint: (() -> Unit)?, actions
                     Text(stringResource(R.string.arke_paid_at, clock(o.paid_at)), color = Color.Gray, fontSize = 12.sp)
                 }
             }
-            if (o.status == ArkeOrderRepository.ACCEPTED && o.ready_by != null) {
-                Text(stringResource(R.string.arke_ready_by, clock(o.ready_by)), color = Gold, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 4.dp))
+            if (o.ready_by != null && (o.status == ArkeOrderRepository.ACCEPTED || o.isDelivery && o.open && o.status != ArkeOrderRepository.NEW)) {
+                Text(stringResource(if (o.isDelivery) R.string.arke_arrive_by else R.string.arke_ready_by, clock(o.ready_by)),
+                    color = Gold, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 4.dp))
+            }
+            o.delivery_address?.takeIf { o.isDelivery }?.let { a ->
+                Surface(color = Color(0xFFF3E8FF), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                    Row(Modifier.padding(8.dp)) {
+                        Icon(Icons.Default.Place, null, tint = Purple, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Column {
+                            Text(a.street, fontWeight = FontWeight.Bold)
+                            if (a.area.isNotBlank()) Text(a.area, fontSize = 13.sp)
+                            a.instructions?.takeIf { it.isNotBlank() }?.let { Text("* $it", fontSize = 13.sp, color = Color.DarkGray) }
+                        }
+                    }
+                }
+                if (o.status == ArkeOrderRepository.OUT_FOR_DELIVERY && !o.out_by.isNullOrBlank()) {
+                    Text(stringResource(R.string.arke_out_by, o.out_by!!), color = Purple, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                }
+                if (o.delivery_attempts > 0) {
+                    Text(stringResource(R.string.arke_attempts, o.delivery_attempts, o.last_attempt_note ?: ""), color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                }
             }
             Divider(Modifier.padding(vertical = 8.dp))
             o.items.forEach { l ->
@@ -202,6 +268,7 @@ private fun OrderCard(o: Order, busy: Boolean, onReprint: (() -> Unit)?, actions
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.arke_items, o.itemCount), color = Color.Gray, fontSize = 12.sp)
                 if (o.tip_cents > 0) Text(" · " + stringResource(R.string.arke_tip, money(o.tip_cents)), color = Color.Gray, fontSize = 12.sp)
+                if (o.delivery_fee_cents > 0) Text(" · " + stringResource(R.string.arke_fee, money(o.delivery_fee_cents)), color = Color.Gray, fontSize = 12.sp)
                 Spacer(Modifier.weight(1f))
                 if (onReprint != null) TextButton(onClick = onReprint) {
                     Icon(Icons.Default.Print, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.arke_reprint), fontSize = 12.sp)
@@ -221,9 +288,10 @@ private fun AcceptDialog(o: Order, onDismiss: () -> Unit, onAccept: (Int) -> Uni
             Column(Modifier.padding(20.dp)) {
                 Text("${o.pickup_code ?: ""} · ${o.customer_name}", fontWeight = FontWeight.Black, fontSize = 20.sp)
                 Spacer(Modifier.height(6.dp))
-                Text(stringResource(R.string.arke_ready_in), fontWeight = FontWeight.Bold)
+                Text(stringResource(if (o.isDelivery) R.string.arke_deliver_in else R.string.arke_ready_in), fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(12.dp))
-                listOf(listOf(10, 15, 20), listOf(30, 45, 60)).forEach { row ->
+                val choices = if (o.isDelivery) listOf(listOf(30, 45, 60), listOf(75, 90, 120)) else listOf(listOf(10, 15, 20), listOf(30, 45, 60))
+                choices.forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
                         row.forEach { m ->
                             Button(onClick = { onAccept(m) }, colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
@@ -267,6 +335,41 @@ private fun RejectDialog(o: Order, onDismiss: () -> Unit, onReject: (String) -> 
                     Button(onClick = { reason?.takeIf { it.isNotBlank() }?.let(onReject) }, enabled = !reason.isNullOrBlank(),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
                         Text(stringResource(R.string.arke_reject_confirm), fontWeight = FontWeight.Black)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A driver brings a delivery back: why (kept on the order, shown on the card). */
+@Composable
+private fun BackDialog(o: Order, onDismiss: () -> Unit, onBack: (String) -> Unit) {
+    val reasons = listOf(R.string.arke_back_nobody to "No one home", R.string.arke_back_address to "Wrong address",
+        R.string.arke_back_phone to "Customer not answering")
+    var picked by remember { mutableStateOf<String?>(null) }
+    var other by remember { mutableStateOf(false) }
+    var text by remember { mutableStateOf("") }
+    val reason = if (other) text.trim() else picked
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(20.dp), color = Color.White) {
+            Column(Modifier.padding(20.dp).width(380.dp)) {
+                Text(stringResource(R.string.arke_back_title, o.pickup_code ?: ""), fontWeight = FontWeight.Black, fontSize = 20.sp)
+                Text(stringResource(R.string.arke_back_hint), color = Color.Gray, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+                reasons.forEach { (label, value) ->
+                    val on = !other && picked == value
+                    OutlinedButton(onClick = { other = false; picked = value }, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                        border = BorderStroke(if (on) 2.dp else 1.dp, if (on) Purple else Color.LightGray)) { Text(stringResource(label)) }
+                }
+                OutlinedButton(onClick = { other = true }, modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(if (other) 2.dp else 1.dp, if (other) Purple else Color.LightGray)) { Text(stringResource(R.string.arke_reason_other)) }
+                if (other) OutlinedTextField(value = text, onValueChange = { text = it.take(200) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), singleLine = true)
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.align(Alignment.End)) {
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.arke_cancel)) }
+                    Button(onClick = { reason?.takeIf { it.isNotBlank() }?.let(onBack) }, enabled = !reason.isNullOrBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Purple)) {
+                        Text(stringResource(R.string.arke_back_confirm), fontWeight = FontWeight.Black)
                     }
                 }
             }

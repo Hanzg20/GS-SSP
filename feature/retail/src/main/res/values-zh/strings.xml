@@ -528,7 +528,7 @@
     <string name="arke_offline">连不上云端，恢复后线上订单会重新显示。</string>
     <string name="arke_col_new">新订单 · 已付款</string>
     <string name="arke_col_preparing">准备中</string>
-    <string name="arke_col_ready">待取餐</string>
+    <string name="arke_col_ready">已做好</string>
     <string name="arke_done_today">今天已完成</string>
     <string name="arke_none">没有订单</string>
     <string name="arke_accept">接单</string>
@@ -556,5 +556,27 @@
     <string name="arke_step_failed">没有成功：%1$s</string>
     <string name="arke_step_offline">连不上云端，请再试一次。</string>
     <string name="arke_status_rejected">已拒单</string>
+    <string name="arke_col_out">配送中</string>
+    <string name="arke_delivery">配送</string>
+    <string name="arke_out">出发配送</string>
+    <string name="arke_delivered">已送达</string>
+    <string name="arke_back">送不到</string>
+    <string name="arke_back_title">%1$s 没送到，带回店里？</string>
+    <string name="arke_back_hint">订单回到「已做好」。先打电话给顾客，再重新出发；送不了就点「做不了」退款。</string>
+    <string name="arke_back_nobody">家里没人</string>
+    <string name="arke_back_address">地址不对</string>
+    <string name="arke_back_phone">联系不上顾客</string>
+    <string name="arke_back_confirm">带回店里</string>
+    <string name="arke_status_delivered">已送达</string>
+    <string name="arke_deliver_in">多久送到顾客手上？</string>
+    <string name="arke_arrive_by">%1$s 前送到</string>
+    <string name="arke_out_by">%1$s 正在配送</string>
+    <string name="arke_attempts">已送 %1$d 次 · %2$s</string>
+    <string name="arke_fee">配送费 %1$s</string>
+    <string name="arke_online_section">线上订单 · 已付款（%1$d）</string>
+    <string name="arke_nothing_to_collect">已在网上付款，到门口不用收钱</string>
+    <string name="arke_out_done">%1$s 已在你的配送单里。网上已付款，不用收钱。</string>
+    <string name="arke_delivered_done">%1$s 已送达。</string>
+    <string name="arke_back_done">%1$s 已带回店里。</string>
     <string name="arke_status_picked_up">已取走</string>
 </resources>

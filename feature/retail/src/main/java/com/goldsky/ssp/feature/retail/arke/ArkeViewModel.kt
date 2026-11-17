@@ -21,7 +21,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Arke online orders on the store's terminal (owner 2026-11-16): paid pickup orders come
+ * Arke online orders on the store's terminal (owner 2026-11-16; the store's own delivery
+ * 2026-11-17: ready -> out with a driver -> delivered, or brought back): paid orders come
  * in from the store's link, the terminal chimes, staff accept with a ready time (the
  * kitchen ticket prints), mark it ready, then picked up -- or reject it, and the money
  * goes back to the customer's card (arke-pay-refund). Every terminal of the store sees
@@ -105,6 +106,15 @@ class ArkeViewModel : ViewModel() {
 
     fun pickedUp(context: Context, o: Order, staffName: String?) = run(context, o, { ArkeOrderRepository.pickedUp(o.id, staffName) })
 
+    /** The driver (the staff signed in here) takes a delivery out. */
+    fun out(context: Context, o: Order, staffName: String?) = run(context, o, { ArkeOrderRepository.out(o.id, staffName) })
+
+    fun delivered(context: Context, o: Order, staffName: String?) = run(context, o, { ArkeOrderRepository.delivered(o.id, staffName) })
+
+    /** Couldn't hand it over: back to Ready, [reason] kept. */
+    fun back(context: Context, o: Order, reason: String, staffName: String?) =
+        run(context, o, { ArkeOrderRepository.back(o.id, reason, staffName) })
+
     /** Reject with [reason] (the customer sees it), then give the card its money back. */
     fun reject(context: Context, o: Order, reason: String, staffName: String?) =
         run(context, o, { ArkeOrderRepository.reject(o.id, reason, staffName) }) {
@@ -126,7 +136,14 @@ class ArkeViewModel : ViewModel() {
     }
 
     companion object {
-        /** The kitchen's copy of an online order: pickup number, the customer's name, dishes, note. */
+        /** Where a delivery goes, as printed for the driver: street, area, the driver's note, the phone. */
+        fun deliveryLines(o: Order): List<String>? {
+            val a = o.delivery_address ?: return null
+            return listOfNotNull(a.street.takeIf { it.isNotBlank() }, a.area.takeIf { it.isNotBlank() },
+                a.instructions?.takeIf { it.isNotBlank() }?.let { "* $it" }, o.customer_phone?.let { "Tel $it" })
+        }
+
+        /** The kitchen's copy of an online order: its number, the customer's name, dishes, note (+ the address for a delivery). */
         fun ticketOf(o: Order, staffName: String?) = KitchenTicket(
             number = o.pickup_code?.drop(1)?.toIntOrNull() ?: 0,
             takeout = true,
@@ -134,7 +151,8 @@ class ArkeViewModel : ViewModel() {
             lines = o.items.map { KitchenLine(it.name, it.quantity, it.options, it.note) },
             staffName = staffName,
             onlineCode = o.pickup_code ?: "A?",
-            customer = o.customer_name.takeIf { it.isNotBlank() }
+            customer = o.customer_name.takeIf { it.isNotBlank() },
+            deliveryTo = if (o.isDelivery) deliveryLines(o) else null
         )
     }
 }
