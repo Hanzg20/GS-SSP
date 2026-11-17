@@ -115,6 +115,9 @@ class MainActivity : ComponentActivity() {
                     // cart, so a take-out sale half rung up never lands on a table's ticket.
                     val dine: com.goldsky.ssp.feature.retail.dine.DineViewModel = viewModel()
                     val roundViewModel: RetailViewModel = viewModel(key = "dine-round")
+                    // Arke online orders: polled while the app runs, chime + banner on any screen.
+                    val arke: com.goldsky.ssp.feature.retail.arke.ArkeViewModel = viewModel()
+                    com.goldsky.ssp.feature.retail.arke.ArkeChime(arke)
                     var destination by remember { mutableStateOf(if (com.goldsky.ssp.feature.retail.ui.isDineIn()) OureaDestination.TABLES else OureaDestination.CHECKOUT) }
                     // A payment on a table's check (whole, by items or a share), between the split dialog and the money.
                     var checkPay by remember { mutableStateOf<com.goldsky.ssp.feature.retail.dine.CheckPay?>(null) }
@@ -245,10 +248,14 @@ class MainActivity : ComponentActivity() {
                             onLock = { StaffRepository.signOut(); staff = null; destination = OureaDestination.CHECKOUT },
                             isManager = signedIn.isManager,
                             staff = signedIn,
-                            mascotMoves = paymentStatus is OureaPaymentUiState.Idle && confirmingPayment == null
+                            mascotMoves = paymentStatus is OureaPaymentUiState.Idle && confirmingPayment == null,
+                            onlineNew = arke.newCount
                         )
-                        Box(modifier = Modifier.weight(1f).background(OureaBackground)) {
+                        Column(modifier = Modifier.weight(1f).background(OureaBackground)) {
+                        if (destination != OureaDestination.ONLINE) com.goldsky.ssp.feature.retail.arke.ArkeArrivalBanner(arke) { destination = OureaDestination.ONLINE }
+                        Box(modifier = Modifier.weight(1f)) {
                             when (destination) {
+                                OureaDestination.ONLINE -> com.goldsky.ssp.feature.retail.arke.ArkeOrdersScreen(arke, signedIn.name)
                                 OureaDestination.TABLES, OureaDestination.CHECKOUT -> {
                                     val openCheck = dine.check
                                     if (destination == OureaDestination.TABLES && openCheck == null) {
@@ -324,6 +331,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 OureaDestination.SETTINGS -> if (signedIn.isManager) SettingsScreen(showBusinessType = true, manageTables = true)
                             }
+                        }
                         }
                     }
 

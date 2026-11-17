@@ -86,7 +86,11 @@ object ReceiptPrinterManager {
         val out = mutableListOf<String>()
         val time = SimpleDateFormat("MM-dd HH:mm", Locale.US).format(Date())
         out += "=".repeat(WIDTH)
-        if (t.isDineIn) {
+        if (t.isOnline) {
+            out += "    线上自取  ONLINE PICKUP"
+            out += "      ##  ${t.onlineCode}  ##"
+            t.customer?.let { out += "    $it" }
+        } else if (t.isDineIn) {
             out += if (t.round > 1) "    加菜 ADD (第${t.round}轮)" else "    厨房单  KITCHEN"
             out += "      ##  桌 ${t.table}  ##"
             out += "    " + listOfNotNull(t.guests?.let { "${it}位" }, "单号 ${t.number}").joinToString(" · ")

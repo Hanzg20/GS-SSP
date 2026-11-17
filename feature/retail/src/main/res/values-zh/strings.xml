@@ -522,4 +522,39 @@
     <string name="mascot_title">小助手</string>
     <string name="mascot_switch">小海狸动画</string>
     <string name="mascot_desc">听你说话、查数据时小海狸会动起来；付款时保持静止。重新打开页面后生效。</string>
+
+    <!-- Arke 线上订单（到店自取） -->
+    <string name="arke_title">线上订单</string>
+    <string name="arke_offline">连不上云端，恢复后线上订单会重新显示。</string>
+    <string name="arke_col_new">新订单 · 已付款</string>
+    <string name="arke_col_preparing">准备中</string>
+    <string name="arke_col_ready">待取餐</string>
+    <string name="arke_done_today">今天已完成</string>
+    <string name="arke_none">没有订单</string>
+    <string name="arke_accept">接单</string>
+    <string name="arke_reject">做不了</string>
+    <string name="arke_ready">做好了</string>
+    <string name="arke_picked_up">已取走</string>
+    <string name="arke_reprint">打印厨房单</string>
+    <string name="arke_ready_in">多少分钟做好？</string>
+    <string name="arke_minutes">%1$d 分钟</string>
+    <string name="arke_ready_by">%1$s 前做好</string>
+    <string name="arke_paid_at">%1$s 付款</string>
+    <string name="arke_items">%1$d 件</string>
+    <string name="arke_tip">小费 %1$s</string>
+    <string name="arke_reject_title">订单 %1$s 做不了？</string>
+    <string name="arke_reject_hint">顾客会看到原因，钱会退回顾客的卡。</string>
+    <string name="arke_reason_sold_out">卖完了</string>
+    <string name="arke_reason_busy">太忙了</string>
+    <string name="arke_reason_closing">快打烊了</string>
+    <string name="arke_reason_other">其他原因</string>
+    <string name="arke_reject_confirm">拒单并退款</string>
+    <string name="arke_cancel">返回</string>
+    <string name="arke_new_banner">新线上订单 %1$s</string>
+    <string name="arke_refunded">订单 %1$s 已退款到卡上</string>
+    <string name="arke_refund_failed">订单 %1$s 已拒单，但退款没成功（%2$s），请在 Nuvei 后台退款。</string>
+    <string name="arke_step_failed">没有成功：%1$s</string>
+    <string name="arke_step_offline">连不上云端，请再试一次。</string>
+    <string name="arke_status_rejected">已拒单</string>
+    <string name="arke_status_picked_up">已取走</string>
 </resources>

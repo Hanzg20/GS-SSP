@@ -6,7 +6,8 @@ data class KitchenLine(val name: String, val quantity: Int, val options: List<St
 /**
  * An order as the kitchen (and the customer's receipt) sees it. Quick-service:
  * [number] is the call number. Dine-in: [table] is set, [number] is the check
- * number and [round] counts the sends (2 and up = "add" to the table).
+ * number and [round] counts the sends (2 and up = "add" to the table). Arke online
+ * order: [onlineCode] is its pickup number ("A12") and [customer] the name it is for.
  */
 data class KitchenTicket(
     val number: Int,
@@ -16,8 +17,11 @@ data class KitchenTicket(
     val staffName: String?,
     val table: String? = null,
     val round: Int = 1,
-    val guests: Int? = null
+    val guests: Int? = null,
+    val onlineCode: String? = null,
+    val customer: String? = null
 ) {
     val orderType: String get() = if (takeout) "TAKEOUT" else "DINE_IN"
     val isDineIn: Boolean get() = table != null
+    val isOnline: Boolean get() = onlineCode != null
 }

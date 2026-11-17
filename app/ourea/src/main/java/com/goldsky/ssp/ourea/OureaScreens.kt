@@ -76,7 +76,7 @@ import java.util.Calendar
 import java.util.Locale
 
 /** Which of the sidebar's wired-up destinations is currently showing. */
-enum class OureaDestination { TABLES, CHECKOUT, INSIGHTS, APEX, PRODUCTS, TRANSACTIONS, DAY_REPORT, DELIVERY, JOURNAL, SCAN_RECEIPT, DRAWER, SETTINGS }
+enum class OureaDestination { TABLES, CHECKOUT, ONLINE, INSIGHTS, APEX, PRODUCTS, TRANSACTIONS, DAY_REPORT, DELIVERY, JOURNAL, SCAN_RECEIPT, DRAWER, SETTINGS }
 
 /**
  * Left icon rail modeled on the reference screenshots' sidebar. Only wired
@@ -87,7 +87,7 @@ enum class OureaDestination { TABLES, CHECKOUT, INSIGHTS, APEX, PRODUCTS, TRANSA
  */
 @Composable
 fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit, onLock: () -> Unit, isManager: Boolean = true,
-                 staff: com.goldsky.ssp.payment.StaffMember? = null, mascotMoves: Boolean = true) {
+                 staff: com.goldsky.ssp.payment.StaffMember? = null, mascotMoves: Boolean = true, onlineNew: Int = 0) {
     Column(
         modifier = Modifier
             .fillMaxHeight()
@@ -122,6 +122,9 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
         }
         SidebarIcon(Icons.Default.ShoppingCart, current == OureaDestination.CHECKOUT) { onSelect(OureaDestination.CHECKOUT) }
         Spacer(modifier = Modifier.height(2.dp))
+        // Arke online orders (pickup): the badge counts paid orders nobody has accepted yet.
+        SidebarIcon(Icons.Default.ShoppingBag, current == OureaDestination.ONLINE, badge = onlineNew) { onSelect(OureaDestination.ONLINE) }
+        Spacer(modifier = Modifier.height(2.dp))
         if (isManager) {
             SidebarIcon(Icons.Default.Inventory2, current == OureaDestination.PRODUCTS) { onSelect(OureaDestination.PRODUCTS) }
             Spacer(modifier = Modifier.height(2.dp))
@@ -145,7 +148,7 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
         }
         if (isManager) SidebarIcon(Icons.Default.Settings, current == OureaDestination.SETTINGS) { onSelect(OureaDestination.SETTINGS) }
         Spacer(modifier = Modifier.height(2.dp))
-        SidebarIcon(Icons.Default.Lock, false, onLock)
+        SidebarIcon(Icons.Default.Lock, false, onClick = onLock)
     }
 }
 
@@ -154,7 +157,7 @@ fun OureaSidebar(current: OureaDestination, onSelect: (OureaDestination) -> Unit
  * fill -- reads as refined/premium rather than a neon "AI app" highlight.
  */
 @Composable
-private fun SidebarIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, onClick: () -> Unit) {
+private fun SidebarIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, badge: Int = 0, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(44.dp)
@@ -163,7 +166,13 @@ private fun SidebarIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, s
         contentAlignment = Alignment.Center
     ) {
         IconButton(onClick = onClick) {
-            Icon(icon, null, tint = if (selected) OureaGold else OureaTextSecondary)
+            Icon(icon, null, tint = if (badge > 0) OureaGold else if (selected) OureaGold else OureaTextSecondary)
+        }
+        if (badge > 0) {
+            Box(Modifier.align(Alignment.TopEnd).padding(2.dp).size(18.dp).clip(CircleShape).background(Color(0xFFEF4444)),
+                contentAlignment = Alignment.Center) {
+                Text(if (badge > 9) "9+" else "$badge", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black)
+            }
         }
     }
 }

@@ -41,4 +41,18 @@ class KitchenTicketTest {
         assertEquals(listOf("Note 备注: 少冰"), ReceiptPrinterManager.orderFooter(t))
         assertEquals(emptyList<String>(), ReceiptPrinterManager.orderFooter(t.copy(note = "")))
     }
+
+    @Test
+    fun `Arke online order - pickup number and the customer's name`() {
+        val t = KitchenTicket(12, takeout = true, note = "多给餐具", lines = listOf(noodles), staffName = "Amy", onlineCode = "A12", customer = "Lily")
+        val out = ReceiptPrinterManager.kitchenTicketLines(t)
+        assertTrue(out.contains("    线上自取  ONLINE PICKUP"))
+        assertTrue(out.contains("      ##  A12  ##"))
+        assertTrue(out.contains("    Lily"))
+        assertTrue(out.none { it.contains("TAKE-OUT") })
+        val net = NetworkKitchenPrinter.ticketLines(t).map { it.text }
+        assertTrue(net.contains("线上自取 ONLINE PICKUP"))
+        assertTrue(net.contains("A12"))
+        assertTrue(net.contains("Lily"))
+    }
 }

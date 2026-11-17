@@ -523,4 +523,39 @@
     <string name="mascot_title">ASSISTANT</string>
     <string name="mascot_switch">Animated Beaver</string>
     <string name="mascot_desc">Beaver blinks and moves while listening and looking things up. Still during payments. Takes effect next time the screen opens.</string>
+
+    <!-- Arke online orders (pickup) on the store's terminal -->
+    <string name="arke_title">Online orders</string>
+    <string name="arke_offline">Can\'t reach the cloud. Online orders will show again when it\'s back.</string>
+    <string name="arke_col_new">New · paid</string>
+    <string name="arke_col_preparing">Preparing</string>
+    <string name="arke_col_ready">Ready for pickup</string>
+    <string name="arke_done_today">Done today</string>
+    <string name="arke_none">No orders</string>
+    <string name="arke_accept">Accept</string>
+    <string name="arke_reject">Can\'t make it</string>
+    <string name="arke_ready">Ready</string>
+    <string name="arke_picked_up">Picked up</string>
+    <string name="arke_reprint">Print ticket</string>
+    <string name="arke_ready_in">Ready in how many minutes?</string>
+    <string name="arke_minutes">%1$d min</string>
+    <string name="arke_ready_by">Ready by %1$s</string>
+    <string name="arke_paid_at">Paid %1$s</string>
+    <string name="arke_items">%1$d items</string>
+    <string name="arke_tip">tip %1$s</string>
+    <string name="arke_reject_title">Can\'t make order %1$s?</string>
+    <string name="arke_reject_hint">The customer is told why and their card gets the money back.</string>
+    <string name="arke_reason_sold_out">Sold out</string>
+    <string name="arke_reason_busy">Too busy</string>
+    <string name="arke_reason_closing">Closing soon</string>
+    <string name="arke_reason_other">Other reason</string>
+    <string name="arke_reject_confirm">Reject and refund</string>
+    <string name="arke_cancel">Back</string>
+    <string name="arke_new_banner">New online order %1$s</string>
+    <string name="arke_refunded">Order %1$s refunded to the card</string>
+    <string name="arke_refund_failed">Order %1$s rejected, but the refund failed (%2$s). Refund it in Nuvei.</string>
+    <string name="arke_step_failed">Didn\'t go through: %1$s</string>
+    <string name="arke_step_offline">Can\'t reach the cloud. Try again.</string>
+    <string name="arke_status_rejected">Rejected</string>
+    <string name="arke_status_picked_up">Picked up</string>
 </resources>
