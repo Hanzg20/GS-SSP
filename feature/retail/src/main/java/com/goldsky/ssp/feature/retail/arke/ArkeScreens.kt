@@ -72,7 +72,10 @@ fun ArkeArrivalBanner(vm: ArkeViewModel, onOpen: () -> Unit) {
 
 /** The store's online orders: new (accept / can't make it), preparing (ready), ready (picked up), and today's done. */
 @Composable
-fun ArkeOrdersScreen(vm: ArkeViewModel, staffName: String?) {
+fun ArkeOrdersScreen(vm: ArkeViewModel, staffName: String?, onDark: Boolean = false) {
+    // Text straight on the screen's background (title, "done today"): light on a dark shell (Ourea).
+    val screenText = if (onDark) Color.White else Color.Unspecified
+    val screenMuted = if (onDark) Color(0xFF94A3B8) else Color.Gray
     val context = LocalContext.current
     var accepting by remember { mutableStateOf<Order?>(null) }
     var rejecting by remember { mutableStateOf<Order?>(null) }
@@ -82,7 +85,7 @@ fun ArkeOrdersScreen(vm: ArkeViewModel, staffName: String?) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.ShoppingBag, null, tint = Gold, modifier = Modifier.size(28.dp))
             Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.arke_title), fontSize = 24.sp, fontWeight = FontWeight.Black)
+            Text(stringResource(R.string.arke_title), fontSize = 24.sp, fontWeight = FontWeight.Black, color = screenText)
             Spacer(Modifier.weight(1f))
             if (!vm.online) Text(stringResource(R.string.arke_offline), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
         }
@@ -125,12 +128,12 @@ fun ArkeOrdersScreen(vm: ArkeViewModel, staffName: String?) {
         val done = vm.orders.filter { !it.open }
         if (done.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
-            Text(stringResource(R.string.arke_done_today), fontWeight = FontWeight.Bold, color = Color.Gray)
+            Text(stringResource(R.string.arke_done_today), fontWeight = FontWeight.Bold, color = screenMuted)
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 done.take(8).forEach { o ->
                     val rejected = o.status == ArkeOrderRepository.REJECTED
                     AssistChip(onClick = {}, label = {
-                        Text("${o.pickup_code ?: ""} ${o.customer_name} · " + stringResource(if (rejected) R.string.arke_status_rejected else R.string.arke_status_picked_up))
+                        Text(color = screenText, text = "${o.pickup_code ?: ""} ${o.customer_name} · " + stringResource(if (rejected) R.string.arke_status_rejected else R.string.arke_status_picked_up))
                     })
                 }
             }

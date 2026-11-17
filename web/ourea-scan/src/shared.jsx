@@ -216,13 +216,13 @@ export function AvoidSheet({ avoid, setAvoid, onClose }) {
 }
 
 /** Full-screen message with Beaver: bad code, offline, no token, loading. */
-export function BeaverScreen({ mood, text, action }) {
+export function BeaverScreen({ mood, text, action, product }) {
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center p-8 text-center bg-paper">
       <Beaver mood={mood} className="w-36" bob={mood === 'blink'} />
       <p className="mt-5 text-lg font-black text-ink max-w-xs">{text}</p>
       {action}
-      <Signature className="absolute bottom-6" />
+      <Signature className="absolute bottom-6" product={product} />
     </div>
   )
 }

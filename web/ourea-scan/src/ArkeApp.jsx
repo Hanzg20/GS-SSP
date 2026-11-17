@@ -264,9 +264,9 @@ function OrderPage({ token }) {
   }, [o, read])
 
   if (o === undefined) return offline
-    ? <BeaverScreen mood="alert" text={T.offline} action={<button onClick={read} className="btn-gold mt-6 px-8 py-3.5 rounded-2xl">{T.retry}</button>} />
-    : <BeaverScreen mood="blink" text={T.loading} />
-  if (o === null) return <BeaverScreen mood="alert" text={AK.noStore} />
+    ? <BeaverScreen product="Arke" mood="alert" text={T.offline} action={<button onClick={read} className="btn-gold mt-6 px-8 py-3.5 rounded-2xl">{T.retry}</button>} />
+    : <BeaverScreen product="Arke" mood="blink" text={T.loading} />
+  if (o === null) return <BeaverScreen product="Arke" mood="alert" text={AK.noStore} />
 
   const s = o.store
   const step = { NEW: 1, ACCEPTED: 2, READY: 3, PICKED_UP: 3 }[o.status] || 0
@@ -399,9 +399,9 @@ function StorePage({ slug }) {
   }
   const setQty = (line, n) => setCart(n <= 0 ? cart.filter((l) => l.key !== line.key) : cart.map((l) => (l.key === line.key ? { ...l, quantity: Math.min(20, n) } : l)))
 
-  if (state === 'bad') return <BeaverScreen mood="alert" text={AK.noStore} />
-  if (state === 'offline') return <BeaverScreen mood="alert" text={T.offline} action={<button onClick={load} className="btn-gold mt-6 px-8 py-3.5 rounded-2xl">{T.retry}</button>} />
-  if (state === 'loading' || !menu) return <BeaverScreen mood="blink" text={T.loading} />
+  if (state === 'bad') return <BeaverScreen product="Arke" mood="alert" text={AK.noStore} />
+  if (state === 'offline') return <BeaverScreen product="Arke" mood="alert" text={T.offline} action={<button onClick={load} className="btn-gold mt-6 px-8 py-3.5 rounded-2xl">{T.retry}</button>} />
+  if (state === 'loading' || !menu) return <BeaverScreen product="Arke" mood="blink" text={T.loading} />
 
   const s = menu.store
   const canOrder = s.open_now && s.online_pay

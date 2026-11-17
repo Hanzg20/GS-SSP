@@ -1,9 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" translate="no">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#FFFFFF" />
+    <!-- The page has its own languages (zh / en / fr / ar). Browser translation rewrites React's text nodes,
+         so later updates (cart totals, button labels, order status) stop showing -- seen in Chrome 2026-11-16. -->
+    <meta name="google" content="notranslate" />
     <title>Ourea Scan</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

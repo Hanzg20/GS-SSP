@@ -255,7 +255,7 @@ class MainActivity : ComponentActivity() {
                         if (destination != OureaDestination.ONLINE) com.goldsky.ssp.feature.retail.arke.ArkeArrivalBanner(arke) { destination = OureaDestination.ONLINE }
                         Box(modifier = Modifier.weight(1f)) {
                             when (destination) {
-                                OureaDestination.ONLINE -> com.goldsky.ssp.feature.retail.arke.ArkeOrdersScreen(arke, signedIn.name)
+                                OureaDestination.ONLINE -> com.goldsky.ssp.feature.retail.arke.ArkeOrdersScreen(arke, signedIn.name, onDark = true)
                                 OureaDestination.TABLES, OureaDestination.CHECKOUT -> {
                                     val openCheck = dine.check
                                     if (destination == OureaDestination.TABLES && openCheck == null) {
