@@ -1,26 +1,31 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Minus, X, ChevronRight, Loader2, Edit3, Phone, MapPin, Clock, CheckCircle2, AlertTriangle, ClipboardList, Menu as MenuIcon, Globe, Check } from 'lucide-react'
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { Plus, Minus, X, ChevronRight, ChevronDown, Loader2, Phone, MapPin, Clock, CheckCircle2, AlertTriangle, ClipboardList,
+  Globe, Check, Search, ShieldAlert, ShoppingBag, ChefHat, PackageCheck, XCircle, Store } from 'lucide-react'
 import { T, LANG, LANGS, pickLang, dishName } from './i18n.js'
 import { AK } from './arke-i18n.js'
 import { supabase, callFunction, money, store, newRef } from './lib.js'
-import { Beaver, DishImg, Sheet, DishSheet, AvoidSheet, BeaverScreen, Signature, CategorySheet,
-  useMenuSections, useCategoryTabs, MenuFilters, DishRow, MenuSections } from './shared.jsx'
+import { DishImg, Sheet, DishSheet, AvoidSheet, Signature, CategorySheet, useMenuSections, useCategoryTabs, DishRow } from './shared.jsx'
 import { isEmail, savedEmail, saveEmail, loadNuvei, mountNuvei, TipPicker, tipCentsOf, EmailField } from './pay.jsx'
 
 /*
  * Arke -- online ordering for pickup (owner 2026-11-16, phase 1 of
  * docs/online_ordering_design.md). The store's link is <this site>/?s=<slug>;
- * the customer builds a cart on this phone, places the order (online_place_order),
+ * the customer builds a cart on this device, places the order (online_place_order),
  * pays it on Nuvei's form (arke-pay) and follows it on its own page (?o=<token>):
  * paid -> the store accepts (ready time) -> ready -> picked up. The server prices
  * everything; "paid" only when arke-pay says Nuvei confirmed it.
  * docs/migrations/2026-11-16_arke_online_orders.sql.
+ *
+ * Its own storefront, not the table page (owner 2026-11-17): the store's card with
+ * hours and pickup time, no Beaver. Phone: one column, category tabs, cart bar at the
+ * bottom, sheets. Desktop (lg): categories + search on the left, dishes in a grid, the
+ * cart always open on the right.
  */
 
 const callPay = (body) => callFunction('arke-pay', body, { raw: true })
 const ACTIVE = ['AWAITING_PAYMENT', 'NEW', 'ACCEPTED', 'READY']
 
-/** The orders this phone placed (status links), newest first. */
+/** The orders this device placed (status links), newest first. */
 const myOrders = {
   list() { return store.get('arke_orders') || [] },
   add(o) { store.set('arke_orders', [o, ...myOrders.list().filter((x) => x.token !== o.token)].slice(0, 10)) },
@@ -30,6 +35,19 @@ const timeOf = (iso, tz) => {
   try { return new Date(iso).toLocaleTimeString(LANG, { hour: 'numeric', minute: '2-digit', timeZone: tz || undefined }) } catch { return '' }
 }
 
+/** Today's ISO weekday (1 = Monday) in the store's time zone. */
+const isoToday = (tz) => {
+  try {
+    const d = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: tz || undefined }).format(new Date())
+    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(d) + 1 || 1
+  } catch { return ((new Date().getDay() + 6) % 7) + 1 }
+}
+/** One day's opening ranges as words ("11:00–14:00, 17:00–21:30"); null = closed that day. */
+const rangesOf = (hours, day) => {
+  const r = Array.isArray(hours?.[String(day)]) ? hours[String(day)] : []
+  return r.length ? r.map(([a, b]) => `${a}–${b}`).join(', ') : null
+}
+
 function StoreLogo({ s, size = 'w-12 h-12 text-xl' }) {
   const [broken, setBroken] = useState(false)
   return s.logo_url && !broken
@@ -37,7 +55,21 @@ function StoreLogo({ s, size = 'w-12 h-12 text-xl' }) {
     : <div className={`${size} rounded-2xl bg-gradient-to-br from-gold-400 to-gold-600 text-ink font-black flex items-center justify-center shrink-0`}>{s.name.trim().charAt(0)}</div>
 }
 
-/** Language and the orders this phone placed. */
+/** Full-page message (loading, bad link, offline). */
+function ArkeScreen({ busy, text, action }) {
+  return (
+    <div className="relative min-h-screen flex flex-col items-center justify-center p-8 text-center bg-paper">
+      <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${busy ? 'bg-white shadow-card' : 'bg-gold-50'}`}>
+        {busy ? <Loader2 className="w-8 h-8 text-gold-600 animate-spin" /> : <Store className="w-8 h-8 text-gold-700" />}
+      </div>
+      <p className="mt-5 text-lg font-black text-ink max-w-xs">{text}</p>
+      {action}
+      <Signature className="absolute bottom-6" product="Arke" />
+    </div>
+  )
+}
+
+/** Language and the orders this device placed. */
 function MenuSheet({ onClose }) {
   const orders = myOrders.list()
   return (
@@ -71,6 +103,113 @@ function MenuSheet({ onClose }) {
         <Signature product="Arke" />
       </div>
     </Sheet>
+  )
+}
+
+/** The store's card: pickup time, today's hours (tap for the week), address, phone, notice. */
+function StoreCard({ s, canOrder }) {
+  const [week, setWeek] = useState(false)
+  const today = isoToday(s.timezone)
+  const hasHours = s.hours && typeof s.hours === 'object'
+  const todayRanges = hasHours ? rangesOf(s.hours, today) : null
+  return (
+    <div className="bg-white rounded-3xl shadow-card overflow-hidden">
+      <div className="h-20 sm:h-24 bg-gradient-to-r from-gold-100 via-gold-50 to-sky-100" />
+      <div className="px-4 sm:px-5 pb-4 -mt-9">
+        <div className="flex items-end gap-3">
+          <div className="p-1 bg-white rounded-[20px] shadow-card"><StoreLogo s={s} size="w-16 h-16 text-2xl" /></div>
+          <span className={`mb-1 inline-flex items-center gap-1 font-black text-xs px-2.5 py-1 rounded-full ${canOrder ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-ink-mute'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${canOrder ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+            {canOrder ? AK.open : s.online_pay ? AK.closedNow : AK.payOff}
+          </span>
+        </div>
+        <h1 className="mt-2 font-black text-2xl text-ink leading-tight">{s.name}</h1>
+        <div className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-ink text-white ps-3 pe-4 py-2">
+          <ShoppingBag className="w-4 h-4 text-gold-300" />
+          <span className="font-black text-sm">{AK.pickup}</span>
+          <span className="text-xs text-slate-300">· {AK.pickupIn(s.pickup_minutes)}</span>
+        </div>
+        <div className="mt-3 space-y-1.5 text-sm text-ink-soft">
+          {hasHours && (
+            <button onClick={() => setWeek(!week)} className="flex items-center gap-2 text-start">
+              <Clock className="w-4 h-4 text-gold-700 shrink-0" />
+              <span>{todayRanges ? AK.todayHours(todayRanges) : AK.closedToday}</span>
+              <ChevronDown className={`w-4 h-4 text-ink-mute transition-transform ${week ? 'rotate-180' : ''}`} />
+            </button>
+          )}
+          {week && (
+            <div className="ms-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-xs">
+              {AK.days.map((d, i) => (
+                <React.Fragment key={d}>
+                  <span className={`font-bold ${i + 1 === today ? 'text-ink' : 'text-ink-mute'}`}>{d}</span>
+                  <span className={i + 1 === today ? 'text-ink font-bold' : ''}>{rangesOf(s.hours, i + 1) || AK.closed}</span>
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+          {s.address && <p className="flex items-start gap-2"><MapPin className="w-4 h-4 mt-0.5 text-gold-700 shrink-0" />{s.address}</p>}
+          {s.phone && <a href={`tel:${s.phone.replace(/[^0-9+]/g, '')}`} className="flex items-center gap-2 font-bold text-sky-700"><Phone className="w-4 h-4 shrink-0" />{s.phone}</a>}
+        </div>
+        {s.notice && <p className="mt-3 text-sm font-bold text-gold-800 bg-gold-50 rounded-xl px-3 py-2">📣 {s.notice}</p>}
+      </div>
+    </div>
+  )
+}
+
+/** Search box + allergy filter (top of the phone's sticky bar; top of the desktop's left column). */
+function SearchRow({ query, setQuery, avoid, onAvoid, stacked = false }) {
+  return (
+    <div className={stacked ? 'space-y-2' : 'flex gap-2'}>
+      <label className="flex-1 min-w-0 flex items-center gap-2 bg-white rounded-xl px-3 py-2 border border-slate-200 focus-within:border-gold-500">
+        <Search className="w-4 h-4 text-ink-mute shrink-0" />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={T.search} className="bg-transparent outline-none w-full text-[15px] min-w-0" />
+        {query && <button onClick={() => setQuery('')} aria-label={T.close}><X className="w-4 h-4 text-ink-mute" /></button>}
+      </label>
+      <button onClick={onAvoid} aria-label={T.avoid}
+        className={`shrink-0 px-3 rounded-xl text-sm font-black border flex items-center gap-1 ${stacked ? 'w-full py-2' : ''} ${avoid.length ? 'bg-red-50 border-red-300 text-red-700' : 'bg-white border-slate-200 text-ink-soft'}`}>
+        <ShieldAlert className="w-4 h-4" />{T.avoid}{avoid.length ? ` ${avoid.length}` : ''}
+      </button>
+    </div>
+  )
+}
+
+/** The cart's lines with +/- and the totals; [action] is the checkout button. */
+function CartBody({ lines, subtotal, tax, setQty, footer }) {
+  return (
+    <>
+      <div className="px-5 py-1 overflow-y-auto flex-1 divide-y divide-slate-100">
+        {lines.length === 0 && (
+          <div className="py-10 flex flex-col items-center text-center">
+            <ShoppingBag className="w-10 h-10 text-slate-300" />
+            <p className="mt-2 font-bold text-ink-mute">{AK.emptyCart}</p>
+          </div>
+        )}
+        {lines.map((l) => (
+          <div key={l.key} className="py-3 flex items-center justify-between gap-3">
+            <DishImg src={l.p?.image_url} className="w-12 h-12 rounded-xl object-cover bg-slate-100 shrink-0" fallback={<div className="w-12 h-12 rounded-xl bg-gold-50 shrink-0" />} />
+            <div className="min-w-0 flex-1">
+              <p className="font-black text-ink text-[15px] leading-snug">{dishName(l.p)}</p>
+              {l.optionNames.length > 0 && <p className="text-xs text-sky-800">+ {l.optionNames.join(', ')}</p>}
+              {l.note && <p className="text-xs text-ink-mute italic">* {l.note}</p>}
+              <p className="text-xs text-ink-mute">{money(l.unit * l.quantity)}</p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={() => setQty(l, l.quantity - 1)} aria-label="-" className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center"><Minus className="w-4 h-4" /></button>
+              <span className="font-black w-4 text-center">{l.quantity}</span>
+              <button onClick={() => setQty(l, l.quantity + 1)} aria-label="+" disabled={l.quantity >= 20} className="w-8 h-8 rounded-full bg-gold-500 text-ink flex items-center justify-center"><Plus className="w-4 h-4" strokeWidth={3} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {lines.length > 0 && (
+        <div className="p-5 bg-paper border-t border-slate-100 space-y-1.5">
+          <div className="flex justify-between text-sm text-ink-soft"><span>{T.subtotal}</span><span className="font-bold">{money(subtotal)}</span></div>
+          <div className="flex justify-between text-sm text-ink-soft"><span>{T.tax}</span><span className="font-bold">{money(tax)}</span></div>
+          <div className="flex justify-between text-xl font-black pt-2 border-t border-slate-200"><span>{T.total}</span><span>{money(subtotal + tax)}</span></div>
+          {footer}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -161,6 +300,30 @@ function Checkout({ slug, menu, lines, subtotal, tax, onEdit, onClose, onPaid })
     onClose()
   }
 
+  const summary = (
+    <div className="lg:bg-paper lg:rounded-2xl lg:p-4">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="font-black text-ink">{AK.cart}</h3>
+        {(state === 'form' || state === 'placing') && <button onClick={onEdit} className="text-sm font-bold text-sky-700">{AK.edit}</button>}
+      </div>
+      <div className="divide-y divide-slate-100">
+        {lines.map((l) => (
+          <div key={l.key} className="py-2 flex justify-between gap-3 text-sm">
+            <span className="min-w-0">{l.quantity}× {l.p ? dishName(l.p) : '…'}{l.optionNames.length ? <span className="text-slate-500"> ({l.optionNames.join(', ')})</span> : null}</span>
+            <span className="font-bold shrink-0">{money(l.unit * l.quantity)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 pt-2 border-t border-slate-200 space-y-1 text-sm text-slate-600">
+        <div className="flex justify-between"><span>{T.subtotal}</span><span className="font-bold">{money(subtotal)}</span></div>
+        <div className="flex justify-between"><span>{T.taxActual}</span><span className="font-bold">{money(tax)}</span></div>
+        {tip !== null && tipCents > 0 && <div className="flex justify-between"><span>{T.tipTitle}</span><span className="font-bold">{money(tipCents)}</span></div>}
+        <div className="flex justify-between text-base font-black text-ink pt-1"><span>{T.total}</span><span>{money(subtotal + tax + tipCents)}</span></div>
+      </div>
+      <p className="mt-3 flex items-start gap-1.5 text-xs text-ink-mute"><MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gold-700" /><span><b className="text-ink-soft">{s.name}</b>{s.address ? ` · ${s.address}` : ''}</span></p>
+    </div>
+  )
+
   let body
   if (state === 'paying') {
     body = (
@@ -182,32 +345,14 @@ function Checkout({ slug, menu, lines, subtotal, tax, onEdit, onClose, onPaid })
     body = (
       <div className="space-y-5 py-2">
         <div>
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="font-black text-ink">{AK.cart}</h3>
-            <button onClick={onEdit} className="text-sm font-bold text-sky-700 flex items-center gap-1"><Edit3 className="w-4 h-4" />{T.orderMoreBtn}</button>
-          </div>
-          <div className="divide-y divide-slate-100">
-            {lines.map((l) => (
-              <div key={l.key} className="py-2 flex justify-between gap-3 text-sm">
-                <span className="min-w-0">{l.quantity}× {l.p ? dishName(l.p) : '…'}{l.optionNames.length ? <span className="text-slate-500"> ({l.optionNames.join(', ')})</span> : null}</span>
-                <span className="font-bold shrink-0">{money(l.unit * l.quantity)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-2 pt-2 border-t border-slate-200 space-y-1 text-sm text-slate-600">
-            <div className="flex justify-between"><span>{T.subtotal}</span><span className="font-bold">{money(subtotal)}</span></div>
-            <div className="flex justify-between"><span>{T.taxActual}</span><span className="font-bold">{money(tax)}</span></div>
-          </div>
-        </div>
-        <div>
           <h3 className="font-black text-ink mb-2">{AK.yourInfo}</h3>
-          <div className="space-y-2">
+          <div className="grid gap-2 sm:grid-cols-2">
             <input value={info.name} onChange={(e) => setInfo({ ...info, name: e.target.value.slice(0, 40) })} placeholder={AK.name} autoComplete="name"
               className="w-full px-4 py-3 rounded-xl border border-slate-300" />
             <input value={info.phone} onChange={(e) => setInfo({ ...info, phone: e.target.value.slice(0, 20) })} placeholder={AK.phone}
               type="tel" inputMode="tel" autoComplete="tel" className="w-full px-4 py-3 rounded-xl border border-slate-300" />
-            <p className="text-xs text-slate-500">{AK.phoneHint}</p>
           </div>
+          <p className="text-xs text-slate-500 mt-1.5">{AK.phoneHint}</p>
         </div>
         <div>
           <h3 className="font-black text-ink mb-2">{AK.orderNote}</h3>
@@ -220,30 +365,50 @@ function Checkout({ slug, menu, lines, subtotal, tax, onEdit, onClose, onPaid })
     )
   }
 
+  const button = (state === 'form' || state === 'placing') && (
+    <div>
+      {error && <p className="text-sm font-bold text-red-600 mb-2">{error}</p>}
+      <button onClick={pay} disabled={!ready || state === 'placing'} className="btn-gold w-full py-4 rounded-2xl text-lg flex items-center justify-center gap-2">
+        {state === 'placing' && <Loader2 className="w-5 h-5 animate-spin" />}
+        {state === 'placing' ? AK.placing
+          : !info.name.trim() || !phoneOk ? AK.fillInfo
+          : tip === null ? T.chooseTip
+          : !isEmail(email.trim()) ? T.enterEmail
+          : AK.payAndOrder(money(subtotal + tax + tipCents))}
+      </button>
+    </div>
+  )
+
+  // Phone: a sheet from the bottom, the order summary first. Desktop: a wide dialog, the form
+  // on the left, the summary and the pay button on the right.
   return (
-    <div className="fixed inset-0 z-50 bg-ink/60 flex items-end sm:items-center sm:justify-center">
-      <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="font-black text-xl">{AK.checkout} · {AK.pickup}</h2>
+    <div className="fixed inset-0 z-50 bg-ink/60 flex items-end sm:items-center sm:justify-center sm:p-6">
+      <div className="bg-white w-full max-w-lg lg:max-w-4xl rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col">
+        <div className="px-5 lg:px-7 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-black text-xl flex items-center gap-2"><ShoppingBag className="w-5 h-5 text-gold-600" />{AK.checkout} · {AK.pickup}</h2>
           <button onClick={close} aria-label={T.close} className="p-2 text-slate-400"><X className="w-6 h-6" /></button>
         </div>
-        <div className="px-5 py-3 overflow-y-auto flex-1">{body}</div>
-        {(state === 'form' || state === 'placing') && (
-          <div className="p-5 bg-slate-50 border-t border-slate-200">
-            {error && <p className="text-sm font-bold text-red-600 mb-2">{error}</p>}
-            <button onClick={pay} disabled={!ready || state === 'placing'} className="btn-gold w-full py-4 rounded-2xl text-lg flex items-center justify-center gap-2">
-              {state === 'placing' && <Loader2 className="w-5 h-5 animate-spin" />}
-              {state === 'placing' ? AK.placing
-                : !info.name.trim() || !phoneOk ? AK.fillInfo
-                : tip === null ? T.chooseTip
-                : !isEmail(email.trim()) ? T.enterEmail
-                : AK.payAndOrder(money(subtotal + tax + tipCents))}
-            </button>
+        <div className="overflow-y-auto flex-1 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-7 px-5 lg:px-7 py-3 lg:py-5">
+          <div className="lg:order-2 space-y-4 mb-4 lg:mb-0">
+            {summary}
+            <div className="hidden lg:block">{button}</div>
           </div>
-        )}
+          <div className="lg:order-1 min-w-0">{body}</div>
+        </div>
+        {button && <div className="lg:hidden p-5 bg-slate-50 border-t border-slate-200">{button}</div>}
       </div>
     </div>
   )
+}
+
+const STATUS_LOOK = {
+  AWAITING_PAYMENT: { Icon: Clock, ring: 'bg-slate-100 text-ink-mute' },
+  NEW: { Icon: ClipboardList, ring: 'bg-sky-50 text-sky-700' },
+  ACCEPTED: { Icon: ChefHat, ring: 'bg-gold-50 text-gold-700' },
+  READY: { Icon: PackageCheck, ring: 'bg-emerald-50 text-emerald-600' },
+  PICKED_UP: { Icon: CheckCircle2, ring: 'bg-emerald-50 text-emerald-600' },
+  REJECTED: { Icon: XCircle, ring: 'bg-red-50 text-red-600' },
+  EXPIRED: { Icon: XCircle, ring: 'bg-slate-100 text-ink-mute' },
 }
 
 /** The order's own page: pickup number, where it is, the store's address and phone. */
@@ -264,31 +429,36 @@ function OrderPage({ token }) {
   }, [o, read])
 
   if (o === undefined) return offline
-    ? <BeaverScreen product="Arke" mood="alert" text={T.offline} action={<button onClick={read} className="btn-gold mt-6 px-8 py-3.5 rounded-2xl">{T.retry}</button>} />
-    : <BeaverScreen product="Arke" mood="blink" text={T.loading} />
-  if (o === null) return <BeaverScreen product="Arke" mood="alert" text={AK.noStore} />
+    ? <ArkeScreen text={T.offline} action={<button onClick={read} className="btn-gold mt-6 px-8 py-3.5 rounded-2xl">{T.retry}</button>} />
+    : <ArkeScreen busy text={T.loading} />
+  if (o === null) return <ArkeScreen text={AK.noStore} />
 
   const s = o.store
   const step = { NEW: 1, ACCEPTED: 2, READY: 3, PICKED_UP: 3 }[o.status] || 0
   const bad = o.status === 'REJECTED' || o.status === 'EXPIRED'
-  const mood = o.status === 'READY' || o.status === 'PICKED_UP' ? 'done' : bad ? 'alert' : 'clipboard'
+  const { Icon, ring } = STATUS_LOOK[o.status] || STATUS_LOOK.NEW
   return (
     <div className="min-h-screen bg-paper pb-10">
-      <div className="bg-gradient-to-b from-gold-50 to-paper px-5 pt-8 pb-4 flex flex-col items-center text-center">
-        <StoreLogo s={s} size="w-16 h-16 text-3xl" />
-        <h1 className="mt-3 font-black text-xl text-ink">{s.name}</h1>
-        <p className="text-sm font-bold text-ink-mute">{AK.pickup}</p>
-      </div>
-      <div className="max-w-md mx-auto px-4 space-y-4">
-        <div className="bg-white rounded-3xl shadow-card p-5 flex flex-col items-center text-center">
-          <Beaver mood={mood} className="w-28" bob={!bad && step < 3} />
+      <header className="bg-white border-b border-slate-100">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+          <StoreLogo s={s} size="w-10 h-10 text-lg" />
+          <div className="min-w-0 flex-1">
+            <p className="font-black text-ink truncate leading-tight">{s.name}</p>
+            <p className="text-xs font-bold text-ink-mute">{AK.pickup}</p>
+          </div>
+          {s.slug && <a href={`?s=${s.slug}`} className="hidden sm:inline-flex text-sm font-black text-gold-800 border border-gold-500 rounded-xl px-3 py-2">{AK.backToMenu}</a>}
+        </div>
+      </header>
+      <div className="max-w-md lg:max-w-5xl mx-auto px-4 pt-4 lg:pt-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-6 lg:items-start">
+        <div className="bg-white rounded-3xl shadow-card p-6 lg:p-10 flex flex-col items-center text-center">
+          <div className={`w-20 h-20 rounded-full flex items-center justify-center ${ring}`}><Icon className="w-10 h-10" /></div>
           {o.pickup_code && (
             <>
-              <p className="mt-2 text-sm font-black text-ink-mute">{AK.pickupCode}</p>
-              <p className="text-6xl font-black text-sky-700 tracking-tight">{o.pickup_code}</p>
+              <p className="mt-4 text-sm font-black text-ink-mute">{AK.pickupCode}</p>
+              <p className="text-6xl lg:text-7xl font-black text-ink tracking-tight">{o.pickup_code}</p>
             </>
           )}
-          <p className={`mt-3 text-xl font-black ${bad ? 'text-red-600' : o.status === 'READY' ? 'text-emerald-600' : 'text-ink'}`}>{AK.st[o.status]}</p>
+          <p className={`mt-3 text-xl lg:text-2xl font-black ${bad ? 'text-red-600' : o.status === 'READY' ? 'text-emerald-600' : 'text-ink'}`}>{AK.st[o.status]}</p>
           {o.status === 'ACCEPTED' && o.ready_by && <p className="mt-1 font-bold text-gold-700 flex items-center gap-1"><Clock className="w-4 h-4" />{AK.readyBy(timeOf(o.ready_by, s.timezone))}</p>}
           {o.status === 'READY' && o.ready_at && <p className="mt-1 text-sm text-ink-mute">{AK.readyAt(timeOf(o.ready_at, s.timezone))}</p>}
           {o.status === 'REJECTED' && (
@@ -298,13 +468,13 @@ function OrderPage({ token }) {
             </>
           )}
           {step > 0 && !bad && (
-            <div className="flex items-center w-full mt-5" aria-hidden="true">
+            <div className="flex items-center w-full max-w-sm mt-6" aria-hidden="true">
               {AK.steps.map((label, i) => (
                 <React.Fragment key={label}>
-                  {i > 0 && <div className={`flex-1 h-1 rounded-full mx-1 ${i < step ? 'bg-sky-500' : 'bg-slate-200'}`} />}
+                  {i > 0 && <div className={`flex-1 h-1 rounded-full mx-1 ${i < step ? 'bg-gold-500' : 'bg-slate-200'}`} />}
                   <div className="flex flex-col items-center w-16">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center ${i < step ? 'bg-sky-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
-                      {i < step ? <Check className="w-4 h-4" /> : <span className="text-[11px] font-black">{i + 1}</span>}
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center ${i < step ? 'bg-gold-500 text-ink' : 'bg-slate-200 text-slate-400'}`}>
+                      {i < step ? <Check className="w-4 h-4" strokeWidth={3} /> : <span className="text-[11px] font-black">{i + 1}</span>}
                     </div>
                     <span className={`text-[11px] mt-1 font-bold ${i < step ? 'text-ink' : 'text-ink-mute'}`}>{label}</span>
                   </div>
@@ -314,38 +484,40 @@ function OrderPage({ token }) {
           )}
         </div>
 
-        <div className="bg-white rounded-3xl shadow-card p-4">
-          <div className="divide-y divide-slate-100">
-            {o.items.map((l, i) => (
-              <div key={i} className="py-2 flex justify-between gap-3 text-sm">
-                <span className="min-w-0">{l.quantity}× {l.name}{l.options?.length ? <span className="text-slate-500"> ({l.options.join(', ')})</span> : null}
-                  {l.note && <span className="block text-xs text-ink-mute italic">* {l.note}</span>}</span>
-                <span className="font-bold shrink-0">{money(l.unit_price_cents * l.quantity)}</span>
-              </div>
-            ))}
+        <div className="space-y-4">
+          <div className="bg-white rounded-3xl shadow-card p-4">
+            <div className="divide-y divide-slate-100">
+              {o.items.map((l, i) => (
+                <div key={i} className="py-2 flex justify-between gap-3 text-sm">
+                  <span className="min-w-0">{l.quantity}× {l.name}{l.options?.length ? <span className="text-slate-500"> ({l.options.join(', ')})</span> : null}
+                    {l.note && <span className="block text-xs text-ink-mute italic">* {l.note}</span>}</span>
+                  <span className="font-bold shrink-0">{money(l.unit_price_cents * l.quantity)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 pt-2 border-t border-slate-200 space-y-1 text-sm text-slate-600">
+              <div className="flex justify-between"><span>{T.subtotal}</span><span className="font-bold">{money(o.subtotal_cents)}</span></div>
+              <div className="flex justify-between"><span>{T.taxActual}</span><span className="font-bold">{money(o.tax_cents)}</span></div>
+              {o.tip_cents > 0 && <div className="flex justify-between"><span>{T.tipTitle}</span><span className="font-bold">{money(o.tip_cents)}</span></div>}
+              <div className="flex justify-between text-lg font-black text-ink pt-1"><span>{T.total}</span><span>{money(o.total_cents)}</span></div>
+            </div>
+            {o.note && <p className="mt-2 text-xs text-ink-mute italic">* {o.note}</p>}
           </div>
-          <div className="mt-2 pt-2 border-t border-slate-200 space-y-1 text-sm text-slate-600">
-            <div className="flex justify-between"><span>{T.subtotal}</span><span className="font-bold">{money(o.subtotal_cents)}</span></div>
-            <div className="flex justify-between"><span>{T.taxActual}</span><span className="font-bold">{money(o.tax_cents)}</span></div>
-            {o.tip_cents > 0 && <div className="flex justify-between"><span>{T.tipTitle}</span><span className="font-bold">{money(o.tip_cents)}</span></div>}
-            <div className="flex justify-between text-lg font-black text-ink pt-1"><span>{T.total}</span><span>{money(o.total_cents)}</span></div>
+
+          <div className="bg-white rounded-3xl shadow-card p-4 space-y-2">
+            {s.address && <p className="flex items-start gap-2 text-sm text-ink-soft"><MapPin className="w-4 h-4 mt-0.5 shrink-0 text-gold-700" /><span><span className="font-black text-ink">{AK.address}</span><br />{s.address}</span></p>}
+            {s.phone && <a href={`tel:${s.phone.replace(/[^0-9+]/g, '')}`} className="flex items-center gap-2 text-sm font-black text-sky-700"><Phone className="w-4 h-4" />{AK.callStore} · {s.phone}</a>}
           </div>
-          {o.note && <p className="mt-2 text-xs text-ink-mute italic">* {o.note}</p>}
-        </div>
 
-        <div className="bg-white rounded-3xl shadow-card p-4 space-y-2">
-          {s.address && <p className="flex items-start gap-2 text-sm text-ink-soft"><MapPin className="w-4 h-4 mt-0.5 shrink-0 text-gold-700" /><span><span className="font-black text-ink">{AK.address}</span><br />{s.address}</span></p>}
-          {s.phone && <a href={`tel:${s.phone.replace(/[^0-9+]/g, '')}`} className="flex items-center gap-2 text-sm font-black text-sky-700"><Phone className="w-4 h-4" />{AK.callStore} · {s.phone}</a>}
+          {s.slug && <a href={`?s=${s.slug}`} className="block text-center font-black text-gold-800 border-2 border-gold-500 rounded-2xl py-3.5 bg-white">{o.status === 'PICKED_UP' || bad ? AK.orderAgain : AK.backToMenu}</a>}
         </div>
-
-        {s.slug && <a href={`?s=${s.slug}`} className="block text-center font-black text-gold-800 border-2 border-gold-500 rounded-2xl py-3.5 bg-white">{o.status === 'PICKED_UP' || bad ? AK.orderAgain : AK.backToMenu}</a>}
-        <Signature product="Arke" className="pt-2" />
       </div>
+      <Signature product="Arke" className="pt-8" />
     </div>
   )
 }
 
-/** The store's menu and this phone's cart. */
+/** The store's menu and this device's cart. */
 function StorePage({ slug }) {
   const [menu, setMenu] = useState(null)
   const [state, setState] = useState('loading')   // loading | ready | bad | offline
@@ -399,54 +571,115 @@ function StorePage({ slug }) {
   }
   const setQty = (line, n) => setCart(n <= 0 ? cart.filter((l) => l.key !== line.key) : cart.map((l) => (l.key === line.key ? { ...l, quantity: Math.min(20, n) } : l)))
 
-  if (state === 'bad') return <BeaverScreen product="Arke" mood="alert" text={AK.noStore} />
-  if (state === 'offline') return <BeaverScreen product="Arke" mood="alert" text={T.offline} action={<button onClick={load} className="btn-gold mt-6 px-8 py-3.5 rounded-2xl">{T.retry}</button>} />
-  if (state === 'loading' || !menu) return <BeaverScreen product="Arke" mood="blink" text={T.loading} />
+  if (state === 'bad') return <ArkeScreen text={AK.noStore} />
+  if (state === 'offline') return <ArkeScreen text={T.offline} action={<button onClick={load} className="btn-gold mt-6 px-8 py-3.5 rounded-2xl">{T.retry}</button>} />
+  if (state === 'loading' || !menu) return <ArkeScreen busy text={T.loading} />
 
   const s = menu.store
   const canOrder = s.open_now && s.online_pay
+  const goCheckout = () => { setCartOpen(false); setCheckoutOpen(true) }
+  const checkoutButton = (
+    <>
+      {!canOrder && <p className="text-sm font-bold text-red-600">{s.online_pay ? AK.closedNow : AK.payOff}</p>}
+      <button onClick={goCheckout} disabled={!canOrder || count === 0} className="btn-gold w-full py-4 rounded-2xl text-lg mt-2">{AK.checkout}</button>
+    </>
+  )
+  const clearButton = lines.length > 0 && (confirmClear
+    ? <button onClick={() => { setCart([]); setConfirmClear(false); setCartOpen(false) }} className="text-sm font-black text-red-600 px-2 py-1">{AK.confirmClear}</button>
+    : <button onClick={() => setConfirmClear(true)} className="text-sm font-bold text-ink-mute px-2 py-1">{AK.clear}</button>)
+
   return (
-    <div className="min-h-screen pb-32 bg-paper">
+    <div className="min-h-screen bg-paper">
+      {/* Top bar. Phone: the search and category tabs ride along under it. */}
       <header ref={nav.headerRef} className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-100">
-        <div className="max-w-3xl mx-auto px-4 py-2.5 flex items-center gap-3">
-          <StoreLogo s={s} size="w-10 h-10 text-lg" />
-          <div className="min-w-0 flex-1">
-            <h1 className="font-black text-[17px] text-ink truncate leading-tight">{s.name}</h1>
-            <span className={`inline-block mt-0.5 font-black text-xs px-2 py-0.5 rounded-full ${canOrder ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-ink-mute'}`}>
-              {canOrder ? AK.openNow(s.pickup_minutes) : s.online_pay ? AK.closedNow : AK.payOff}
-            </span>
-          </div>
-          <button onClick={() => setMenuOpen(true)} aria-label={T.menuTitle} className="shrink-0 w-10 h-10 rounded-full bg-slate-100 text-ink flex items-center justify-center">
-            <MenuIcon className="w-5 h-5" />
+        <div className="max-w-7xl mx-auto px-4 h-14 lg:h-16 flex items-center gap-3">
+          <StoreLogo s={s} size="w-9 h-9 text-base" />
+          <p className="min-w-0 flex-1 font-black text-ink truncate">{s.name}</p>
+          <span className="hidden lg:inline-flex items-center gap-1.5 text-sm font-bold text-ink-soft"><ShoppingBag className="w-4 h-4 text-gold-600" />{AK.pickup}</span>
+          <button onClick={() => setMenuOpen(true)} aria-label={T.menuTitle}
+            className="shrink-0 h-9 px-2.5 lg:px-3 rounded-xl bg-slate-100 text-ink flex items-center gap-1.5 text-sm font-bold">
+            <Globe className="w-4 h-4" /><span className="hidden sm:inline">{LANGS.find(([l]) => l === LANG)?.[1]}</span>
+            {myOrders.list().length > 0 && <ClipboardList className="w-4 h-4 ms-1" />}
           </button>
         </div>
-        {s.notice && <p className="max-w-3xl mx-auto px-4 pb-2 text-sm font-bold text-gold-800">📣 {s.notice}</p>}
-        <MenuFilters query={query} setQuery={setQuery} avoid={avoid} onAvoid={() => setAvoidOpen(true)}
-          categories={categories} sections={sections} nav={nav} q={q} onAllCategories={() => setCatsOpen(true)} />
-      </header>
-
-      <main className="max-w-3xl mx-auto px-4 pt-2">
-        {s.address && <p className="mt-3 flex items-center gap-1.5 text-sm text-ink-soft"><MapPin className="w-4 h-4 text-gold-700 shrink-0" />{AK.pickup} · {s.address}</p>}
-        {sections.length === 0 && (
-          <div className="flex flex-col items-center py-16 text-center">
-            <Beaver mood="thinking" className="w-28" />
-            <p className="mt-3 font-bold text-ink-soft">{T.noMatch}</p>
+        <div className="lg:hidden px-4 pb-2"><SearchRow query={query} setQuery={setQuery} avoid={avoid} onAvoid={() => setAvoidOpen(true)} /></div>
+        {categories.length > 1 && !q && (
+          <div className="lg:hidden flex items-center border-t border-slate-100">
+            <nav ref={nav.tabsRef} className="flex-1 overflow-x-auto no-scrollbar flex gap-5 px-4">
+              {sections.map(({ c }) => (
+                <button key={c} data-cat={c} onClick={() => nav.jumpTo(c)}
+                  className={`py-2.5 text-sm font-black whitespace-nowrap border-b-2 transition-colors ${nav.activeCat === c ? 'border-gold-500 text-ink' : 'border-transparent text-ink-mute'}`}>
+                  {c}
+                </button>
+              ))}
+            </nav>
+            <button onClick={() => setCatsOpen(true)} aria-label={T.allCategories} className="shrink-0 px-3 py-2 text-ink-soft border-s border-slate-100"><ChevronDown className="w-5 h-5" /></button>
           </div>
         )}
-        <MenuSections sections={sections} nav={nav} row={(p) => (
-          <DishRow key={p.id} p={p} avoid={avoid} here={inCart(p.id)} onOpen={setDishFor} onQuickAdd={(x) => addLine(x)} />
-        )} />
-        <Signature product="Arke" className="mt-8 mb-4" />
-      </main>
+      </header>
 
+      <div className="max-w-7xl mx-auto px-4 pt-4 pb-32 lg:pb-12 lg:grid lg:grid-cols-[220px_minmax(0,1fr)_360px] lg:gap-6 lg:items-start">
+        {/* Desktop, left: search, allergy filter, every category. */}
+        <aside className="hidden lg:block sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto no-scrollbar space-y-3">
+          <SearchRow stacked query={query} setQuery={setQuery} avoid={avoid} onAvoid={() => setAvoidOpen(true)} />
+          {sections.length > 0 && (
+            <nav className="bg-white rounded-2xl shadow-card p-2">
+              <p className="px-3 pt-1 pb-2 text-xs font-black text-ink-mute uppercase tracking-wide">{AK.categories}</p>
+              {sections.map(({ c, items }) => (
+                <button key={c} onClick={() => nav.jumpTo(c)}
+                  className={`w-full flex items-center justify-between gap-2 text-start px-3 py-2 rounded-xl text-sm font-bold transition-colors ${nav.activeCat === c ? 'bg-gold-50 text-ink' : 'text-ink-soft hover:bg-slate-50'}`}>
+                  <span className="truncate">{c}</span><span className="text-xs text-ink-mute">{items.length}</span>
+                </button>
+              ))}
+            </nav>
+          )}
+        </aside>
+
+        <main className="min-w-0">
+          <StoreCard s={s} canOrder={canOrder} />
+          {sections.length === 0 && (
+            <div className="flex flex-col items-center py-16 text-center">
+              <Search className="w-10 h-10 text-slate-300" />
+              <p className="mt-3 font-bold text-ink-soft">{T.noMatch}</p>
+            </div>
+          )}
+          {sections.map(({ c, items }) => (
+            <section key={c} ref={(el) => { nav.sectionRefs.current[c] = el }} className="pt-6">
+              <h2 className="font-black text-xl text-ink mb-3">{c}</h2>
+              <div className="grid gap-3 xl:grid-cols-2">
+                {items.map((p) => (
+                  <div key={p.id} className="bg-white rounded-2xl shadow-card overflow-hidden lg:hover:shadow-lift lg:cursor-pointer transition-shadow">
+                    <DishRow p={p} avoid={avoid} here={inCart(p.id)} onOpen={setDishFor} onQuickAdd={(x) => addLine(x)} />
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+          <Signature product="Arke" className="mt-10 mb-4" />
+        </main>
+
+        {/* Desktop, right: the cart, always open. */}
+        <aside className="hidden lg:flex sticky top-20 max-h-[calc(100vh-6rem)] flex-col bg-white rounded-3xl shadow-card overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-2">
+            <h2 className="font-black text-lg flex items-center gap-2"><ShoppingBag className="w-5 h-5 text-gold-600" />{AK.cart}{count > 0 && <span className="text-sm text-ink-mute">({count})</span>}</h2>
+            {clearButton}
+          </div>
+          <CartBody lines={lines} subtotal={subtotal} tax={tax} setQty={setQty} footer={checkoutButton} />
+        </aside>
+      </div>
+
+      {/* Phone: the cart bar at the bottom, the cart in a sheet. */}
       {count > 0 && (
         <button onClick={() => { setConfirmClear(false); setCartOpen(true) }}
-          className="fixed bottom-4 start-4 end-4 z-30 max-w-xl mx-auto bg-ink text-white ps-3 pe-5 py-3 rounded-[22px] shadow-lift flex items-center justify-between">
+          className="lg:hidden fixed bottom-4 start-4 end-4 z-30 max-w-xl mx-auto btn-gold ps-3 pe-5 py-3 rounded-2xl flex items-center justify-between">
           <span className="flex items-center gap-3">
-            <span className="bg-gradient-to-br from-gold-400 to-gold-600 text-ink font-black w-10 h-10 rounded-2xl flex items-center justify-center">{count}</span>
-            <span className="font-black">{AK.cart}</span>
+            <span className="relative bg-ink text-gold-300 w-10 h-10 rounded-xl flex items-center justify-center">
+              <ShoppingBag className="w-5 h-5" />
+              <span className="absolute -top-1.5 -end-1.5 bg-white text-ink text-[11px] font-black min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center shadow">{count}</span>
+            </span>
+            <span className="font-black">{AK.checkout}</span>
           </span>
-          <span className="flex items-center gap-1 font-black text-lg text-gold-300">{money(subtotal + tax)}<ChevronRight className="rtl:rotate-180 w-5 h-5 text-slate-400" /></span>
+          <span className="flex items-center gap-1 font-black text-lg">{money(subtotal + tax)}<ChevronRight className="rtl:rotate-180 w-5 h-5" /></span>
         </button>
       )}
 
@@ -455,45 +688,17 @@ function StorePage({ slug }) {
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-2">
             <h2 className="font-black text-xl">{AK.cart}</h2>
             <div className="flex items-center gap-1 shrink-0">
-              {lines.length > 0 && (confirmClear
-                ? <button onClick={() => { setCart([]); setConfirmClear(false); setCartOpen(false) }} className="text-sm font-black text-red-600 px-2 py-1">{AK.confirmClear}</button>
-                : <button onClick={() => setConfirmClear(true)} className="text-sm font-bold text-ink-mute px-2 py-1">{AK.clear}</button>)}
+              {clearButton}
               <button onClick={() => setCartOpen(false)} aria-label={T.close} className="p-2 text-ink-mute"><X className="w-6 h-6" /></button>
             </div>
           </div>
-          <div className="px-5 py-2 overflow-y-auto flex-1 divide-y divide-slate-100">
-            {lines.length === 0 && <p className="py-10 text-center font-bold text-ink-mute">{AK.emptyCart}</p>}
-            {lines.map((l) => (
-              <div key={l.key} className="py-3 flex items-center justify-between gap-3">
-                <DishImg src={l.p?.image_url} className="w-14 h-14 rounded-xl object-cover bg-slate-100 shrink-0" fallback={<div className="w-14 h-14 rounded-xl bg-gold-50 shrink-0" />} />
-                <div className="min-w-0 flex-1">
-                  <p className="font-black text-ink">{dishName(l.p)}</p>
-                  {l.optionNames.length > 0 && <p className="text-xs text-sky-800">+ {l.optionNames.join(', ')}</p>}
-                  {l.note && <p className="text-xs text-ink-mute italic">* {l.note}</p>}
-                  <p className="text-xs text-ink-mute">{money(l.unit)} × {l.quantity}</p>
-                </div>
-                <div className="flex items-center gap-2.5 shrink-0">
-                  <button onClick={() => setQty(l, l.quantity - 1)} aria-label="-" className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center"><Minus className="w-4 h-4" /></button>
-                  <span className="font-black w-4 text-center">{l.quantity}</span>
-                  <button onClick={() => setQty(l, l.quantity + 1)} aria-label="+" disabled={l.quantity >= 20} className="w-9 h-9 rounded-full bg-gold-500 text-ink flex items-center justify-center"><Plus className="w-4 h-4" strokeWidth={3} /></button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="p-5 bg-paper border-t border-slate-100 space-y-1.5">
-            <div className="flex justify-between text-sm text-ink-soft"><span>{T.subtotal}</span><span className="font-bold">{money(subtotal)}</span></div>
-            <div className="flex justify-between text-sm text-ink-soft"><span>{T.tax}</span><span className="font-bold">{money(tax)}</span></div>
-            <div className="flex justify-between text-xl font-black pt-2 border-t border-slate-200"><span>{T.total}</span><span>{money(subtotal + tax)}</span></div>
-            {!canOrder && <p className="text-sm font-bold text-red-600">{s.online_pay ? AK.closedNow : AK.payOff}</p>}
-            <button onClick={() => { setCartOpen(false); setCheckoutOpen(true) }} disabled={!canOrder || count === 0}
-              className="btn-gold w-full py-4 rounded-2xl text-lg mt-2">{AK.checkout}</button>
-          </div>
+          <CartBody lines={lines} subtotal={subtotal} tax={tax} setQty={setQty} footer={checkoutButton} />
         </Sheet>
       )}
 
       {checkoutOpen && (
         <Checkout slug={slug} menu={menu} lines={lines} subtotal={subtotal} tax={tax}
-          onEdit={() => { setCheckoutOpen(false); setCartOpen(true) }}
+          onEdit={() => { setCheckoutOpen(false); if (window.matchMedia('(max-width: 1023px)').matches) setCartOpen(true) }}
           onClose={() => { setCheckoutOpen(false); load() }}
           onPaid={(token, code) => {
             setCart([])
@@ -502,7 +707,7 @@ function StorePage({ slug }) {
           }} />
       )}
 
-      {toast && <div className="fixed start-4 end-4 bottom-24 z-[60] max-w-md mx-auto bg-ink text-white text-sm font-bold px-4 py-3 rounded-2xl shadow-lift text-center flex items-center justify-center gap-2"><CheckCircle2 className="w-4 h-4" />{toast}</div>}
+      {toast && <div className="fixed start-4 end-4 bottom-24 lg:bottom-8 z-[60] max-w-md mx-auto bg-ink text-white text-sm font-bold px-4 py-3 rounded-2xl shadow-lift text-center flex items-center justify-center gap-2"><CheckCircle2 className="w-4 h-4" />{toast}</div>}
       {avoidOpen && <AvoidSheet avoid={avoid} setAvoid={setAvoid} onClose={() => setAvoidOpen(false)} />}
       {menuOpen && <MenuSheet onClose={() => setMenuOpen(false)} />}
       {catsOpen && <CategorySheet sections={sections} active={nav.activeCat} onPick={(c) => { setCatsOpen(false); nav.jumpTo(c) }} onClose={() => setCatsOpen(false)} />}

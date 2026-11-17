@@ -3,6 +3,10 @@
 import { LANG } from './i18n.js'
 
 const zh = {
+  edit: '修改', open: '营业中', closed: '休息中', pickupIn: (n) => `下单后约 ${n} 分钟可取`,
+  todayHours: (r) => `今天 ${r}`, closedToday: '今天休息', hoursTitle: '营业时间', allDay: '全天',
+  days: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'], categories: '分类', storeInfo: '门店信息',
+  shared: { noAllergenData: '过敏原未标注，请问店家', loading: '正在加载…' },
   noStore: '找不到这家店，请检查链接', pickup: '到店自取',
   openNow: (n) => `营业中 · 下单后约 ${n} 分钟可取`, closedNow: '现在不接线上订单', payOff: '这家店暂不支持线上付款',
   cart: '购物车', emptyCart: '购物车是空的', checkout: '去结账', clear: '清空', confirmClear: '确定清空？',
@@ -30,6 +34,10 @@ const zh = {
 }
 
 const en = {
+  edit: 'Edit', open: 'Open', closed: 'Closed', pickupIn: (n) => `Ready about ${n} min after you order`,
+  todayHours: (r) => `Today ${r}`, closedToday: 'Closed today', hoursTitle: 'Hours', allDay: 'Open all day',
+  days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], categories: 'Categories', storeInfo: 'Store info',
+  shared: { noAllergenData: 'Allergens not listed: ask the store', loading: 'Loading…' },
   noStore: "We can't find this store. Please check the link.", pickup: 'Pickup',
   openNow: (n) => `Open · ready about ${n} min after you order`, closedNow: 'Not taking online orders right now', payOff: "This store doesn't take online payment yet",
   cart: 'Your order', emptyCart: 'Your cart is empty', checkout: 'Checkout', clear: 'Clear', confirmClear: 'Clear all?',
@@ -57,6 +65,10 @@ const en = {
 }
 
 const fr = {
+  edit: 'Modifier', open: 'Ouvert', closed: 'Fermé', pickupIn: (n) => `Prêt environ ${n} min après la commande`,
+  todayHours: (r) => `Aujourd’hui ${r}`, closedToday: 'Fermé aujourd’hui', hoursTitle: 'Heures d’ouverture', allDay: 'Ouvert toute la journée',
+  days: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'], categories: 'Catégories', storeInfo: 'Infos du commerce',
+  shared: { noAllergenData: 'Allergènes non indiqués : demandez au commerce', loading: 'Chargement…' },
   noStore: 'Ce commerce est introuvable. Vérifiez le lien.', pickup: 'À emporter',
   openNow: (n) => `Ouvert · prêt environ ${n} min après la commande`, closedNow: 'Pas de commandes en ligne pour le moment', payOff: "Ce commerce n'accepte pas encore le paiement en ligne",
   cart: 'Votre commande', emptyCart: 'Votre panier est vide', checkout: 'Passer à la caisse', clear: 'Vider', confirmClear: 'Tout vider ?',
@@ -84,6 +96,10 @@ const fr = {
 }
 
 const ar = {
+  edit: 'تعديل', open: 'مفتوح', closed: 'مغلق', pickupIn: (n) => `جاهز بعد نحو ${n} دقيقة من الطلب`,
+  todayHours: (r) => `اليوم ${r}`, closedToday: 'مغلق اليوم', hoursTitle: 'ساعات العمل', allDay: 'مفتوح طوال اليوم',
+  days: ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'], categories: 'الفئات', storeInfo: 'معلومات المتجر',
+  shared: { noAllergenData: 'مسببات الحساسية غير مذكورة: اسأل المتجر', loading: 'جارٍ التحميل…' },
   noStore: 'لم نجد هذا المتجر. تحقّق من الرابط.', pickup: 'استلام من المتجر',
   openNow: (n) => `مفتوح · جاهز بعد نحو ${n} دقيقة من الطلب`, closedNow: 'لا يستقبل طلبات عبر الإنترنت الآن', payOff: 'هذا المتجر لا يقبل الدفع عبر الإنترنت بعد',
   cart: 'طلبك', emptyCart: 'السلة فارغة', checkout: 'إتمام الطلب', clear: 'إفراغ', confirmClear: 'إفراغ الكل؟',
