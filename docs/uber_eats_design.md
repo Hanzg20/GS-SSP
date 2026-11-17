@@ -27,7 +27,7 @@
 
 ## 分步
 
-1. 连通：密钥存进 Supabase，`ubereats-ping` 拿到沙盒令牌（已写好）。
+1. 连通：密钥存进 Supabase，`ubereats-ping` 拿到沙盒令牌。**2026-11-17 通过**：`eats.order eats.store` 都给了，30 天有效。`GET /v1/eats/stores` 和 `/v1/delivery/stores` 都回 200（`/v2/eats/stores` 404），但门店列表是空的，要等 Uber 给测试门店。`ubereats-ping` 带 `probe` 可以试只读 GET。
 2. 收单：门店对应表、Webhook 入库、Ourea 上能看到 Uber 单（先只看不操作）。
 3. 操作：接单 / 拒单 / 出餐调 Uber 接口；取消事件同步。
 4. 菜单和售罄同步。
