@@ -28,7 +28,7 @@
 ## 分步
 
 1. 连通：密钥存进 Supabase，`ubereats-ping` 拿到沙盒令牌。**2026-11-17 通过**：`eats.order eats.store` 都给了，30 天有效。`GET /v1/eats/stores` 和 `/v1/delivery/stores` 都回 200（`/v2/eats/stores` 404），但门店列表是空的，要等 Uber 给测试门店。`ubereats-ping` 带 `probe` 可以试只读 GET。
-2. 收单：门店对应表、Webhook 入库、Ourea 上能看到 Uber 单（先只看不操作）。
+2. 收单：门店对应表、Webhook 入库、Ourea 上能看到 Uber 单（先只看不操作）。**2026-11-17 已做、已上线**：迁移 `2026-11-17_uber_eats_orders.sql`（已应用），`ubereats-webhook`（已部署；未签名 / 签名错 401）。模拟单在 Scan E2E 店走通：未关联门店不收、入库为 NEW、重发和同单不同事件只收一次、单号和事件对不上拒收、取不到详情留待 Uber 重试、Ourea 看得到但改不了（`order_on_platform`）、Arke 顾客页查不到 Uber 单、取消改成 CANCELLED。还差：Uber 真推送（等测试门店）。
 3. 操作：接单 / 拒单 / 出餐调 Uber 接口；取消事件同步。
 4. 菜单和售罄同步。
 5. 正式验收：建 PRODUCTION 应用，按 Uber 的验收清单过一遍。
