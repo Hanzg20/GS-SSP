@@ -3,6 +3,39 @@
 > [!NOTE]
 > **版本号说明**: 本文档实际由两条独立演进线合并而成（CMP/Supabase 后端的 RLS 修复线，与 Android HAL/产品线的架构演进线），两条线各自独立递增版本号，合并后出现了 `v2.23`/`v2.24`/`v2.27` 各被使用两次、且部分条目未按日期严格排序的情况（例如 `v2.27 (2026-08-20)` 实际是全文最新的一次修改，却排在 `v2.28 (2026-08-09)` 之后）。**版本号不是可靠的时间/依赖排序依据，请以每条目标题里的日期为准**；正文中散落的 `[v2.1]` 等内联标记同理，指的是该版本条目引入的变更，不代表这是当前最新状态。
 
+### v2.70 (2026-11-17) — Uber Eats 订单进 Ourea：第 1–2 步连通与收单 (Uber Eats Marketplace Orders into Ourea, Steps 1–2)
+
+*   **方向**（店主 2026-11-17）：先接 Uber Eats 外卖平台（顾客在 Uber Eats App 下单，订单进店里的 Ourea）；Uber Direct（Arke 配送单叫 Uber 骑手）以后再做。设计与分步见 `docs/uber_eats_design.md`，架构见 §23.4。
+*   **第 1 步 连通（已通过）**：店主把 `UBER_CLIENT_ID` / `UBER_CLIENT_SECRET` 存为 Supabase 密钥（不经聊天）。沙盒令牌拿到（`eats.order eats.store`，30 天）。沙盒令牌域名是 `sandbox-login.uber.com`、接口域名 `test-api.uber.com`，与正式（`auth.uber.com` / `api.uber.com`）不能混用。`GET /v1/eats/stores` 回 200 但列表为空：测试门店只能由 Uber Integration Tech Support 开，申请已于 11-17 提交。检查函数 `ubereats-ping`（只用 service role key 调；可带 `probe` 做一次只读 GET，用来试通接口路径）。
+*   **第 2 步 收单（已上线，等 Uber 真推送验证）**：迁移 `docs/migrations/2026-11-17_uber_eats_orders.sql`（已应用）；`ubereats-webhook`（已部署，verify_jwt 关，靠 `X-Uber-Signature` 签名）；共用代码 `supabase/functions/_shared/uber.ts`（令牌缓存、签名校验、Uber 订单 v1/v2 两种格式转成我们的格式，单元测试 `uber_test.ts`）。Ourea：Uber 单带「Uber Eats」标、厨房单抬头「UBER EATS」，暂不能在 Ourea 上接单 / 出餐（在 Uber 平板上做）。Cael 线上点餐页加「Uber Eats 订单接入」（系统管理员关联 Uber 门店号，看最近一次推送）。
+*   **验证**：未签名 / 签名错 → 401；模拟单在 Scan E2E 店上走通：未关联门店不收、入库、重发与同单不同事件只收一次、单号不符拒收、取不到详情留给 Uber 重试、Ourea 看得到改不了、Arke 顾客页查不到、取消改 CANCELLED（全部回滚）。Arke 原有检查全部通过。
+*   **下一步**：测试门店到后在 Cael 关联、在 Uber Dashboard 填 Webhook 地址、下真测试单；然后第 3 步（接单 / 拒单 / 出餐调 Uber 接口，Uber 确认了才算）、第 4 步菜单与售罄同步、第 5 步正式验收（另建 PRODUCTION 应用）。
+
+### v2.69 (2026-11-17) — Arke 第 2 期：店家自己配送 (Arke Phase 2: the Store's Own Delivery)
+
+*   **配送区按邮编前缀**（不接地图服务）：每家店在 Cael 开配送、填预计送达时间、配送费税率（默认 HST 13%），画配送区（`online.delivery_zones`：邮编前缀如 K2K / K2K1X，最长前缀优先；每区配送费、起送额）。顾客页选「自取 / 配送」，填地址后服务器报价（`online_delivery_quote`），下单时服务器重新定价：菜 + 配送费，两者都计税。
+*   **配送单状态**：NEW → ACCEPTED（承诺送达时间）→ READY → OUT_FOR_DELIVERY（司机 = Ourea / Iris 上登录的员工）→ DELIVERED；送不到可「带回」（回到 READY，次数 +1，记原因）。单号自取 A<n>、配送 D<n>，同一个每日序号。已线上付款，**上门不收钱**；不写入 `public.delivery_orders`（那是 Iris 上门收款的单）。
+*   **Ourea / Iris**：线上订单多一栏「配送中」，紫色配送标和地址框，接单可选 30–120 分钟；厨房单印「线上配送 DELIVERY」+ 地址电话；Iris 配送页新增「线上订单 · 已付款」区，司机在手机上出发 / 送达 / 带回。
+*   **付款后邮件**：付款记住顾客邮箱和页面语言，`_shared/arke-mail.ts` 发四种语言的「订单已付款」邮件（含订单链接），后台发送、不影响付款。**目前 Edge Function 连 SMTP 超时**（很可能 587 端口被封），需改 465 或换 HTTP 邮件接口，待店主确认。
+*   迁移 `docs/migrations/2026-11-17_arke_delivery.sql`（已应用）；`arke-pay` / `arke-pay-dmn` 已部署；Cael 线上点餐页「自家配送」卡片和订单列表的配送信息。验证：服务器检查 53/53 通过；沙盒配送单 D1 实付 $36.37（菜 $25.90 + 配送费 $3.99 + 税 $3.89 含配送费税 $0.52 + 小费 $2.59），终端身份走完接单 → 做好 → 出发 → 带回 → 再出发 → 送达，非法步骤都被拒。
+
+### v2.68 (2026-11-17) — Cael 换上 glass-ui 外框 (Cael on glass-ui)
+
+*   店主选择把 `glass-ui` 2.0.2 的视觉用在 Cael：颜色与字体变量（`src/glass/tokens.css`、`motion.css` 原样复制，`cael-glass.css` 是 Cael 自己的一层）、玻璃外框、Ctrl/Cmd+K 命令面板；内容页保持白色卡片（shadcn 变量映射到 glass 日间配色，Card = 卡片，Button = 胶囊按钮）。
+*   外框用 React 重画（`GlassShell.tsx`，页面清单只在 `useNavGroups.ts` 一处），保留 react-router 和按权限分组；宽屏显示文字、中屏只显示图标（悬停展开）、手机底部玻璃标签栏 +「更多」；左栏可手动收成图标（记在 localStorage `cael.rail.collapsed`）。旧 `SimpleSidebar` / `MobileNav` 删除。
+*   **Cael 只有日间模式**（店主：不需要夜间模式，以后也不做）。Arke 以后只借用颜色变量；Ourea Scan 桌边页和 Android 应用不动。详见 §24。
+
+### v2.67 (2026-11-17) — Arke 自己的店铺页，手机和电脑分开布局 (Arke Storefront, Phone and Desktop Apart)
+
+*   店主：Arke 页面不应再有扫码点餐的样子。`ArkeApp.jsx` 重写成店铺页：店铺卡（营业状态、今天营业时间、取餐时间、地址电话）、搜索、过敏筛选、分类；Arke 路由上用 `AK.shared` 覆盖共用文字，标题是店名，不出现小海狸。
+*   **手机**：单栏、下划线分类标签、底部金色结账条、底部弹出层。**电脑（≥1024px）**：左栏搜索 / 过敏 / 分类，中间菜品网格，右侧购物车常开；结账是两栏对话框，订单页两栏。
+
+### v2.66 (2026-11-16 ~ 11-17) — Arke 端到端试通 (Arke Tried End to End)
+
+*   服务器检查脚本 `web/ourea-scan/scripts/arke-e2e.mjs`（店铺页、拒收的订单、服务器定价和税、订单页、对顾客关闭的接口、Nuvei 沙盒付款）。
+*   Scan E2E 店上真走一遍（Nuvei 沙盒 + Ourea 模拟器）：A1 付款 → 接单 15 分钟（厨房单 A1 打出）→ 做好 → 取走；A2 到达横幅 + 桌台页角标；A3「售罄」拒单 → 付款作废，顾客页显示已退款。
+*   由此修的：Ourea 深色外框上「线上订单」标题和已完成列表看不清；**顾客页关闭浏览器翻译**（Chrome 翻译会改写 React 的文字节点，金额和按钮不再更新）；Arke 页面上的小海狸画面署名「GoldSky Arke」。
+
 ### v2.65 (2026-11-16) — GoldSky Arke：线上点餐，第 1 期到店自取 (Arke Online Ordering, Phase 1: Pickup)
 
 *   **新产品 Arke**（店主 2026-11-16 定名）：顾客用店铺链接在手机上点餐、线上付款、到店自取。设计与分期见 `docs/online_ordering_design.md`（2 期自家配送、3 期第三方配送、4 期券和会员）。
@@ -1540,3 +1573,76 @@ Cael → Ops → 测试模拟器（`/ops/testsim`，系统管理员）。**以�
 *   **页面**：每台终端的就绪 / 未就绪开关、各货道有货 / 售罄（`testsim_set_sold_out`）；待答复的请求倒计时，点「已出货」/「失败」。PREAUTH 订单要输入实际扣款金额（默认 min($0.10, 预授权)），页面和服务器都拒绝超出预授权的金额（`amount_required`）。
 *   **数据库**：`testsim.controllers`（ready、message、sold_out、last_seen）、`testsim.requests`（kind = FLEX_DISPENSE，payload、deadline、answer）；只经 `public.testsim_*` RPC 访问（`docs/migrations/2026-11-05_testsim*.sql`）。超过 deadline 未答复 = FAILED。
 *   本地替代：`tools/flex-controller-sim`（浏览器控制台，localhost:8080，手动或 `--auto`），终端与电脑同网段时用。
+
+
+## 23. GoldSky Arke：线上点餐与外卖平台 (Online Ordering & Delivery Platforms, 2026-11-16 ~ 11-17)
+
+Arke = 店家自己的线上点餐（顾客用店铺链接下单、线上付款），以及把外卖平台的订单接进同一套店内流程。设计：`docs/online_ordering_design.md`（Arke 分期）、`docs/uber_eats_design.md`（Uber Eats）。
+
+### 23.1 组成
+
+| 部分 | 位置 | 说明 |
+|---|---|---|
+| 顾客页 | `web/ourea-scan`（`?s=<链接名>` 店铺页，`?o=<令牌>` 订单页；`ArkeApp.jsx`、`arke-i18n.js`） | 与桌边点餐共用菜品卡、过敏筛选、Nuvei 付款组件；中 / 英 / 法 / 阿四种语言，阿拉伯语从右到左；关闭浏览器翻译 |
+| 数据 | schema `online`：`stores`、`orders`、`payments`、`delivery_zones`、`uber_stores`、`uber_events`、`uber_tokens` | 只经 `public.online_*` / `cmp_online_*` / `cmp_uber_*` RPC 访问；Uber 相关写入只给 service_role |
+| 付款 | Edge Functions `arke-pay`、`arke-pay-dmn`、`arke-pay-refund` | Nuvei Simply Connect，与桌边付款同一个门店账户；**只认 Nuvei 服务器端确认** |
+| 平台接入 | Edge Functions `ubereats-webhook`、`ubereats-ping`；`_shared/uber.ts` | 签名校验、去重、令牌缓存 |
+| 店内 | Ourea / Iris：`feature/retail/arke`（`ArkeOrderRepository`、`ArkeViewModel`、`ArkeScreens`）；Iris 配送页的线上区 | 每 8 秒刷新，新单提示音 + 横幅；厨房单 |
+| 管理 | Cael 设备 > 线上点餐（`OnlineOrdering.tsx`） | 链接 / 二维码 / 营业时间、自家配送、Uber 门店关联、订单只读列表 |
+
+### 23.2 订单状态
+
+```
+Arke 自取:   AWAITING_PAYMENT ──(Nuvei 确认)──> NEW ─> ACCEPTED ─> READY ─> PICKED_UP
+Arke 配送:   ... NEW ─> ACCEPTED ─> READY ─> OUT_FOR_DELIVERY ─> DELIVERED
+                                     ^              │ BACK（送不到，次数+1）
+                                     └──────────────┘
+Arke 拒单:   NEW / ACCEPTED（配送单还有 READY）─> REJECTED ─> 退款（未结算作废 / 已结算退款）
+未付款:      AWAITING_PAYMENT ─(30 分钟)─> EXPIRED
+Uber Eats:   NEW（Uber 推来）─> ...（第 3 步起经 Uber 接口推进）；Uber 取消 ─> CANCELLED
+```
+
+*   `online.orders.channel` 区分 `ARKE` / `UBER_EATS`；`fulfilment` 为 `PICKUP` / `OWN_DELIVERY` / `THIRD_PARTY`（Uber 骑手来取 = THIRD_PARTY，店里流程同自取）。
+*   单号：Arke 自取 `A<n>`、配送 `D<n>`（每店每日一个序号，付款后才分配）；Uber 单显示 Uber 的 display_id。
+
+### 23.3 自家配送（第 2 期）
+
+*   配送区按邮编前缀，最长前缀优先；不在任何区 = 不送。价格只由服务器算：菜 + 配送费，各自计税（配送费按 `delivery_tax_bps`）。
+*   司机就是 Ourea / Iris 上登录的员工（`out_by`）。已线上付款，上门不收钱，因此不进 `public.delivery_orders`（每条业务线各记各的账）。
+
+### 23.4 Uber Eats 渠道
+
+```
+顾客 (Uber Eats App) ─> Uber ─(orders.notification, 签名)─> ubereats-webhook
+    ubereats-webhook: 验签 → online_uber_event_in（按 event_id 去重；门店号 → 我们的店）
+                     → 用缓存令牌 GET 订单详情 → online_uber_order_in（按 Uber 订单号去重，入库 NEW）
+    Ourea: online_store_orders 照常拉到，Uber Eats 标、提示音、厨房单「UBER EATS」
+Uber ─(orders.cancel / orders.failure)─> online_uber_order_cancel → CANCELLED
+```
+
+*   **钱由 Uber 收**：Uber 单没有 `online.payments` 记录，Arke 不给它退款；Arke 顾客订单页查不到 Uber 单。
+*   **门店关联**：`online.uber_stores` 只能由系统管理员在 Cael 填；推来的门店号没关联 = 只记日志、不收单，绝不替没关联的店接单。
+*   **不丢单**：Uber 没收到 2xx 会重推（最多 7 次）。取不到订单详情时回 5xx、事件记为 `fetch_failed`，等 Uber 重推再收；其余情况回 200 空 body。每条推送和处理结果都在 `online.uber_events`。
+*   **11.5 分钟时限**：Uber 推来新单后，11.5 分钟内必须接单或拒单，否则自动取消。第 2 步期间在 Uber 平板上处理，Ourea 改 Uber 单状态会被拒（`order_on_platform`）；第 3 步由 `ubereats-action` 先调 Uber，Uber 确认了才改我们的状态。
+*   **令牌**：client credentials，30 天，存在 `online.uber_tokens`（只给 service_role），剩不到 1 天就换。环境由 `UBER_ENV` 决定（默认 sandbox）。
+
+### 23.5 关键规则
+
+*   付款状态只认支付方服务器的确认（Nuvei 通知 / 查询；Uber 由平台收款），网页和终端不能宣布「已付款」。
+*   价格、税、配送费只在服务器算；手机只送商品、规格和邮编。
+*   一张单只处理一次：Arke 按 `client_ref`，Uber 按渠道 + 平台订单号，推送按 event_id。
+*   店是谁只看登录的终端（`dine_device_org()`）或 Cael 的权限，从不信请求里带的门店。
+
+### 23.6 待办
+
+*   付款后邮件：Edge Function 连 SMTP 超时，改 465 或 HTTP 邮件接口（待店主确认）。
+*   Uber Eats：等测试门店 → 真推送验证 → 第 3–5 步。
+*   第 3 期 Uber Direct（Arke 配送单叫 Uber 骑手）；第 4 期券和会员。
+
+## 24. Cael 界面框架 (Cael Shell on glass-ui, 2026-11-17)
+
+*   **来源**：店主的 `glass-ui` 2.0.2（`D:\MYAPP\glass-ui-v2`）。`src/glass/tokens.css`、`motion.css` 原样复制，升级时整文件替换；Cael 自己的调整只写在 `cael-glass.css`。
+*   **外框**：`GlassShell.tsx` 用 React 重画 `<glass-shell>` 的样子（glass-ui 原件是按 hash 路由的平铺列表，Cael 需要 react-router、分组和按权限显示）。页面清单唯一来源 `useNavGroups.ts`，命令面板（cmdk，Ctrl/Cmd+K）也从这里取。
+*   **响应式**：≥1280px 左栏带文字；768–1279px 只显示图标、悬停展开；手机底部玻璃标签栏 +「更多」抽屉。左栏可收成图标，记在 `cael.rail.collapsed`。
+*   **内容页**：shadcn 变量映射到 glass 日间配色，Card 是白色圆角卡片，Button 是胶囊。
+*   **约束**：只有日间模式（店主）；不要给 `.gl-rail` 设 `position`（会盖掉 Tailwind 的 `fixed`，内容被推下约 1000px）；品牌文字加 `translate="no"`（Chrome 会把 "GoldSky Cael" 翻成中文）。
