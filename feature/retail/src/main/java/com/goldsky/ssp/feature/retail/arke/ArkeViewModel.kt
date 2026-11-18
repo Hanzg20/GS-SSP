@@ -152,7 +152,8 @@ class ArkeViewModel : ViewModel() {
             staffName = staffName,
             onlineCode = o.pickup_code ?: "A?",
             customer = o.customer_name.takeIf { it.isNotBlank() },
-            deliveryTo = if (o.isDelivery) deliveryLines(o) else null
+            deliveryTo = if (o.isDelivery) deliveryLines(o) else null,
+            platform = if (o.isUber) "UBER EATS" else null
         )
     }
 }

@@ -87,7 +87,7 @@ object ReceiptPrinterManager {
         val time = SimpleDateFormat("MM-dd HH:mm", Locale.US).format(Date())
         out += "=".repeat(WIDTH)
         if (t.isOnline) {
-            out += if (t.isDelivery) "    线上配送  DELIVERY" else "    线上自取  ONLINE PICKUP"
+            out += t.platform?.let { "    $it" } ?: if (t.isDelivery) "    线上配送  DELIVERY" else "    线上自取  ONLINE PICKUP"
             out += "      ##  ${t.onlineCode}  ##"
             t.customer?.let { out += "    $it" }
             t.deliveryTo?.forEach { out += "    $it" }

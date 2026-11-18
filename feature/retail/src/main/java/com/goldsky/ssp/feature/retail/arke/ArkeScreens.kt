@@ -107,7 +107,7 @@ fun ArkeOrdersScreen(vm: ArkeViewModel, staffName: String?, onDark: Boolean = fa
         val by = vm.orders.groupBy { it.status }
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Lane(stringResource(R.string.arke_col_new), Gold, by[ArkeOrderRepository.NEW].orEmpty(), Modifier.weight(1f)) { o ->
-                OrderCard(o, vm.busyId == o.id, onReprint = null) {
+                OrderCard(o, vm.busyId == o.id, onReprint = if (o.isUber) ({ vm.reprint(context, o, staffName) }) else null) {
                     Button(onClick = { accepting = o }, enabled = vm.busyId == null, colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
                         modifier = Modifier.weight(1f)) { Text(stringResource(R.string.arke_accept), fontWeight = FontWeight.Black) }
                     OutlinedButton(onClick = { rejecting = o }, enabled = vm.busyId == null) { Text(stringResource(R.string.arke_reject)) }
@@ -160,6 +160,7 @@ fun ArkeOrdersScreen(vm: ArkeViewModel, staffName: String?, onDark: Boolean = fa
                     val label = when (o.status) {
                         ArkeOrderRepository.REJECTED -> R.string.arke_status_rejected
                         ArkeOrderRepository.DELIVERED -> R.string.arke_status_delivered
+                        ArkeOrderRepository.CANCELLED -> R.string.arke_status_cancelled
                         else -> R.string.arke_status_picked_up
                     }
                     AssistChip(onClick = {}, label = {
@@ -212,6 +213,13 @@ private fun OrderCard(o: Order, busy: Boolean, onReprint: (() -> Unit)?, actions
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(o.customer_name, fontWeight = FontWeight.Black, fontSize = 17.sp)
+                        if (o.isUber) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(color = Color.Black, shape = RoundedCornerShape(6.dp)) {
+                                Text("Uber Eats", color = Color(0xFF06C167), fontSize = 12.sp, fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                            }
+                        }
                         if (o.isDelivery) {
                             Spacer(Modifier.width(6.dp))
                             Surface(color = Purple, shape = RoundedCornerShape(6.dp)) {
@@ -276,6 +284,7 @@ private fun OrderCard(o: Order, busy: Boolean, onReprint: (() -> Unit)?, actions
             }
             Spacer(Modifier.height(6.dp))
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            else if (o.isUber) Text(stringResource(R.string.arke_uber_on_tablet), color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             else Row(horizontalArrangement = Arrangement.spacedBy(8.dp), content = actions)
         }
     }

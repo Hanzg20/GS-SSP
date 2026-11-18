@@ -9,6 +9,7 @@ data class KitchenLine(val name: String, val quantity: Int, val options: List<St
  * number and [round] counts the sends (2 and up = "add" to the table). Arke online
  * order: [onlineCode] is its number ("A12" pickup, "D12" delivery) and [customer] the name it
  * is for; a delivery order also carries [deliveryTo] (address lines, the phone) for the driver.
+ * [platform] names a delivery platform's order ("UBER EATS"): printed as the heading instead.
  */
 data class KitchenTicket(
     val number: Int,
@@ -21,7 +22,8 @@ data class KitchenTicket(
     val guests: Int? = null,
     val onlineCode: String? = null,
     val customer: String? = null,
-    val deliveryTo: List<String>? = null
+    val deliveryTo: List<String>? = null,
+    val platform: String? = null
 ) {
     val orderType: String get() = if (takeout) "TAKEOUT" else "DINE_IN"
     val isDineIn: Boolean get() = table != null

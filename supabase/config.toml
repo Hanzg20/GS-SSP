@@ -101,3 +101,12 @@ verify_jwt = true
 # (checked against dine.tables on every call), with per-table and per-store
 # question limits in dine.scan_chats.
 verify_jwt = false
+
+[functions.ubereats-ping]
+# Ours only (the service role key): checks Uber gives a token, can make one read-only probe GET.
+verify_jwt = true
+
+[functions.ubereats-webhook]
+# Uber Eats' webhooks. Uber has no Supabase login: the X-Uber-Signature (HMAC-SHA256 of the
+# body with the app's client secret) is the credential, checked inside the function.
+verify_jwt = false

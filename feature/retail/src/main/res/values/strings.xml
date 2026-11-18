@@ -557,6 +557,8 @@
     <string name="arke_step_failed">Didn\'t go through: %1$s</string>
     <string name="arke_step_offline">Can\'t reach the cloud. Try again.</string>
     <string name="arke_status_rejected">Rejected</string>
+    <string name="arke_status_cancelled">Cancelled</string>
+    <string name="arke_uber_on_tablet">Accept and mark ready on the Uber Eats tablet</string>
     <string name="arke_status_picked_up">Picked up</string>
     <string name="arke_col_out">Out for delivery</string>
     <string name="arke_delivery">Delivery</string>

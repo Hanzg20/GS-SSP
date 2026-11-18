@@ -12,7 +12,8 @@ import kotlinx.serialization.Serializable
  * Arke online orders for this terminal's store (docs/migrations/2026-11-16_arke_online_orders.sql,
  * 2026-11-17_arke_delivery.sql): paid orders waiting to be accepted, being prepared, ready, and
  * the store's own deliveries out with a driver (already paid online -- nothing to collect at the
- * door); the store moves them on
+ * door), and Uber Eats orders (channel UBER_EATS, docs/migrations/2026-11-17_uber_eats_orders.sql:
+ * shown and printed here, accepted / readied on Uber's tablet until ubereats-action exists); the store moves them on
  * (online_store_step) and gives a rejected one's money back (supabase/functions/arke-pay-refund).
  * The store comes from the signed-in device, never from here. No cloud = no online orders
  * (null), never a crash.
@@ -51,6 +52,7 @@ object ArkeOrderRepository {
         val token: String? = null,
         val status: String,
         val fulfilment: String = "PICKUP",
+        val channel: String = ARKE,
         val pickup_code: String? = null,
         val customer_name: String = "",
         val customer_phone: String? = null,
@@ -77,11 +79,16 @@ object ArkeOrderRepository {
         val last_attempt_note: String? = null,
         val rejected_at: String? = null,
         val reject_reason: String? = null,
+        val cancelled_at: String? = null,
+        val cancel_reason: String? = null,
+        val external_type: String? = null,
         val handled_by: String? = null
     ) {
         /** Still the store's to handle (not picked up / delivered / rejected). */
         val open: Boolean get() = status == NEW || status == ACCEPTED || status == READY || status == OUT_FOR_DELIVERY
         val isDelivery: Boolean get() = fulfilment == OWN_DELIVERY
+        /** Uber Eats: Uber collected the money; moved on through Uber, never online_store_step. */
+        val isUber: Boolean get() = channel == UBER_EATS
         val itemCount: Int get() = items.sumOf { it.quantity }
     }
 
@@ -92,6 +99,9 @@ object ArkeOrderRepository {
     const val OUT_FOR_DELIVERY = "OUT_FOR_DELIVERY"
     const val DELIVERED = "DELIVERED"
     const val REJECTED = "REJECTED"
+    const val CANCELLED = "CANCELLED"
+    const val ARKE = "ARKE"
+    const val UBER_EATS = "UBER_EATS"
     const val OWN_DELIVERY = "OWN_DELIVERY"
 
     /** Outcome of a step: ok (+ the order as it is now), or the server's reason; message null = unreachable. */
