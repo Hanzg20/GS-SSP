@@ -572,6 +572,9 @@
     <string name="arke_status_delivered">已送达</string>
     <string name="arke_deliver_in">多久送到顾客手上？</string>
     <string name="arke_arrive_by">%1$s 前送到</string>
+    <string name="arke_scheduled_for">预约 %1$s</string>
+    <string name="arke_accept_scheduled">按预约时间接单 %1$s</string>
+    <string name="arke_need_longer">来不及？从现在起多久做好：</string>
     <string name="arke_out_by">%1$s 正在配送</string>
     <string name="arke_attempts">已送 %1$d 次 · %2$s</string>
     <string name="arke_fee">配送费 %1$s</string>

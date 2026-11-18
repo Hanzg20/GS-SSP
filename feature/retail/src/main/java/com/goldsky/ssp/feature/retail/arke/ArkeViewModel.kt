@@ -153,7 +153,9 @@ class ArkeViewModel : ViewModel() {
             onlineCode = o.pickup_code ?: "A?",
             customer = o.customer_name.takeIf { it.isNotBlank() },
             deliveryTo = if (o.isDelivery) deliveryLines(o) else null,
-            platform = if (o.isUber) "UBER EATS" else null
+            platform = if (o.isUber) "UBER EATS" else null,
+            scheduledFor = o.scheduled_for?.let { com.goldsky.ssp.feature.retail.dine.parseIso(it) }
+                ?.let { java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(it)) }
         )
     }
 }

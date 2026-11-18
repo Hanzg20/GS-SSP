@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Plus, Minus, X, ChevronRight, ChevronDown, Loader2, Phone, MapPin, Clock, CheckCircle2, AlertTriangle, ClipboardList,
-  Globe, Check, Search, ShieldAlert, ShoppingBag, ChefHat, PackageCheck, XCircle, Store, Bike } from 'lucide-react'
+  Globe, Check, Search, ShieldAlert, ShoppingBag, ChefHat, PackageCheck, XCircle, Store, Bike, CalendarClock, RotateCcw } from 'lucide-react'
 import { T, LANG, LANGS, pickLang, dishName } from './i18n.js'
 import { AK } from './arke-i18n.js'
 import { supabase, callFunction, money, store, newRef } from './lib.js'
@@ -22,6 +22,11 @@ import { isEmail, savedEmail, saveEmail, loadNuvei, mountNuvei, TipPicker, tipCe
  * hours and pickup time, no Beaver. Phone: one column, category tabs, cart bar at the
  * bottom, sheets. Desktop (lg): categories + search on the left, dishes in a grid, the
  * cart always open on the right.
+ *
+ * Order ahead (2026-11-18, docs/migrations/2026-11-18_arke_scheduled_orders.sql): "as soon as
+ * possible" while the store is open, or one of the server's 15-minute slots (menu.store.slots,
+ * per pickup / delivery); while closed, booking is the only way in. Order again: a past order's
+ * dishes go back into the cart, minus what is sold out or gone from the menu.
  */
 
 const callPay = (body) => callFunction('arke-pay', body, { raw: true })
@@ -33,9 +38,29 @@ const myOrders = {
   add(o) { store.set('arke_orders', [o, ...myOrders.list().filter((x) => x.token !== o.token)].slice(0, 10)) },
 }
 
+/** Put a past order's dishes into this store's cart next time its page opens (see StorePage). */
+const reorder = (slug, items) => {
+  store.set('arke_reorder_' + slug, (items || []).map((l) => ({ product_id: l.product_id, option_ids: l.option_ids || [], note: l.note || '', quantity: l.quantity })))
+  window.location.href = `?s=${slug}`
+}
+
 const timeOf = (iso, tz) => {
   try { return new Date(iso).toLocaleTimeString(LANG, { hour: 'numeric', minute: '2-digit', timeZone: tz || undefined }) } catch { return '' }
 }
+
+/** The calendar day of a time in the store's time zone ("2026-11-18"). */
+const dayKey = (t, tz) => {
+  try { return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: tz || undefined }).format(new Date(t)) } catch { return '' }
+}
+/** "Today" / "Tomorrow" / "Fri, Nov 21" for a time, in the store's time zone. */
+const dayLabel = (t, tz) => {
+  const k = dayKey(t, tz)
+  if (k === dayKey(Date.now(), tz)) return AK.today
+  if (k === dayKey(Date.now() + 86400000, tz)) return AK.tomorrow
+  try { return new Date(t).toLocaleDateString(LANG, { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz || undefined }) } catch { return k }
+}
+/** "Today 6:30 PM". */
+const whenOf = (t, tz) => `${dayLabel(t, tz)} ${timeOf(t, tz)}`
 
 /** Today's ISO weekday (1 = Monday) in the store's time zone. */
 const isoToday = (tz) => {
@@ -139,6 +164,7 @@ function ModeSwitch({ s, mode, setMode }) {
 }
 
 function StoreCard({ s, canOrder, mode, setMode }) {
+  const ahead = canOrder && !s.open_now
   const [week, setWeek] = useState(false)
   const today = isoToday(s.timezone)
   const hasHours = s.hours && typeof s.hours === 'object'
@@ -149,9 +175,9 @@ function StoreCard({ s, canOrder, mode, setMode }) {
       <div className="px-4 sm:px-5 pb-4 -mt-9">
         <div className="flex items-end gap-3">
           <div className="p-1 bg-white rounded-[20px] shadow-card"><StoreLogo s={s} size="w-16 h-16 text-2xl" /></div>
-          <span className={`mb-1 inline-flex items-center gap-1 font-black text-xs px-2.5 py-1 rounded-full ${canOrder ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-ink-mute'}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${canOrder ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-            {canOrder ? AK.open : s.online_pay ? AK.closedNow : AK.payOff}
+          <span className={`mb-1 inline-flex items-center gap-1 font-black text-xs px-2.5 py-1 rounded-full ${ahead ? 'bg-gold-50 text-gold-800' : canOrder ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-ink-mute'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${ahead ? 'bg-gold-500' : canOrder ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+            {ahead ? AK.orderAhead : canOrder ? AK.open : s.online_pay ? AK.closedNow : AK.payOff}
           </span>
         </div>
         <h1 className="mt-2 font-black text-2xl text-ink leading-tight">{s.name}</h1>
@@ -255,6 +281,12 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
   const confirmed = useRef(false)
   const s = menu.store
   const delivery = mode === 'OWN_DELIVERY'
+  // When: null = as soon as possible (only while open), else one of the server's slots.
+  const slots = s.slots?.[mode] || []
+  const [when, setWhen] = useState(() => (s.open_now ? null : slots[0] ?? null))
+  useEffect(() => { if (when !== null && !slots.includes(when)) setWhen(s.open_now ? null : slots[0] ?? null) }, [slots.join()]) // eslint-disable-line react-hooks/exhaustive-deps
+  const days = [...new Map(slots.map((t) => [dayKey(t, s.timezone), t])).entries()]   // [[day, its first slot]]
+  const leadMin = delivery ? s.delivery?.minutes : s.pickup_minutes
   const [addr, setAddr] = useState(() => ({ line1: '', unit: '', city: '', postal: '', instructions: '', ...(store.get('arke_address') || {}) }))
   const postal = (addr.postal || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
   const [quote, setQuote] = useState(null)      // null | {checking} | {ok, fee, feeTax, zone} | {ok: false, msg}
@@ -273,7 +305,7 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
     return () => { gone = true; clearTimeout(t) }
   }, [delivery, postal, subtotal, slug])
   // A different address is a different order: one placed for the old address is left to expire.
-  useEffect(() => { if (order && state === 'form') { setOrder(null); clientRef.current = newRef() } }, [addr.line1, addr.unit, postal]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (order && state === 'form') { setOrder(null); clientRef.current = newRef() } }, [addr.line1, addr.unit, postal, when]) // eslint-disable-line react-hooks/exhaustive-deps
   const fee = delivery && quote?.ok ? quote.fee : 0
   const feeTax = delivery && quote?.ok ? quote.feeTax : 0
   const addrOk = !delivery || ((addr.line1 || '').trim().length >= 3 && !!quote?.ok)
@@ -282,7 +314,8 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
 
   const tipCents = tipCentsOf(tip, customTip, subtotal)
   const phoneOk = (info.phone || '').replace(/[^0-9]/g, '').length >= 10
-  const ready = info.name.trim() && phoneOk && addrOk && tip !== null && isEmail(email.trim())
+  const whenOk = when !== null || s.open_now
+  const ready = info.name.trim() && phoneOk && addrOk && whenOk && tip !== null && isEmail(email.trim())
   const due = subtotal + fee + tax + feeTax + tipCents
 
   const finish = async (id, token) => {
@@ -310,7 +343,7 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
       const { data, error: e } = await supabase.rpc('online_place_order', {
         p_slug: slug, p_items: lines.map((l) => ({ product_id: l.product_id, option_ids: l.option_ids, note: l.note || null, quantity: l.quantity })),
         p_name: info.name.trim(), p_phone: info.phone.trim(), p_note: note.trim() || null, p_client_ref: clientRef.current,
-        p_fulfilment: mode, p_address: delivery ? { ...addr, postal } : null,
+        p_fulfilment: mode, p_address: delivery ? { ...addr, postal } : null, p_scheduled_for: when,
       })
       if (e) { setState('form'); setError(AK.errors.offline); return }
       if (!data?.success) {
@@ -321,7 +354,7 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
       }
       o = data
       setOrder(data)
-      myOrders.add({ token: data.token, store: s.name, at: new Date().toISOString() })
+      myOrders.add({ token: data.token, store: s.name, slug, at: new Date().toISOString() })
     }
     const r = await callPay({ action: 'open', token: o.token, tip_cents: tipCents, email: email.trim(), lang: LANG })
     if (!r.session_token) {
@@ -375,7 +408,9 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
         {tip !== null && tipCents > 0 && <div className="flex justify-between"><span>{T.tipTitle}</span><span className="font-bold">{money(tipCents)}</span></div>}
         <div className="flex justify-between text-base font-black text-ink pt-1"><span>{T.total}</span><span>{money(due)}</span></div>
       </div>
-      {!delivery && <p className="mt-3 flex items-start gap-1.5 text-xs text-ink-mute"><MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gold-700" /><span><b className="text-ink-soft">{s.name}</b>{s.address ? ` · ${s.address}` : ''}</span></p>}
+      <p className="mt-3 flex items-center gap-1.5 text-sm font-black text-ink"><CalendarClock className="w-4 h-4 shrink-0 text-gold-700" />
+        {when ? (delivery ? AK.deliverAt : AK.pickupAt)(whenOf(when, s.timezone)) : AK.asap(leadMin)}</p>
+      {!delivery && <p className="mt-2 flex items-start gap-1.5 text-xs text-ink-mute"><MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gold-700" /><span><b className="text-ink-soft">{s.name}</b>{s.address ? ` · ${s.address}` : ''}</span></p>}
     </div>
   )
 
@@ -399,6 +434,32 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
   } else {
     body = (
       <div className="space-y-5 py-2">
+        <div>
+          <h3 className="font-black text-ink mb-2 flex items-center gap-1.5"><CalendarClock className="w-4 h-4 text-gold-600" />{delivery ? AK.whenDelivery : AK.whenPickup}</h3>
+          <div className="flex flex-wrap gap-2">
+            {s.open_now && (
+              <button onClick={() => setWhen(null)} aria-pressed={when === null}
+                className={`px-4 py-2.5 rounded-xl font-black text-sm border-2 ${when === null ? 'bg-ink text-white border-ink' : 'bg-white text-ink-soft border-slate-200'}`}>{AK.asap(leadMin)}</button>
+            )}
+            {slots.length > 0 && (
+              <button onClick={() => setWhen(when ?? slots[0])} aria-pressed={when !== null}
+                className={`px-4 py-2.5 rounded-xl font-black text-sm border-2 ${when !== null ? 'bg-ink text-white border-ink' : 'bg-white text-ink-soft border-slate-200'}`}>{AK.later}</button>
+            )}
+          </div>
+          {when !== null && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <select value={dayKey(when, s.timezone)} aria-label={AK.later}
+                onChange={(e) => setWhen(days.find(([d]) => d === e.target.value)?.[1] ?? when)}
+                className="w-full px-3 py-3 rounded-xl border border-slate-300 bg-white font-bold">
+                {days.map(([d, first]) => <option key={d} value={d}>{dayLabel(first, s.timezone)}</option>)}
+              </select>
+              <select value={when} onChange={(e) => setWhen(e.target.value)} aria-label={AK.later}
+                className="w-full px-3 py-3 rounded-xl border border-slate-300 bg-white font-bold">
+                {slots.filter((t) => dayKey(t, s.timezone) === dayKey(when, s.timezone)).map((t) => <option key={t} value={t}>{timeOf(t, s.timezone)}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
         {delivery && (
           <div>
             <h3 className="font-black text-ink mb-2 flex items-center gap-1.5"><Bike className="w-4 h-4 text-gold-600" />{AK.deliverTo}</h3>
@@ -521,6 +582,11 @@ function OrderPage({ token }) {
   const { Icon, ring } = look
   const stText = delivery && o.status === 'READY' ? AK.st.ACCEPTED : AK.st[o.status]
   const a = o.delivery_address
+  const sched = o.scheduled_for
+  const late = sched && o.ready_by && new Date(o.ready_by) - new Date(sched) > 60000   // the store needs longer than booked
+  const showSched = sched && !late && ['AWAITING_PAYMENT', 'NEW', 'ACCEPTED'].includes(o.status)
+  const at = (t) => (sched ? whenOf(t, s.timezone) : timeOf(t, s.timezone))
+  const finished = o.status === 'PICKED_UP' || o.status === 'DELIVERED' || bad
   return (
     <div className="min-h-screen bg-paper pb-10">
       <header className="bg-white border-b border-slate-100">
@@ -543,9 +609,10 @@ function OrderPage({ token }) {
             </>
           )}
           <p className={`mt-3 text-xl lg:text-2xl font-black ${bad ? 'text-red-600' : good ? 'text-emerald-600' : 'text-ink'}`}>{stText}</p>
-          {!delivery && o.status === 'ACCEPTED' && o.ready_by && <p className="mt-1 font-bold text-gold-700 flex items-center gap-1"><Clock className="w-4 h-4" />{AK.readyBy(timeOf(o.ready_by, s.timezone))}</p>}
+          {showSched && <p className="mt-2 inline-flex items-center gap-1.5 font-black text-gold-800 bg-gold-50 rounded-full px-3 py-1"><CalendarClock className="w-4 h-4" />{(delivery ? AK.deliverAt : AK.pickupAt)(whenOf(sched, s.timezone))}</p>}
+          {!delivery && o.status === 'ACCEPTED' && o.ready_by && (!sched || late) && <p className="mt-1 font-bold text-gold-700 flex items-center gap-1"><Clock className="w-4 h-4" />{AK.readyBy(at(o.ready_by))}</p>}
           {!delivery && o.status === 'READY' && o.ready_at && <p className="mt-1 text-sm text-ink-mute">{AK.readyAt(timeOf(o.ready_at, s.timezone))}</p>}
-          {delivery && ['ACCEPTED', 'READY', 'OUT_FOR_DELIVERY'].includes(o.status) && o.ready_by && <p className="mt-1 font-bold text-gold-700 flex items-center gap-1"><Clock className="w-4 h-4" />{AK.arriveBy(timeOf(o.ready_by, s.timezone))}</p>}
+          {delivery && ['ACCEPTED', 'READY', 'OUT_FOR_DELIVERY'].includes(o.status) && o.ready_by && !showSched && <p className="mt-1 font-bold text-gold-700 flex items-center gap-1"><Clock className="w-4 h-4" />{AK.arriveBy(at(o.ready_by))}</p>}
           {o.status === 'OUT_FOR_DELIVERY' && <p className="mt-1 text-sm font-bold text-sky-700">{AK.driverOnWay}</p>}
           {o.status === 'DELIVERED' && o.delivered_at && <p className="mt-1 text-sm text-ink-mute">{AK.deliveredAt(timeOf(o.delivered_at, s.timezone))}</p>}
           {o.status === 'REJECTED' && (
@@ -602,7 +669,11 @@ function OrderPage({ token }) {
             {s.phone && <a href={`tel:${s.phone.replace(/[^0-9+]/g, '')}`} className="flex items-center gap-2 text-sm font-black text-sky-700"><Phone className="w-4 h-4" />{AK.callStore} · {s.phone}</a>}
           </div>
 
-          {s.slug && <a href={`?s=${s.slug}`} className="block text-center font-black text-gold-800 border-2 border-gold-500 rounded-2xl py-3.5 bg-white">{o.status === 'PICKED_UP' || o.status === 'DELIVERED' || bad ? AK.orderAgain : AK.backToMenu}</a>}
+          {s.slug && finished && o.items?.length > 0 && (
+            <button onClick={() => reorder(s.slug, o.items)} className="w-full flex items-center justify-center gap-2 btn-gold rounded-2xl py-3.5">
+              <RotateCcw className="w-5 h-5" />{AK.orderAgain}</button>
+          )}
+          {s.slug && <a href={`?s=${s.slug}`} className="block text-center font-black text-gold-800 border-2 border-gold-500 rounded-2xl py-3.5 bg-white">{AK.backToMenu}</a>}
         </div>
       </div>
       <Signature product="Arke" className="pt-8" />
@@ -657,6 +728,37 @@ function StorePage({ slug }) {
     .reduce((s, [bps, amt]) => s + Math.round(amt * Number(bps) / 10000), 0)
   const inCart = (pid) => lines.filter((l) => l.product_id === pid).reduce((s, l) => s + l.quantity, 0)
 
+  // Order again: a past order's dishes into the cart, skipping what's sold out, gone or has options that changed.
+  const reorderInto = (items) => {
+    let next = [...cart], added = 0, skipped = 0
+    for (const it of items || []) {
+      const p = byId[it.product_id]
+      const optIds = it.option_ids || []
+      const known = new Set((p?.modifier_groups || []).flatMap((g) => g.options.map((o) => o.id)))
+      if (!p || p.sold_out || !optIds.every((x) => known.has(x))) { skipped++; continue }
+      const note = it.note || ''
+      const same = next.find((l) => l.product_id === p.id && (l.note || '') === note && l.option_ids.length === optIds.length && optIds.every((x) => l.option_ids.includes(x)))
+      next = same ? next.map((l) => (l === same ? { ...l, quantity: Math.min(20, l.quantity + it.quantity) } : l))
+        : [...next, { key: newRef(), product_id: p.id, option_ids: optIds, note, quantity: Math.min(20, it.quantity) }]
+      added += it.quantity
+    }
+    setCart(next)
+    flash(added === 0 ? AK.reorderNone : skipped ? AK.reorderSome(added, skipped) : AK.reorderAdded(added))
+  }
+  useEffect(() => {   // sent here by "Order again" on an order's page
+    if (!menu) return
+    const pending = store.get('arke_reorder_' + slug)
+    if (pending) { store.set('arke_reorder_' + slug, null); reorderInto(pending) }
+  }, [menu]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [lastBusy, setLastBusy] = useState(false)
+  const last = myOrders.list().find((o) => o.code && (o.slug ? o.slug === slug : o.store === menu?.store?.name))
+  const againLast = async () => {
+    setLastBusy(true)
+    const { data } = await supabase.rpc('online_order_status', { p_token: last.token })
+    setLastBusy(false)
+    if (data?.items) reorderInto(data.items); else flash(AK.errors.offline)
+  }
+
   const addLine = (p, { optionIds = [], note = '' } = {}, qty = 1) => {
     const same = cart.find((l) => l.product_id === p.id && (l.note || '') === note && l.option_ids.length === optionIds.length && optionIds.every((x) => l.option_ids.includes(x)))
     setCart(same
@@ -671,12 +773,14 @@ function StorePage({ slug }) {
   if (state === 'loading' || !menu) return <ArkeScreen busy text={T.loading} />
 
   const s = menu.store
-  const canOrder = s.open_now && s.online_pay
   const fulfil = s.delivery ? mode : 'PICKUP'   // a store that stopped delivering: back to pickup
+  const slots = s.slots?.[fulfil] || []
+  const canOrder = s.online_pay && (s.open_now || slots.length > 0)   // closed: ordering ahead only
   const goCheckout = () => { setCartOpen(false); setCheckoutOpen(true) }
   const checkoutButton = (
     <>
       {!canOrder && <p className="text-sm font-bold text-red-600">{s.online_pay ? AK.closedNow : AK.payOff}</p>}
+      {canOrder && !s.open_now && <p className="text-sm font-bold text-gold-800">{AK.closedAhead(whenOf(slots[0], s.timezone))}</p>}
       <button onClick={goCheckout} disabled={!canOrder || count === 0} className="btn-gold w-full py-4 rounded-2xl text-lg mt-2">{AK.checkout}</button>
     </>
   )
@@ -733,6 +837,17 @@ function StorePage({ slug }) {
 
         <main className="min-w-0">
           <StoreCard s={s} canOrder={canOrder} mode={fulfil} setMode={setMode} />
+          {last && (
+            <div className="mt-3 bg-white rounded-2xl shadow-card px-4 py-3 flex items-center gap-3">
+              <RotateCcw className="w-5 h-5 text-gold-700 shrink-0" />
+              <a href={`?o=${last.token}`} className="min-w-0 flex-1">
+                <span className="block text-xs font-bold text-ink-mute">{AK.lastOrder}</span>
+                <span className="block font-black text-ink truncate">{last.code} · {new Date(last.at).toLocaleDateString(LANG, { month: 'short', day: 'numeric' })}</span>
+              </a>
+              <button onClick={againLast} disabled={lastBusy} className="shrink-0 btn-gold px-4 py-2 rounded-xl text-sm flex items-center gap-1.5">
+                {lastBusy && <Loader2 className="w-4 h-4 animate-spin" />}{AK.orderAgain}</button>
+            </div>
+          )}
           {sections.length === 0 && (
             <div className="flex flex-col items-center py-16 text-center">
               <Search className="w-10 h-10 text-slate-300" />
@@ -798,7 +913,7 @@ function StorePage({ slug }) {
           onClose={() => { setCheckoutOpen(false); load() }}
           onPaid={(token, code) => {
             setCart([])
-            if (code) myOrders.add({ ...(myOrders.list().find((o) => o.token === token) || { store: s.name, at: new Date().toISOString() }), token, code })
+            if (code) myOrders.add({ ...(myOrders.list().find((o) => o.token === token) || { store: s.name, at: new Date().toISOString() }), slug, token, code })
             window.location.replace(`?o=${token}`)
           }} />
       )}

@@ -65,6 +65,8 @@ object ArkeOrderRepository {
         val delivery_address: Address? = null,
         val delivery_zone: String? = null,
         val total_cents: Int = 0,
+        /** Arke ordering ahead: the slot the customer booked (pickup / delivery time); null = as soon as possible. */
+        val scheduled_for: String? = null,
         val created_at: String? = null,
         val paid_at: String? = null,
         val accepted_at: String? = null,

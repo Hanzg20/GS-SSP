@@ -3,6 +3,10 @@
 import { LANG } from './i18n.js'
 
 const zh = {
+  whenPickup: '什么时候取', whenDelivery: '什么时候送', asap: (n) => `尽快（约 ${n} 分钟）`, later: '预约时间', today: '今天', tomorrow: '明天',
+  orderAhead: '可预约', closedAhead: (t) => `现在休息 · 可预约 ${t} 起`, pickupAt: (t) => `${t} 取餐`, deliverAt: (t) => `${t} 送达`,
+  scheduled: '预约单', lastOrder: '上次点的', reorderAdded: (n) => `已放回购物车 ${n} 份`, reorderSome: (n, m) => `已放回 ${n} 份，${m} 样已售完或下架`,
+  reorderNone: '上次点的菜现在都没有了', reordering: '正在放回购物车…',
   orderNo: '订单号', recipient: '收货人', 
   delivery: '配送', deliveryIn: (n) => `约 ${n} 分钟送达`, feeFrom: (m) => `配送费 ${m} 起`, minFrom: (m) => `起送 ${m}`,
   deliverTo: '送到哪里', line1: '街道地址', unit: '单元 / 门牌号（选填）', city: '城市（选填）', postal: '邮编',
@@ -33,6 +37,7 @@ const zh = {
   payReview: '付款需要店家核对，请打电话给店家。', payPending: '还没收到付款确认。请不要重复付款，稍后刷新这个页面。',
   steps: ['已付款', '准备中', '可取餐'],
   errors: {
+    slot_gone: '这个时间约满或已过，请另选一个', 
     address_required: '请填写配送地址', bad_postal: '邮编格式不对', out_of_area: '这个地址不在配送范围内', below_minimum: '还没到这个区域的起送金额', no_delivery: '这家店现在不配送', store_closed: '店家现在不接线上订单', online_pay_off: '这家店暂不支持线上付款', bad_phone: '手机号不对，请检查',
     name_required: '请填写名字', too_many_orders: '下单太频繁了，请稍后再试', sold_out: '有菜刚刚售完：',
     item_unavailable: '有菜已下架，菜单已刷新', bad_option: '请重新选择口味：', items_required: '购物车是空的',
@@ -43,6 +48,10 @@ const zh = {
 }
 
 const en = {
+  whenPickup: 'When to pick it up', whenDelivery: 'When to deliver', asap: (n) => `As soon as possible (about ${n} min)`, later: 'Schedule', today: 'Today', tomorrow: 'Tomorrow',
+  orderAhead: 'Order ahead', closedAhead: (t) => `Closed now · order ahead from ${t}`, pickupAt: (t) => `Pickup ${t}`, deliverAt: (t) => `Delivery ${t}`,
+  scheduled: 'Scheduled', lastOrder: 'Your last order', reorderAdded: (n) => `${n} added to your cart`, reorderSome: (n, m) => `${n} added; ${m} no longer available`,
+  reorderNone: 'Those dishes are no longer available', reordering: 'Adding to your cart…',
   orderNo: 'Order no.', recipient: 'Who gets it', 
   delivery: 'Delivery', deliveryIn: (n) => `Arrives in about ${n} min`, feeFrom: (m) => `Delivery from ${m}`, minFrom: (m) => `Minimum ${m}`,
   deliverTo: 'Deliver to', line1: 'Street address', unit: 'Apt / unit (optional)', city: 'City (optional)', postal: 'Postal code',
@@ -73,6 +82,7 @@ const en = {
   payReview: 'The store needs to check this payment. Please call the store.', payPending: "We haven't had the payment confirmed yet. Please don't pay again; refresh this page in a moment.",
   steps: ['Paid', 'Preparing', 'Ready'],
   errors: {
+    slot_gone: 'That time is no longer available. Please pick another', 
     address_required: 'Please enter the delivery address', bad_postal: 'Please check the postal code', out_of_area: "We don't deliver to this address", below_minimum: 'Below the minimum for delivery here', no_delivery: 'This store is not delivering right now', store_closed: 'The store is not taking online orders right now', online_pay_off: "This store doesn't take online payment yet", bad_phone: 'Please check the phone number',
     name_required: 'Please enter your name', too_many_orders: 'Too many orders. Please try again in a few minutes', sold_out: 'Just sold out: ',
     item_unavailable: 'An item is no longer available; the menu was refreshed', bad_option: 'Please choose the options again: ', items_required: 'Your cart is empty',
@@ -83,6 +93,10 @@ const en = {
 }
 
 const fr = {
+  whenPickup: 'Quand la récupérer', whenDelivery: 'Quand livrer', asap: (n) => `Dès que possible (environ ${n} min)`, later: 'Planifier', today: 'Aujourd’hui', tomorrow: 'Demain',
+  orderAhead: 'Commande à l’avance', closedAhead: (t) => `Fermé · commandez à l’avance dès ${t}`, pickupAt: (t) => `Retrait ${t}`, deliverAt: (t) => `Livraison ${t}`,
+  scheduled: 'Planifiée', lastOrder: 'Votre dernière commande', reorderAdded: (n) => `${n} ajouté(s) au panier`, reorderSome: (n, m) => `${n} ajouté(s) ; ${m} plus disponible(s)`,
+  reorderNone: 'Ces plats ne sont plus disponibles', reordering: 'Ajout au panier…',
   orderNo: 'N° de commande', recipient: 'Destinataire', 
   delivery: 'Livraison', deliveryIn: (n) => `Livré en environ ${n} min`, feeFrom: (m) => `Livraison dès ${m}`, minFrom: (m) => `Minimum ${m}`,
   deliverTo: 'Livrer à', line1: 'Adresse', unit: 'App. / unité (facultatif)', city: 'Ville (facultatif)', postal: 'Code postal',
@@ -113,6 +127,7 @@ const fr = {
   payReview: 'Le commerce doit vérifier ce paiement. Veuillez l’appeler.', payPending: 'Paiement pas encore confirmé. Ne payez pas une deuxième fois ; actualisez la page dans un instant.',
   steps: ['Payée', 'En préparation', 'Prête'],
   errors: {
+    slot_gone: 'Cet horaire n’est plus disponible. Choisissez-en un autre', 
     address_required: "Entrez l'adresse de livraison", bad_postal: 'Vérifiez le code postal', out_of_area: 'Pas de livraison à cette adresse', below_minimum: 'Sous le minimum de livraison ici', no_delivery: 'Pas de livraison pour le moment', store_closed: 'Le commerce ne prend pas de commandes en ligne pour le moment', online_pay_off: "Ce commerce n'accepte pas encore le paiement en ligne", bad_phone: 'Vérifiez le numéro de téléphone',
     name_required: 'Entrez votre nom', too_many_orders: 'Trop de commandes. Réessayez dans quelques minutes', sold_out: 'Rupture de stock : ',
     item_unavailable: "Un article n'est plus disponible ; menu actualisé", bad_option: 'Choisissez à nouveau les options : ', items_required: 'Votre panier est vide',
@@ -123,6 +138,10 @@ const fr = {
 }
 
 const ar = {
+  whenPickup: 'متى تستلم', whenDelivery: 'متى نوصّل', asap: (n) => `في أقرب وقت (نحو ${n} دقيقة)`, later: 'تحديد موعد', today: 'اليوم', tomorrow: 'غدًا',
+  orderAhead: 'اطلب مسبقًا', closedAhead: (t) => `مغلق الآن · اطلب مسبقًا من ${t}`, pickupAt: (t) => `الاستلام ${t}`, deliverAt: (t) => `التوصيل ${t}`,
+  scheduled: 'طلب مجدول', lastOrder: 'طلبك السابق', reorderAdded: (n) => `أُضيف ${n} إلى السلة`, reorderSome: (n, m) => `أُضيف ${n}؛ ${m} لم يعد متاحًا`,
+  reorderNone: 'هذه الأطباق لم تعد متاحة', reordering: 'جارٍ الإضافة إلى السلة…',
   orderNo: 'رقم الطلب', recipient: 'المستلم', 
   delivery: 'توصيل', deliveryIn: (n) => `يصل خلال نحو ${n} دقيقة`, feeFrom: (m) => `التوصيل من ${m}`, minFrom: (m) => `الحد الأدنى ${m}`,
   deliverTo: 'التوصيل إلى', line1: 'عنوان الشارع', unit: 'الشقة / الوحدة (اختياري)', city: 'المدينة (اختياري)', postal: 'الرمز البريدي',
@@ -153,6 +172,7 @@ const ar = {
   payReview: 'يحتاج المتجر إلى مراجعة هذا الدفع. يرجى الاتصال بالمتجر.', payPending: 'لم يتأكد الدفع بعد. لا تدفع مرة أخرى؛ حدّث الصفحة بعد قليل.',
   steps: ['مدفوع', 'قيد التحضير', 'جاهز'],
   errors: {
+    slot_gone: 'هذا الموعد لم يعد متاحًا. اختر موعدًا آخر', 
     address_required: 'أدخل عنوان التوصيل', bad_postal: 'تحقّق من الرمز البريدي', out_of_area: 'لا نوصّل إلى هذا العنوان', below_minimum: 'أقل من الحد الأدنى للتوصيل هنا', no_delivery: 'المتجر لا يوصّل الآن', store_closed: 'المتجر لا يستقبل طلبات عبر الإنترنت الآن', online_pay_off: 'هذا المتجر لا يقبل الدفع عبر الإنترنت بعد', bad_phone: 'تحقّق من رقم الهاتف',
     name_required: 'أدخل اسمك', too_many_orders: 'طلبات كثيرة. حاول بعد دقائق', sold_out: 'نفد للتو: ',
     item_unavailable: 'صنف لم يعد متاحًا؛ تم تحديث القائمة', bad_option: 'اختر الخيارات مجددًا: ', items_required: 'السلة فارغة',

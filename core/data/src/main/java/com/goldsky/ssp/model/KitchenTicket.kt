@@ -23,7 +23,9 @@ data class KitchenTicket(
     val onlineCode: String? = null,
     val customer: String? = null,
     val deliveryTo: List<String>? = null,
-    val platform: String? = null
+    val platform: String? = null,
+    /** An online order booked ahead: when it's wanted, as printed ("11-19 18:30"). */
+    val scheduledFor: String? = null
 ) {
     val orderType: String get() = if (takeout) "TAKEOUT" else "DINE_IN"
     val isDineIn: Boolean get() = table != null

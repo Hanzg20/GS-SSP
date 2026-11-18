@@ -89,6 +89,7 @@ object ReceiptPrinterManager {
         if (t.isOnline) {
             out += t.platform?.let { "    $it" } ?: if (t.isDelivery) "    线上配送  DELIVERY" else "    线上自取  ONLINE PICKUP"
             out += "      ##  ${t.onlineCode}  ##"
+            t.scheduledFor?.let { out += "  ** 预约 SCHEDULED $it **" }
             t.customer?.let { out += "    $it" }
             t.deliveryTo?.forEach { out += "    $it" }
         } else if (t.isDineIn) {

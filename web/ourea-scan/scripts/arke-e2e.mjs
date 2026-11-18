@@ -35,6 +35,7 @@ const place = (items, o = {}) => rpc('online_place_order', {
   p_slug: o.slug ?? SLUG, p_items: items, p_name: o.name ?? 'Test Customer', p_phone: o.phone ?? '613-555-0123',
   p_note: o.note ?? null, p_client_ref: o.ref ?? ref(),
   ...(o.fulfilment ? { p_fulfilment: o.fulfilment, p_address: o.address ?? null } : {}),
+  ...(o.when ? { p_scheduled_for: o.when } : {}),
 })
 const expectMsg = async (name, items, msg, o) => {
   const r = await place(items, o)
@@ -144,6 +145,21 @@ check('配送单订单页：店里的预计送达时间', dSt?.store?.delivery_m
 const dOpened = await pay({ action: 'open', token: dPlaced.token, tip_cents: 0, email: 'test@example.com', lang: 'zh' })
 check('配送单付款金额 = 小计 + 配送费 + 税', dOpened?.amount_cents === sub + 399 + tax + 52, dOpened)
 check('配送设置接口不对顾客开放', !!(await sb.rpc('cmp_online_delivery_save', { p_org: 'e2e5ca00-0000-4000-8000-000000000001', p_enabled: false, p_minutes: 40, p_tax_bps: 1300, p_zones: [] })).error)
+
+// ---- ordering ahead (docs/migrations/2026-11-18_arke_scheduled_orders.sql)
+const slots = menu.store.slots?.PICKUP || []
+check('店铺页带可预约时段（自取）', slots.length > 0 && menu.store.schedule_days >= 1, menu.store.schedule_days)
+check('时段按 15 分钟、从早到晚', slots.length < 2 || (new Date(slots[1]) - new Date(slots[0]) === 900000 && new Date(slots[0]) % 900000 === 0), slots.slice(0, 2))
+check('最早时段不早于现在 + 准备时间', slots.length > 0 && new Date(slots[0]) >= Date.now() + menu.store.pickup_minutes * 60000 - 60000, slots[0])
+const coke = { product_id: WATER, option_ids: [], quantity: 1 }
+await expectMsg('不在时段里的时间 -> slot_gone', [coke], 'slot_gone', { phone: '613-555-0177', when: new Date(new Date(slots[0]).getTime() + 7 * 60000).toISOString() })
+await expectMsg('过去的时间 -> slot_gone', [coke], 'slot_gone', { phone: '613-555-0177', when: new Date(Date.now() - 3600000).toISOString() })
+const booked = await place([coke], { phone: '613-555-0177', when: slots[1] ?? slots[0] })
+check('预约下单成功', booked?.success === true, booked)
+const bookedPage = booked?.token ? await rpc('online_order_status', { p_token: booked.token }) : null
+check('订单页带预约时间', bookedPage && new Date(bookedPage.scheduled_for).getTime() === new Date(slots[1] ?? slots[0]).getTime(), bookedPage?.scheduled_for)
+check('订单明细带 product_id / option_ids（再来一单要用）', !!bookedPage?.items?.[0]?.product_id && Array.isArray(bookedPage.items[0].option_ids), bookedPage?.items?.[0])
+check('预约设置接口不对顾客开放', !!(await sb.rpc('cmp_online_schedule_save', { p_org: 'e2e5ca00-0000-4000-8000-000000000001', p_days: 0 })).error)
 
 console.log(failed ? `\n${failed} 项失败` : '\n全部通过')
 console.log(`未付款配送单: ?o=${dPlaced?.token}`)

@@ -70,4 +70,14 @@ class KitchenTicketTest {
         assertTrue(net.contains("线上配送 DELIVERY"))
         assertTrue(net.contains("Ottawa K2K 1X1"))
     }
+
+    @Test
+    fun `Arke order booked ahead - the booked time stands out on both printers`() {
+        val t = KitchenTicket(9, takeout = true, note = "", lines = listOf(noodles), staffName = "Amy", onlineCode = "A9", customer = "Lily",
+            scheduledFor = "11-19 18:30")
+        assertTrue(ReceiptPrinterManager.kitchenTicketLines(t).contains("  ** 预约 SCHEDULED 11-19 18:30 **"))
+        assertTrue(NetworkKitchenPrinter.ticketLines(t).any { it.text == "预约 SCHEDULED 11-19 18:30" && it.big })
+        val asap = t.copy(scheduledFor = null)
+        assertTrue(ReceiptPrinterManager.kitchenTicketLines(asap).none { it.contains("SCHEDULED") })
+    }
 }

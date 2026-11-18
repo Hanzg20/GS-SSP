@@ -30,6 +30,11 @@ import java.util.Locale
 
 private fun money(cents: Int) = "$%.2f".format(cents / 100.0)
 private fun clock(iso: String?): String = parseIso(iso)?.let { SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it)) } ?: ""
+/** "18:30" today, else "11-19 18:30" (a booked order can be for tomorrow). */
+private fun dayClock(iso: String?): String = parseIso(iso)?.let { t ->
+    val day = SimpleDateFormat("yyyyMMdd", Locale.US)
+    SimpleDateFormat(if (day.format(Date(t)) == day.format(Date())) "HH:mm" else "MM-dd HH:mm", Locale.getDefault()).format(Date(t))
+} ?: ""
 
 private val Gold = Color(0xFFF59E0B)
 private val Sky = Color(0xFF0284C7)
@@ -238,8 +243,17 @@ private fun OrderCard(o: Order, busy: Boolean, onReprint: (() -> Unit)?, actions
                     Text(stringResource(R.string.arke_paid_at, clock(o.paid_at)), color = Color.Gray, fontSize = 12.sp)
                 }
             }
+            if (o.scheduled_for != null && o.open) {
+                Surface(color = Gold, shape = RoundedCornerShape(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                    Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Schedule, null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.arke_scheduled_for, dayClock(o.scheduled_for)), color = Color.Black, fontWeight = FontWeight.Black)
+                    }
+                }
+            }
             if (o.ready_by != null && (o.status == ArkeOrderRepository.ACCEPTED || o.isDelivery && o.open && o.status != ArkeOrderRepository.NEW)) {
-                Text(stringResource(if (o.isDelivery) R.string.arke_arrive_by else R.string.arke_ready_by, clock(o.ready_by)),
+                Text(stringResource(if (o.isDelivery) R.string.arke_arrive_by else R.string.arke_ready_by, dayClock(o.ready_by)),
                     color = Gold, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 4.dp))
             }
             o.delivery_address?.takeIf { o.isDelivery }?.let { a ->
@@ -297,7 +311,18 @@ private fun AcceptDialog(o: Order, onDismiss: () -> Unit, onAccept: (Int) -> Uni
             Column(Modifier.padding(20.dp)) {
                 Text("${o.pickup_code ?: ""} · ${o.customer_name}", fontWeight = FontWeight.Black, fontSize = 20.sp)
                 Spacer(Modifier.height(6.dp))
-                Text(stringResource(if (o.isDelivery) R.string.arke_deliver_in else R.string.arke_ready_in), fontWeight = FontWeight.Bold)
+                if (o.scheduled_for != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Button(onClick = { onAccept(0) }, colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color.Black),
+                        modifier = Modifier.fillMaxWidth().height(60.dp)) {
+                        Icon(Icons.Default.Schedule, null); Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.arke_accept_scheduled, dayClock(o.scheduled_for)), fontWeight = FontWeight.Black, fontSize = 18.sp)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(stringResource(R.string.arke_need_longer), color = Color.Gray, fontWeight = FontWeight.Bold)
+                } else {
+                    Text(stringResource(if (o.isDelivery) R.string.arke_deliver_in else R.string.arke_ready_in), fontWeight = FontWeight.Bold)
+                }
                 Spacer(Modifier.height(12.dp))
                 val choices = if (o.isDelivery) listOf(listOf(30, 45, 60), listOf(75, 90, 120)) else listOf(listOf(10, 15, 20), listOf(30, 45, 60))
                 choices.forEach { row ->
