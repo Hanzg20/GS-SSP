@@ -3,7 +3,7 @@
 -- so arke-pay uses the same. Safe to run again. Never a real store.
 INSERT INTO online.stores (org_id, slug, is_open, pickup_minutes, hours, address, phone, notice)
 VALUES ('e2e5ca00-0000-4000-8000-000000000001', 'zz-scan-e2e', true, 15, NULL,
-        '123 Test St, Ottawa, ON', '(613) 555-0100', 'ZZ test store -- Arke online ordering tests')
+        '123 Test St, Ottawa, ON', '(613) 555-0100', '测试店 -- Arke online ordering tests')
 ON CONFLICT (org_id) DO UPDATE SET slug = EXCLUDED.slug, is_open = true, pickup_minutes = EXCLUDED.pickup_minutes,
        hours = NULL, address = EXCLUDED.address, phone = EXCLUDED.phone, notice = EXCLUDED.notice, updated_at = now();
 
