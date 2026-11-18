@@ -53,6 +53,20 @@ class FlexStrings(
     val sayNotDispensed: String,
     val sayNotCharged: String,
     val sayNotPaid: String,
+    // Pickup in stages (controller API v1.1): the shutter opens, a countdown to take them, then closing.
+    /** What one unit is called when the product doesn't say (attributes.unit / unit_fr). */
+    val defaultUnit: String,
+    /** "2 bags" from a count and a singular unit. */
+    val units: (Int, String) -> String,
+    val opening: String,
+    val take: (String) -> String,
+    val secondsLeft: (Int) -> String,
+    val finishing: String,
+    val pickupEnded: String,
+    val took: (String) -> String,
+    val sayOpening: String,
+    val sayTake: (String) -> String,
+    val sayPickupEnded: String,
 ) {
     /** Why nothing was sold. */
     fun reason(reason: SaleReason): String = when (reason) {
@@ -106,6 +120,17 @@ class FlexStrings(
             sayNotDispensed = "Not dispensed.",
             sayNotCharged = "Not charged.",
             sayNotPaid = "Not paid.",
+            defaultUnit = "item",
+            units = { n, u -> if (n == 1) "1 $u" else "$n ${plural(u)}" },
+            opening = "OPENING…",
+            take = { "TAKE YOUR $it" },
+            secondsLeft = { "$it SECONDS LEFT" },
+            finishing = "THANK YOU · FINISHING UP…",
+            pickupEnded = "PICKUP TIME HAS ENDED",
+            took = { "YOU TOOK $it" },
+            sayOpening = "Opening.",
+            sayTake = { "Please take your $it." },
+            sayPickupEnded = "The pickup window has ended.",
         )
 
         val FR = FlexStrings(
@@ -148,7 +173,25 @@ class FlexStrings(
             sayNotDispensed = "Non distribué.",
             sayNotCharged = "Aucun débit.",
             sayNotPaid = "Non payé.",
+            defaultUnit = "article",
+            units = { n, u -> if (n == 1) "1 $u" else "$n ${plural(u)}" },
+            opening = "OUVERTURE…",
+            take = { "PRENEZ $it" },
+            secondsLeft = { "$it SECONDES RESTANTES" },
+            finishing = "MERCI · FINALISATION…",
+            pickupEnded = "LE TEMPS DE RETRAIT EST ÉCOULÉ",
+            took = { "VOUS AVEZ PRIS $it" },
+            sayOpening = "Ouverture.",
+            sayTake = { "Veuillez prendre $it." },
+            sayPickupEnded = "Le temps de retrait est écoulé.",
         )
+
+        /** bag -> bags, sac -> sacs, box -> boxes; a unit already plural or ending in x/s stays. */
+        private fun plural(u: String): String = when {
+            u.endsWith("s") || u.endsWith("x") && !u.endsWith("ox") -> u
+            u.endsWith("ox") || u.endsWith("ch") || u.endsWith("sh") -> u + "es"
+            else -> u + "s"
+        }
 
         fun money(cents: Int, fr: Boolean): String =
             if (fr) String.format(Locale.CANADA_FRENCH, "%.2f $", cents / 100.0)

@@ -61,7 +61,11 @@ data class TransactionRecord(
     // Counter-sale discounts (docs/migrations/2026-10-14_discounts.sql): total off before
     // tax, and what was applied. Null = none, left out of the insert.
     val discount_cents: Int? = null,
-    val discounts: List<AppliedDiscount>? = null
+    val discounts: List<AppliedDiscount>? = null,
+    // Aegis Flex, controller API v1.1 (docs/migrations/2026-11-18_transactions_vend_result.sql):
+    // what the partner's controller saw taken -- quantity, taken_quantity, adjustment NONE/SHORT/OVER.
+    // Null = left out of the insert.
+    val vend_result: kotlinx.serialization.json.JsonObject? = null
 )
 
 /** A sale's discounts on the transaction row; nothing when it has none. */

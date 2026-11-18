@@ -33,4 +33,6 @@ data class FlexOrder(
     val settleRef: String? = null,
     /** The payment app's approved answers by TransType (sanitised) -- the bank's own ids are in them. */
     val acquirerResponse: kotlinx.serialization.json.JsonObject? = null,
+    /** What the controller saw taken (API v1.1): quantity, taken_quantity, adjustment, ... -> transactions.vend_result. */
+    val vendResult: kotlinx.serialization.json.JsonObject? = null,
 )

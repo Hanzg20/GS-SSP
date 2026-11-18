@@ -52,6 +52,7 @@ class FlexSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineW
                 vip_card_uid = order.vipCardUid,
                 product_id = order.productId,
                 acquirer_response = order.acquirerResponse,
+                vend_result = order.vendResult,
                 entry_mode = order.entryMode,
                 card_brand = order.cardBrand,
                 card_aid = order.cardAid,

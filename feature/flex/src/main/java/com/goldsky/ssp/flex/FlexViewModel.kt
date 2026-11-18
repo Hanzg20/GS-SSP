@@ -49,11 +49,13 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * [number]: shown on its tile. [quantity]: units the controller hands over (attributes.quantity,
      * else 1). [art]: a drawn, animated picture for the tile (attributes.art, e.g. "firewood"),
-     * used before [imageUrl].
+     * used before [imageUrl]. [unit] / [unitFr]: what one of [quantity] is called on the pickup
+     * screen (attributes.unit / unit_fr, singular, e.g. "bag" / "sac"; default item / article).
      */
     data class Item(
         val number: String, val name: String, val cents: Int,
         val imageUrl: String? = null, val productId: String? = null, val quantity: Int = 1, val art: String? = null,
+        val unit: String? = null, val unitFr: String? = null,
     )
 
     sealed class State {
@@ -65,12 +67,22 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         /** The VIP member code is being scanned. */
         data class Scanning(val item: Item) : State()
         data class Dispensing(val item: Item) : State()
+        /** v1.1 controller: the shutter is opening. */
+        data class Opening(val item: Item) : State()
+        /** v1.1: the shutter is open -- take them; the countdown runs to [pickupEndsAt]. */
+        data class Pickup(val item: Item) : State()
+        /** v1.1: pickup over ([timeout] = the window ran out), the controller is closing and weighing. */
+        data class Closing(val item: Item, val timeout: Boolean) : State()
         /**
          * Handed over and [chargedCents] charged (a pre-authorization settles at what the controller
          * says, so it can be less than the price); [vip] = paid from a VIP card, whose balance is now
-         * [vipBalanceCents].
+         * [vipBalanceCents]. [taken]: how many the controller saw taken (v1.1; null = a v1 controller);
+         * [refundOwedCents]: a charged sale that took fewer -- the operator refunds the difference.
          */
-        data class Done(val item: Item, val chargedCents: Int, val vip: Boolean = false, val vipBalanceCents: Int? = null) : State()
+        data class Done(
+            val item: Item, val chargedCents: Int, val vip: Boolean = false, val vipBalanceCents: Int? = null,
+            val taken: Int? = null, val refundOwedCents: Int = 0,
+        ) : State()
         /** Paid but not handed over: [givenBack] false = the reversal failed, a refund by hand is owed. */
         data class NotDispensed(val item: Item, val givenBack: Boolean, val vip: Boolean = false) : State()
         /** [reason] null = the card was declined. */
@@ -104,6 +116,14 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
     /** The slots the controller has run out of: grey tiles, not sold (none set up = none). */
     private val _soldOut = MutableStateFlow<Set<String>>(emptySet())
     val soldOut: StateFlow<Set<String>> = _soldOut.asStateFlow()
+
+    /** Units left per slot, as the controller counts them (v1.1), for the technician panel. */
+    private val _stock = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val stock: StateFlow<Map<String, Int>> = _stock.asStateFlow()
+
+    /** v1.1 pickup countdown: when it ends, on SystemClock.elapsedRealtime(); re-synced on every answer. */
+    private val _pickupEndsAt = MutableStateFlow(0L)
+    val pickupEndsAt: StateFlow<Long> = _pickupEndsAt.asStateFlow()
 
     /** The last check's words, for the technician panel. */
     private val _controllerDetail = MutableStateFlow("")
@@ -179,9 +199,14 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
             _controllerReady.value = null
             _controllerDetail.value = ""
             _soldOut.value = emptySet()
+            _stock.value = emptyMap()
         } else {
             var out = emptySet<String>()
-            val ready = c.ready({ _controllerDetail.value = it }, { out = it }) == true
+            val ready = c.ready({ _controllerDetail.value = it }, { out = it }, { _stock.value = it }) == true
+            // v1.1 stock, for the technician panel: "库存 1:42 2:42 3:42".
+            _stock.value.takeIf { it.isNotEmpty() }?.let { st ->
+                _controllerDetail.value += " · 库存 " + st.entries.sortedBy { it.key }.joinToString(" ") { "${it.key}:${it.value}" }
+            }
             if (out != _soldOut.value) Log.i(TAG, "Sold out: ${out.ifEmpty { setOf("none") }.joinToString()}")
             _soldOut.value = out
             _selected.value?.let { if (it.number in out) _selected.value = null }
@@ -202,7 +227,8 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
             .mapIndexed { i, p ->
                 val qty = p.attributes?.get("quantity")?.jsonPrimitive?.intOrNull?.takeIf { it > 0 } ?: 1
                 val art = p.attributes?.get("art")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
-                Item(p.slot ?: number(i), p.name, p.price_cents, p.image_url, p.id, qty, art)
+                fun text(key: String) = p.attributes?.get(key)?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+                Item(p.slot ?: number(i), p.name, p.price_cents, p.image_url, p.id, qty, art, text("unit"), text("unit_fr"))
             }
         if (_selected.value !in _items.value) _selected.value = null
         applyAvailability()
@@ -281,11 +307,8 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
                     val outcome = dispense(ref, item, "CARD", if (preauth) "PREAUTH" else "SALE")
                     when {
                         preauth -> settleHold(pay, ref, item, outcome)
-                        outcome.dispensed -> {
-                            finishOrder(ref, "SUCCESS", "PAID")
-                            show(State.Done(item, item.cents))
-                        }
-                        else -> pay.reverse(ref, item.cents) { ok -> notDispensed(ref, item, ok) }
+                        outcome.dispensed -> keptSale(ref, item, outcome)
+                        else -> pay.reverse(ref, item.cents) { ok -> notDispensed(ref, item, ok, outcome = outcome) }
                     }
                 }
                 FlexPayment.Result.Declined -> {
@@ -329,11 +352,11 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
                     if (!simulated) OrderRepository.update(getApplication(), ref) { it.copy(paymentStatus = "PAID") }
                     _state.value = State.Dispensing(item)
                     // A VIP code pays the price; the controller's own amount applies to a card hold only.
-                    if (dispense(ref, item, "VIP", "SALE").dispensed) {
-                        finishOrder(ref, "SUCCESS", "PAID")
-                        show(State.Done(item, item.cents, vip = true, vipBalanceCents = r.newBalanceCents))
+                    val outcome = dispense(ref, item, "VIP", "SALE")
+                    if (outcome.dispensed) {
+                        keptSale(ref, item, outcome, vip = true, vipBalanceCents = r.newBalanceCents)
                     } else {
-                        notDispensed(ref, item, VipRepository.refund(uid, ref), vip = true)
+                        notDispensed(ref, item, VipRepository.refund(uid, ref), vip = true, outcome = outcome)
                     }
                 }
                 is VipDeductResult.Rejected -> {
@@ -419,15 +442,19 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
             pay.release(ref) { ok ->
                 // A hold that couldn't be released expires on its own: nothing was taken either way.
                 if (!ok) Log.w(TAG, "Hold $ref not released -- it expires by itself")
-                notDispensed(ref, item, givenBack = true)
+                notDispensed(ref, item, givenBack = true, outcome = outcome)
             }
             return
         }
-        val charge = (outcome.chargeCents ?: item.cents).coerceIn(0, item.cents)
+        // v1: the controller's amount. v1.1: how many were taken, priced by the store's packages. The
+        // Cael test simulator sends both, and its amount wins (live-card tests stay at $0.10).
+        val charge = (outcome.chargeCents ?: outcome.takenQuantity?.let { chargeFor(item, it) } ?: item.cents).coerceIn(0, item.cents)
+        val result = vendResult(item, outcome, charge, item.cents)
+        val taken = outcome.takenQuantity
         if (charge == 0) {
             pay.release(ref) { _ ->
-                finishOrder(ref, "SUCCESS", "VOIDED", 0)
-                show(State.Done(item, 0))
+                finishOrder(ref, "SUCCESS", "VOIDED", 0, result)
+                show(State.Done(item, 0, taken = taken))
             }
             return
         }
@@ -435,12 +462,12 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
             if (ok) {
                 // Kept for a later void: the completion is the charge.
                 if (!simulated) pay.settledRef(ref)?.let { s -> OrderRepository.update(getApplication(), ref) { it.copy(settleRef = s) } }
-                finishOrder(ref, "SUCCESS", "PAID", charge)
-                show(State.Done(item, charge))
+                finishOrder(ref, "SUCCESS", "PAID", charge, result)
+                show(State.Done(item, charge, taken = taken))
             } else {
                 // Handed over, but the settlement was refused: the hold lapses, nothing is charged.
                 Log.e(TAG, "Hold $ref: completion of $charge refused -- handed over, not charged")
-                finishOrder(ref, "SUCCESS", "CANCELLED", charge)
+                finishOrder(ref, "SUCCESS", "CANCELLED", charge, result)
                 DeviceRepository.getPersistedDeviceSn()?.let {
                     DiagnosticManager.reportError(it, "FLEX_COMPLETION_FAILED", severity = "WARNING",
                         trace = "Hold $ref: dispensed, completion of $charge cents refused -- not charged")
@@ -450,29 +477,101 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun dispense(ref: String, item: Item, method: String, flow: String): FlexController.DispenseOutcome =
-        runCatching {
-            controller.dispense(FlexController.DispenseRequest(
-                order_id = ref, product_id = item.productId, slot = item.number, name = item.name,
-                quantity = item.quantity, amount_cents = item.cents,
-                currency = if (com.goldsky.ssp.common.CoreConfig.region == "CA") "CAD" else "USD",
-                payment_method = method, payment_flow = flow, terminal_sn = DeviceRepository.getPersistedDeviceSn().orEmpty(),
-                deadline_ms = System.currentTimeMillis() + FlexController.DISPENSE_WINDOW_MS,
-            ))
+    private suspend fun dispense(ref: String, item: Item, method: String, flow: String): FlexController.DispenseOutcome {
+        val now = System.currentTimeMillis()
+        val request = FlexController.DispenseRequest(
+            order_id = ref, product_id = item.productId, slot = item.number, name = item.name,
+            quantity = item.quantity, amount_cents = item.cents,
+            currency = if (com.goldsky.ssp.common.CoreConfig.region == "CA") "CAD" else "USD",
+            payment_method = method, payment_flow = flow, terminal_sn = DeviceRepository.getPersistedDeviceSn().orEmpty(),
+            deadline_ms = now + FlexController.START_WINDOW_MS,
+            charge_by_quantity = (0..item.quantity).associate { it.toString() to chargeFor(item, it) },
+            complete_by_ms = now + FlexController.COMPLETE_WINDOW_MS,
+        )
+        // v1.1 stages: the screen follows them while this sale is still being handed over.
+        val onProgress: (FlexController.Progress) -> Unit = { p ->
+            val s = _state.value
+            val ours = (s is State.Dispensing && s.item == item) || (s is State.Opening && s.item == item) ||
+                (s is State.Pickup && s.item == item) || (s is State.Closing && s.item == item)
+            if (ours) when (p) {
+                FlexController.Progress.Opening -> if (s is State.Dispensing) _state.value = State.Opening(item)
+                is FlexController.Progress.Open -> {
+                    _pickupEndsAt.value = android.os.SystemClock.elapsedRealtime() + p.remainingMs
+                    if (s !is State.Pickup && s !is State.Closing) _state.value = State.Pickup(item)
+                }
+                is FlexController.Progress.Closing -> if (s !is State.Closing) _state.value = State.Closing(item, p.timeout)
+            }
         }
+        return runCatching { controller.dispense(request, onProgress) }
             .onFailure { Log.e(TAG, "Controller failed on $ref: ${it.message}") }
             .getOrDefault(FlexController.DispenseOutcome.FAILED)
+    }
+
+    /**
+     * What [taken] of [item] costs: nothing for none, its price for all of it (or more -- never more
+     * than paid), else the price of the store's package of that many of the same unit (Cael: 2 Bags),
+     * else its share of [item]'s price.
+     */
+    private fun chargeFor(item: Item, taken: Int): Int = when {
+        taken <= 0 -> 0
+        taken >= item.quantity -> item.cents
+        else -> _items.value.firstOrNull { it.quantity == taken && it.unit == item.unit && it.art == item.art }?.cents
+            ?.coerceAtMost(item.cents) ?: (item.cents.toLong() * taken / item.quantity).toInt()
+    }
+
+    /** The controller's result for the transaction row (transactions.vend_result), null for a v1 one. */
+    private fun vendResult(item: Item, o: FlexController.DispenseOutcome, chargedCents: Int, paidCents: Int): kotlinx.serialization.json.JsonObject? {
+        val taken = o.takenQuantity ?: return null
+        return kotlinx.serialization.json.buildJsonObject {
+            put("quantity", kotlinx.serialization.json.JsonPrimitive(item.quantity))
+            put("taken_quantity", kotlinx.serialization.json.JsonPrimitive(taken))
+            put("adjustment", kotlinx.serialization.json.JsonPrimitive(when {
+                taken < item.quantity -> "SHORT"
+                taken > item.quantity -> "OVER"
+                else -> "NONE"
+            }))
+            o.pickupEnd?.let { put("pickup_end", kotlinx.serialization.json.JsonPrimitive(it)) }
+            o.startWeightG?.let { put("start_weight_g", kotlinx.serialization.json.JsonPrimitive(it)) }
+            o.endWeightG?.let { put("end_weight_g", kotlinx.serialization.json.JsonPrimitive(it)) }
+            put("paid_cents", kotlinx.serialization.json.JsonPrimitive(paidCents))
+            put("charged_cents", kotlinx.serialization.json.JsonPrimitive(chargedCents))
+            put("api_version", kotlinx.serialization.json.JsonPrimitive(FlexController.API_VERSION))
+        }
+    }
+
+    /**
+     * A charged sale (card SALE or VIP) that was handed over: the money stays. Fewer taken than
+     * paid for (v1.1) can't be partly given back on an unattended terminal -- the row says SHORT and
+     * Cael gets a warning, so the operator refunds the difference from the back office.
+     */
+    private fun keptSale(ref: String, item: Item, outcome: FlexController.DispenseOutcome, vip: Boolean = false, vipBalanceCents: Int? = null) {
+        val taken = outcome.takenQuantity
+        val owed = if (taken != null && taken < item.quantity) item.cents - chargeFor(item, taken) else 0
+        finishOrder(ref, "SUCCESS", "PAID", null, vendResult(item, outcome, item.cents, item.cents))
+        if (owed > 0) {
+            Log.w(TAG, "Sale $ref: $taken of ${item.quantity} taken -- $owed cents to refund by hand")
+            DeviceRepository.getPersistedDeviceSn()?.let {
+                DiagnosticManager.reportError(it, "FLEX_SHORT_PICKUP", severity = "WARNING",
+                    trace = "Sale $ref (${item.cents} cents, ${if (vip) "VIP" else "card"}): $taken of ${item.quantity} taken -- refund $owed cents")
+            }
+        }
+        show(State.Done(item, item.cents, vip, vipBalanceCents, taken, owed))
+    }
 
     /** Paid, not handed over: [givenBack] = voided / refunded (to the card or the VIP balance). */
-    private fun notDispensed(ref: String, item: Item, givenBack: Boolean, vip: Boolean = false) {
+    private fun notDispensed(
+        ref: String, item: Item, givenBack: Boolean, vip: Boolean = false,
+        outcome: FlexController.DispenseOutcome? = null,
+    ) {
+        val result = outcome?.let { vendResult(item, it, 0, item.cents) }
         if (givenBack) {
-            finishOrder(ref, "FAILED", "VOIDED")
+            finishOrder(ref, "FAILED", "VOIDED", null, result)
         } else if (vip) {
             // Left PAID / PENDING: FlexRecovery gives the balance back on the next start.
             Log.e(TAG, "VIP $ref not given back yet -- FlexRecovery retries it")
         } else {
             Log.e(TAG, "Sale $ref not dispensed and not reversed -- refund it by hand")
-            finishOrder(ref, "FAILED", "PAID")
+            finishOrder(ref, "FAILED", "PAID", null, result)
             DeviceRepository.getPersistedDeviceSn()?.let {
                 DiagnosticManager.reportError(it, "FLEX_REVERSE_FAILED", severity = "CRITICAL",
                     trace = "Sale $ref (${item.cents} cents) not dispensed and not reversed: refund by hand")
@@ -481,13 +580,19 @@ class FlexViewModel(application: Application) : AndroidViewModel(application) {
         show(State.NotDispensed(item, givenBack, vip))
     }
 
-    /** [chargedCents]: what a settled hold came to (the row's amount), else the price stays. */
-    private fun finishOrder(ref: String, dispense: String, payment: String, chargedCents: Int? = null) {
+    /**
+     * [chargedCents]: what a settled hold came to (the row's amount), else the price stays.
+     * [vendResult]: what the controller saw taken (v1.1), for the row.
+     */
+    private fun finishOrder(
+        ref: String, dispense: String, payment: String, chargedCents: Int? = null,
+        vendResult: kotlinx.serialization.json.JsonObject? = null,
+    ) {
         if (simulated) return
         val answers = this.payment?.answers(ref)
         OrderRepository.update(getApplication(), ref) {
             it.copy(dispenseStatus = dispense, paymentStatus = payment, amountCents = chargedCents ?: it.amountCents,
-                acquirerResponse = answers ?: it.acquirerResponse)
+                acquirerResponse = answers ?: it.acquirerResponse, vendResult = vendResult ?: it.vendResult)
         }
         triggerSync()
     }

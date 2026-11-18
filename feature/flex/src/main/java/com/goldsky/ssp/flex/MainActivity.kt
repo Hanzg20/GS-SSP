@@ -242,7 +242,13 @@ class MainActivity : com.goldsky.ssp.ui.BaseAdActivity() {
                         is FlexViewModel.State.Authorizing -> s.sayTapCard
                         is FlexViewModel.State.Scanning -> s.sayScan
                         is FlexViewModel.State.Dispensing -> s.sayDispensing
-                        is FlexViewModel.State.Done -> s.sayPaid(FlexStrings.money(st.chargedCents, fr)) + " " + s.sayTakeItem
+                        is FlexViewModel.State.Opening -> s.sayOpening
+                        is FlexViewModel.State.Pickup -> s.sayTake(s.units(st.item.quantity,
+                            (if (fr) st.item.unitFr else st.item.unit) ?: st.item.unit ?: s.defaultUnit))
+                        is FlexViewModel.State.Closing -> if (st.timeout) s.sayPickupEnded else null
+                        // Taken already when the controller reported in stages (v1.1).
+                        is FlexViewModel.State.Done -> s.sayPaid(FlexStrings.money(st.chargedCents, fr)) +
+                            if (st.taken == null) " " + s.sayTakeItem else ""
                         is FlexViewModel.State.NotDispensed ->
                             s.sayNotDispensed + if (st.givenBack && !st.vip) " " + s.sayNotCharged else ""
                         is FlexViewModel.State.Declined ->

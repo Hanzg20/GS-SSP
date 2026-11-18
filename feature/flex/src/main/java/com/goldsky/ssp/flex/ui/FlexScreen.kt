@@ -59,6 +59,10 @@ fun FlexContainer(
     val money = { cents: Int -> FlexStrings.money(cents, french) }
     // A result / payment screen's headline: the price, or under pre-authorization the hold.
     val head = { item: Item -> if (preauth) s.hold(money(item.cents)) else money(item.cents) }
+    // "2 BAGS": the product's own unit in the screen's language, else item / article.
+    val units = { item: Item, n: Int ->
+        s.units(n, (if (french) item.unitFr else item.unit) ?: item.unit ?: s.defaultUnit).uppercase()
+    }
     FlexTheme {
         // Nothing in the screen's corners, as on Vend.
         Column(Modifier.fillMaxSize().background(KioskPage).padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 24.dp)) {
@@ -105,6 +109,30 @@ fun FlexContainer(
                         Big(s.dispensing)
                         if (preauth) Line(s.holdNote)
                     }
+                    is State.Opening -> Message(st.item, head(st.item)) {
+                        ItemDropAnim(72.dp)
+                        Spacer(Modifier.height(12.dp))
+                        Big(s.opening)
+                    }
+                    // The shutter is open: what to take, and the controller's countdown.
+                    is State.Pickup -> Message(st.item, head(st.item)) {
+                        Big(s.take(units(st.item, st.item.quantity)), KioskAmber)
+                        Spacer(Modifier.height(8.dp))
+                        val left = pickupSecondsLeft(viewModel)
+                        Text("$left", color = TextPrimary, fontSize = 64.sp, fontWeight = FontWeight.Bold, lineHeight = 66.sp)
+                        Line(s.secondsLeft(left))
+                    }
+                    is State.Closing -> Message(st.item, head(st.item)) {
+                        if (st.timeout) {
+                            ResultAnim(false, 56.dp)
+                            Spacer(Modifier.height(10.dp))
+                            Big(s.pickupEnded, KioskAmber)
+                        } else {
+                            ItemDropAnim(56.dp)
+                            Spacer(Modifier.height(10.dp))
+                            Big(s.finishing)
+                        }
+                    }
                     is State.Done -> Message(st.item, head(st.item)) {
                         ResultAnim(true, 64.dp)
                         Spacer(Modifier.height(10.dp))
@@ -113,7 +141,11 @@ fun FlexContainer(
                         st.vipBalanceCents?.let { Line(s.vipBalance(money(it))) }
                         // A hold settled for less: the rest went back.
                         if (!st.vip && st.chargedCents < st.item.cents) Line(s.released(money(st.item.cents - st.chargedCents)))
-                        Line(s.takeItem)
+                        // v1.1: fewer (or more) taken than paid for; a charged sale owes the difference.
+                        st.taken?.takeIf { it != st.item.quantity }?.let { Line(s.took(units(st.item, it))) }
+                        if (st.refundOwedCents > 0) Line(s.refundByStaff(money(st.refundOwedCents)))
+                        // Already taken when the controller reports in stages.
+                        if (st.taken == null) Line(s.takeItem)
                     }
                     is State.NotDispensed -> Message(st.item, head(st.item)) {
                         ResultAnim(false, 64.dp)
@@ -137,6 +169,20 @@ fun FlexContainer(
             }
         }
     }
+}
+
+/** Whole seconds to the end of the pickup window ([FlexViewModel.pickupEndsAt]), ticking. */
+@Composable
+private fun pickupSecondsLeft(viewModel: FlexViewModel): Int {
+    val endsAt by viewModel.pickupEndsAt.collectAsState()
+    var now by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+    LaunchedEffect(endsAt) {
+        while (true) {
+            now = android.os.SystemClock.elapsedRealtime()
+            kotlinx.coroutines.delay(200)
+        }
+    }
+    return ((endsAt - now + 999) / 1000).toInt().coerceAtLeast(0)
 }
 
 @Composable

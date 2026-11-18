@@ -12,7 +12,7 @@ if (localPropertiesFile.exists()) {
 }
 
 // Aegis Flex (owner, 2026-11-05): starts at 0.0.1.
-ext.appVersion = "0.0.1"
+ext.appVersion = "0.0.2"
 
 android {
     namespace 'com.goldsky.ssp.aegis.flex'
