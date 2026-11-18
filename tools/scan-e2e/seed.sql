@@ -15,7 +15,7 @@
 BEGIN;
 
 INSERT INTO organizations (id, name)
-VALUES ('e2e5ca00-0000-4000-8000-000000000001', 'ZZ 扫码点餐测试 Scan E2E')
+VALUES ('e2e5ca00-0000-4000-8000-000000000001', '测试 · 餐饮 · 通用（扫码点餐 / Arke 在线点餐 / Uber Eats / E2E）')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 INSERT INTO locations (id, org_id, name, timezone)
