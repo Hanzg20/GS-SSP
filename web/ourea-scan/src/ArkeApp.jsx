@@ -285,7 +285,8 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
   const slots = s.slots?.[mode] || []
   const [when, setWhen] = useState(() => (s.open_now ? null : slots[0] ?? null))
   useEffect(() => { if (when !== null && !slots.includes(when)) setWhen(s.open_now ? null : slots[0] ?? null) }, [slots.join()]) // eslint-disable-line react-hooks/exhaustive-deps
-  const days = [...new Map(slots.map((t) => [dayKey(t, s.timezone), t])).entries()]   // [[day, its first slot]]
+  // [[day, its first slot]] -- reversed so the Map keeps each day's FIRST slot (a Map keeps the last value per key).
+  const days = [...new Map(slots.slice().reverse().map((t) => [dayKey(t, s.timezone), t])).entries()].reverse()
   const leadMin = delivery ? s.delivery?.minutes : s.pickup_minutes
   const [addr, setAddr] = useState(() => ({ line1: '', unit: '', city: '', postal: '', instructions: '', ...(store.get('arke_address') || {}) }))
   const postal = (addr.postal || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
