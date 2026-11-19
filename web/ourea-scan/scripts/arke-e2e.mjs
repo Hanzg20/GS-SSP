@@ -37,6 +37,7 @@ const place = (items, o = {}) => rpc('online_place_order', {
   ...(o.fulfilment ? { p_fulfilment: o.fulfilment, p_address: o.address ?? null } : {}),
   ...(o.when ? { p_scheduled_for: o.when } : {}),
   ...(o.coupon ? { p_coupon: o.coupon } : {}),
+  ...(o.points != null ? { p_points: o.points } : {}),
 })
 const expectMsg = async (name, items, msg, o) => {
   const r = await place(items, o)
@@ -116,6 +117,13 @@ check('优惠券：下单带上折扣和新税', withCoupon?.success === true &&
 const stc = await rpc('online_order_status', { p_token: withCoupon.token })
 check('优惠券：订单页合计 = 小计 - 折扣 + 税', stc?.total_cents === sub - q10.discount_cents + q10.tax_cents && stc.coupon_code === 'ARKETEST10', stc)
 await expectMsg('优惠券：下单时码不对 -> coupon_unknown', items, 'coupon_unknown', { coupon: 'NOPE-0000' })
+
+// ---- store rewards (seed-arke.sql: member.settings on, 1 point per dollar, 100 points = $5)
+check('店铺页带积分规则', menu?.store?.points?.per_dollar === 1 && menu.store.points.reward_points === 100 && menu.store.points.reward_cents === 500, menu?.store?.points)
+const withPoints = await place(items, { points: true })
+check('积分：勾选攒积分也能下单', withPoints?.success === true, withPoints)
+const stp = await rpc('online_order_status', { p_token: withPoints?.token })
+check('积分：没付款前不攒分', stp?.points_earned === null && stp?.points_balance === null, stp)
 
 // ---- what customers can't call
 check('付款接口不对顾客开放', !!(await sb.rpc('online_pay_settle', { p_id: placed.id, p_transaction_id: 'x', p_paid_cents: 1, p_auth_code: null, p_card: null })).error)

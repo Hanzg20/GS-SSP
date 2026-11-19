@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Plus, Minus, X, ChevronRight, ChevronDown, Loader2, Phone, MapPin, Clock, CheckCircle2, AlertTriangle, ClipboardList,
-  Globe, Check, Search, ShieldAlert, ShoppingBag, ChefHat, PackageCheck, XCircle, Store, Bike, CalendarClock, RotateCcw, Ticket } from 'lucide-react'
+  Globe, Check, Search, ShieldAlert, ShoppingBag, ChefHat, PackageCheck, XCircle, Store, Bike, CalendarClock, RotateCcw, Ticket, Award } from 'lucide-react'
 import { T, LANG, LANGS, pickLang, dishName } from './i18n.js'
 import { AK } from './arke-i18n.js'
 import { supabase, callFunction, money, store, newRef } from './lib.js'
@@ -312,6 +312,24 @@ function CouponField({ slug, items, coupon, setCoupon }) {
   )
 }
 
+/**
+ * The store's rewards: points on this order under the phone number, ticked unless the customer unticked it once
+ * (remembered). Earned only when the order is paid (server side); spending them is at the counter.
+ */
+function PointsField({ rule, base, earn, setEarn }) {
+  const n = Math.floor(Math.max(base, 0) / 100) * rule.per_dollar
+  return (
+    <label className={`flex items-start gap-3 rounded-2xl border p-3 cursor-pointer ${earn ? 'border-gold-400 bg-gold-50' : 'border-slate-200 bg-white'}`}>
+      <input type="checkbox" checked={earn} onChange={(e) => setEarn(e.target.checked)} className="mt-1 h-5 w-5 accent-amber-500" />
+      <Award className="w-5 h-5 mt-0.5 shrink-0 text-gold-700" />
+      <span className="min-w-0">
+        <span className="block font-black text-ink">{AK.pointsEarn(n)}</span>
+        <span className="block text-xs text-slate-600">{AK.pointsRule(rule.reward_points, money(rule.reward_cents))}</span>
+      </span>
+    </label>
+  )
+}
+
 function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onPaid }) {
   const [info, setInfo] = useState(() => store.get('arke_customer') || { name: '', phone: '' })
   const [note, setNote] = useState('')
@@ -323,6 +341,8 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
   const [session, setSession] = useState(null)
   const [order, setOrder] = useState(null)      // {id, token, subtotal_cents, tax_cents} once placed
   const [coupon, setCoupon] = useState(null)    // {code, discount_cents, tax_cents} from online_coupon_check
+  const [earn, setEarnState] = useState(() => store.get('arke_points') !== false)
+  const setEarn = (v) => { setEarnState(v); store.set('arke_points', v) }
   const items = useMemo(() => lines.map((l) => ({ product_id: l.product_id, option_ids: l.option_ids, note: l.note || null, quantity: l.quantity })), [lines])
   useEffect(() => {
     if (!coupon) return
@@ -359,7 +379,7 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
     return () => { gone = true; clearTimeout(t) }
   }, [delivery, postal, subtotal, slug])
   // A different address is a different order: one placed for the old address is left to expire.
-  useEffect(() => { if (order && state === 'form') { setOrder(null); clientRef.current = newRef() } }, [addr.line1, addr.unit, postal, when, coupon?.code]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (order && state === 'form') { setOrder(null); clientRef.current = newRef() } }, [addr.line1, addr.unit, postal, when, coupon?.code, earn]) // eslint-disable-line react-hooks/exhaustive-deps
   const fee = delivery && quote?.ok ? quote.fee : 0
   const feeTax = delivery && quote?.ok ? quote.feeTax : 0
   const addrOk = !delivery || ((addr.line1 || '').trim().length >= 3 && !!quote?.ok)
@@ -401,6 +421,7 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
         p_slug: slug, p_items: items,
         p_name: info.name.trim(), p_phone: info.phone.trim(), p_note: note.trim() || null, p_client_ref: clientRef.current,
         p_fulfilment: mode, p_address: delivery ? { ...addr, postal } : null, p_scheduled_for: when, p_coupon: coupon?.code || null,
+        p_points: !!(s.points && earn),
       })
       if (e) { setState('form'); setError(AK.errors.offline); return }
       if (!data?.success) {
@@ -556,6 +577,7 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
         </div>
         <TipPicker T={T} basis={subtotal} tip={tip} setTip={setTip} customTip={customTip} setCustomTip={setCustomTip} />
         <CouponField slug={slug} items={items} coupon={coupon} setCoupon={setCoupon} />
+        {s.points && <PointsField rule={s.points} base={subtotal - disc} earn={earn} setEarn={setEarn} />}
         <EmailField T={T} email={email} setEmail={setEmail} />
       </div>
     )
@@ -719,6 +741,16 @@ function OrderPage({ token }) {
             </div>
             {o.note && <p className="mt-2 text-xs text-ink-mute italic">* {o.note}</p>}
           </div>
+
+          {o.points_earned != null && (
+            <div className="bg-gold-50 border border-gold-300 rounded-3xl p-4 flex items-start gap-3">
+              <Award className="w-6 h-6 shrink-0 text-gold-700" />
+              <div className="min-w-0">
+                <p className="font-black text-ink">{AK.pointsGot(o.points_earned, o.points_balance ?? o.points_earned)}</p>
+                <p className="text-xs text-slate-600 mt-0.5">{AK.pointsUse}</p>
+              </div>
+            </div>
+          )}
 
           <div className="bg-white rounded-3xl shadow-card p-4 space-y-2">
             {delivery && a && (

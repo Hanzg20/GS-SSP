@@ -26,6 +26,12 @@ INSERT INTO coupons (code, org_id, serial, type, value, max_uses, uses_count, ex
 ON CONFLICT (code) DO UPDATE SET type = EXCLUDED.type, value = EXCLUDED.value, max_uses = EXCLUDED.max_uses,
   expires_at = EXCLUDED.expires_at, is_active = true;
 
+-- Store rewards (2026-11-01_loyalty.sql; online orders earn them, 2026-11-19_arke_loyalty.sql): 1 point per dollar,
+-- 100 points = $5 off at the counter.
+INSERT INTO member.settings (org_id, enabled, points_per_dollar, reward_points, reward_cents, updated_by)
+VALUES ('e2e5ca00-0000-4000-8000-000000000001', true, 1, 100, 500, 'Arke E2E')
+ON CONFLICT (org_id) DO UPDATE SET enabled = true, points_per_dollar = 1, reward_points = 100, reward_cents = 500;
+
 -- Reset: the store's online orders and their payment attempts (abuse limits count the last 10 min).
 -- psql -v reset=1 ... to run it.
 \if :{?reset}
