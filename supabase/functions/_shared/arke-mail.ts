@@ -53,9 +53,10 @@ function fromHeader(store: string): string {
   return from.includes("<") ? from : `"${store.replace(/["<>\\]/g, "")} via GoldSky Arke" <${from}>`;
 }
 
-export async function mailPaidOrder(m: PaidMail | null | undefined): Promise<void> {
-  if (!m?.email || !m.token) return;
-  if (!Deno.env.get("SMTP_HOST")) { console.warn("[arke-mail] SMTP not configured; not mailing"); return; }
+/** Sends the paid-order email; answers what happened ("SENT", "FAILED: ...", "SKIPPED: ...") for online_pay_mail_result. */
+export async function mailPaidOrder(m: PaidMail | null | undefined): Promise<string> {
+  if (!m?.email || !m.token) return "SKIPPED: no email";
+  if (!Deno.env.get("SMTP_HOST")) { console.warn("[arke-mail] SMTP not configured; not mailing"); return "SKIPPED: SMTP not configured"; }
   const w = WORDS[m.lang ?? ""] ?? WORDS.en;
   const link = `${SITE}/?o=${m.token}`;
   const total = `$${(m.total_cents / 100).toFixed(2)}`;
@@ -94,9 +95,20 @@ export async function mailPaidOrder(m: PaidMail | null | undefined): Promise<voi
       html,
     });
     console.log(`[arke-mail] mailed order ${m.code} of ${m.store}`);
+    return "SENT";
   } catch (e) {
-    console.error(`[arke-mail] send failed for order ${m.code}: ${e}`);
+    // Host and port in the log: a wrong SMTP_PORT (456 for 465) once looked like a plain timeout for two days.
+    console.error(`[arke-mail] send failed for order ${m.code} via ${Deno.env.get("SMTP_HOST")}:${port}: ${e}`);
+    return `FAILED: ${e} (${Deno.env.get("SMTP_HOST")}:${port})`;
   }
+}
+
+/** Mails [m] and keeps the outcome on payment [paymentId] (online.payments.mail_status). */
+// deno-lint-ignore no-explicit-any
+export async function mailAndRecord(supabase: any, paymentId: string, m: PaidMail | null | undefined): Promise<void> {
+  const status = await mailPaidOrder(m);
+  const { error } = await supabase.rpc("online_pay_mail_result", { p_id: paymentId, p_status: status });
+  if (error) console.error(`[arke-mail] could not record mail result for ${paymentId}: ${error.message}`);
 }
 
 /** Runs [p] after the response has gone out (Supabase Edge Runtime), else just lets it run. */

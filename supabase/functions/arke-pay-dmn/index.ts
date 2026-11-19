@@ -8,7 +8,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { DmnParams, loadAccount, toCents, verifyDmn } from "../_shared/nuvei-checkout.ts";
-import { inBackground, mailPaidOrder } from "../_shared/arke-mail.ts";
+import { inBackground, mailAndRecord } from "../_shared/arke-mail.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -70,7 +70,7 @@ Deno.serve(async (req: Request) => {
       return new Response("db_error", { status: 500 });
     }
     if (!settled?.success) console.error(`[arke-pay-dmn] approved but not settled ${id}: ${settled?.message}`);
-    else inBackground(mailPaidOrder(settled.mail));
+    else if (settled.mail) inBackground(mailAndRecord(supabase, id, settled.mail));   // only the first settle carries it
   } else if (status === "DECLINED" || status === "ERROR") {
     await supabase.rpc("online_pay_fail", { p_id: id, p_reason: `${status} ${p.get("Reason") || p.get("gwErrorReason")}`.trim() });
   } else {

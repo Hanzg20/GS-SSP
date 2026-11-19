@@ -17,7 +17,7 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
 import { getPaymentStatus, isEmail, loadAccount, openOrder, toAmount } from "../_shared/nuvei-checkout.ts";
-import { inBackground, mailPaidOrder } from "../_shared/arke-mail.ts";
+import { inBackground, mailAndRecord } from "../_shared/arke-mail.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -90,7 +90,8 @@ async function confirm(supabase: Supabase, token: string, id: string): Promise<R
       p_auth_code: outcome.authCode, p_card: outcome.card,
     });
     if (settled?.success) {
-      inBackground(mailPaidOrder(settled.mail));
+      // Only the first settle carries `mail`; a repeat (the DMN got there first) has nothing to send.
+      if (settled.mail) inBackground(mailAndRecord(supabase, id, settled.mail));
       return json({ status: "PAID", pickup_code: settled.pickup_code });
     }
     // Charged, but not what we asked for (or a second payment): a person sorts it out, the phone says call the store.
