@@ -61,6 +61,7 @@
    - 接 Uber Direct 或 DoorDash Drive，按单付费：报价 → 叫车 → 回传骑手位置和状态。
 4. **第 4 期：留住顾客**
    - 优惠券、会员、预约时段下单、再来一单、Google 好评提示。可以考虑加小海狸。
+   - Google 评价（2026-11-19，`docs/migrations/2026-11-19_arke_review_link.sql`）：Cael 填评价链接，订单页任何状态都显示"去 Google 写评价"按钮（老板：尽量少限制）；不先打星、不只请满意的顾客（Google 禁止 review gating）。
    - 会员（2026-11-19，`docs/migrations/2026-11-19_arke_loyalty.sql`）：线上单按电话号码攒店里的积分（`member.*`，结账默认勾选，可取消），付款后才记，拒单退款扣回；用积分仍在店里柜台（电话号码不是秘密，线上用积分要等短信验证）。
 
 ## 要老板定的事

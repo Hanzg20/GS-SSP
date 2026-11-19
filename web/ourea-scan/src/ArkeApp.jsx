@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Plus, Minus, X, ChevronRight, ChevronDown, Loader2, Phone, MapPin, Clock, CheckCircle2, AlertTriangle, ClipboardList,
-  Globe, Check, Search, ShieldAlert, ShoppingBag, ChefHat, PackageCheck, XCircle, Store, Bike, CalendarClock, RotateCcw, Ticket, Award } from 'lucide-react'
+  Globe, Check, Search, ShieldAlert, ShoppingBag, ChefHat, PackageCheck, XCircle, Store, Bike, CalendarClock, RotateCcw, Ticket, Award, Star } from 'lucide-react'
 import { T, LANG, LANGS, pickLang, dishName } from './i18n.js'
 import { AK } from './arke-i18n.js'
 import { supabase, callFunction, money, store, newRef } from './lib.js'
@@ -721,6 +721,15 @@ function OrderPage({ token }) {
         </div>
 
         <div className="space-y-4">
+          {s.review_url && (
+            <div className="bg-white rounded-3xl shadow-card p-4 text-center">
+              <div className="flex justify-center gap-0.5 text-gold-500">{[0, 1, 2, 3, 4].map((i) => <Star key={i} className="w-6 h-6 fill-current" />)}</div>
+              <p className="mt-2 font-black text-ink">{AK.reviewAsk(s.name)}</p>
+              <a href={s.review_url} target="_blank" rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-gradient-to-r from-gold-400 to-gold-600 font-black text-ink">
+                {AK.reviewGo}</a>
+            </div>
+          )}
           <div className="bg-white rounded-3xl shadow-card p-4">
             <div className="divide-y divide-slate-100">
               {o.items.map((l, i) => (

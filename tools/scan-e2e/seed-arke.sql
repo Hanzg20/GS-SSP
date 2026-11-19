@@ -32,6 +32,9 @@ INSERT INTO member.settings (org_id, enabled, points_per_dollar, reward_points, 
 VALUES ('e2e5ca00-0000-4000-8000-000000000001', true, 1, 100, 500, 'Arke E2E')
 ON CONFLICT (org_id) DO UPDATE SET enabled = true, points_per_dollar = 1, reward_points = 100, reward_cents = 500;
 
+-- Review link (2026-11-19_arke_review_link.sql): a placeholder -- the test store has no Google profile.
+UPDATE online.stores SET review_url = 'https://example.com/zz-scan-e2e/review' WHERE org_id = 'e2e5ca00-0000-4000-8000-000000000001';
+
 -- Reset: the store's online orders and their payment attempts (abuse limits count the last 10 min).
 -- psql -v reset=1 ... to run it.
 \if :{?reset}

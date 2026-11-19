@@ -101,6 +101,7 @@ const st = await rpc('online_order_status', { p_token: placed.token })
 check('订单页：等待付款，还没有取餐号', st?.status === 'AWAITING_PAYMENT' && st.pickup_code === null, st)
 check('订单页：店名、地址、电话', st?.store?.slug === SLUG && !!st.store.address && !!st.store.phone, st?.store)
 check('订单页不给顾客看电话号码', st?.customer_phone === undefined)
+check('订单页带评价链接（任何状态都给）', st?.store?.review_url === 'https://example.com/zz-scan-e2e/review', st?.store)
 check('订单页：明细带选项和备注', st?.items?.[0]?.options?.length === 2 && st.items[0].note === '少葱', st?.items?.[0])
 check('不存在的订单 -> null', (await rpc('online_order_status', { p_token: 'nope' })) === null)
 

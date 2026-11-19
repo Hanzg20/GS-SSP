@@ -40,6 +40,7 @@ const zh = {
   couponOn: (c, m) => `${c} 已用上，省 ${m}`, discount: (c) => `优惠券 ${c}`,
   pointsEarn: (n) => `用电话号码攒积分：这单 +${n} 分`, pointsRule: (p, m) => `店家积分：每 ${p} 分在店里抵 ${m}`,
   pointsGot: (n, b) => `这单攒了 ${n} 分，现在共 ${b} 分`, pointsUse: '在店里结账时报电话号码就能用积分。',
+  reviewAsk: (n) => `喜欢 ${n} 吗？在 Google 上写几句吧`, reviewGo: '去 Google 写评价',
   errors: {
     slot_gone: '这个时间约满或已过，请另选一个', 
     coupon_unknown: '没有这张优惠券，请检查券码', coupon_expired: '这张优惠券已过期', coupon_used: '这张优惠券已经用完了',
@@ -91,6 +92,7 @@ const en = {
   couponOn: (c, m) => `${c} applied: you save ${m}`, discount: (c) => `Coupon ${c}`,
   pointsEarn: (n) => `Earn points with my phone number: +${n} on this order`, pointsRule: (p, m) => `Store rewards: ${p} points = ${m} off in store`,
   pointsGot: (n, b) => `You earned ${n} points. You now have ${b}.`, pointsUse: 'Give your phone number at the counter to use them.',
+  reviewAsk: (n) => `Enjoyed ${n}? Tell others on Google`, reviewGo: 'Leave a Google review',
   errors: {
     slot_gone: 'That time is no longer available. Please pick another', 
     coupon_unknown: 'No such coupon. Please check the code', coupon_expired: 'This coupon has expired', coupon_used: 'This coupon has been used up',
@@ -142,6 +144,7 @@ const fr = {
   couponOn: (c, m) => `${c} appliqué : vous économisez ${m}`, discount: (c) => `Coupon ${c}`,
   pointsEarn: (n) => `Cumuler des points avec mon numéro : +${n} sur cette commande`, pointsRule: (p, m) => `Fidélité : ${p} points = ${m} de rabais en magasin`,
   pointsGot: (n, b) => `Vous avez gagné ${n} points. Vous en avez maintenant ${b}.`, pointsUse: 'Donnez votre numéro à la caisse pour les utiliser.',
+  reviewAsk: (n) => `Vous avez aimé ${n} ? Dites-le sur Google`, reviewGo: 'Laisser un avis Google',
   errors: {
     slot_gone: 'Cet horaire n’est plus disponible. Choisissez-en un autre', 
     coupon_unknown: 'Coupon introuvable. Vérifiez le code', coupon_expired: 'Ce coupon a expiré', coupon_used: 'Ce coupon a déjà été utilisé',
@@ -193,6 +196,7 @@ const ar = {
   couponOn: (c, m) => `تم تطبيق ${c}: وفّرت ${m}`, discount: (c) => `قسيمة ${c}`,
   pointsEarn: (n) => `اجمع النقاط برقم هاتفي: +${n} على هذا الطلب`, pointsRule: (p, m) => `نقاط المتجر: ${p} نقطة = خصم ${m} في المتجر`,
   pointsGot: (n, b) => `ربحت ${n} نقطة. رصيدك الآن ${b}.`, pointsUse: 'أعطِ رقم هاتفك عند الدفع في المتجر لاستخدامها.',
+  reviewAsk: (n) => `هل أعجبك ${n}؟ أخبر الآخرين على Google`, reviewGo: 'اكتب تقييمًا على Google',
   errors: {
     slot_gone: 'هذا الموعد لم يعد متاحًا. اختر موعدًا آخر', 
     coupon_unknown: 'لا توجد قسيمة بهذا الرمز. تحقق منه', coupon_expired: 'انتهت صلاحية هذه القسيمة', coupon_used: 'تم استخدام هذه القسيمة بالكامل',
