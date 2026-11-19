@@ -2,8 +2,9 @@
 // Ourea / Iris that rejected it (online_store_step REJECT first). Voided at Nuvei
 // while not settled, refunded once it is. docs/migrations/2026-11-16_arke_online_orders.sql.
 //
-// verify_jwt on: only a signed-in terminal. Its store comes from device_auth_map
-// (never from the body), and only that store's rejected orders can be refunded.
+// verify_jwt on: a signed-in terminal (its store from device_auth_map), or a Cael user
+// with orders.manage in the order's store (cmp_online_refund_org, asked as that user) --
+// the store never comes from the body, and only that store's rejected orders can be refunded.
 //
 // Body {order_id} -> {status: VOIDED | REFUNDED} or {error, reason}.
 
@@ -13,6 +14,7 @@ import { loadAccount, voidOrRefund } from "../_shared/nuvei-checkout.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function json(data: unknown, status = 200): Response {
@@ -56,9 +58,16 @@ Deno.serve(async (req: Request) => {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (!device?.org_id) return json({ error: "not_a_store_terminal" }, 403);
+  let orgId: string | null = device?.org_id ?? null;
+  if (!orgId) {
+    // Not a terminal: a Cael user (the Online Ordering order desk), checked with their own sign-in.
+    const asUser = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: req.headers.get("Authorization")! } } });
+    const { data: org } = await asUser.rpc("cmp_online_refund_org", { p_order_id: orderId });
+    orgId = typeof org === "string" ? org : null;
+  }
+  if (!orgId) return json({ error: "not_a_store_terminal" }, 403);
 
-  const { data: begun, error: beginError } = await supabase.rpc("online_refund_begin", { p_org: device.org_id, p_order_id: orderId });
+  const { data: begun, error: beginError } = await supabase.rpc("online_refund_begin", { p_org: orgId, p_order_id: orderId });
   if (beginError) {
     console.error("[arke-pay-refund] begin failed:", beginError);
     return json({ error: "failed" }, 500);
