@@ -556,6 +556,9 @@
     <string name="arke_step_failed">没有成功：%1$s</string>
     <string name="arke_step_offline">连不上云端，请再试一次。</string>
     <string name="arke_status_rejected">已拒单</string>
+    <string name="arke_status_auto_rejected">没人接，已自动取消退款</string>
+    <string name="arke_accept_left">%1$d 分钟内不接单，会自动取消并退款</string>
+    <string name="arke_urgent_banner">%1$s 还没人接，%2$d 分钟后自动取消退款，快接单！</string>
     <string name="arke_status_cancelled">已取消</string>
     <string name="arke_uber_on_tablet">请在 Uber Eats 平板上接单、出餐</string>
     <string name="arke_col_out">配送中</string>

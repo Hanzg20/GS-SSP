@@ -71,6 +71,10 @@ object ArkeOrderRepository {
         val paid_at: String? = null,
         val accepted_at: String? = null,
         val ready_by: String? = null,
+        /** A NEW order not accepted by then is cancelled and refunded on its own (gs-ssp 2026-11-19_arke_accept_deadline.sql). */
+        val accept_by: String? = null,
+        /** Rejected by Arke because nobody accepted it in time. */
+        val auto_rejected: Boolean = false,
         val ready_at: String? = null,
         val picked_up_at: String? = null,
         val out_at: String? = null,

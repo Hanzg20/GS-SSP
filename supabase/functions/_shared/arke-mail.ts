@@ -76,6 +76,11 @@ export async function mailPaidOrder(m: PaidMail | null | undefined): Promise<str
   <p style="font-size:12px;color:#6b6b74;margin:0">${esc(w.foot)}</p>
 </div>`;
 
+  return await send(m.email, w.subject(m.store, m.code), text, html, m.store, `order ${m.code}`);
+}
+
+/** One email over the SMTP account; answers "SENT" or "FAILED: ...". */
+async function send(to: string, subject: string, text: string, html: string, store: string, what: string): Promise<string> {
   const port = Number(Deno.env.get("SMTP_PORT") ?? "465");
   const transport = nodemailer.createTransport({
     host: Deno.env.get("SMTP_HOST"),
@@ -87,20 +92,81 @@ export async function mailPaidOrder(m: PaidMail | null | undefined): Promise<str
     socketTimeout: 15000,
   });
   try {
-    await transport.sendMail({
-      from: fromHeader(m.store),
-      to: m.email,
-      subject: w.subject(m.store, m.code),
-      text,
-      html,
-    });
-    console.log(`[arke-mail] mailed order ${m.code} of ${m.store}`);
+    await transport.sendMail({ from: fromHeader(store), to, subject, text, html });
+    console.log(`[arke-mail] mailed ${what} of ${store}`);
     return "SENT";
   } catch (e) {
     // Host and port in the log: a wrong SMTP_PORT (456 for 465) once looked like a plain timeout for two days.
-    console.error(`[arke-mail] send failed for order ${m.code} via ${Deno.env.get("SMTP_HOST")}:${port}: ${e}`);
+    console.error(`[arke-mail] send failed for ${what} via ${Deno.env.get("SMTP_HOST")}:${port}: ${e}`);
     return `FAILED: ${e} (${Deno.env.get("SMTP_HOST")}:${port})`;
   }
+}
+
+export interface RefundMail {
+  email: string | null;
+  lang: string | null;
+  token: string;
+  code: string;
+  store: string;
+  total_cents: number;
+  refund: string;          // VOIDED | REFUNDED
+  auto: boolean;           // nobody accepted it in time
+  reason: string | null;   // the store's own words when it rejected
+}
+
+const OFF: Record<string, { subject: (s: string, c: string) => string; auto: string; rejected: string; reason: string; voided: string; refunded: string; look: string }> = {
+  zh: {
+    subject: (s, c) => `${s} · 订单 ${c} 已取消，钱已退回`,
+    auto: "很抱歉，店家没能及时确认你的订单，订单已自动取消。", rejected: "很抱歉，店家取消了你的订单。", reason: "店家说明",
+    voided: "这笔付款已在你的卡上撤销，不会扣款（银行可能会暂时显示一笔待处理金额，几天内消失）。",
+    refunded: "钱已退回你的卡，一般 3–10 个工作日到账，视发卡行而定。", look: "订单详情：",
+  },
+  en: {
+    subject: (s, c) => `${s} · Order ${c} cancelled, money back`,
+    auto: "Sorry, the store could not confirm your order in time, so it was cancelled.", rejected: "Sorry, the store cancelled your order.", reason: "The store says",
+    voided: "The payment was cancelled on your card, so you are not charged (your bank may show a pending amount for a few days).",
+    refunded: "The money was refunded to your card. It usually shows within 3–10 business days, depending on your bank.", look: "Your order:",
+  },
+  fr: {
+    subject: (s, c) => `${s} · Commande ${c} annulée, remboursée`,
+    auto: "Désolé, le commerce n'a pas pu confirmer votre commande à temps ; elle a été annulée.", rejected: "Désolé, le commerce a annulé votre commande.", reason: "Le commerce précise",
+    voided: "Le paiement a été annulé sur votre carte : vous n'êtes pas débité (votre banque peut afficher un montant en attente quelques jours).",
+    refunded: "Le montant a été remboursé sur votre carte, généralement sous 3 à 10 jours ouvrables selon votre banque.", look: "Votre commande :",
+  },
+  ar: {
+    subject: (s, c) => `${s} · أُلغي الطلب ${c} وأُعيد المبلغ`,
+    auto: "عذرًا، لم يتمكن المتجر من تأكيد طلبك في الوقت المناسب، لذلك أُلغي.", rejected: "عذرًا، ألغى المتجر طلبك.", reason: "ملاحظة المتجر",
+    voided: "أُلغيت الدفعة على بطاقتك ولن يُخصم منك شيء (قد يظهر مبلغ معلّق لبضعة أيام).",
+    refunded: "أُعيد المبلغ إلى بطاقتك، ويظهر عادةً خلال 3–10 أيام عمل حسب البنك.", look: "تفاصيل طلبك:",
+  },
+};
+
+/** The "your order is cancelled and your money is back" email; answers like mailPaidOrder. */
+export async function mailRefundedOrder(m: RefundMail | null | undefined): Promise<string> {
+  if (!m?.email || !m.token) return "SKIPPED: no email";
+  if (!Deno.env.get("SMTP_HOST")) { console.warn("[arke-mail] SMTP not configured; not mailing"); return "SKIPPED: SMTP not configured"; }
+  const w = OFF[m.lang ?? ""] ?? OFF.en;
+  const link = `${SITE}/?o=${m.token}`;
+  const total = `$${(m.total_cents / 100).toFixed(2)}`;
+  const why = m.auto ? w.auto : w.rejected;
+  const money = m.refund === "VOIDED" ? w.voided : w.refunded;
+  const reason = !m.auto && m.reason ? `${w.reason}: ${m.reason}` : "";
+  const rtl = m.lang === "ar";
+  const text = [why, ...(reason ? [reason] : []), "", `${m.code} · ${total}`, money, "", w.look, link].join("\n");
+  const html = `<div dir="${rtl ? "rtl" : "ltr"}" style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#0a0a0b">
+  <p style="font-size:18px;font-weight:700;margin:0 0 4px">${esc(m.store)}</p>
+  <p style="margin:0 0 ${reason ? 6 : 20}px;color:#3f3f46">${esc(why)}</p>
+  ${reason ? `<p style="margin:0 0 20px;color:#6b6b74;font-style:italic">${esc(reason)}</p>` : ""}
+  <div style="border-radius:18px;background:#f4f4f5;padding:20px;text-align:center">
+    <div style="font-size:36px;font-weight:800;letter-spacing:-1px;color:#6b6b74;text-decoration:line-through">${esc(m.code)}</div>
+    <div style="font-size:15px;color:#3f3f46;margin-top:4px">${esc(total)}</div>
+    <div style="font-size:14px;color:#0369a1;font-weight:700;margin-top:10px">${esc(money)}</div>
+  </div>
+  <p style="margin:20px 0 10px;color:#3f3f46">${esc(w.look)}</p>
+  <p style="margin:0 0 24px"><a href="${esc(link)}" style="display:inline-block;background:#0a0a0b;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:999px">${esc(m.code)} →</a></p>
+  <p style="font-size:12px;color:#6b6b74;margin:0">${esc((WORDS[m.lang ?? ""] ?? WORDS.en).foot)}</p>
+</div>`;
+  return await send(m.email, w.subject(m.store, m.code), text, html, m.store, `refund of order ${m.code}`);
 }
 
 /** Mails [m] and keeps the outcome on payment [paymentId] (online.payments.mail_status). */

@@ -10,7 +10,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
-import { loadAccount, voidOrRefund } from "../_shared/nuvei-checkout.ts";
+import { refundRejectedOrder } from "../_shared/arke-refund.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -67,41 +67,7 @@ Deno.serve(async (req: Request) => {
   }
   if (!orgId) return json({ error: "not_a_store_terminal" }, 403);
 
-  const { data: begun, error: beginError } = await supabase.rpc("online_refund_begin", { p_org: orgId, p_order_id: orderId });
-  if (beginError) {
-    console.error("[arke-pay-refund] begin failed:", beginError);
-    return json({ error: "failed" }, 500);
-  }
-  if (!begun?.success) return json({ error: begun?.message ?? "failed" }, 409);
-
-  const abort = (reason: string) => supabase.rpc("online_refund_abort", { p_id: begun.id, p_reason: reason });
-  const account = await loadAccount(supabase, begun.acquirer_account_id);
-  if (!account) {
-    await abort("account_incomplete");
-    return json({ error: "online_pay_off" }, 409);
-  }
-
-  let outcome;
-  try {
-    outcome = await voidOrRefund(account, begun.id, begun.transaction_id, begun.cents, "CAD");
-  } catch (e) {
-    // Unknown whether Nuvei acted: the payment stays REFUNDING, so a retry can't refund twice;
-    // a person checks Nuvei's Cpanel.
-    console.error(`[arke-pay-refund] Nuvei call failed for order ${orderId}:`, e);
-    return json({ error: "gateway_error" }, 502);
-  }
-  if (outcome.kind === "failed") {
-    console.warn(`[arke-pay-refund] order ${orderId} not refunded: ${outcome.reason}`);
-    await abort(outcome.reason);
-    return json({ error: "declined", reason: outcome.reason }, 409);
-  }
-
-  const { error: doneError } = await supabase.rpc("online_refund_done", {
-    p_id: begun.id, p_status: outcome.kind, p_refund_tx_id: outcome.transactionId,
-  });
-  if (doneError) {
-    // The money went back but isn't recorded: loud, for a person to fix (Nuvei Cpanel has it).
-    console.error(`[arke-pay-refund] order ${orderId} ${outcome.kind} at Nuvei (${outcome.transactionId}) but not recorded:`, doneError);
-  }
-  return json({ status: outcome.kind, refund_transaction_id: outcome.transactionId });
+  const r = await refundRejectedOrder(supabase, orgId, orderId, "arke-pay-refund");
+  if (!r.ok) return json(r.reason ? { error: r.error, reason: r.reason } : { error: r.error }, r.httpStatus);
+  return json({ status: r.status, refund_transaction_id: r.transactionId });
 });

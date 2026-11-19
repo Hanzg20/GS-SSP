@@ -85,6 +85,11 @@ verify_jwt = false
 # advanceResponseChecksum signed with the store's Nuvei secret.
 verify_jwt = false
 
+[functions.arke-sweep]
+# Woken every minute by pg_cron (online.sweep_kick) when a rejected order still holds the
+# customer's money or its refund email is due. Acts only on what the database says is due.
+verify_jwt = false
+
 [functions.arke-pay-refund]
 # Default (true): only a signed-in terminal may give back a rejected order's
 # payment. The function maps that session to its store (device_auth_map) itself.

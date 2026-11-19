@@ -58,11 +58,33 @@ fun ArkeChime(vm: ArkeViewModel) {
             com.goldsky.ssp.common.FeedbackManager.vibrate(context, 500)
         }
     }
+    // An order about to be cancelled for nobody accepting it: louder, on every refresh, until someone acts.
+    LaunchedEffect(vm.urgentTicks) {
+        if (vm.urgentTicks > 0) {
+            try {
+                android.media.ToneGenerator(android.media.AudioManager.STREAM_ALARM, 100)
+                    .startTone(android.media.ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 1500)
+            } catch (_: Exception) { /* no tone: the red banner still shows */ }
+            com.goldsky.ssp.common.FeedbackManager.vibrate(context, 800)
+        }
+    }
 }
 
 /** "New online order A12" across the top of any screen, until opened or dismissed. */
 @Composable
 fun ArkeArrivalBanner(vm: ArkeViewModel, onOpen: () -> Unit) {
+    vm.mostUrgent?.let { u ->
+        // Can't be dismissed: it goes away when someone accepts or rejects the order (or Arke cancels it).
+        Surface(color = Color(0xFFDC2626), modifier = Modifier.fillMaxWidth().clickable { onOpen() }) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.NotificationsActive, null, tint = Color.White)
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(R.string.arke_urgent_banner, u.pickup_code ?: "", (minutesLeft(u) ?: 0).coerceAtLeast(0)),
+                    fontWeight = FontWeight.Black, fontSize = 18.sp, color = Color.White, modifier = Modifier.weight(1f))
+            }
+        }
+        return
+    }
     val o = vm.latestArrival ?: return
     Surface(color = Gold, modifier = Modifier.fillMaxWidth().clickable { vm.dismissArrival(); onOpen() }) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -163,7 +185,7 @@ fun ArkeOrdersScreen(vm: ArkeViewModel, staffName: String?, onDark: Boolean = fa
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 done.take(8).forEach { o ->
                     val label = when (o.status) {
-                        ArkeOrderRepository.REJECTED -> R.string.arke_status_rejected
+                        ArkeOrderRepository.REJECTED -> if (o.auto_rejected) R.string.arke_status_auto_rejected else R.string.arke_status_rejected
                         ArkeOrderRepository.DELIVERED -> R.string.arke_status_delivered
                         ArkeOrderRepository.CANCELLED -> R.string.arke_status_cancelled
                         else -> R.string.arke_status_picked_up
@@ -210,7 +232,9 @@ private fun Lane(title: String, color: Color, orders: List<Order>, modifier: Mod
 
 @Composable
 private fun OrderCard(o: Order, busy: Boolean, onReprint: (() -> Unit)?, actions: @Composable RowScope.() -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
+    val hurry = urgent(o)
+    Card(colors = CardDefaults.cardColors(containerColor = if (hurry) Color(0xFFFEE2E2) else Color.White), elevation = CardDefaults.cardElevation(2.dp),
+        border = if (hurry) androidx.compose.foundation.BorderStroke(3.dp, Color(0xFFDC2626)) else null) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(o.pickup_code ?: "", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Sky)
@@ -251,6 +275,10 @@ private fun OrderCard(o: Order, busy: Boolean, onReprint: (() -> Unit)?, actions
                         Text(stringResource(R.string.arke_scheduled_for, dayClock(o.scheduled_for)), color = Color.Black, fontWeight = FontWeight.Black)
                     }
                 }
+            }
+            minutesLeft(o)?.let { m ->
+                Text(stringResource(R.string.arke_accept_left, m.coerceAtLeast(0)), color = if (hurry) Color(0xFFDC2626) else Color.Gray,
+                    fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
             }
             if (o.ready_by != null && (o.status == ArkeOrderRepository.ACCEPTED || o.isDelivery && o.open && o.status != ArkeOrderRepository.NEW)) {
                 Text(stringResource(if (o.isDelivery) R.string.arke_arrive_by else R.string.arke_ready_by, dayClock(o.ready_by)),

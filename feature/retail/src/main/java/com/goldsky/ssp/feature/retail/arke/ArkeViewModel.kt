@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.goldsky.ssp.feature.retail.R
+import com.goldsky.ssp.feature.retail.dine.parseIso
 import com.goldsky.ssp.model.KitchenLine
 import com.goldsky.ssp.model.KitchenTicket
 import com.goldsky.ssp.payment.ArkeOrderRepository
@@ -28,6 +29,16 @@ import kotlinx.coroutines.withContext
  * goes back to the customer's card (arke-pay-refund). Every terminal of the store sees
  * the same orders; the list refreshes every few seconds while the app runs.
  */
+/** Minutes left before a NEW order is cancelled and refunded on its own; null = no deadline. */
+fun minutesLeft(o: Order): Int? {
+    if (o.status != ArkeOrderRepository.NEW || o.isUber) return null
+    val at = parseIso(o.accept_by) ?: return null
+    return Math.ceil((at - System.currentTimeMillis()) / 60000.0).toInt()
+}
+
+const val URGENT_MIN = 5
+fun urgent(o: Order): Boolean = minutesLeft(o)?.let { it <= URGENT_MIN } == true
+
 class ArkeViewModel : ViewModel() {
 
     var orders by mutableStateOf<List<Order>>(emptyList())
@@ -49,6 +60,12 @@ class ArkeViewModel : ViewModel() {
         private set
 
     val newCount: Int get() = orders.count { it.status == ArkeOrderRepository.NEW }
+
+    /** Bumped on every refresh while a NEW order is about to be cancelled (last [URGENT_MIN] minutes): ring again. */
+    var urgentTicks by mutableStateOf(0)
+        private set
+    /** The NEW order closest to being cancelled for nobody accepting it, while within the last [URGENT_MIN] minutes. */
+    val mostUrgent: Order? get() = orders.filter { urgent(it) }.minByOrNull { it.accept_by ?: "" }
 
     /** Orders already seen; null until the first read (what's already there doesn't chime). */
     private var seen: MutableSet<String>? = null
@@ -83,6 +100,7 @@ class ArkeViewModel : ViewModel() {
             }
         }
         orders = list
+        if (list.any { urgent(it) }) urgentTicks++
         if (latestArrival?.let { a -> list.none { it.id == a.id && it.status == ArkeOrderRepository.NEW } } == true) latestArrival = null
     }
 

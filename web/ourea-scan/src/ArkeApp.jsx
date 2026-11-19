@@ -696,10 +696,13 @@ function OrderPage({ token }) {
           {!delivery && o.status === 'READY' && o.ready_at && <p className="mt-1 text-sm text-ink-mute">{AK.readyAt(timeOf(o.ready_at, s.timezone))}</p>}
           {delivery && ['ACCEPTED', 'READY', 'OUT_FOR_DELIVERY'].includes(o.status) && o.ready_by && !showSched && <p className="mt-1 font-bold text-gold-700 flex items-center gap-1"><Clock className="w-4 h-4" />{AK.arriveBy(at(o.ready_by))}</p>}
           {o.status === 'OUT_FOR_DELIVERY' && <p className="mt-1 text-sm font-bold text-sky-700">{AK.driverOnWay}</p>}
+          {o.status === 'NEW' && o.accept_by && <p className="mt-2 text-sm text-ink-soft max-w-xs">{AK.acceptBy(at(o.accept_by))}</p>}
           {o.status === 'DELIVERED' && o.delivered_at && <p className="mt-1 text-sm text-ink-mute">{AK.deliveredAt(timeOf(o.delivered_at, s.timezone))}</p>}
           {o.status === 'REJECTED' && (
             <>
-              {o.reject_reason && <p className="mt-1 text-sm text-ink-soft">{o.reject_reason}</p>}
+              {o.auto_rejected
+                ? <p className="mt-1 text-sm text-ink-soft">{AK.autoRejected}</p>
+                : o.reject_reason && <p className="mt-1 text-sm text-ink-soft">{o.reject_reason}</p>}
               <p className="mt-2 text-sm font-bold text-sky-700">{o.refund ? AK.refund[o.refund] : AK.refundPending}</p>
             </>
           )}
@@ -751,7 +754,7 @@ function OrderPage({ token }) {
             {o.note && <p className="mt-2 text-xs text-ink-mute italic">* {o.note}</p>}
           </div>
 
-          {o.points_earned != null && (
+          {o.points_earned != null && o.status !== 'REJECTED' && (
             <div className="bg-gold-50 border border-gold-300 rounded-3xl p-4 flex items-start gap-3">
               <Award className="w-6 h-6 shrink-0 text-gold-700" />
               <div className="min-w-0">
