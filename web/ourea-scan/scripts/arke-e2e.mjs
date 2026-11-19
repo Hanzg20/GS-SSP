@@ -36,6 +36,7 @@ const place = (items, o = {}) => rpc('online_place_order', {
   p_note: o.note ?? null, p_client_ref: o.ref ?? ref(),
   ...(o.fulfilment ? { p_fulfilment: o.fulfilment, p_address: o.address ?? null } : {}),
   ...(o.when ? { p_scheduled_for: o.when } : {}),
+  ...(o.coupon ? { p_coupon: o.coupon } : {}),
 })
 const expectMsg = async (name, items, msg, o) => {
   const r = await place(items, o)
@@ -101,6 +102,20 @@ check('订单页：店名、地址、电话', st?.store?.slug === SLUG && !!st.s
 check('订单页不给顾客看电话号码', st?.customer_phone === undefined)
 check('订单页：明细带选项和备注', st?.items?.[0]?.options?.length === 2 && st.items[0].note === '少葱', st?.items?.[0])
 check('不存在的订单 -> null', (await rpc('online_order_status', { p_token: 'nope' })) === null)
+
+// ---- coupons (seed-arke.sql: ARKETEST10 = 10% off, ARKEOLD5 expired, ARKEWASH wash-only)
+const cq = (code, its = items) => rpc('online_coupon_check', { p_slug: SLUG, p_code: code, p_items: its })
+check('优惠券：不存在的码 -> coupon_unknown', (await cq('NOPE-0000'))?.message === 'coupon_unknown')
+check('优惠券：过期 -> coupon_expired', (await cq('ARKEOLD5'))?.message === 'coupon_expired')
+check('优惠券：洗车券不能线上用', (await cq('ARKEWASH'))?.message === 'coupon_not_online')
+const q10 = await cq('arke-test10')
+check('优惠券：小写带横线也认，10% 只减菜钱', q10?.success === true && q10.code === 'ARKETEST10' && q10.discount_cents === Math.round(sub / 10), q10)
+check('优惠券：打折后税变少', q10?.tax_cents < tax, { tax: q10?.tax_cents, before: tax })
+const withCoupon = await place(items, { coupon: 'ARKETEST10' })
+check('优惠券：下单带上折扣和新税', withCoupon?.success === true && withCoupon.discount_cents === q10?.discount_cents && withCoupon.tax_cents === q10?.tax_cents, withCoupon)
+const stc = await rpc('online_order_status', { p_token: withCoupon.token })
+check('优惠券：订单页合计 = 小计 - 折扣 + 税', stc?.total_cents === sub - q10.discount_cents + q10.tax_cents && stc.coupon_code === 'ARKETEST10', stc)
+await expectMsg('优惠券：下单时码不对 -> coupon_unknown', items, 'coupon_unknown', { coupon: 'NOPE-0000' })
 
 // ---- what customers can't call
 check('付款接口不对顾客开放', !!(await sb.rpc('online_pay_settle', { p_id: placed.id, p_transaction_id: 'x', p_paid_cents: 1, p_auth_code: null, p_card: null })).error)

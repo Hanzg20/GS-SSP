@@ -17,6 +17,15 @@ INSERT INTO online.delivery_zones (org_id, name, postal_prefixes, fee_cents, min
   ('e2e5ca00-0000-4000-8000-000000000001', 'Far',       '{K2M}',     699, 3000, 2),
   ('e2e5ca00-0000-4000-8000-000000000001', 'Next door', '{K2K1X}',   100,    0, 3);
 
+-- Coupons for online orders (2026-11-19_arke_coupons.sql): 10% off (1000 uses -- only PAID orders count one),
+-- one expired, one wash-only. Serials 99xx stay clear of the store's own numbering.
+INSERT INTO coupons (code, org_id, serial, type, value, max_uses, uses_count, expires_at, is_active, issued_reason, note) VALUES
+  ('ARKETEST10', 'e2e5ca00-0000-4000-8000-000000000001', 9901, 'PERCENT_OFF', 10, 1000, 0, NULL, true, 'MARKETING', 'Arke E2E'),
+  ('ARKEOLD5',   'e2e5ca00-0000-4000-8000-000000000001', 9902, 'FIXED_OFF', 500, 100, 0, '2026-01-01', true, 'MARKETING', 'Arke E2E: expired'),
+  ('ARKEWASH',   'e2e5ca00-0000-4000-8000-000000000001', 9903, 'FREE_WASH', 0, 100, 0, NULL, true, 'MARKETING', 'Arke E2E: not for online')
+ON CONFLICT (code) DO UPDATE SET type = EXCLUDED.type, value = EXCLUDED.value, max_uses = EXCLUDED.max_uses,
+  expires_at = EXCLUDED.expires_at, is_active = true;
+
 -- Reset: the store's online orders and their payment attempts (abuse limits count the last 10 min).
 -- psql -v reset=1 ... to run it.
 \if :{?reset}

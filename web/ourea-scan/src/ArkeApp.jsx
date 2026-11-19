@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Plus, Minus, X, ChevronRight, ChevronDown, Loader2, Phone, MapPin, Clock, CheckCircle2, AlertTriangle, ClipboardList,
-  Globe, Check, Search, ShieldAlert, ShoppingBag, ChefHat, PackageCheck, XCircle, Store, Bike, CalendarClock, RotateCcw } from 'lucide-react'
+  Globe, Check, Search, ShieldAlert, ShoppingBag, ChefHat, PackageCheck, XCircle, Store, Bike, CalendarClock, RotateCcw, Ticket } from 'lucide-react'
 import { T, LANG, LANGS, pickLang, dishName } from './i18n.js'
 import { AK } from './arke-i18n.js'
 import { supabase, callFunction, money, store, newRef } from './lib.js'
@@ -267,6 +267,51 @@ function CartBody({ lines, subtotal, tax, setQty, footer }) {
 }
 
 /** Cart -> who picks it up -> tip -> email -> Nuvei's card form -> the order's page. */
+/**
+ * "Have a coupon?": the store's Cael coupon, checked by the server for this cart (online_coupon_check);
+ * the order is placed with it and the server checks it again. [coupon] = {code, discount_cents, tax_cents}.
+ */
+function CouponField({ slug, items, coupon, setCoupon }) {
+  const [open, setOpen] = useState(!!coupon)
+  const [code, setCode] = useState(coupon?.code || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const apply = async () => {
+    if (!code.trim()) return
+    setBusy(true); setErr(null)
+    const { data, error } = await supabase.rpc('online_coupon_check', { p_slug: slug, p_code: code.trim(), p_items: items })
+    setBusy(false)
+    if (error) { setErr(AK.errors.offline); return }
+    if (!data?.success) { setErr(AK.errors[data?.message] || AK.errors.coupon_unknown); return }
+    setCoupon({ code: data.code, discount_cents: data.discount_cents, tax_cents: data.tax_cents })
+  }
+  if (coupon) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3">
+        <Ticket className="w-4 h-4 text-emerald-700 shrink-0" />
+        <span className="flex-1 min-w-0 text-sm font-bold text-emerald-800">{AK.couponOn(coupon.code, money(coupon.discount_cents))}</span>
+        <button onClick={() => { setCoupon(null); setCode('') }} className="text-sm font-bold text-ink-soft underline">{AK.couponRemove}</button>
+      </div>
+    )
+  }
+  if (!open) {
+    return <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 text-sm font-bold text-sky-700"><Ticket className="w-4 h-4" />{AK.couponAsk}</button>
+  }
+  return (
+    <div>
+      <h3 className="font-black text-ink mb-2 flex items-center gap-1.5"><Ticket className="w-4 h-4 text-gold-600" />{AK.couponTitle}</h3>
+      <div className="flex gap-2">
+        <input value={code} onChange={(e) => { setCode(e.target.value.slice(0, 40)); setErr(null) }} onKeyDown={(e) => e.key === 'Enter' && apply()}
+          placeholder={AK.couponPh} autoCapitalize="characters" className="flex-1 min-w-0 px-4 py-3 rounded-xl border border-slate-300 uppercase" />
+        <button onClick={apply} disabled={busy || !code.trim()} className="px-5 rounded-xl bg-ink text-white font-bold disabled:opacity-40">
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : AK.couponApply}
+        </button>
+      </div>
+      {err && <p className="mt-1.5 text-sm font-bold text-red-600">{err}</p>}
+    </div>
+  )
+}
+
 function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onPaid }) {
   const [info, setInfo] = useState(() => store.get('arke_customer') || { name: '', phone: '' })
   const [note, setNote] = useState('')
@@ -277,6 +322,14 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
   const [error, setError] = useState(null)
   const [session, setSession] = useState(null)
   const [order, setOrder] = useState(null)      // {id, token, subtotal_cents, tax_cents} once placed
+  const [coupon, setCoupon] = useState(null)    // {code, discount_cents, tax_cents} from online_coupon_check
+  const items = useMemo(() => lines.map((l) => ({ product_id: l.product_id, option_ids: l.option_ids, note: l.note || null, quantity: l.quantity })), [lines])
+  useEffect(() => {
+    if (!coupon) return
+    supabase.rpc('online_coupon_check', { p_slug: slug, p_code: coupon.code, p_items: items }).then(({ data }) => {
+      setCoupon(data?.success ? { code: data.code, discount_cents: data.discount_cents, tax_cents: data.tax_cents } : null)
+    })
+  }, [items]) // eslint-disable-line react-hooks/exhaustive-deps
   const clientRef = useRef(newRef())            // one checkout = one order, across retries
   const confirmed = useRef(false)
   const s = menu.store
@@ -306,7 +359,7 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
     return () => { gone = true; clearTimeout(t) }
   }, [delivery, postal, subtotal, slug])
   // A different address is a different order: one placed for the old address is left to expire.
-  useEffect(() => { if (order && state === 'form') { setOrder(null); clientRef.current = newRef() } }, [addr.line1, addr.unit, postal, when]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (order && state === 'form') { setOrder(null); clientRef.current = newRef() } }, [addr.line1, addr.unit, postal, when, coupon?.code]) // eslint-disable-line react-hooks/exhaustive-deps
   const fee = delivery && quote?.ok ? quote.fee : 0
   const feeTax = delivery && quote?.ok ? quote.feeTax : 0
   const addrOk = !delivery || ((addr.line1 || '').trim().length >= 3 && !!quote?.ok)
@@ -317,7 +370,10 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
   const phoneOk = (info.phone || '').replace(/[^0-9]/g, '').length >= 10
   const whenOk = when !== null || s.open_now
   const ready = info.name.trim() && phoneOk && addrOk && whenOk && tip !== null && isEmail(email.trim())
-  const due = subtotal + fee + tax + feeTax + tipCents
+  // With a coupon the items' tax is the server's, worked out after the discount.
+  const disc = coupon?.discount_cents || 0
+  const itemTax = coupon ? coupon.tax_cents : tax
+  const due = subtotal - disc + fee + itemTax + feeTax + tipCents
 
   const finish = async (id, token) => {
     if (confirmed.current) return
@@ -342,13 +398,14 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
     let o = order
     if (!o) {
       const { data, error: e } = await supabase.rpc('online_place_order', {
-        p_slug: slug, p_items: lines.map((l) => ({ product_id: l.product_id, option_ids: l.option_ids, note: l.note || null, quantity: l.quantity })),
+        p_slug: slug, p_items: items,
         p_name: info.name.trim(), p_phone: info.phone.trim(), p_note: note.trim() || null, p_client_ref: clientRef.current,
-        p_fulfilment: mode, p_address: delivery ? { ...addr, postal } : null, p_scheduled_for: when,
+        p_fulfilment: mode, p_address: delivery ? { ...addr, postal } : null, p_scheduled_for: when, p_coupon: coupon?.code || null,
       })
       if (e) { setState('form'); setError(AK.errors.offline); return }
       if (!data?.success) {
         setState('form')
+        if (data?.message?.startsWith('coupon_')) setCoupon(null)
         setError(data?.message === 'below_minimum' && data.min_order_cents != null ? AK.quote.below_minimum(money(data.min_order_cents))
           : (AK.errors[data?.message] || AK.errors.failed) + (data?.product ? data.product : ''))
         return
@@ -405,7 +462,8 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
       <div className="mt-2 pt-2 border-t border-slate-200 space-y-1 text-sm text-slate-600">
         <div className="flex justify-between"><span>{T.subtotal}</span><span className="font-bold">{money(subtotal)}</span></div>
         {delivery && <div className="flex justify-between"><span>{AK.deliveryFee}{quote?.ok && quote.zone ? ` · ${quote.zone}` : ''}</span><span className="font-bold">{quote?.ok ? money(fee) : '—'}</span></div>}
-        <div className="flex justify-between"><span>{T.taxActual}</span><span className="font-bold">{money(tax + feeTax)}</span></div>
+        {disc > 0 && <div className="flex justify-between text-emerald-700"><span>{AK.discount(coupon.code)}</span><span className="font-bold">−{money(disc)}</span></div>}
+        <div className="flex justify-between"><span>{T.taxActual}</span><span className="font-bold">{money(itemTax + feeTax)}</span></div>
         {tip !== null && tipCents > 0 && <div className="flex justify-between"><span>{T.tipTitle}</span><span className="font-bold">{money(tipCents)}</span></div>}
         <div className="flex justify-between text-base font-black text-ink pt-1"><span>{T.total}</span><span>{money(due)}</span></div>
       </div>
@@ -497,6 +555,7 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
             className="w-full px-4 py-3 rounded-xl border border-slate-300" />
         </div>
         <TipPicker T={T} basis={subtotal} tip={tip} setTip={setTip} customTip={customTip} setCustomTip={setCustomTip} />
+        <CouponField slug={slug} items={items} coupon={coupon} setCoupon={setCoupon} />
         <EmailField T={T} email={email} setEmail={setEmail} />
       </div>
     )
@@ -653,6 +712,7 @@ function OrderPage({ token }) {
             <div className="mt-2 pt-2 border-t border-slate-200 space-y-1 text-sm text-slate-600">
               <div className="flex justify-between"><span>{T.subtotal}</span><span className="font-bold">{money(o.subtotal_cents)}</span></div>
               {o.delivery_fee_cents > 0 && <div className="flex justify-between"><span>{AK.deliveryFee}</span><span className="font-bold">{money(o.delivery_fee_cents)}</span></div>}
+              {o.discount_cents > 0 && <div className="flex justify-between text-emerald-700"><span>{AK.discount(o.coupon_code || '')}</span><span className="font-bold">−{money(o.discount_cents)}</span></div>}
               <div className="flex justify-between"><span>{T.taxActual}</span><span className="font-bold">{money(o.tax_cents)}</span></div>
               {o.tip_cents > 0 && <div className="flex justify-between"><span>{T.tipTitle}</span><span className="font-bold">{money(o.tip_cents)}</span></div>}
               <div className="flex justify-between text-lg font-black text-ink pt-1"><span>{T.total}</span><span>{money(o.total_cents)}</span></div>

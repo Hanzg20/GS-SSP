@@ -19,7 +19,7 @@
 | `delivery_orders` 配送阶段（WAITING → OUT → DELIVERED）+ Iris 司机端 | 自家配送的司机流程，线上订单接进 Iris 派送页 |
 | `scan-pay` / Nuvei Simply Connect | 线上付款，同一种接入方式 |
 | Ourea 厨房单打印（`NetworkKitchenPrinter`）、取餐号 | 店里接单、出单 |
-| Cael 优惠券（`cmp_create_coupons`） | 第 4 期：线上下单用券 |
+| Cael 优惠券（`cmp_create_coupons`） | 线上下单用券（2026-11-19 完成：`docs/migrations/2026-11-19_arke_coupons.sql`。按比例 / 固定金额减菜钱，不减配送费和小费；税按折后金额按税率重算；付款成功才算用了一次，退款还回去；洗车券不能用；店里连错 20 次歇 10 分钟） |
 | Ourea Scan 前端：菜品卡、菜品详情（规格、过敏原）、小海狸一句话点菜和讲菜、四种语言（含阿拉伯语从右到左）、Nuvei 付款加载 | 线上下单页直接复用这些组件 |
 
 `web/customer-order` 是 10 月留下的空壳（写死了店和桌号），不用，新系统建好后删掉。
