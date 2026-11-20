@@ -71,3 +71,5 @@
 2. ~~第一家试点店~~：已定，先做餐厅（2026-11-16），具体是哪家店还没定。
 3. **第三方配送账户**：Uber Direct / DoorDash Drive 要用公司身份开商家账户（第 3 期前办好就行）。
 4. **零售缺货退款**：Nuvei 线上卡支付能否"先授权、再按实际金额完成"，需要向 Nuvei 确认。确认之前，零售先按"缺货就整单退或补差"处理。
+
+**Go-live (2026-11-19):** switching a store live, the Cael self-check (`cmp_online_ready`) and the customer-facing privacy / refund pages (`?s=<slug>&p=privacy|refund`) are in `docs/arke_go_live.md`.

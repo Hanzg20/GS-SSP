@@ -10,6 +10,7 @@ export { LANG }
  *   ?t=<table secret>   Ourea Scan -- ordering at the table (TableApp).
  *   ?s=<store link>     Arke -- online ordering for pickup (ArkeApp).
  *   ?o=<order token>    Arke -- one online order's own page.
+ *   ?s=<link>&p=privacy|refund   Arke -- the store's privacy / refund policy (ArkePolicy).
  * Both share lib.js (backend, money) and shared.jsx (dish rows and sheets).
  * Arke is not at a table: the few shared words that speak of a server / the
  * table's menu are swapped for its own (AK.shared) before anything renders.
@@ -19,7 +20,7 @@ export default function App() {
   if (params.get('s') || params.get('o')) {
     Object.assign(T, AK.shared)
     if (document.title === 'Ourea Scan') document.title = 'Arke'
-    return <ArkeApp slug={params.get('s') || ''} orderToken={params.get('o') || ''} />
+    return <ArkeApp slug={params.get('s') || ''} orderToken={params.get('o') || ''} page={params.get('p') || ''} />
   }
   return <TableApp token={params.get('t') || ''} />
 }

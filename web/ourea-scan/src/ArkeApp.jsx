@@ -5,6 +5,7 @@ import { T, LANG, LANGS, pickLang, dishName } from './i18n.js'
 import { AK } from './arke-i18n.js'
 import { supabase, callFunction, money, store, newRef } from './lib.js'
 import { DishImg, Sheet, DishSheet, AvoidSheet, Signature, CategorySheet, useMenuSections, useCategoryTabs, DishRow } from './shared.jsx'
+import ArkePolicy, { PolicyLinks } from './ArkePolicy.jsx'
 import { isEmail, savedEmail, saveEmail, loadNuvei, mountNuvei, TipPicker, tipCentsOf, EmailField } from './pay.jsx'
 
 /*
@@ -595,6 +596,7 @@ function Checkout({ slug, menu, mode, lines, subtotal, tax, onEdit, onClose, onP
           : !isEmail(email.trim()) ? T.enterEmail
           : AK.payAndOrder(money(due))}
       </button>
+      <PolicyLinks slug={slug} className="mt-2" />
     </div>
   )
 
@@ -781,7 +783,8 @@ function OrderPage({ token }) {
           {s.slug && <a href={`?s=${s.slug}`} className="block text-center font-black text-gold-800 border-2 border-gold-500 rounded-2xl py-3.5 bg-white">{AK.backToMenu}</a>}
         </div>
       </div>
-      <Signature product="Arke" className="pt-8" />
+      <PolicyLinks slug={s.slug} className="pt-8" />
+      <Signature product="Arke" className="pt-2" />
     </div>
   )
 }
@@ -971,7 +974,8 @@ function StorePage({ slug }) {
               </div>
             </section>
           ))}
-          <Signature product="Arke" className="mt-10 mb-4" />
+          <PolicyLinks slug={slug} className="mt-10" />
+          <Signature product="Arke" className="mt-2 mb-4" />
         </main>
 
         {/* Desktop, right: the cart, always open. */}
@@ -1035,7 +1039,8 @@ function StorePage({ slug }) {
   )
 }
 
-export default function ArkeApp({ slug, orderToken }) {
+export default function ArkeApp({ slug, orderToken, page }) {
+  if (slug && (page === 'privacy' || page === 'refund')) return <ArkePolicy slug={slug} page={page} />
   if (orderToken) return <OrderPage token={orderToken} />
   return <StorePage slug={slug} />
 }
