@@ -560,7 +560,7 @@
     <string name="arke_accept_left">%1$d 分钟内不接单，会自动取消并退款</string>
     <string name="arke_urgent_banner">%1$s 还没人接，%2$d 分钟后自动取消退款，快接单！</string>
     <string name="arke_status_cancelled">已取消</string>
-    <string name="arke_uber_on_tablet">请在 Uber Eats 平板上接单、出餐</string>
+    <string name="arke_uber_rejected">%1$s 已在 Uber Eats 拒单，顾客的钱由 Uber 退回</string>
     <string name="arke_col_out">配送中</string>
     <string name="arke_delivery">配送</string>
     <string name="arke_out">出发配送</string>

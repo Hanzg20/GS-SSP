@@ -93,7 +93,7 @@ object ArkeOrderRepository {
         /** Still the store's to handle (not picked up / delivered / rejected). */
         val open: Boolean get() = status == NEW || status == ACCEPTED || status == READY || status == OUT_FOR_DELIVERY
         val isDelivery: Boolean get() = fulfilment == OWN_DELIVERY
-        /** Uber Eats: Uber collected the money; moved on through Uber, never online_store_step. */
+        /** Uber Eats: Uber collected the money; moved on through ubereats-action (Uber first), never online_store_step. */
         val isUber: Boolean get() = channel == UBER_EATS
         val itemCount: Int get() = items.sumOf { it.quantity }
     }
@@ -116,6 +116,8 @@ object ArkeOrderRepository {
     @Serializable private data class StepParams(val p_id: String, val p_step: String, val p_minutes: Int?, val p_reason: String?,
                                                 val p_staff_name: String?, val p_device_sn: String?)
     @Serializable private data class StepResult(val success: Boolean = false, val message: String? = null, val order: Order? = null)
+    @Serializable private data class UberStep(val order_id: String, val step: String, val minutes: Int?, val reason: String?,
+                                              val staff_name: String?, val device_sn: String?)
     @Serializable private data class RefundRequest(val order_id: String)
     @Serializable private data class RefundResponse(val status: String? = null, val error: String? = null, val reason: String? = null)
 
@@ -129,13 +131,14 @@ object ArkeOrderRepository {
         }
     }
 
-    private suspend fun step(id: String, step: String, minutes: Int? = null, reason: String? = null, staffName: String?): Result =
+    /** [uber]: an Uber Eats order goes through ubereats-action -- Uber says yes first, then ours moves. */
+    private suspend fun step(id: String, step: String, minutes: Int? = null, reason: String? = null, staffName: String?, uber: Boolean = false): Result =
         withContext(Dispatchers.IO) {
             try {
                 SupabaseClientProvider.ensureAuthenticated()
-                val r = SupabaseClientProvider.client.postgrest.rpc(
-                    "online_store_step", StepParams(id, step, minutes, reason, staffName, DeviceRepository.getPersistedDeviceSn())
-                ).decodeAs<StepResult>()
+                val sn = DeviceRepository.getPersistedDeviceSn()
+                val r = if (uber) SupabaseClientProvider.invokeFunction("ubereats-action", UberStep(id, step, minutes, reason, staffName, sn)).body<StepResult>()
+                    else SupabaseClientProvider.client.postgrest.rpc("online_store_step", StepParams(id, step, minutes, reason, staffName, sn)).decodeAs<StepResult>()
                 if (!r.success) Log.w(TAG, "$step $id refused: ${r.message}")
                 Result(r.success, r.message, r.order)
             } catch (e: Exception) {
@@ -144,15 +147,15 @@ object ArkeOrderRepository {
             }
         }
 
-    suspend fun accept(id: String, minutes: Int, staffName: String?) = step(id, "ACCEPT", minutes = minutes, staffName = staffName)
-    suspend fun ready(id: String, staffName: String?) = step(id, "READY", staffName = staffName)
-    suspend fun pickedUp(id: String, staffName: String?) = step(id, "PICKED_UP", staffName = staffName)
-    suspend fun reject(id: String, reason: String, staffName: String?) = step(id, "REJECT", reason = reason, staffName = staffName)
+    suspend fun accept(o: Order, minutes: Int, staffName: String?) = step(o.id, "ACCEPT", minutes = minutes, staffName = staffName, uber = o.isUber)
+    suspend fun ready(o: Order, staffName: String?) = step(o.id, "READY", staffName = staffName, uber = o.isUber)
+    suspend fun pickedUp(o: Order, staffName: String?) = step(o.id, "PICKED_UP", staffName = staffName, uber = o.isUber)
+    suspend fun reject(o: Order, reason: String, staffName: String?) = step(o.id, "REJECT", reason = reason, staffName = staffName, uber = o.isUber)
     /** A driver takes a delivery out ([driver] = the staff name on this terminal). */
-    suspend fun out(id: String, driver: String?) = step(id, "OUT", staffName = driver)
-    suspend fun delivered(id: String, staffName: String?) = step(id, "DELIVERED", staffName = staffName)
+    suspend fun out(o: Order, driver: String?) = step(o.id, "OUT", staffName = driver, uber = o.isUber)
+    suspend fun delivered(o: Order, staffName: String?) = step(o.id, "DELIVERED", staffName = staffName, uber = o.isUber)
     /** Couldn't hand it over: back in the store (READY), [reason] kept. */
-    suspend fun back(id: String, reason: String?, staffName: String?) = step(id, "BACK", reason = reason, staffName = staffName)
+    suspend fun back(o: Order, reason: String?, staffName: String?) = step(o.id, "BACK", reason = reason, staffName = staffName, uber = o.isUber)
 
     /** Gives a rejected order's payment back: VOIDED / REFUNDED, else the error ("offline" = unreachable). */
     suspend fun refund(orderId: String): OnlinePaymentRepository.RefundResult = withContext(Dispatchers.IO) {

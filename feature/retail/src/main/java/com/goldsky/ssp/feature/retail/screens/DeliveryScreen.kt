@@ -172,8 +172,8 @@ fun DeliveryScreen(
             }
             items(online, key = { "online-" + it.id }) { o ->
                 OnlineCard(o, busy,
-                    onOut = { onlineStep(o, R.string.arke_out_done) { ArkeOrderRepository.out(o.id, staffName) } },
-                    onDelivered = { onlineStep(o, R.string.arke_delivered_done) { ArkeOrderRepository.delivered(o.id, staffName) } },
+                    onOut = { onlineStep(o, R.string.arke_out_done) { ArkeOrderRepository.out(o, staffName) } },
+                    onDelivered = { onlineStep(o, R.string.arke_delivered_done) { ArkeOrderRepository.delivered(o, staffName) } },
                     onBack = { onlineBack = o })
             }
             listOf(R.string.retail_delivery_mine to mine, R.string.retail_delivery_waiting to waiting).forEach { (title, group) ->
@@ -199,7 +199,7 @@ fun DeliveryScreen(
 
     onlineBack?.let { o ->
         OnlineBackDialog(o,
-            onConfirm = { note -> onlineBack = null; onlineStep(o, R.string.arke_back_done) { ArkeOrderRepository.back(o.id, note, staffName) } },
+            onConfirm = { note -> onlineBack = null; onlineStep(o, R.string.arke_back_done) { ArkeOrderRepository.back(o, note, staffName) } },
             onDismiss = { onlineBack = null })
     }
 

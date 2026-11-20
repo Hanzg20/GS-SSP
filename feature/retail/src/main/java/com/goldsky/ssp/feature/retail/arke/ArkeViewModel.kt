@@ -118,25 +118,27 @@ class ArkeViewModel : ViewModel() {
 
     /** Accept with [minutes] until ready; the kitchen ticket prints. */
     fun accept(context: Context, o: Order, minutes: Int, staffName: String?) =
-        run(context, o, { ArkeOrderRepository.accept(o.id, minutes, staffName) }) { now -> printTicket(context, now ?: o, staffName) }
+        run(context, o, { ArkeOrderRepository.accept(o, minutes, staffName) }) { now -> printTicket(context, now ?: o, staffName) }
 
-    fun ready(context: Context, o: Order, staffName: String?) = run(context, o, { ArkeOrderRepository.ready(o.id, staffName) })
+    fun ready(context: Context, o: Order, staffName: String?) = run(context, o, { ArkeOrderRepository.ready(o, staffName) })
 
-    fun pickedUp(context: Context, o: Order, staffName: String?) = run(context, o, { ArkeOrderRepository.pickedUp(o.id, staffName) })
+    fun pickedUp(context: Context, o: Order, staffName: String?) = run(context, o, { ArkeOrderRepository.pickedUp(o, staffName) })
 
     /** The driver (the staff signed in here) takes a delivery out. */
-    fun out(context: Context, o: Order, staffName: String?) = run(context, o, { ArkeOrderRepository.out(o.id, staffName) })
+    fun out(context: Context, o: Order, staffName: String?) = run(context, o, { ArkeOrderRepository.out(o, staffName) })
 
-    fun delivered(context: Context, o: Order, staffName: String?) = run(context, o, { ArkeOrderRepository.delivered(o.id, staffName) })
+    fun delivered(context: Context, o: Order, staffName: String?) = run(context, o, { ArkeOrderRepository.delivered(o, staffName) })
 
     /** Couldn't hand it over: back to Ready, [reason] kept. */
     fun back(context: Context, o: Order, reason: String, staffName: String?) =
-        run(context, o, { ArkeOrderRepository.back(o.id, reason, staffName) })
+        run(context, o, { ArkeOrderRepository.back(o, reason, staffName) })
 
     /** Reject with [reason] (the customer sees it), then give the card its money back. */
     fun reject(context: Context, o: Order, reason: String, staffName: String?) =
-        run(context, o, { ArkeOrderRepository.reject(o.id, reason, staffName) }) {
+        run(context, o, { ArkeOrderRepository.reject(o, reason, staffName) }) {
             val code = o.pickup_code ?: ""
+            // Uber took the eater's money and gives it back itself (deny / cancel told Uber already).
+            if (o.isUber) { message = context.getString(R.string.arke_uber_rejected, code); return@run }
             val refund = ArkeOrderRepository.refund(o.id)
             message = if (refund.status != null) context.getString(R.string.arke_refunded, code)
                       else context.getString(R.string.arke_refund_failed, code, refund.reason ?: refund.error ?: "?")

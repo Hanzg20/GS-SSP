@@ -115,3 +115,6 @@ verify_jwt = true
 # Uber Eats' webhooks. Uber has no Supabase login: the X-Uber-Signature (HMAC-SHA256 of the
 # body with the app's client secret) is the credential, checked inside the function.
 verify_jwt = false
+
+[functions.ubereats-action]
+verify_jwt = true

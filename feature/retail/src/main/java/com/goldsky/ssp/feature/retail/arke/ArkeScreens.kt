@@ -326,7 +326,6 @@ private fun OrderCard(o: Order, busy: Boolean, onReprint: (() -> Unit)?, actions
             }
             Spacer(Modifier.height(6.dp))
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            else if (o.isUber) Text(stringResource(R.string.arke_uber_on_tablet), color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             else Row(horizontalArrangement = Arrangement.spacedBy(8.dp), content = actions)
         }
     }

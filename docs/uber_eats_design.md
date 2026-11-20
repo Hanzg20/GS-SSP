@@ -30,6 +30,7 @@
 1. 连通：密钥存进 Supabase，`ubereats-ping` 拿到沙盒令牌。**2026-11-17 通过**：`eats.order eats.store` 都给了，30 天有效。`GET /v1/eats/stores` 和 `/v1/delivery/stores` 都回 200（`/v2/eats/stores` 404），但门店列表是空的，要等 Uber 给测试门店。`ubereats-ping` 带 `probe` 可以试只读 GET。
 2. 收单：门店对应表、Webhook 入库、Ourea 上能看到 Uber 单（先只看不操作）。**2026-11-17 已做、已上线**：迁移 `2026-11-17_uber_eats_orders.sql`（已应用），`ubereats-webhook`（已部署；未签名 / 签名错 401）。模拟单在 Scan E2E 店走通：未关联门店不收、入库为 NEW、重发和同单不同事件只收一次、单号和事件对不上拒收、取不到详情留待 Uber 重试、Ourea 看得到但改不了（`order_on_platform`）、Arke 顾客页查不到 Uber 单、取消改成 CANCELLED。还差：Uber 真推送（等测试门店）。
 3. 操作：接单 / 拒单 / 出餐调 Uber 接口；取消事件同步。
+   **2026-11-20 已做、已部署，等真单验证**：Uber 已把三家测试店接到我们的 app（`pos_data.integration_enabled = true`，`order_manager_client_id` 是我们，菜单 24 小时开放），不用再调激活接口。`ubereats-action`（终端鉴权）：接单 → `accept_pos_order`；新单拒单 → `deny_pos_order`（Ourea 的拒单理由对应 ITEM_AVAILABILITY / CAPACITY / STORE_CLOSED / OTHER）；已接的单再拒 → `cancel`（OUT_OF_ITEMS / RESTAURANT_TOO_BUSY / KITCHEN_CLOSED / OTHER）；出餐、取走、配送只记我们这边。Uber 说可以才改我们的状态（`online_uber_step_apply`，迁移 `2026-11-20_uber_eats_actions.sql`）；`/v1/eats/orders` 404 时再试 `/v1/delivery/orders`。Ourea 上 Uber 单和 Arke 单同样的按钮，拒单不走我们的退款。测试单：用开发者账号在 Uber Eats 下单到测试店地址。
 4. 菜单和售罄同步。
 5. 正式验收：建 PRODUCTION 应用，按 Uber 的验收清单过一遍。
 
